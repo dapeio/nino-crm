@@ -28,7 +28,9 @@ declare(strict_types=1);
  *											  pending, days, field, account, sign   at requestSignature: a request is waiting; the days are none; the template has no signature
  *											                          block for a member (Sign says so); the account is none of the client's; Sign, Pdf or Members is off
  *											  sign:<code>             Sign refused with template, input, render or write
- *											A database failure is a \PDOException the caller answers.
+ *											  released, mail          at remind(): the invoice is not released to the portal; at remindSignature(): the member was not mailed
+ *											A database failure is a \PDOException the caller answers. Beside the steps there are readings for the surface: overdue(), summary(), needs()
+ *											(what needs the owner), recent(), and two things made of a document: copy() (a draft of it) and preview() (the PDF of a draft, stored nowhere).
  */
 namespace Crm;
 
@@ -78,7 +80,7 @@ class Documents {
 	 *	@param		array 		$filter				category, state (or expired), year, client_id
 	 *	@param		bool			$sync					Whether the state of the requests waiting in Sign is read first; a caller that needs no state leaves it out
 	 *
-	 *	@return 	array											Each with its client's title as the document shows it
+	 *	@return 	array											Each with its client's title as the document shows it, and whether it is expired (an offer) or overdue (an invoice)
 	 */
 	public static function list( array &$appData, array $filter = [], bool $sync = true ): array {
 
@@ -135,7 +137,10 @@ class Documents {
 				'released'     => (int) $row['released'] === 1,
 				'sign_state'   => (string) $row['sign_state'],
 				'expired'      => self::expired( $row, $today ),
+				'overdue'      => self::overdue( $row, $today ),
 				'date'         => $row['date'],
+				'due_date'     => $row['due_date'],
+				'valid_until'  => $row['valid_until'],
 				'gross'        => (int) $row['gross'],
 				'client_id'    => (int) $row['client_id'],
 				'client_title' => $company !== '' ? $company : $name,
@@ -519,17 +524,224 @@ class Documents {
 	}
 
 	/**
-	 *	The open invoices - sent or not paid yet - and what they come to
+	 *	The books at a glance: the open invoices - open or sent, not paid yet - and what they come to, what of them is overdue and since
+	 *	when, the offers still waiting, what was paid this year and the drafts
 	 *
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	array											count, gross
+	 *	@return 	array											count and gross (the open invoices); overdue_count, overdue_gross and overdue_oldest (the oldest due date, '' for none); offers_count and offers_gross
+	 *																		(open or sent offers); paid_year, paid_count and paid_gross (invoices paid in the year now); drafts_count and drafts_last (the day of the newest draft, '' for none)
 	 */
 	public static function summary( array &$appData ): array {
 
-		$row = Db::row( $appData, 'SELECT COUNT(*) AS n, COALESCE( SUM( gross ), 0 ) AS gross FROM documents WHERE category = \'invoice\' AND state IN ( \'open\', \'sent\' )' );
+		$today = date( 'Y-m-d' );
+		$open = Db::row( $appData, 'SELECT COUNT(*) AS n, COALESCE( SUM( gross ), 0 ) AS gross FROM documents WHERE category = \'invoice\' AND state IN ( \'open\', \'sent\' )' );
+		$late = Db::row( $appData, 'SELECT COUNT(*) AS n, COALESCE( SUM( gross ), 0 ) AS gross, MIN( due_date ) AS oldest FROM documents WHERE category = \'invoice\' AND state IN ( \'open\', \'sent\' ) AND due_date IS NOT NULL AND due_date < :today', [ 'today' => $today ] );
+		$offers = Db::row( $appData, 'SELECT COUNT(*) AS n, COALESCE( SUM( gross ), 0 ) AS gross FROM documents WHERE category = \'offer\' AND state IN ( \'open\', \'sent\' )' );
+		$year = date( 'Y' );
+		$paid = Db::row( $appData, 'SELECT COUNT(*) AS n, COALESCE( SUM( gross ), 0 ) AS gross FROM documents WHERE category = \'invoice\' AND state = \'paid\' AND SUBSTR( paid_at, 1, 4 ) = :year', [ 'year' => $year ] );
+		$drafts = Db::row( $appData, 'SELECT COUNT(*) AS n, MAX( date ) AS last FROM documents WHERE state = \'draft\'' );
 
-		return [ 'count' => (int) ( $row['n'] ?? 0 ), 'gross' => (int) ( $row['gross'] ?? 0 ) ];
+		return [
+			'count'          => (int) ( $open['n'] ?? 0 ),
+			'gross'          => (int) ( $open['gross'] ?? 0 ),
+			'overdue_count'  => (int) ( $late['n'] ?? 0 ),
+			'overdue_gross'  => (int) ( $late['gross'] ?? 0 ),
+			'overdue_oldest' => (string) ( $late['oldest'] ?? '' ),
+			'offers_count'   => (int) ( $offers['n'] ?? 0 ),
+			'offers_gross'   => (int) ( $offers['gross'] ?? 0 ),
+			'paid_year'      => (int) $year,
+			'paid_count'     => (int) ( $paid['n'] ?? 0 ),
+			'paid_gross'     => (int) ( $paid['gross'] ?? 0 ),
+			'drafts_count'   => (int) ( $drafts['n'] ?? 0 ),
+			'drafts_last'    => (string) ( $drafts['last'] ?? '' ),
+		];
+	}
+
+	/**
+	 *	What needs the owner: the invoices that are overdue (the oldest due first), the offers that run out within the next seven days, the contracts
+	 *	and privacy documents whose signature was looked at and not given or ran out of time, and the active clients that have no account
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											A list in that order; each has kind (overdue, expiring, sign, account), id (the document, 0 for a client), client_id, client_title, number, title,
+	 *																		date (the due date, the day the offer runs out, the day the state last changed, ''), gross and sign_state ('' unless it is a signature)
+	 */
+	public static function needs( array &$appData ): array {
+
+		self::syncSign( $appData );
+
+		$today = date( 'Y-m-d' );
+		$until = self::addDays( $today, 7 );
+		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.client_json, d.sign_state, d.updated
+			FROM documents d WHERE d.state IN ( \'open\', \'sent\' ) ORDER BY d.date, d.id' );
+		$groups = [ 'overdue' => [], 'expiring' => [], 'sign' => [] ];
+
+		foreach( $rows as $row ) {
+
+			$frozen = json_decode( (string) $row['client_json'], true );
+			$frozen = is_array( $frozen ) === true ? $frozen : [];
+			$company = (string) ( $frozen['company'] ?? '' );
+			$entry = [
+				'kind' => '', 'id' => (int) $row['id'], 'client_id' => (int) $row['client_id'], 'client_title' => $company !== '' ? $company : (string) ( $frozen['name'] ?? '' ), 'number' => (string) ( $row['number'] ?? '' ),
+				'title' => (string) $row['title'], 'date' => '', 'gross' => (int) $row['gross'], 'sign_state' => '',
+			];
+
+			if( self::overdue( $row, $today ) === true )
+				$groups['overdue'][] = [ 'kind' => 'overdue', 'date' => (string) $row['due_date'] ] + $entry;
+			elseif( $row['category'] === 'offer' && is_string( $row['valid_until'] ) === true && $row['valid_until'] >= $today && $row['valid_until'] <= $until )
+				$groups['expiring'][] = [ 'kind' => 'expiring', 'date' => $row['valid_until'] ] + $entry;
+			elseif( in_array( $row['category'], self::SIGNABLE, true ) === true && in_array( $row['sign_state'], [ 'viewed', 'expired' ], true ) === true )
+				$groups['sign'][] = [ 'kind' => 'sign', 'date' => substr( (string) $row['updated'], 0, 10 ), 'sign_state' => (string) $row['sign_state'] ] + $entry;
+		}
+
+		// The oldest due date first: it has waited longest
+		usort( $groups['overdue'], static fn( array $a, array $b ): int => [ $a['date'], $a['id'] ] <=> [ $b['date'], $b['id'] ] );
+		usort( $groups['expiring'], static fn( array $a, array $b ): int => [ $a['date'], $a['id'] ] <=> [ $b['date'], $b['id'] ] );
+
+		$accounts = [];
+
+		foreach( Clients::list( $appData ) as $client )
+			if( $client['active'] === true && $client['accounts'] === 0 )
+				$accounts[] = [ 'kind' => 'account', 'id' => 0, 'client_id' => $client['id'], 'client_title' => (string) ( $client['company'] !== '' ? $client['company'] : $client['name'] ), 'number' => (string) $client['number'], 'title' => '', 'date' => '', 'gross' => 0, 'sign_state' => '' ];
+
+		return array_merge( $groups['overdue'], $groups['sign'], $groups['expiring'], $accounts );
+	}
+
+	/**
+	 *	The documents of the latest dates, drafts among them
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$limit
+	 *
+	 *	@return 	array											As list() has them, the newest first
+	 */
+	public static function recent( array &$appData, int $limit = 8 ): array {
+
+		return array_slice( self::list( $appData, [], false ), 0, max( 0, $limit ) );
+	}
+
+	/**
+	 *	A draft from a document of any state: the same kind and client, the lines (the rates held to the VAT mode of the setting now, as an invoice from an offer is),
+	 *	the period and the notes left out, today as the date and the due or valid day the setting gives; the template and its inputs stay where the template is still there.
+	 *	A contract hangs on the offer of the original. Nothing links the copy to the original
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *
+	 *	@return 	array|string							The draft as get() has it; or why not, see add() - and line:<i>:rate:vat_rate for a rate the setting does not allow
+	 */
+	public static function copy( array &$appData, int $id ): array|string {
+
+		$source = self::get( $appData, $id );
+
+		if( $source === null )
+			return 'unknown';
+
+		$tag = Render::tag( $source['category'] );
+		$keeps = $source['template_key'] !== '' && Crm::featureOn( $appData, 'pdf' ) === true && isset( \Nino\Modules\Pdf::templates( $appData, $tag )[$source['template_key']] ) === true;
+		$input = [ 'template_key' => $keeps === true ? $source['template_key'] : '', 'inputs' => $keeps === true ? $source['inputs'] : [] ];
+
+		if( in_array( $source['category'], self::PLAIN, true ) === true )
+			return self::add( $appData, $source['category'], $source['category'] === 'contract' ? 0 : $source['client_id'], $input + [ 'title' => $source['title'] ] + ( $source['category'] === 'contract' ? [ 'parent_id' => $source['parent_id'] ] : [] ) );
+
+		$vatMode = Settings::get( $appData, 'vat_mode' );
+		$reverse = $source['reverse_charge'] === true && $vatMode === 'regular';
+		$lines = [];
+
+		foreach( $source['lines'] as $line ) {
+
+			// A rate the setting does not list is refused by add(), as line:<i>:rate:vat_rate
+			$rate = $vatMode === 'small_business' || $reverse === true ? 0 : $line['vat_rate'];
+			$lines[] = [ 'title' => $line['title'], 'description' => $line['description'], 'unit' => $line['unit'], 'qty' => $line['qty'], 'price' => $line['price_net'], 'vat_rate' => $rate ];
+		}
+
+		return self::add( $appData, $source['category'], $source['client_id'], $input + [ 'lines' => $lines, 'reverse_charge' => $reverse ] );
+	}
+
+	/**
+	 *	A reminder to pay: the release mail again, in the words of a reminder, to each active account of the client of an invoice that is open or
+	 *	sent, overdue and released to the portal. Nothing else changes. The activity log names the number
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *
+	 *	@return 	array|string							document (as get() has it) and mailed (how many mails were delivered); or unknown; state (it is no invoice that is overdue);
+	 *																		released (the client could not find it in the portal); address, limit as release() has them
+	 */
+	public static function remind( array &$appData, int $id ): array|string {
+
+		$document = self::get( $appData, $id );
+
+		if( $document === null )
+			return 'unknown';
+
+		if( self::overdue( $document, date( 'Y-m-d' ) ) === false )
+			return 'state';
+
+		if( $document['released'] === false )
+			return 'released';
+
+		$sent = Mail::remind( $appData, $document );
+
+		if( is_string( $sent ) === true )
+			return $sent;
+
+		return [ 'document' => $document, 'mailed' => $sent ];
+	}
+
+	/**
+	 *	The PDF of a draft as its template would make it now: nothing is stored, no number is taken
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *
+	 *	@return 	array|string							bytes (the PDF) and name (the file name without the extension); or unknown; state (it is no draft: its PDF is the stored one); pdf, template, inputs:<name>, render as finalise() has them
+	 */
+	public static function preview( array &$appData, int $id ): array|string {
+
+		$document = self::get( $appData, $id );
+
+		if( $document === null )
+			return 'unknown';
+
+		if( $document['state'] !== 'draft' )
+			return 'state';
+
+		if( Crm::featureOn( $appData, 'pdf' ) === false )
+			return 'pdf';
+
+		if( $document['template_key'] === '' || isset( \Nino\Modules\Pdf::templates( $appData, Render::tag( $document['category'] ) )[$document['template_key']] ) === false )
+			return 'template';
+
+		foreach( \Nino\Modules\Pdf::inputs( $appData, $document['template_key'] ) as $input )
+			if( $input['required'] === true && trim( (string) ( $document['inputs'][$input['name']] ?? '' ) ) === '' )
+				return 'inputs:'. $input['name'];
+
+		$client = Clients::get( $appData, $document['client_id'] );
+
+		if( $client === null )
+			return 'unknown';
+
+		$frozen = [];
+
+		foreach( self::CLIENT_FIELDS as $field )
+			$frozen[$field] = (string) $client[$field];
+
+		$plain = in_array( $document['category'], self::PLAIN, true );
+
+		if( $plain === true )
+			$document['offer'] = self::offerOf( $appData, $document );
+
+		$totals = Money::totals( $document['lines'], $document['vat_mode'], $document['reverse_charge'] );
+		$lines = $plain === true ? [] : array_map( static fn( array $line, int $amount ): array => [ 'amount_net' => $amount ] + $line, $document['lines'], $totals['amounts'] );
+		$data = Render::data( $appData, $document, $lines, $frozen );
+		$bytes = \Nino\Modules\Pdf::render( $appData, $document['template_key'], $data, [
+			'title' => $plain === true ? $document['title'] : Render::text( 'title.'. $document['category'] ),
+			'date'  => $document['date'],
+		] );
+
+		return $bytes === null ? 'render' : [ 'bytes' => $bytes, 'name' => Render::name( $document ) ];
 	}
 
 	/**
@@ -668,6 +880,66 @@ class Documents {
 	}
 
 	/**
+	 *	Send the link of the signature request of a contract or a privacy document again, with a new token (Sign's remind): the request is waiting or ran out of time
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *
+	 *	@return 	array|string							The document as get() has it; or unknown; category; state (no request is waiting); sign (Sign is off); mail (the member was not mailed, the link is as it was)
+	 */
+	public static function remindSignature( array &$appData, int $id ): array|string {
+
+		$document = self::get( $appData, $id );
+
+		if( $document === null )
+			return 'unknown';
+
+		if( in_array( $document['category'], self::SIGNABLE, true ) === false )
+			return 'category';
+
+		if( in_array( $document['state'], [ 'open', 'sent' ], true ) === false || $document['sign_id'] === '' || in_array( $document['sign_state'], [ 'requested', 'viewed', 'expired' ], true ) === false )
+			return 'state';
+
+		if( Crm::featureOn( $appData, 'sign' ) === false )
+			return 'sign';
+
+		if( \Nino\Modules\Sign::remind( $appData, $document['sign_id'] ) === false )
+			return 'mail';
+
+		return (array) self::get( $appData, $id );
+	}
+
+	/**
+	 *	Take the signature request of a contract or a privacy document back (Sign's cancel): the link is dead, the document can ask again
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *
+	 *	@return 	array|string							The document as get() has it; or unknown; category; state (no request is waiting); sign (Sign is off)
+	 */
+	public static function cancelSignature( array &$appData, int $id ): array|string {
+
+		$document = self::get( $appData, $id );
+
+		if( $document === null )
+			return 'unknown';
+
+		if( in_array( $document['category'], self::SIGNABLE, true ) === false )
+			return 'category';
+
+		if( in_array( $document['state'], [ 'open', 'sent' ], true ) === false || $document['sign_id'] === '' || in_array( $document['sign_state'], self::PENDING, true ) === false )
+			return 'state';
+
+		if( Crm::featureOn( $appData, 'sign' ) === false )
+			return 'sign';
+
+		if( \Nino\Modules\Sign::cancel( $appData, $document['sign_id'] ) === false )
+			return 'state';
+
+		return (array) self::get( $appData, $id );
+	}
+
+	/**
 	 *	'/sign/signed': a member signed - the document of the request is signed. A document the request does not belong to is left alone
 	 *
 	 *	@param		array 		&$appData
@@ -760,6 +1032,19 @@ class Documents {
 	public static function expired( array $row, string $today ): bool {
 
 		return $row['category'] === 'offer' && in_array( $row['state'], [ 'open', 'sent' ], true ) === true && is_string( $row['valid_until'] ?? null ) === true && $row['valid_until'] < $today;
+	}
+
+	/**
+	 *	Whether an invoice is open or sent and past its due date: a way to look at it and no state
+	 *
+	 *	@param		array 		$row					category, state, due_date
+	 *	@param		string|null	$today				Y-m-d; today where none is given
+	 *
+	 *	@return 	bool
+	 */
+	public static function overdue( array $row, ?string $today = null ): bool {
+
+		return $row['category'] === 'invoice' && in_array( $row['state'], [ 'open', 'sent' ], true ) === true && is_string( $row['due_date'] ?? null ) === true && $row['due_date'] < ( $today ?? date( 'Y-m-d' ) );
 	}
 
 	/**
@@ -1349,6 +1634,7 @@ class Documents {
 		$row['inputs'] = is_array( $inputs ) === true ? $inputs : [];
 		$row['client_frozen'] = is_array( $frozen ) === true ? $frozen : [];
 		$row['expired'] = self::expired( $row, date( 'Y-m-d' ) );
+		$row['overdue'] = self::overdue( $row, date( 'Y-m-d' ) );
 		unset( $row['inputs_json'], $row['client_json'] );
 
 		return $row;

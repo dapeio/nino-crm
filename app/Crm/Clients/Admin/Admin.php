@@ -17,7 +17,7 @@ use Crm\Clients;
 
 class Admin {
 
-	public const string MANAGE_PERM = '/_admin/crm-clients/manage';
+	public const string MANAGE_PERM = \Crm\Crm::MANAGE_PERM;
 
 	// The id of an account of Members: 12 hex characters
 	private const string ACCOUNT_ID = '/^[0-9a-f]{12}$/D';

@@ -219,4 +219,6 @@ return [
 	'[[/_admin/error/crm_documents_sign_input]]' => 'Fülle die Pflichtfelder der Vorlage aus.',
 	'[[/_admin/error/crm_documents_sign_render]]' => 'Die Vorlage konnte kein PDF erzeugen. Es wurde nichts angefordert.',
 	'[[/_admin/error/crm_documents_sign_write]]' => 'Die Anfrage konnte nicht gespeichert werden. Es wurde nichts angefordert.',
+	'[[/_admin/error/crm_documents_released]]' => 'Gib den Beleg zuerst im Portal frei, sonst kann Dein Kunde ihn dort nicht finden.',
+	'[[/_admin/error/crm_documents_sign_mail]]' => 'Die Mail kam nicht an. Der Link ist so, wie er war.',
 ];

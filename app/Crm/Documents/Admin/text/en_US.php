@@ -219,4 +219,6 @@ return [
 	'[[/_admin/error/crm_documents_sign_input]]' => 'Fill in the required fields of the template.',
 	'[[/_admin/error/crm_documents_sign_render]]' => 'The template could not make a PDF. Nothing was asked for.',
 	'[[/_admin/error/crm_documents_sign_write]]' => 'The request could not be stored. Nothing was asked for.',
+	'[[/_admin/error/crm_documents_released]]' => 'Release the document to the portal first, or your client cannot find it there.',
+	'[[/_admin/error/crm_documents_sign_mail]]' => 'The mail was not delivered. The link is as it was.',
 ];

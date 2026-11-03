@@ -845,7 +845,7 @@
 
 			const list = Nino.adminUi.el( 'datalist' );
 
-			list.id = 'crm-items-list';
+			list.id = 'crm-positionen-list';
 			box.appendChild( list );
 
 			docs._catalogue.forEach( function( item ) {
@@ -909,7 +909,7 @@
 				row.dataset.index = String( index );
 
 				const title = input( 'title', line.title, Nino.content.getText( K+ 'column/title' ) );
-				title.setAttribute( 'list', 'crm-items-list' );
+				title.setAttribute( 'list', 'crm-positionen-list' );
 				title.maxLength = 200;
 
 				const first = cell( title );

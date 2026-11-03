@@ -6,7 +6,8 @@ declare(strict_types=1);
  *												Members has no language of its own), with the absolute link to the page Dokumente and no attachment.
  *												All mails are one call of the kernel's mail, which counts a call against the cap of mails an hour and not
  *												a mail. The words are in text/de_DE.php, the markup in templates/release.tpl; a value enters the
- *												template after it was rendered, escaped, so that nothing in it is read as a fill or a shortcode.
+ *												template after it was rendered, escaped, so that nothing in it is read as a fill or a shortcode. The same
+ *												mail, in the words of a reminder (text/de_DE.php, remind.*), asks for the payment of an invoice that is overdue.
  */
 namespace Crm\Documents;
 
@@ -44,10 +45,11 @@ class Mail {
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document			As Documents::get() has it
+	 *	@param		string		$kind					release (a document is there for the client) or remind (an invoice is overdue)
 	 *
 	 *	@return 	array											[ { to, subject, body, replyTo }, ... ]; none for a client without an account that can be written to, or where the site has no address
 	 */
-	public static function compose( array &$appData, array $document ): array {
+	public static function compose( array &$appData, array $document, string $kind = 'release' ): array {
 
 		$link = \Nino\Html::absoluteUrl( $appData, self::PAGE );
 
@@ -70,6 +72,8 @@ class Mail {
 		$name = (string) $document['title'] !== '' ? (string) $document['title'] : (string) $document['number'];
 		$about = self::text( 'line', self::text( 'kind.'. $document['category'] ), $name );
 		$mails = [];
+		$prefix = $kind === 'remind' ? 'remind.' : '';
+		$due = $kind === 'remind' ? Render::day( (string) ( $document['due_date'] ?? '' ) ) : '';
 
 		foreach( Clients::accounts( $appData, (int) $document['client_id'] ) as $id ) {
 
@@ -79,19 +83,19 @@ class Mail {
 				continue;
 
 			$values = [
-				'[[heading]]'  => self::text( 'title' ),
+				'[[heading]]'  => self::text( $prefix. 'title' ),
 				'[[greeting]]' => self::text( 'greeting', $account['name'] !== '' ? $account['name'] : $account['email'] ),
-				'[[intro]]'    => self::text( 'intro' ),
+				'[[intro]]'    => $kind === 'remind' ? self::text( 'remind.intro', $due ) : self::text( 'intro' ),
 				'[[document]]' => $about,
 				'[[link]]'     => $link,
-				'[[button]]'   => self::text( 'button' ),
-				'[[notice]]'   => self::text( 'notice' ),
+				'[[cta]]'      => self::text( $prefix. 'button' ),
+				'[[notice]]'   => self::text( $prefix. 'notice' ),
 				'[[closing]]'  => self::text( 'closing' ),
 			];
 
 			$mails[] = [
 				'to'      => $account['email'],
-				'subject' => self::text( 'subject', $about ),
+				'subject' => self::text( $prefix. 'subject', $about ),
 				'body'    => str_replace( array_keys( $values ), array_map( static fn( string $value ): string => \Nino\Modules\Components::escape( $value ), array_values( $values ) ), $markup ),
 				'replyTo' => $replyTo,
 			];
@@ -101,7 +105,7 @@ class Mail {
 	}
 
 	/**
-	 *	Mail the accounts of the client of a document
+	 *	Mail the accounts of the client of a document that it was released
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document			As Documents::get() has it
@@ -110,10 +114,35 @@ class Mail {
 	 */
 	public static function release( array &$appData, array $document ): int|string {
 
+		return self::send( $appData, $document, 'release' );
+	}
+
+	/**
+	 *	Mail the accounts of the client of an invoice that it is overdue
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			As Documents::get() has it
+	 *
+	 *	@return 	int|string								As release() has it
+	 */
+	public static function remind( array &$appData, array $document ): int|string {
+
+		return self::send( $appData, $document, 'remind' );
+	}
+
+	/**
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document
+	 *	@param		string		$kind					release or remind, see compose()
+	 *
+	 *	@return 	int|string
+	 */
+	private static function send( array &$appData, array $document, string $kind ): int|string {
+
 		if( \Nino\Html::absoluteUrl( $appData, self::PAGE ) === '' )
 			return 'address';
 
-		$mails = self::compose( $appData, $document );
+		$mails = self::compose( $appData, $document, $kind );
 
 		if( $mails === [] )
 			return 0;

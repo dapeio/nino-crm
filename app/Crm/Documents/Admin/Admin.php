@@ -17,7 +17,7 @@ use Crm\Settings;
 
 class Admin {
 
-	public const string MANAGE_PERM = '/_admin/crm-documents/manage';
+	public const string MANAGE_PERM = \Crm\Crm::MANAGE_PERM;
 
 	// What the model refuses with, as the status and the code a person is answered. A kind that stands for a field names it
 	private const array REFUSALS = [
@@ -45,6 +45,8 @@ class Admin {
 		'field'    => [ 409, 'crm_documents_field', 'template_key' ],
 		'account'  => [ 400, 'crm_documents_account', 'account' ],
 		'sign'     => [ 409, 'crm_documents_sign', '' ],
+		'released' => [ 409, 'crm_documents_released', '' ],
+		'mail'     => [ 409, 'crm_documents_sign_mail', '' ],
 	];
 
 	// What Sign refuses a request with, as the status and the code a person is answered
@@ -82,6 +84,11 @@ class Admin {
 			'crm-documents/settings-save' => [ self::class, 'apiSettingsSave' ],
 			'crm-documents/templates'     => [ self::class, 'apiTemplates' ],
 			'crm-documents/status'        => [ self::class, 'apiStatus' ],
+			'crm-documents/overview'      => [ self::class, 'apiOverview' ],
+			'crm-documents/copy'          => [ self::class, 'apiCopy' ],
+			'crm-documents/remind'        => [ self::class, 'apiRemind' ],
+			'crm-documents/sign-remind'   => [ self::class, 'apiSignRemind' ],
+			'crm-documents/sign-cancel'   => [ self::class, 'apiSignCancel' ],
 		];
 	}
 
@@ -148,6 +155,10 @@ class Admin {
 			'crm-documents/release'       => 'Released document '. $of,
 			'crm-documents/unrelease'     => 'Took back document '. $of,
 			'crm-documents/sign'          => 'Asked for a signature on document '. $of,
+			'crm-documents/copy'          => 'Copied document '. $of. ' to a draft',
+			'crm-documents/remind'        => 'Sent a payment reminder for document '. $of,
+			'crm-documents/sign-remind'   => 'Sent the link of the signature on document '. $of. ' again',
+			'crm-documents/sign-cancel'   => 'Took back the signature request on document '. $of,
 			'crm-documents/settings-save' => 'Saved the settings of the documents',
 			default                       => '',
 		};
@@ -191,6 +202,75 @@ class Admin {
 				'offers'    => self::_offers( $appData ),
 			] );
 		} );
+	}
+
+	/**
+	 *	What the first screen of the surface shows: the books at a glance, what needs the owner and the documents of the latest dates, with the settings the amounts are written by
+	 */
+	public static function apiOverview( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
+
+			\Nino\Http::ok( $request, [
+				'summary'  => Documents::summary( $appData ),
+				'needs'    => Documents::needs( $appData ),
+				'recent'   => Documents::recent( $appData, 8 ),
+				'settings' => self::_settings( $appData ),
+			] );
+		} );
+	}
+
+	/**
+	 *	A draft from a document of any state
+	 */
+	public static function apiCopy( array &$appData, array &$request ): void {
+		self::_derived( $appData, $request, 'crm-documents/copy', [ Documents::class, 'copy' ] );
+	}
+
+	/**
+	 *	Remind the accounts of the client of an overdue invoice to pay it: the release mail again, in the words of a reminder. Answers the document and
+	 *	how many mails were delivered
+	 */
+	public static function apiRemind( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
+
+			$document = self::_document( $appData, $request, \Nino\Admin\Admin::postData() );
+
+			if( $document === null )
+				return;
+
+			$reminded = Documents::remind( $appData, $document['id'] );
+
+			if( is_string( $reminded ) === true ) {
+				self::_refused( $request, $reminded );
+				return;
+			}
+
+			self::$_made['crm-documents/remind'] = Render::name( $document );
+
+			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $reminded['document'] ), 'mailed' => $reminded['mailed'] ] );
+		} );
+	}
+
+	/**
+	 *	Send the link of a signature request again
+	 */
+	public static function apiSignRemind( array &$appData, array &$request ): void {
+		self::_derived( $appData, $request, 'crm-documents/sign-remind', [ Documents::class, 'remindSignature' ] );
+	}
+
+	/**
+	 *	Take a signature request back
+	 */
+	public static function apiSignCancel( array &$appData, array &$request ): void {
+		self::_derived( $appData, $request, 'crm-documents/sign-cancel', [ Documents::class, 'cancelSignature' ] );
 	}
 
 	/**
@@ -599,7 +679,7 @@ class Admin {
 	}
 
 	/**
-	 *	The step from a finalised document to a draft of another: the offer's invoice, the invoice's credit note
+	 *	The step from a document to another or to itself again: the offer's invoice, the invoice's credit note, a copy, a signature request sent again or taken back
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$request
@@ -627,7 +707,7 @@ class Admin {
 				return;
 			}
 
-			self::$_made[$action] = $source['number'];
+			self::$_made[$action] = Render::name( $source );
 
 			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $draft ) ] );
 		} );
@@ -679,7 +759,7 @@ class Admin {
 
 	/**
 	 *	A document with the templates of its tag, the settings the editor draws with, the offers a contract can hang on and - for a
-	 *	document that can ask for a signature - the accounts of its client
+	 *	document that is not a draft - the accounts of its client: the ones a signature can be asked of and the ones the release mails
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document
@@ -688,8 +768,6 @@ class Admin {
 	 */
 	private static function _view( array &$appData, array $document ): array {
 
-		$signable = in_array( $document['category'], Documents::SIGNABLE, true ) === true && $document['state'] !== 'draft';
-
 		return [
 			'document'  => self::_shown( $appData, $document ),
 			'templates' => self::_templates( $appData, $document['category'] ),
@@ -697,7 +775,7 @@ class Admin {
 			'settings'  => self::_settings( $appData ),
 			'items'     => self::_catalogue( $appData ),
 			'offers'    => self::_offers( $appData ),
-			'accounts'  => $signable === true ? self::_accounts( $appData, $document['client_id'] ) : [],
+			'accounts'  => $document['state'] !== 'draft' ? self::_accounts( $appData, $document['client_id'] ) : [],
 			'sign_days' => max( 1, min( 90, (int) \Nino\Features::setting( $appData, 'sign', 'days', 14 ) ) ),
 		];
 	}

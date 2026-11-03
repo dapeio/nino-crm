@@ -292,7 +292,7 @@ $cleared = ninoWarnings();
 
 $panels = \Nino\Admin\Admin::panels( $appData );
 check( 'the panel is in the registry while the module is listed, in the content group', isset( $panels['crm-clients'] ) && $panels['crm-clients']['group'] === 'content' && ltrim( (string) $panels['crm-clients']['class'], '\\' ) === \Crm\Clients\Admin::class );
-check( 'its permission is /_admin/crm-clients/manage', \Crm\Clients\Admin::perm() === '/_admin/crm-clients/manage' && ( $panels['crm-clients']['perm'] ?? '' ) === '/_admin/crm-clients/manage' );
+check( 'its permission is /_admin/crm/manage, the one of the whole CRM', \Crm\Clients\Admin::perm() === '/_admin/crm/manage' && ( new \ReflectionClass( \Crm\Crm::class ) )->getConstant( 'MANAGE_PERM' ) === '/_admin/crm/manage' && ( $panels['crm-clients']['perm'] ?? '' ) === '/_admin/crm/manage' );
 check( 'its actions are the fourteen of the plan', array_keys( \Crm\Clients\Admin::actions() ) === [ 'crm-clients/list', 'crm-clients/get', 'crm-clients/save', 'crm-clients/active', 'crm-clients/invite', 'crm-clients/accounts', 'crm-clients/unlinked',
 	'crm-clients/account-link', 'crm-clients/account-resend', 'crm-clients/account-active', 'crm-clients/account-name', 'crm-clients/account-remove', 'crm-clients/setup', 'crm-clients/status' ] );
 

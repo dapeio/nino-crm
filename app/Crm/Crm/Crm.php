@@ -5,12 +5,16 @@ declare(strict_types=1);
  *						init() registers behaviour and writes nothing: the panels Kunden and Belege (adminPanels()), the
  *						components [crm-client] and [crm-documents], the callbacks that keep the portal's lookup true when a member signs in or
  *						out and the ones that let a document follow its request in Sign, the style sheet of the portal's list, and the route
- *						/.crm/pdf/<id> that answers the PDF of a finalised document. The database is opened on first use, the portal pages come with
- *						the install unit the panel applies.
+ *						/.crm/pdf/<id> that answers the PDF of a finalised document; and the surface at /crm, one page of the project with its
+ *						endpoint and assets (Surface::init()). The database is opened on first use, the portal pages come with the install unit
+ *						the panel applies.
  */
 namespace Crm;
 
 class Crm {
+
+	// The one permission of the CRM: the surface at /crm, and the panels that remain in the workbench
+	public const string MANAGE_PERM = '/_admin/crm/manage';
 
 	/**
 	 *	@param		array 		&$appData			(reference) Array with current app data
@@ -60,6 +64,9 @@ class Crm {
 		// The PDF of a document is answered to the workbench session that may manage the documents and, once it is released, to the member of its client (see Render::callbackDownload())
 		$appData['/nino/http/routes']['GET://.crm/pdf/*'] = [ 'uri' => '/.crm/pdf/*' ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.crm/pdf/*', [ \Crm\Documents\Render::class, 'callbackDownload' ] );
+
+		// The surface: one page of the project, its endpoint, its assets and the preview of a draft
+		\Crm\Surface::init( $appData );
 	}
 
 	/**

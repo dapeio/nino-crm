@@ -749,7 +749,7 @@ Db::exec( $appData, 'UPDATE documents SET sign_id = \'\', sign_state = \'\' WHER
 [ $status, $body ] = $post( 'crm-documents/sign', [ 'id' => (string) $contractA3['id'], 'account' => $accounts['anna']['id'] ] );
 $delivery = true;
 check( 'sign says when Sign could not mail the account: 200, mailed false - the request is made all the same', $status === 200 && $body['mailed'] === false && $body['document']['sign_state'] === 'requested' );
-check( 'only a contract or a privacy document that is finalised comes with the accounts of its client: not an invoice, not a draft', $post( 'crm-documents/get', [ 'id' => (string) $invoiceA['id'] ] )[1]['accounts'] === [] && $post( 'crm-documents/get', [ 'id' => (string) $draftA['id'] ] )[1]['accounts'] === []
+check( 'a document that is finalised comes with the accounts of its client - the signature asks one of them, the mail of a release reaches them - and a draft does not', count( $post( 'crm-documents/get', [ 'id' => (string) $invoiceA['id'] ] )[1]['accounts'] ) === 3 && $post( 'crm-documents/get', [ 'id' => (string) $draftA['id'] ] )[1]['accounts'] === []
 	&& count( $post( 'crm-documents/get', [ 'id' => (string) $privacyA['id'] ] )[1]['accounts'] ) === 3 );
 
 [ $status, $body ] = $post( 'crm-clients/get', [ 'id' => (string) $a['id'] ] );

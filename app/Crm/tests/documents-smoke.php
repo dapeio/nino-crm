@@ -263,7 +263,7 @@ $panel = [ \Nino\Admin\Admin::class, 'handlePost' ];
 $panels = \Nino\Admin\Admin::panels( $appData );
 check( 'the panels are Kunden and Belege in the content group, and no other of the module', array_keys( array_filter( $panels, static fn( string $uri ): bool => str_starts_with( $uri, 'crm-' ), ARRAY_FILTER_USE_KEY ) ) === [ 'crm-clients', 'crm-documents' ]
 	&& $panels['crm-clients']['group'] === 'content' && $panels['crm-documents']['group'] === 'content' && ltrim( (string) $panels['crm-documents']['class'], '\\' ) === \Crm\Documents\Admin::class && \Crm\Crm::adminPanels( $appData ) === [ \Crm\Clients\Admin::class, \Crm\Documents\Admin::class ] );
-check( '...their permissions are /_admin/crm-clients/manage and /_admin/crm-documents/manage', \Crm\Documents\Admin::perm() === '/_admin/crm-documents/manage' && ( $panels['crm-documents']['perm'] ?? '' ) === \Crm\Documents\Admin::MANAGE_PERM );
+check( '...both with the one permission of the CRM, /_admin/crm/manage', \Crm\Documents\Admin::perm() === '/_admin/crm/manage' && \Crm\Clients\Admin::perm() === '/_admin/crm/manage' && ( $panels['crm-documents']['perm'] ?? '' ) === \Crm\Crm::MANAGE_PERM && ( $panels['crm-clients']['perm'] ?? '' ) === \Crm\Crm::MANAGE_PERM );
 check( '...and the order in the rail is Kunden, Belege', \Crm\Clients\Admin::nav()[2] < \Crm\Documents\Admin::nav()[2] );
 check( 'the module registers the route GET /.crm/pdf/* and its callback', ( $appData['/nino/http/routes']['GET://.crm/pdf/*']['uri'] ?? '' ) === '/.crm/pdf/*' && isset( $appData['./nino/callbacks']['/nino/http/response/GET://.crm/pdf/*'] ) === true );
 
@@ -976,9 +976,10 @@ function docServe( array &$appData, string $uri ): array {
 }
 
 \Nino\Auth::insertUser( $appData, 'plain@example.com', 'plain password', [] );
-\Nino\Auth::insertUser( $appData, 'docs@example.com', 'docs password', [ '/_admin/crm-documents/manage' ] );
-\Nino\Auth::insertUser( $appData, 'clients@example.com', 'clients password', [ '/_admin/crm-clients/manage' ] );
-$passwords = [ 'admin@example.com' => 'correct horse battery staple', 'plain@example.com' => 'plain password', 'docs@example.com' => 'docs password', 'clients@example.com' => 'clients password' ];
+\Nino\Auth::insertUser( $appData, 'docs@example.com', 'docs password', [ '/_admin/crm/manage' ] );
+\Nino\Auth::insertUser( $appData, 'other@example.com', 'other password', [ '/_admin/elements/manage' ] );
+\Nino\Auth::insertUser( $appData, 'old@example.com', 'old password', [ '/_admin/crm-documents/manage', '/_admin/crm-clients/manage' ] );
+$passwords = [ 'admin@example.com' => 'correct horse battery staple', 'plain@example.com' => 'plain password', 'docs@example.com' => 'docs password', 'other@example.com' => 'other password', 'old@example.com' => 'old password' ];
 $as = static function( string $who ) use ( &$appData, $passwords ): void {
 	$_SESSION = [];
 	unset( $appData['./nino/auth/current'] );
@@ -995,8 +996,8 @@ $as( '' );
 check( 'a visitor is told 404, with a plain body and no file', $nothing( docServe( $appData, $uri ) ) === true && str_starts_with( docServe( $appData, $uri )['header']['Content-Type'], 'text/plain' ) );
 $as( 'plain@example.com' );
 check( 'an account without the permission is told the same 404', $nothing( docServe( $appData, $uri ) ) === true );
-$as( 'clients@example.com' );
-check( '...the permission of the other panel does not open it', $nothing( docServe( $appData, $uri ) ) === true );
+$as( 'other@example.com' );
+check( '...the permission of another panel does not open it', $nothing( docServe( $appData, $uri ) ) === true );
 
 $as( 'docs@example.com' );
 $answer = docServe( $appData, $uri );
@@ -1110,16 +1111,22 @@ check( 'every fill key the script of crm-documents asks for in pieces has its te
 		array_map( static fn( string $s ): string => 'error/'. $s, [ 'from-offer', 'credit', 'release', 'unrelease', 'sign' ] )
 	), static fn( string $key ): bool => isset( $words['documents']['de_DE']['[[/_admin/crm-documents/'. $key. ']]'], $words['documents']['en_US']['[[/_admin/crm-documents/'. $key. ']]'] ) === false ) === [] );
 
-$mine = [ 'crm-documents/list', 'crm-documents/get', 'crm-documents/save', 'crm-documents/remove', 'crm-documents/finalise', 'crm-documents/state', 'crm-documents/from-offer', 'crm-documents/credit', 'crm-documents/release', 'crm-documents/unrelease', 'crm-documents/sign', 'crm-documents/settings-get', 'crm-documents/settings-save', 'crm-documents/templates', 'crm-documents/status' ];
-check( 'its actions are the fifteen of the plan', array_keys( \Crm\Documents\Admin::actions() ) === $mine );
+$mine = [ 'crm-documents/list', 'crm-documents/get', 'crm-documents/save', 'crm-documents/remove', 'crm-documents/finalise', 'crm-documents/state', 'crm-documents/from-offer', 'crm-documents/credit', 'crm-documents/release', 'crm-documents/unrelease', 'crm-documents/sign', 'crm-documents/settings-get', 'crm-documents/settings-save', 'crm-documents/templates', 'crm-documents/status', 'crm-documents/overview', 'crm-documents/copy', 'crm-documents/remind', 'crm-documents/sign-remind', 'crm-documents/sign-cancel' ];
+check( 'its actions are the fifteen of the plan and the five of the surface: overview, copy, remind, and the signature again and taken back', array_keys( \Crm\Documents\Admin::actions() ) === $mine );
 
 $posts = [
 	'crm-documents/list' => [], 'crm-documents/get' => [ 'id' => '1' ], 'crm-documents/save' => [ 'category' => 'invoice', 'client_id' => '1' ], 'crm-documents/remove' => [ 'id' => '1' ], 'crm-documents/finalise' => [ 'id' => '1' ],
 	'crm-documents/state' => [ 'id' => '1', 'state' => 'sent' ], 'crm-documents/from-offer' => [ 'id' => '1' ], 'crm-documents/credit' => [ 'id' => '1' ], 'crm-documents/release' => [ 'id' => '1' ], 'crm-documents/unrelease' => [ 'id' => '1' ], 'crm-documents/sign' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-documents/settings-get' => [], 'crm-documents/settings-save' => [ 'payment_days' => '99' ],
 	'crm-documents/templates' => [ 'category' => 'invoice' ], 'crm-documents/status' => [],
+	'crm-documents/overview' => [], 'crm-documents/copy' => [ 'id' => '1' ], 'crm-documents/remind' => [ 'id' => '1' ], 'crm-documents/sign-remind' => [ 'id' => '1' ], 'crm-documents/sign-cancel' => [ 'id' => '1' ],
 ];
 $before = [ count( Documents::list( $appData ) ), count( Positionen::list( $appData, '', false ) ), Settings::all( $appData ), $sequences() ];
-$denied = [ 'signed out' => [], 'without the permission' => [], 'with the other panel\'s permission' => [] ];
+$denied = [ 'signed out' => [], 'without the permission' => [], 'with another panel\'s permission' => [], 'with the two permissions of before' => [] ];
+$mailed = new \ArrayObject();
+\Nino\Callbacks::registerCallback( $appData, \Nino\Mail::TRANSPORT, static function( array &$appData, array &$mail ) use ( $mailed ): void {
+	$mailed->append( $mail );
+	$mail['sent'] = true;
+} );
 
 $as( '' );
 foreach( $posts as $action => $data )
@@ -1129,15 +1136,26 @@ $as( 'plain@example.com' );
 foreach( $posts as $action => $data )
 	$denied['without the permission'][$action] = $post( $action, $data )[0]. ( $post( $action, $data )[1]['code'] ?? '' );
 
-$as( 'clients@example.com' );
+$as( 'other@example.com' );
 foreach( $posts as $action => $data )
 	if( str_starts_with( $action, 'crm-documents/' ) === true )
-		$denied['with the other panel\'s permission'][$action] = $post( $action, $data )[0];
+		$denied['with another panel\'s permission'][$action] = $post( $action, $data )[0];
+
+$as( 'old@example.com' );
+foreach( $posts as $action => $data )
+	if( str_starts_with( $action, 'crm-documents/' ) === true )
+		$denied['with the two permissions of before'][$action] = $post( $action, $data )[0];
 
 check( 'every action refuses a visitor with 401 and the code session', array_values( array_unique( $denied['signed out'] ) ) === [ '401session' ] && array_diff( $mine, array_keys( $denied['signed out'] ) ) === [] );
 check( '...an account without the permission with 403', array_values( array_unique( $denied['without the permission'] ) ) === [ '403' ] );
-check( '...so does one with the permission of the other panel; and nothing was written by any of them', array_values( array_unique( $denied['with the other panel\'s permission'] ) ) === [ 403 ]
+check( '...so does one with the permission of another panel; and nothing was written by any of them', array_values( array_unique( $denied['with another panel\'s permission'] ) ) === [ 403 ]
 	&& $before === [ count( Documents::list( $appData ) ), count( Positionen::list( $appData, '', false ) ), Settings::all( $appData ), $sequences() ] );
+$fiveNew = [ 'crm-documents/overview', 'crm-documents/copy', 'crm-documents/remind', 'crm-documents/sign-remind', 'crm-documents/sign-cancel' ];
+check( '...and the five actions of the surface - overview, copy, remind, sign-remind, sign-cancel - are 401 session for a visitor, 403 for an account without a permission, for one with the permission of another panel and for one with the two permissions the panels had before', array_diff( $fiveNew, array_keys( $posts ) ) === []
+	&& array_intersect_key( $denied['signed out'], array_flip( $fiveNew ) ) === array_fill_keys( $fiveNew, '401session' ) && array_intersect_key( $denied['without the permission'], array_flip( $fiveNew ) ) === array_fill_keys( $fiveNew, '403' )
+	&& array_intersect_key( $denied['with another panel\'s permission'], array_flip( $fiveNew ) ) === array_fill_keys( $fiveNew, 403 ) && array_intersect_key( $denied['with the two permissions of before'], array_flip( $fiveNew ) ) === array_fill_keys( $fiveNew, 403 ) );
+check( '...every action of Belege is refused to the account with the two old permissions, nothing is written and no mail is sent by any refusal', array_values( array_unique( $denied['with the two permissions of before'] ) ) === [ 403 ] && array_keys( $denied['with the two permissions of before'] ) === $mine
+	&& $before === [ count( Documents::list( $appData ) ), count( Positionen::list( $appData, '', false ) ), Settings::all( $appData ), $sequences() ] && count( $mailed ) === 0 );
 
 $as( 'admin@example.com' );
 
@@ -1631,7 +1649,7 @@ check( '...the client is frozen in it: a change of the client does not reach the
 check( '...it is fixed: nothing but the notes changes, a finalised document is not deleted, and finalising again is refused', Documents::change( $appData, $contract['id'], [ 'title' => 'x' ] ) === 'fixed' && Documents::remove( $appData, $contract['id'] ) === 'fixed' && Documents::finalise( $appData, $contract['id'] ) === 'fixed'
 	&& is_array( Documents::setNotes( $appData, $contract['id'], 'neu' ) ) );
 check( '...and appears in the list under its title, with no amount worth a line', ( array_values( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['id'] === $contract['id'] ) )[0] ?? [] ) === [
-	'id' => $contract['id'], 'category' => 'contract', 'number' => '', 'title' => 'Vertrag neu', 'state' => 'open', 'released' => false, 'sign_state' => '', 'expired' => false, 'date' => $today, 'gross' => 0, 'client_id' => $first['id'], 'client_title' => 'Studio Nord GmbH', 'parent_id' => $offerFinal['id'] ] );
+	'id' => $contract['id'], 'category' => 'contract', 'number' => '', 'title' => 'Vertrag neu', 'state' => 'open', 'released' => false, 'sign_state' => '', 'expired' => false, 'overdue' => false, 'date' => $today, 'due_date' => null, 'valid_until' => null, 'gross' => 0, 'client_id' => $first['id'], 'client_title' => 'Studio Nord GmbH', 'parent_id' => $offerFinal['id'] ] );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Neu GmbH' ] );
 check( '...the client it shows is the one frozen into it, not the one the client is now', array_column( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['id'] === $contract['id'] ), 'client_title' ) === [ 'Studio Nord GmbH' ] );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Nord GmbH' ] );
