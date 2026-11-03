@@ -1,0 +1,67 @@
+<?php
+declare(strict_types=1);
+
+// The words of the portal pages - merged add-only into the project's text/en_US.php when the unit is applied; from
+// then on editors keep them in the Text panel
+return [
+
+	// The details of the pages: name, title and description, read by the head of every page
+	'[[/_nino/webpage/portal/name]]' => 'Portal',
+	'[[/_nino/webpage/portal/title]]' => 'Client portal',
+	'[[/_nino/webpage/portal/description]]' => 'Your files, recordings and signatures in one place.',
+	'[[/_nino/webpage/portal/dateien/name]]' => 'Files',
+	'[[/_nino/webpage/portal/dateien/title]]' => 'Your files',
+	'[[/_nino/webpage/portal/dateien/description]]' => 'The files shared with you.',
+	'[[/_nino/webpage/portal/review/name]]' => 'Recordings',
+	'[[/_nino/webpage/portal/review/title]]' => 'Listen to recordings',
+	'[[/_nino/webpage/portal/review/description]]' => 'The recordings that are ready for you.',
+	'[[/_nino/webpage/portal/unterschriften/name]]' => 'Signatures',
+	'[[/_nino/webpage/portal/unterschriften/title]]' => 'Signatures',
+	'[[/_nino/webpage/portal/unterschriften/description]]' => 'The documents that wait for your signature.',
+	'[[/_nino/webpage/portal/konto/name]]' => 'My account',
+	'[[/_nino/webpage/portal/konto/title]]' => 'My account',
+	'[[/_nino/webpage/portal/konto/description]]' => 'Your account in the client portal.',
+	'[[/_nino/webpage/login/name]]' => 'Sign in',
+	'[[/_nino/webpage/login/title]]' => 'Sign in',
+	'[[/_nino/webpage/login/description]]' => 'Sign in with the link we send you by email.',
+
+	// The portal's start page, page-portal.tpl
+	'[[/template/page-portal/intro/title]]'              => 'Welcome to the client portal',
+	'[[/template/page-portal/intro/text]]'               => 'Here you find your files, recordings and signatures.',
+	'[[/template/page-portal/link-files/label]]'         => 'Files',
+	'[[/template/page-portal/link-files/href]]'          => '/portal/dateien',
+	'[[/template/page-portal/link-review/label]]'        => 'Listen to recordings',
+	'[[/template/page-portal/link-review/href]]'         => '/portal/review',
+	'[[/template/page-portal/link-sign/label]]'          => 'Signatures',
+	'[[/template/page-portal/link-sign/href]]'           => '/portal/unterschriften',
+	'[[/template/page-portal/link-account/label]]'       => 'My account',
+	'[[/template/page-portal/link-account/href]]'        => '/portal/konto',
+
+	// Files, page-portal-files.tpl
+	'[[/template/page-portal-files/intro/title]]'        => 'Files',
+	'[[/template/page-portal-files/intro/text]]'         => 'The files shared with you. You can upload where your group has an upload folder.',
+	'[[/template/page-portal-files/back/label]]'         => 'Back to the portal',
+	'[[/template/page-portal-files/back/href]]'          => '/portal',
+
+	// Review, page-portal-review.tpl
+	'[[/template/page-portal-review/intro/title]]'       => 'Listen to recordings',
+	'[[/template/page-portal-review/intro/text]]'        => 'Listen to the recordings that are ready for you.',
+	'[[/template/page-portal-review/back/label]]'        => 'Back to the portal',
+	'[[/template/page-portal-review/back/href]]'         => '/portal',
+
+	// Signatures, page-portal-sign.tpl
+	'[[/template/page-portal-sign/intro/title]]'         => 'Signatures',
+	'[[/template/page-portal-sign/intro/text]]'          => 'The documents that wait for your signature.',
+	'[[/template/page-portal-sign/back/label]]'          => 'Back to the portal',
+	'[[/template/page-portal-sign/back/href]]'           => '/portal',
+
+	// Account, page-portal-account.tpl
+	'[[/template/page-portal-account/intro/title]]'      => 'My account',
+	'[[/template/page-portal-account/intro/text]]'       => 'You are signed in as:',
+	'[[/template/page-portal-account/back/label]]'       => 'Back to the portal',
+	'[[/template/page-portal-account/back/href]]'        => '/portal',
+
+	// The login page, page-login.tpl
+	'[[/template/page-login/intro/title]]'               => 'Sign in',
+	'[[/template/page-login/intro/text]]'                => 'Enter the email address of your account. We send you a link by email - that signs you in, no password needed.',
+];
