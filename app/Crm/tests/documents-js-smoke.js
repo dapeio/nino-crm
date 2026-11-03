@@ -62,9 +62,17 @@ function world( locale, modal ) {
 	const make = page.createElement;
 
 	const dialogs = [];
+	let context = null;
 
 	page.createElement = function( tag ) {
 		const el = make( tag );
+
+		// The table takes a node a column renders into its cell as it is, if it is an Object of its own context: a stand-in made outside is not
+		if( context !== null ) {
+			Object.setPrototypeOf( el, vm.runInContext( 'Object.prototype', context ) );
+			el.nodeType = 1;
+		}
+
 		Object.defineProperty( el, 'name', { get : function() { return el.attributes.name ?? '' }, set : function( value ) { el.setAttribute( 'name', value ) } } );
 
 		if( tag === 'dialog' && modal === true ) {
@@ -96,7 +104,7 @@ function world( locale, modal ) {
 	};
 
 	const window = { Nino : Nino, confirm : function( message ) { asked.push( message ); return answers.confirm } };
-	const context = vm.createContext( { console : console, document : page, Nino : Nino, window : window, Event : Event } );
+	context = vm.createContext( { console : console, document : page, Nino : Nino, window : window, Event : Event } );
 	load( '_admin/assets/Nino.admin.js', context );
 
 	Nino.adminUi.api.call = function( action, payload, callback, extra ) {
@@ -206,7 +214,7 @@ function drawn( locale, documents, settings ) {
 /** A document open: its row pressed and get() answered */
 function opened( locale, document, settings ) {
 	const w = drawn( locale, undefined, settings );
-	w.find( w.mount, function( el ) { return el.tagName === 'BUTTON' && el.dataset.id === String( document.id ) } ).click();
+	w.find( w.mount, function( el ) { return el.tagName === 'TR' && el.dataset.row === String( document.id ) } ).click();
 	w.answer( 200, view( document, settings ) );
 	return w;
 }
@@ -282,32 +290,74 @@ console.log( '\nNino.admin[\'crm-documents\'] - the screen\n' );
 	w.requests.length = 0;
 	w.panel.showCurrent();
 	w.panel.showCurrent();
-	check( 'showing it asks for crm-documents/list, once while the answer is out, with the filters empty', w.requests.length === 1 && w.requests[0].action === 'crm-documents/list' && JSON.stringify( w.requests[0].payload ) === '{"category":"","state":"","year":"","client":"","search":""}' );
+	check( 'showing it asks for crm-documents/list, once while the answer is out, with the filters empty and no search', w.requests.length === 1 && w.requests[0].action === 'crm-documents/list' && JSON.stringify( w.requests[0].payload ) === '{"category":"","state":"","year":"","client":""}' );
 	check( '...and registers its entry under its uri, which holds nothing unsaved', w.registered.length === 1 && w.registered[0].name === 'crm-documents' && w.entry().isDirty() === false );
 
 	w.answer( 200, { documents : LISTED, years : [ 2026, 2020 ], clients : CLIENTS, settings : SMALL, items : ITEMS } );
 	check( 'the status is asked for once the list is drawn', w.last().action === 'crm-documents/status' && JSON.stringify( w.last().payload ) === '{}' );
 }
 
-console.log( '\nThe rows\n' );
+console.log( '\nThe rows - the shell\'s table\n' );
 
 {
 	const w = drawn('en_US');
-	const rows = w.all( w.mount, function( el ) { return el.tagName === 'LI' && el.children.length === 1 && el.children[0].tagName === 'BUTTON' } );
-	const copy = function( row ) { return w.all( row, function( el ) { return el.tagName === 'STRONG' || el.tagName === 'SMALL' } ).map( function( el ) { return el.textContent } ) };
+	const table = w.find( w.mount, function( el ) { return el.id === 'crm-documents-table' } );
+	const head = w.all( table, function( el ) { return el.tagName === 'TH' } );
+	const rows = function() { return w.all( w.mount, function( el ) { return el.tagName === 'TR' && el.dataset.row !== undefined } ) };
+	const cells = function( row ) { return w.all( row, function( el ) { return el.tagName === 'TD' } ).map( function( el ) { return el.textContent } ) };
 	const badge = function( row ) { return w.all( row, function( el ) { return String( el.className ).indexOf('nino-admin-badge') !== -1 } ).map( function( el ) { return el.textContent } ) };
-
-	check( 'one row for each document, in the order of the answer', rows.length === 4 && rows.map( function( row ) { return row.children[0].dataset.id } ).join() === '5,6,7,8' );
-	check( 'a row says the number - the word for a draft where there is none -, the kind, the client, the day as d.m.Y and the gross with the currency', copy( rows[0] ).join('|') === w.word( K+ 'label/draft' )+ '|'+ [ w.word( K+ 'category/invoice' ), 'Studio Nord', '03.11.2026', '237,00'+ NBSP+ '€' ].join(' · ')
-		&& copy( rows[3] ).join('|') === 'G-2026-0001|'+ [ w.word( K+ 'category/credit' ), 'Studio Nord', '05.10.2026', '-12,00'+ NBSP+ '€' ].join(' · ') );
-	check( '...and wears the badge of its state; an offer past its validity wears the badge of that, whatever its state', badge( rows[0] ).join() === w.word( K+ 'state/draft' ) && badge( rows[1] ).join() === w.word( K+ 'state/sent' ) && badge( rows[2] ).join() === w.word( K+ 'state/expired' ) && badge( rows[3] ).join() === w.word( K+ 'state/paid' ) );
 	const kinds = function( row ) { return w.all( row, function( el ) { return String( el.className ).indexOf('nino-admin-badge') !== -1 } ).map( function( el ) { return el.dataset.state } ).join() };
-	check( '...the badge says it in its colour as well: paid is ok, a draft is muted, an offer past its validity warns, a state under way has the badge as it is', kinds( rows[3] ) === 'ok' && kinds( rows[0] ) === 'muted' && kinds( rows[2] ) === 'warn' && kinds( rows[1] ) === '' );
-	check( 'what the server sends is text and nothing else: a client that is markup is a string, no element comes of it', copy( rows[1] )[1].indexOf('<img src=x onerror=alert(1)>') !== -1 && w.all( w.mount, function( el ) { return el.tagName === 'IMG' || el.tagName === 'SCRIPT' } ).length === 0 );
+	const column = function( key ) { return rows().map( function( row ) { return row.dataset.row } ).join() };
+
+	check( 'the list is the shell\'s table with the columns number, kind, client, date, gross and state, their words, and the id of the document as the key of a row', table !== null
+		&& head.map( function( th ) { return th.dataset.key } ).join() === 'name,category_word,client_title,date,gross_value,state_word'
+		&& [ 'column/number', 'column/category', 'column/client', 'column/date', 'column/gross', 'column/state' ].every( function( key ) { return w.has( K+ key ) && w.texts( table ).indexOf( w.word( K+ key ) ) !== -1 } )
+		&& column() === '5,6,7,8' );
+	check( 'a row says the number - the word for a draft where there is none -, the kind, the client, the day as d.m.Y and the gross with the currency', cells( rows()[0] ).slice( 0, 5 ).join('|') === [ w.word( K+ 'label/draft' ), w.word( K+ 'category/invoice' ), 'Studio Nord', '03.11.2026', '237,00'+ NBSP+ '€' ].join('|')
+		&& cells( rows()[3] ).slice( 0, 5 ).join('|') === [ 'G-2026-0001', w.word( K+ 'category/credit' ), 'Studio Nord', '05.10.2026', '-12,00'+ NBSP+ '€' ].join('|') );
+	check( '...and wears the badge of its state; an offer past its validity wears the badge of that, whatever its state', badge( rows()[0] ).join() === w.word( K+ 'state/draft' ) && badge( rows()[1] ).join() === w.word( K+ 'state/sent' ) && badge( rows()[2] ).join() === w.word( K+ 'state/expired' ) && badge( rows()[3] ).join() === w.word( K+ 'state/paid' ) );
+	check( '...the badge says it in its colour as well: paid is ok, a draft is muted, an offer past its validity warns, a state under way has the badge as it is', kinds( rows()[3] ) === 'ok' && kinds( rows()[0] ) === 'muted' && kinds( rows()[2] ) === 'warn' && kinds( rows()[1] ) === '' );
+	check( 'what the server sends is text and nothing else: a client that is markup is a string, no element comes of it', cells( rows()[1] )[2] === '<img src=x onerror=alert(1)>' && w.all( w.mount, function( el ) { return el.tagName === 'IMG' || el.tagName === 'SCRIPT' } ).length === 0 );
 	check( 'no word is missing from the text files', w.missing.length === 0 );
+
+	const SORTING = [ 100000, 90000, -500, -1200 ].map( function( gross, at ) { return Object.assign( {}, LISTED[0], { id : 31 + at, number : 'R-2026-010'+ at, state : 'open', gross : gross } ) } );
+	const sorting = drawn( 'en_US', SORTING );
+	const sortBy = function( world, key, rowsOf ) { world.find( world.mount, function( el ) { return el.tagName === 'TH' && el.dataset.key === key } ).querySelector('button').click(); return rowsOf( world ) };
+	const order = function( world ) { return world.all( world.mount, function( el ) { return el.tagName === 'TR' && el.dataset.row !== undefined } ).map( function( row ) { return row.dataset.row } ).join() };
+	check( 'the gross sorts by the cents: -12,00 before -5,00 before 900,00 before 1.000,00 - the order of the amounts, which is not the order of their text', sortBy( sorting, 'gross_value', order ) === '34,33,32,31' );
+
+	const german = drawn( 'de_DE' );
+	check( 'the state column is sorted by the word it shows - abgelaufen, bezahlt, Entwurf, versendet - and not by the raw state (draft, open, paid, sent)', sortBy( german, 'state_word', order ) === '7,8,5,6' );
+	const find = german.find( german.mount, function( el ) { return el.tagName === 'INPUT' && el.type === 'search' } );
+	find.value = 'abgelaufen';
+	fire( find, 'input' );
+	check( '...and it is searched by that word: "abgelaufen" finds the offer past its validity, whose raw state is open', order( german ) === '7' );
+
+	const sorter = w.find( head[4], function( el ) { return el.tagName === 'BUTTON' } );
+	sorter.click();
+	check( 'the gross sorts by the cents, not by the text: -12,00 before 5,00 before 119,00 before 237,00', column() === '8,7,6,5' );
+	sorter.click();
+	check( '...and the other way round', column() === '5,6,7,8' );
+
+	rows()[1].click();
+	check( 'a click on a row asks for that document', w.last().action === 'crm-documents/get' && JSON.stringify( w.last().payload ) === '{"id":"6"}' );
+
+	const search = w.find( table, function( el ) { return el.tagName === 'INPUT' && el.type === 'search' } );
+	const before = w.requests.length;
+	search.value = 'ben';
+	fire( search, 'input' );
+	check( 'the table searches where it stands: nothing is asked of the server', w.requests.length === before && column() === '7' );
+
+	const back = drawn('en_US');
+	back.find( back.mount, function( el ) { return el.tagName === 'TR' && el.dataset.row === '7' } ).click();
+	back.answer( 200, view( doc( { id : 7, category : 'offer', number : 'A-2020-0001', state : 'open' } ) ) );
+	back.find( back.mount, function( el ) { return el.tagName === 'A' && String( el.className ).indexOf('nino-admin-back-link') !== -1 } ).click();
+	back.answer( 200, { documents : LISTED, years : [ 2026, 2020 ], clients : CLIENTS, settings : SMALL, items : ITEMS } );
+	check( 'back from a document the focus is on the row that was opened', back.find( back.mount, function( el ) { return el.tagName === 'TR' && el.dataset.row === '7' } ).focused === true );
 
 	const empty = drawn( 'en_US', [] );
 	check( 'no document says so', empty.texts().indexOf( empty.word( K+ 'empty/documents' ) ) !== -1 && empty.texts().indexOf( empty.word( K+ 'empty/found' ) ) === -1 );
+	check( 'the new-document buttons stand below the table', w.button( w.mount, w.word( K+ 'label/new-invoice' ) ) !== null && w.mount.children.indexOf( table ) < w.mount.children.length - 1 );
 }
 
 console.log( '\nThe filters\n' );
@@ -317,15 +367,19 @@ console.log( '\nThe filters\n' );
 	const form = w.find( w.mount, function( el ) { return el.tagName === 'FORM' && String( el.className ).indexOf('crm-filters') !== -1 } );
 	const options = function( name ) { return w.all( w.select( form, name ), function( el ) { return el.tagName === 'OPTION' } ).map( function( el ) { return el.value } ) };
 
-	check( 'the form has a select for the kind, the state, the year and the client, and a search', options('category').join() === ',offer,invoice,credit,contract,privacy,information' && options('state').join() === ',draft,open,sent,paid,cancelled,accepted,declined,signed,expired' && options('year').join() === ',2026,2020'
-		&& options('client').join() === ',1,2,3' && w.input( form, 'search' ) !== null );
+	check( 'the filters are a select for the kind, the state, the year and the client - and no search box and no button', options('category').join() === ',offer,invoice,credit,contract,privacy,information' && options('state').join() === ',draft,open,sent,paid,cancelled,accepted,declined,signed,expired' && options('year').join() === ',2026,2020'
+		&& options('client').join() === ',1,2,3' && w.all( form, function( el ) { return el.tagName === 'INPUT' || el.tagName === 'BUTTON' } ).length === 0 );
 	check( '...the options are the words of the kinds and the states', w.all( w.select( form, 'state' ), function( el ) { return el.tagName === 'OPTION' } ).map( function( el ) { return el.textContent } ).slice( 1 ).join() === [ 'draft', 'open', 'sent', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ].map( function( s ) { return w.word( K+ 'state/'+ s ) } ).join() );
 
 	w.select( form, 'category' ).value = 'invoice';
-	w.select( form, 'year' ).value = '2026';
-	w.input( form, 'search' ).value = 'nord';
-	fire( form, 'submit' );
-	check( 'the form posts crm-documents/list again with what was chosen and typed', w.last().action === 'crm-documents/list' && JSON.stringify( w.last().payload ) === '{"category":"invoice","state":"","year":"2026","client":"","search":"nord"}' );
+	fire( w.select( form, 'category' ), 'change' );
+	check( 'a filter that is changed asks crm-documents/list at once, with the filters as they stand', w.last().action === 'crm-documents/list' && JSON.stringify( w.last().payload ) === '{"category":"invoice","state":"","year":"","client":""}' );
+	w.answer( 200, { documents : [ LISTED[0] ], years : [ 2026 ], clients : CLIENTS, settings : SMALL, items : ITEMS } );
+	check( 'the list is drawn again with the keyboard focus on the select that was changed, so that it can be stepped through', w.select( w.mount, 'category' ).focused === true && w.select( w.mount, 'category' ).value === 'invoice' );
+	const form2 = w.find( w.mount, function( el ) { return el.tagName === 'FORM' && String( el.className ).indexOf('crm-filters') !== -1 } );
+	w.select( form2, 'year' ).value = '2026';
+	fire( w.select( form2, 'year' ), 'change' );
+	check( '...a second filter adds to the first', JSON.stringify( w.last().payload ) === '{"category":"invoice","state":"","year":"2026","client":""}' );
 
 	w.answer( 200, { documents : [], years : [ 2026 ], clients : CLIENTS, settings : SMALL, items : ITEMS } );
 	check( '...and a filter that finds nothing says that, and not that there are no documents; the filters stay as they were set', w.texts().indexOf( w.word( K+ 'empty/found' ) ) !== -1 && w.texts().indexOf( w.word( K+ 'empty/documents' ) ) === -1
@@ -771,7 +825,7 @@ console.log( '\nWhat the editor posts, once more\n' );
 	check( 'a save that is refused ends in done( false )', failed.join() === 'false' );
 
 	const row = drawn('en_US');
-	row.find( row.mount, function( el ) { return el.tagName === 'BUTTON' && el.dataset.id === '6' } ).click();
+	row.find( row.mount, function( el ) { return el.tagName === 'TR' && el.dataset.row === '6' } ).click();
 	check( 'a row asks for the document it shows', row.last().action === 'crm-documents/get' && row.last().payload.id === '6' );
 
 	const accept = opened( 'en_US', sealed( 'open', { category : 'offer', number : 'A-2026-0001' } ) );
@@ -856,7 +910,7 @@ function openedPlain( locale, document, extras, modal ) {
 	w.panel.showCurrent();
 	w.answer( 200, { documents : PLAIN_LISTED.concat( LISTED ), years : [ 2026 ], clients : CLIENTS, settings : SMALL, items : ITEMS, offers : OFFERS } );
 	w.answer( 200, { items : OK } );
-	w.find( w.mount, function( el ) { return el.tagName === 'BUTTON' && el.dataset.id === String( document.id ) } ).click();
+	w.find( w.mount, function( el ) { return el.tagName === 'TR' && el.dataset.row === String( document.id ) } ).click();
 	w.answer( 200, Object.assign( view( document ), { templates : TEMPLATES_PLAIN }, extras ?? {} ) );
 
 	return w;
@@ -869,12 +923,12 @@ function openedPlain( locale, document, extras, modal ) {
 	w.answer( 200, { documents : PLAIN_LISTED, years : [ 2026 ], clients : CLIENTS, settings : SMALL, items : ITEMS, offers : OFFERS } );
 	w.answer( 200, { items : OK } );
 
-	const rows = w.all( w.mount, function( el ) { return el.tagName === 'LI' && el.children.length === 1 && el.children[0].tagName === 'BUTTON' } );
-	const copy = function( row ) { return w.all( row, function( el ) { return el.tagName === 'STRONG' || el.tagName === 'SMALL' } ).map( function( el ) { return el.textContent } ) };
+	const rows = w.all( w.mount, function( el ) { return el.tagName === 'TR' && el.dataset.row !== undefined } );
+	const cells = function( row ) { return w.all( row, function( el ) { return el.tagName === 'TD' } ).map( function( el ) { return el.textContent } ) };
 	const badges = function( row ) { return w.all( row, function( el ) { return String( el.className ).indexOf('nino-admin-badge') !== -1 } ).map( function( el ) { return el.textContent } ) };
 
-	check( 'a document without lines is named by its title, with the kind, the client and the day and no amount', copy( rows[0] ).join('|') === 'Dienstleistungsvertrag|'+ [ w.word( K+ 'category/contract' ), 'Ben Süd', '21.10.2026' ].join(' · ')
-		&& copy( rows[1] )[0] === 'Datenschutz <b>' && copy( rows[2] )[0] === w.word( K+ 'label/draft' ) );
+	check( 'a document without lines is named by its title, with the kind, the client and the day and no amount', cells( rows[0] ).slice( 0, 5 ).join('|') === [ 'Dienstleistungsvertrag', w.word( K+ 'category/contract' ), 'Ben Süd', '21.10.2026', '' ].join('|')
+		&& cells( rows[1] )[0] === 'Datenschutz <b>' && cells( rows[2] )[0] === w.word( K+ 'label/draft' ) );
 	check( '...a document that is released wears the mark of it, and one that asked for a signature the state of the request', badges( rows[0] ).join() === [ w.word( K+ 'state/open' ), w.word( K+ 'label/released' ), w.word( K+ 'sign/state-requested' ) ].join()
 		&& badges( rows[1] ).join() === w.word( K+ 'state/signed' ) && badges( rows[2] ).join() === w.word( K+ 'state/draft' ) );
 	check( '...a document that is signed says it once: the badge of the request is for a request under way', w.all( rows[1], function( el ) { return String( el.className ).indexOf('crm-sign-state') !== -1 } ).length === 0 );
@@ -983,7 +1037,7 @@ console.log( '\nThe documents without lines - the page, the release\n' );
 	none.find( none.mount, function( el ) { return el.tagName === 'A' && el.className === 'nino-admin-back-link' } ).click();
 	none.answer( 200, { documents : PLAIN_LISTED, years : [ 2026 ], clients : CLIENTS, settings : SMALL, items : ITEMS, offers : OFFERS } );
 	none.answer( 200, { items : OK } );
-	none.find( none.mount, function( el ) { return el.tagName === 'BUTTON' && el.dataset.id === '20' } ).click();
+	none.find( none.mount, function( el ) { return el.tagName === 'TR' && el.dataset.row === '20' } ).click();
 	none.answer( 200, Object.assign( view( plain( 'information', 'open', { released : true, released_at : '2026-10-24T08:00:00Z' } ) ), { templates : TEMPLATES_PLAIN } ) );
 	check( '...what a release said is said once: the page opened again does not say it', none.texts().indexOf( none.word( K+ 'release/mailed-none' ) ) === -1 && none.button( none.mount, none.word( K+ 'label/unrelease' ) ) !== null );
 
@@ -1036,7 +1090,7 @@ console.log( '\nFixes of the review\n' );
 	check( '...and the select shows it', linked.select( linked.mount, 'client' ).value === '2' );
 	const form = linked.find( linked.mount, function( el ) { return el.tagName === 'FORM' && String( el.className ).indexOf('crm-filters') !== -1 } );
 	linked.select( form, 'client' ).value = '';
-	fire( form, 'submit' );
+	fire( linked.select( form, 'client' ), 'change' );
 	check( '...a filter that is cleared afterwards stays cleared', linked.last().payload.client === '' );
 	const bad = world('en_US');
 	bad.address.panel = 'crm-documents';

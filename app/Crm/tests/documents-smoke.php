@@ -74,7 +74,7 @@ echo "Migration 0002\n";
 $pdo = Db::pdo( $appData );
 $tables = array_column( Db::rows( $appData, 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' ORDER BY name' ), 'name' );
 check( 'the tables of C01 and of C02 are there', $tables === [ 'client_accounts', 'clients', 'document_lines', 'documents', 'items', 'sequences', 'settings' ] );
-check( 'user_version is 3 and the first boot ran the three migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 3 && Db::migrated() === 3 );
+check( 'user_version is 4 and the first boot ran the four migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 4 && Db::migrated() === 4 );
 
 Db::close();
 Db::pdo( $appData );
@@ -464,7 +464,6 @@ $ids = array_column( Documents::list( $appData ), 'id' );
 check( 'list() has every document, the latest date first', count( $ids ) === 5 && Documents::list( $appData )[count( $ids ) - 1]['id'] === $offer['id'] );
 check( 'list() filters by category, by client, by year and by state', count( Documents::list( $appData, [ 'category' => 'invoice' ] ) ) === 3 && count( Documents::list( $appData, [ 'client_id' => $second['id'] ] ) ) === 0 && count( Documents::list( $appData, [ 'year' => 2026 ] ) ) >= 1
 	&& array_column( Documents::list( $appData, [ 'year' => 2026 ] ), 'id' ) === array_column( array_filter( Documents::list( $appData ), static fn( array $row ): bool => str_starts_with( $row['date'], '2026' ) ), 'id' ) && count( Documents::list( $appData, [ 'state' => 'draft' ] ) ) === 5 && Documents::list( $appData, [ 'state' => 'paid' ] ) === [] );
-check( 'list() searches the company and the name of the client, the wildcards literally', count( Documents::list( $appData, [ 'search' => 'nord' ] ) ) === 5 && Documents::list( $appData, [ 'search' => 'ben' ] ) === [] && Documents::list( $appData, [ 'search' => '%' ] ) === [] );
 check( 'a draft shows the live name of its client', Documents::list( $appData )[0]['client_title'] === 'Studio Nord GmbH' );
 
 echo "\nRemoving a draft\n";
@@ -543,7 +542,7 @@ check( '...the title of the file is the kind of document and its number', str_co
 check( '...the client is frozen into the document: company, name, address, number, VAT id, email', $finalised['client_frozen'] === [ 'company' => 'Studio Nord GmbH', 'name' => 'Anna Nord', 'street' => 'Hafenstr. 1', 'zip' => '20095', 'city' => 'Hamburg', 'country' => 'DE', 'number' => 'K-0001', 'vat_id' => 'DE123456789', 'email' => 'anna@example.org' ] && $finalised['client'] === $finalised['client_frozen'] );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Nord AG', 'city' => 'Bremen' ] );
 check( '...a change of the client afterwards leaves the address of the document as it was', Documents::get( $appData, $finalised['id'] )['client']['company'] === 'Studio Nord GmbH' && Documents::get( $appData, $finalised['id'] )['client']['city'] === 'Hamburg' );
-check( '...a draft shows the live client, a finalised document its frozen one in the list', Documents::list( $appData, [ 'search' => 'GmbH' ] )[0]['client_title'] === 'Studio Nord GmbH' && count( Documents::list( $appData, [ 'search' => 'Studio Nord AG' ] ) ) >= 1 );
+check( 'a draft shows the live client in the list, a finalised document its frozen one', in_array( 'Studio Nord GmbH', array_column( Documents::list( $appData ), 'client_title' ), true ) === true && in_array( 'Studio Nord AG', array_column( Documents::list( $appData ), 'client_title' ), true ) === true );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Nord GmbH', 'city' => 'Hamburg' ] );
 
 $secondInvoice = Documents::finalise( $appData, $draft['id'] );
@@ -1102,11 +1101,11 @@ check( 'list answers the documents, the years, the clients to filter by, the set
 	&& $body['clients'][2]['active'] === false && $body['settings']['vat_mode'] === 'small_business' && $body['settings']['rates'] === [ 1900, 700, 0 ] && $body['settings']['currency'] === '€' && array_column( $body['items'], 'title' ) === [ 'Beratung', 'Webdesign', 'Rabatt' ] );
 $stillLapsed = Documents::add( $appData, 'offer', $first['id'], [ 'date' => '2021-03-03', 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
 Documents::finalise( $appData, $stillLapsed['id'] );
-check( 'list filters by category, state, year and client, and searches', array_unique( array_column( $post( 'crm-documents/list', [ 'category' => 'offer' ] )[1]['documents'], 'category' ) ) === [ 'offer' ] && array_unique( array_column( $post( 'crm-documents/list', [ 'state' => 'draft' ] )[1]['documents'], 'state' ) ) === [ 'draft' ]
-	&& count( $post( 'crm-documents/list', [ 'year' => '2020' ] )[1]['documents'] ) === 1 && $post( 'crm-documents/list', [ 'client' => (string) $second['id'] ] )[1]['documents'] === [] && count( $post( 'crm-documents/list', [ 'search' => 'A-2020' ] )[1]['documents'] ) === 1
+check( 'list filters by category, state, year and client', array_unique( array_column( $post( 'crm-documents/list', [ 'category' => 'offer' ] )[1]['documents'], 'category' ) ) === [ 'offer' ] && array_unique( array_column( $post( 'crm-documents/list', [ 'state' => 'draft' ] )[1]['documents'], 'state' ) ) === [ 'draft' ]
+	&& count( $post( 'crm-documents/list', [ 'year' => '2020' ] )[1]['documents'] ) === 1 && $post( 'crm-documents/list', [ 'client' => (string) $second['id'] ] )[1]['documents'] === [] && count( $post( 'crm-documents/list', [ 'search' => 'A-2020' ] )[1]['documents'] ) === count( $post( 'crm-documents/list', [] )[1]['documents'] )
 	&& array_column( $post( 'crm-documents/list', [ 'state' => 'expired' ] )[1]['documents'], 'id' ) !== [] );
-check( 'a year or a client that is no number is 400 crm_documents_format, and so is a search that is too long 400 crm_documents_long', ( $r = $post( 'crm-documents/list', [ 'year' => '20x' ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_format' && $r[1]['field'] === 'year'
-	&& ( $r = $post( 'crm-documents/list', [ 'client' => '1; DROP' ] ) )[0] === 400 && ( $r = $post( 'crm-documents/list', [ 'search' => str_repeat( 'x', 101 ) ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_long' && $r[1]['params'] === [ 100 ] );
+check( 'a year or a client that is no number is 400 crm_documents_format; a search is not a parameter of the list any more, whatever it holds', ( $r = $post( 'crm-documents/list', [ 'year' => '20x' ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_format' && $r[1]['field'] === 'year'
+	&& ( $r = $post( 'crm-documents/list', [ 'client' => '1; DROP' ] ) )[0] === 400 && $post( 'crm-documents/list', [ 'search' => str_repeat( 'x', 101 ) ] )[0] === 200 );
 
 [ $status, $body ] = $post( 'crm-documents/get', [ 'id' => (string) $target['id'] ] );
 check( 'get answers the document with its lines and its client, the templates of its tag with their inputs, the clients, the settings and the items', $status === 200 && $body['document']['number'] === $target['number'] && count( $body['document']['lines'] ) === 2 && $body['document']['client']['company'] === 'Studio Nord GmbH'
@@ -1370,7 +1369,7 @@ foreach( (array) include \Crm\Db::migrations()[1] as $statement )
 $file->exec( 'PRAGMA user_version = 1' );
 $file->exec( 'UPDATE settings SET value = \'regular\' WHERE key = \'vat_mode\'' );
 $file = null;
-check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 2 );
+check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 3 );
 Db::close();
 \Nino\Filesystem::removeDir( ninoSandboxDir( $old ) );
 
@@ -1436,7 +1435,7 @@ $file->exec( 'INSERT INTO clients ( id, number, company, created, updated ) VALU
 $file->exec( 'INSERT INTO documents ( category, client_id, number, state, date, vat_mode, template_key, created, updated ) VALUES ( \'invoice\', 1, \'R-2025-0001\', \'paid\', \'2025-05-05\', \'small_business\', \'rechnung\', \'x\', \'x\' )' );
 $file = null;
 $old = Documents::get( $upgraded, 1 );
-check( 'a database of the second schema with a document is migrated once: version 3, one migration', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 3 && Db::migrated() === 1 );
+check( 'a database of the second schema with a document is migrated once: version 4, the two migrations that were missing', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 4 && Db::migrated() === 2 );
 check( '...the document is as it was, with the new columns at their defaults: no title, not released, no request, no signing day', is_array( $old ) === false ? false : $old['number'] === 'R-2025-0001' && $old['state'] === 'paid' && $old['title'] === '' && $old['released'] === false && $old['released_at'] === null
 	&& $old['sign_id'] === '' && $old['sign_state'] === '' && $old['signed_at'] === null );
 Db::close();
@@ -1572,7 +1571,7 @@ check( '...and appears in the list under its title, with no amount worth a line'
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Neu GmbH' ] );
 check( '...the client it shows is the one frozen into it, not the one the client is now', array_column( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['id'] === $contract['id'] ), 'client_title' ) === [ 'Studio Nord GmbH' ] );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Nord GmbH' ] );
-check( '...a search finds it by its title, and the filter by its kind', array_column( Documents::list( $appData, [ 'search' => 'Vertrag neu' ] ), 'id' ) === [ $contract['id'] ] && array_column( Documents::list( $appData, [ 'category' => 'contract' ] ), 'id' ) === [ $contract['id'] ] );
+check( '...the filter by its kind finds it', array_column( Documents::list( $appData, [ 'category' => 'contract' ] ), 'id' ) === [ $contract['id'] ] );
 check( '...and appears under its offer, which names it as a child with the title', in_array( [ 'id' => $contract['id'], 'number' => '', 'title' => 'Vertrag neu', 'category' => 'contract', 'state' => 'open', 'gross' => 0 ], Documents::get( $appData, $offerFinal['id'] )['children'], true ) );
 
 $privacyFinal = Documents::finalise( $appData, Documents::add( $appData, 'privacy', $first['id'], [ 'title' => 'Datenschutz', 'template_key' => 'datenschutz' ] )['id'] );

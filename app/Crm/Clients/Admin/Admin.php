@@ -1,8 +1,11 @@
 <?php
 declare(strict_types=1);
 /**
- *	Crm\Clients\Admin		The panel Kunden of the CRM module: the clients (list with a search, card, add, change,
- *											deactivate), the accounts of Members that belong to a client (invite, state), the button that
+ *	Crm\Clients\Admin		The panel Kunden of the CRM module: the clients (list in the shell's table, card, add, change,
+ *											deactivate) and the accounts of their logins in Members - made with the client, invited, linked,
+ *											sent a link again, switched off or on, renamed and deleted from the card, so that the panel
+ *											Members need not be opened. The panel calls Members' PHP API, never its files; the permission of
+ *											the panel covers it. The button that
  *											applies the install unit - the portal pages - and the status that tells what the module misses.
  *											The panel validates what it is posted and answers the failures a person can cause with codes;
  *											the rules of the data are Crm\Clients', the storage Crm\Db's. A database failure is answered
@@ -16,8 +19,24 @@ class Admin {
 
 	public const string MANAGE_PERM = '/_admin/crm-clients/manage';
 
+	// The id of an account of Members: 12 hex characters
+	private const string ACCOUNT_ID = '/^[0-9a-f]{12}$/D';
+
 	// The features the portal draws its pages with, in the order the status names them
 	private const array FEATURES = [ 'members', 'files', 'review', 'sign', 'pdf' ];
+
+	// What Members and the model answer when an account is refused, as the panel answers it: the status, the sentence for the log, the code, its parameters and the field
+	private const array REFUSALS = [
+		'invalid'  => [ 400, 'the address is not valid', 'crm_clients_email', [], 'email' ],
+		'long'     => [ 400, 'the name is too long', 'crm_clients_long', [ 120 ], 'name' ],
+		'taken'    => [ 409, 'the address is an account already', 'crm_clients_taken', [], 'email' ],
+		'unknown'  => [ 404, 'the client has no such account', 'crm_clients_member', [], 'account' ],
+		'member'   => [ 404, 'the client has no such account', 'crm_clients_member', [], 'account' ],
+		'held'     => [ 409, 'a client holds the account already', 'crm_clients_held', [], 'account' ],
+		'inactive' => [ 409, 'the client is not active', 'crm_clients_inactive', [], '' ],
+		'write'    => [ 500, 'the account could not be written', 'crm_clients_write', [], '' ],
+		'database' => [ 500, 'the database failed', 'crm_clients_database', [], '' ],
+	];
 
 	// The number of the client an action made or touched, by action: written by the action, read by log() in the same request
 	private static array $_made = [];
@@ -34,6 +53,12 @@ class Admin {
 			'crm-clients/active'   => [ self::class, 'apiActive' ],
 			'crm-clients/invite'   => [ self::class, 'apiInvite' ],
 			'crm-clients/accounts' => [ self::class, 'apiAccounts' ],
+			'crm-clients/unlinked' => [ self::class, 'apiUnlinked' ],
+			'crm-clients/account-link'   => [ self::class, 'apiAccountLink' ],
+			'crm-clients/account-resend' => [ self::class, 'apiAccountResend' ],
+			'crm-clients/account-active' => [ self::class, 'apiAccountActive' ],
+			'crm-clients/account-name'   => [ self::class, 'apiAccountName' ],
+			'crm-clients/account-remove' => [ self::class, 'apiAccountRemove' ],
 			'crm-clients/setup'    => [ self::class, 'apiSetup' ],
 			'crm-clients/status'   => [ self::class, 'apiStatus' ],
 		];
@@ -90,33 +115,32 @@ class Admin {
 
 		$number = self::$_made[$action] ?? '';
 		$of = $number === '' ? '' : ' '. $number;
+		$id = is_string( $data['account'] ?? null ) === true && preg_match( self::ACCOUNT_ID, $data['account'] ) === 1 ? ' '. $data['account'] : '';
 
 		return match( $action ) {
-			'crm-clients/save'   => ( isset( $data['id'] ) === true && $data['id'] !== '' ? 'Changed client' : 'Added client' ). $of,
-			'crm-clients/active' => 'Switched client'. $of,
-			'crm-clients/invite' => 'Invited an account for client'. $of,
-			'crm-clients/setup'  => 'Applied the portal unit',
-			default              => '',
+			'crm-clients/save'           => ( isset( $data['id'] ) === true && $data['id'] !== '' ? 'Changed client' : 'Added client' ). $of,
+			'crm-clients/active'         => 'Switched client'. $of,
+			'crm-clients/invite'         => 'Invited an account for client'. $of,
+			'crm-clients/account-link'   => 'Linked account'. $id. ' to client'. $of,
+			'crm-clients/account-resend' => 'Sent a link to account'. $id. ' of client'. $of,
+			'crm-clients/account-active' => 'Switched account'. $id. ' of client'. $of,
+			'crm-clients/account-name'   => 'Renamed account'. $id. ' of client'. $of,
+			'crm-clients/account-remove' => 'Deleted account'. $id. ' of client'. $of,
+			'crm-clients/setup'          => 'Applied the portal unit',
+			default                      => '',
 		};
 	}
 
 	/**
-	 *	The clients, by number; search matches number, company, name and email
+	 *	The clients, by number - all of them: the table of the panel searches, sorts and pages them where it stands
 	 */
 	public static function apiList( array &$appData, array &$request ): void {
 
 		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
 			return;
 
-		$search = \Nino\Admin\Admin::postString( \Nino\Admin\Admin::postData(), 'search' );
-
-		if( mb_strlen( $search, 'UTF-8' ) > 100 ) {
-			\Nino\Http::fail( $request, 400, 'the search is too long', 'crm_clients_long', [ 100 ], 'search' );
-			return;
-		}
-
-		self::_run( $request, static function() use ( &$appData, &$request, $search ): void {
-			\Nino\Http::ok( $request, [ 'clients' => \Crm\Clients::list( $appData, $search ) ] );
+		self::_run( $request, static function() use ( &$appData, &$request ): void {
+			\Nino\Http::ok( $request, [ 'clients' => \Crm\Clients::list( $appData ) ] );
 		} );
 	}
 
@@ -161,10 +185,28 @@ class Admin {
 			$input[$field] = $data[$field];
 		}
 
+		foreach( [ 'account_email', 'account_name' ] as $field )
+			if( array_key_exists( $field, $data ) === true && is_string( $data[$field] ) === false ) {
+				\Nino\Http::fail( $request, 400, 'the value is no text', 'crm_clients_format', [], $field );
+				return;
+			}
+
 		self::_run( $request, static function() use ( &$appData, &$request, $data, $input ): void {
 
-			if( \Nino\Admin\Admin::postString( $data, 'id' ) === '' )
-				$client = \Crm\Clients::add( $appData, $input );
+			$first = null;
+
+			if( \Nino\Admin\Admin::postString( $data, 'id' ) === '' ) {
+
+				if( trim( \Nino\Admin\Admin::postString( $data, 'account_email' ) ) !== '' ) {
+
+					if( self::_members( $appData, $request ) === false )
+						return;
+
+					$first = [ 'email' => trim( \Nino\Admin\Admin::postString( $data, 'account_email' ) ), 'name' => \Nino\Admin\Admin::postString( $data, 'account_name' ) ];
+				}
+
+				$client = \Crm\Clients::add( $appData, $input, $first );
+			}
 			else {
 				$existing = self::_client( $appData, $request, $data );
 
@@ -181,12 +223,22 @@ class Admin {
 
 			self::$_made['crm-clients/save'] = $client['number'];
 
-			\Nino\Http::ok( $request, [ 'client' => self::_withDocuments( $appData, $client ) ] );
+			$made = $client['first'] ?? null;
+			unset( $client['first'] );
+
+			$answer = [ 'client' => self::_withDocuments( $appData, $client ) ];
+
+			// A client made with an account that was refused is made all the same: the answer says so, with the code of the refusal
+			if( $first !== null )
+				$answer['first'] = is_string( $made ) === true ? [ 'account' => null, 'mailed' => false, 'refused' => self::_account( $made ) ] : [ 'account' => $made['account'] ?? null, 'mailed' => $made['mailed'] ?? false, 'refused' => null ];
+
+			\Nino\Http::ok( $request, $answer );
 		} );
 	}
 
 	/**
-	 *	Switch a client on or off: active true or false, without it the other way round
+	 *	Switch a client on or off: active true or false, without it the other way round. A client that is switched off has its accounts
+	 *	switched off with it; the answer says how many, and carries the accounts as they are now
 	 */
 	public static function apiActive( array &$appData, array &$request ): void {
 
@@ -211,7 +263,10 @@ class Admin {
 
 			self::$_made['crm-clients/active'] = $changed['number'];
 
-			\Nino\Http::ok( $request, [ 'client' => self::_withDocuments( $appData, $changed ) ] );
+			$switched = $changed['switched'];
+			unset( $changed['switched'] );
+
+			\Nino\Http::ok( $request, [ 'client' => self::_withDocuments( $appData, $changed ), 'accounts' => self::_accounts( $appData, $changed['id'] ), 'switched' => $switched ] );
 		} );
 	}
 
@@ -237,46 +292,19 @@ class Admin {
 				return;
 			}
 
-			if( \Crm\Crm::featureOn( $appData, 'members' ) === false ) {
-				\Nino\Http::fail( $request, 409, 'the Members feature is not active', 'crm_clients_members' );
+			if( self::_members( $appData, $request ) === false )
 				return;
-			}
 
-			$email = trim( \Nino\Admin\Admin::postString( $data, 'email' ) );
-			$name = \Nino\Admin\Admin::postString( $data, 'name' );
+			$made = \Crm\Clients::invite( $appData, $client, trim( \Nino\Admin\Admin::postString( $data, 'email' ) ), \Nino\Admin\Admin::postString( $data, 'name' ) );
 
-			if( filter_var( $email, FILTER_VALIDATE_EMAIL ) === false ) {
-				\Nino\Http::fail( $request, 400, 'the address is not valid', 'crm_clients_email', [], 'email' );
+			if( is_string( $made ) === true ) {
+				self::_refuse( $request, $made );
 				return;
-			}
-
-			$account = \Nino\Modules\Members::add( $appData, $email, $name, $client['group'] );
-
-			if( is_string( $account ) === true ) {
-				match( $account ) {
-					'invalid' => \Nino\Http::fail( $request, 400, 'the address is not valid', 'crm_clients_email', [], 'email' ),
-					'long'    => \Nino\Http::fail( $request, 400, 'the name is too long', 'crm_clients_long', [ 120 ], 'name' ),
-					'taken'   => \Nino\Http::fail( $request, 409, 'the address is an account already', 'crm_clients_taken', [], 'email' ),
-					default   => \Nino\Http::fail( $request, 500, 'the account could not be written' ),
-				};
-				return;
-			}
-
-			// An account that cannot be linked is of no use to anybody and would make the retry a 409: it goes again
-			try {
-				\Crm\Clients::link( $appData, $client['id'], $account['id'] );
-			}
-			catch( \PDOException $e ) {
-				\Nino\Modules\Members::remove( $appData, $account['id'] );
-				throw $e;
 			}
 
 			self::$_made['crm-clients/invite'] = $client['number'];
 
-			// The invited member lands on the portal
-			$mailed = \Nino\Modules\Members::link( $appData, $account, 'invite', '/portal', true );
-
-			\Nino\Http::ok( $request, [ 'account' => self::_accountOf( $appData, $account['id'] ), 'mailed' => $mailed ] );
+			\Nino\Http::ok( $request, $made );
 		} );
 	}
 
@@ -519,6 +547,7 @@ class Admin {
 			'email'   => \Nino\Http::fail( $request, 400, 'the address is not valid', 'crm_clients_email', [], 'email' ),
 			'long'    => \Nino\Http::fail( $request, 400, 'the value is too long', 'crm_clients_long', [ \Crm\Clients::FIELDS[$field] ?? 0 ], $field ),
 			'format'  => \Nino\Http::fail( $request, 400, 'the value has a wrong format', 'crm_clients_format', [], $field ),
+			'write'   => self::_refuse( $request, 'write' ),
 			default   => \Nino\Http::fail( $request, 404, 'there is no such client', 'crm_clients_unknown', [], 'id' ),
 		};
 	}
@@ -540,27 +569,287 @@ class Admin {
 	 *	@param		array 		&$appData
 	 *	@param		int				$clientId
 	 *
-	 *	@return 	array										The linked accounts as Members has them
+	 *	@return 	array										The accounts of the client as Clients::accountsDetailed() has them
 	 */
 	private static function _accounts( array &$appData, int $clientId ): array {
 
-		return array_map( fn( string $id ): array => self::_accountOf( $appData, $id ), \Crm\Clients::accounts( $appData, $clientId ) );
+		return \Crm\Clients::accountsDetailed( $appData, $clientId );
 	}
 
 	/**
-	 *	@param		array 		&$appData
-	 *	@param		string		$id
+	 *	Answer a refusal of Members or of the model about an account
 	 *
-	 *	@return 	array										id, email, name, active, login - or id and gone for an account Members does not have any more
+	 *	@param		array 		&$request
+	 *	@param		string		$why					A key of REFUSALS
+	 *
+	 *	@return 	void
 	 */
-	private static function _accountOf( array &$appData, string $id ): array {
+	private static function _refuse( array &$request, string $why ): void {
 
-		$account = \Crm\Crm::featureOn( $appData, 'members' ) === true ? \Nino\Modules\Members::account( $appData, $id ) : null;
+		[ $status, $error, $code, $params, $field ] = self::REFUSALS[$why] ?? self::REFUSALS['write'];
 
-		if( $account === null )
-			return [ 'id' => $id, 'gone' => true ];
+		\Nino\Http::fail( $request, $status, $error, $code, $params, $field );
+	}
 
-		return [ 'id' => $id, 'gone' => false, 'email' => $account['email'], 'name' => $account['name'], 'active' => $account['active'], 'login' => $account['login'] ];
+	/**
+	 *	A refusal as the answer of a save that made the client carries it
+	 *
+	 *	@param		string		$why					A key of REFUSALS
+	 *
+	 *	@return 	array										code, params and field
+	 */
+	private static function _account( string $why ): array {
+
+		[ , , $code, $params, $field ] = self::REFUSALS[$why] ?? self::REFUSALS['write'];
+
+		return [ 'code' => $code, 'params' => $params, 'field' => $field ];
+	}
+
+	/**
+	 *	Whether the feature Members is on; if not, the 409 that says so
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	bool
+	 */
+	private static function _members( array &$appData, array &$request ): bool {
+
+		if( \Crm\Crm::featureOn( $appData, 'members' ) === true )
+			return true;
+
+		\Nino\Http::fail( $request, 409, 'the Members feature is not active', 'crm_clients_members' );
+
+		return false;
+	}
+
+	/**
+	 *	The client and the account an action of an account names: the client by id, the feature Members on, the account by its id - one the client
+	 *	holds, and for an action on a live account one that Members still has
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *	@param		array 		$data
+	 *	@param		bool			$live					Whether the account has to be there in Members (deleting a gone one is allowed)
+	 *	@param		bool			$mustBeActive	Whether the client has to be active
+	 *
+	 *	@return 	array|null								[ client, account ]; null once the answer is written
+	 */
+	private static function _target( array &$appData, array &$request, array $data, bool $live, bool $mustBeActive ): ?array {
+
+		$client = self::_client( $appData, $request, $data );
+
+		if( $client === null || self::_members( $appData, $request ) === false )
+			return null;
+
+		if( $mustBeActive === true && $client['active'] === false ) {
+			self::_refuse( $request, 'inactive' );
+			return null;
+		}
+
+		$id = \Nino\Admin\Admin::postString( $data, 'account' );
+
+		if( preg_match( self::ACCOUNT_ID, $id ) !== 1 ) {
+			\Nino\Http::fail( $request, 400, 'the id of the account is not valid', 'crm_clients_account', [], 'account' );
+			return null;
+		}
+
+		$account = \Crm\Clients::accountOf( $appData, $client['id'], $id );
+
+		if( $account === null || ( $live === true && $account['gone'] === true ) ) {
+			self::_refuse( $request, 'unknown' );
+			return null;
+		}
+
+		return [ $client, $account ];
+	}
+
+	/**
+	 *	The accounts of Members that no client holds, to choose one to link
+	 */
+	public static function apiUnlinked( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		self::_run( $request, static function() use ( &$appData, &$request ): void {
+
+			if( self::_members( $appData, $request ) === false )
+				return;
+
+			\Nino\Http::ok( $request, [ 'accounts' => array_map( static fn( array $account ): array => [ 'id' => $account['id'], 'email' => $account['email'], 'name' => $account['name'], 'group' => $account['group'] ], \Crm\Clients::unlinked( $appData ) ) ] );
+		} );
+	}
+
+	/**
+	 *	Link an account of Members that no client holds to the client, and move it into the client's group
+	 */
+	public static function apiAccountLink( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		self::_run( $request, static function() use ( &$appData, &$request ): void {
+
+			$data = \Nino\Admin\Admin::postData();
+			$client = self::_client( $appData, $request, $data );
+
+			if( $client === null || self::_members( $appData, $request ) === false )
+				return;
+
+			$id = \Nino\Admin\Admin::postString( $data, 'account' );
+
+			if( preg_match( self::ACCOUNT_ID, $id ) !== 1 ) {
+				\Nino\Http::fail( $request, 400, 'the id of the account is not valid', 'crm_clients_account', [], 'account' );
+				return;
+			}
+
+			$account = \Crm\Clients::linkExisting( $appData, $client['id'], $id );
+
+			if( is_string( $account ) === true ) {
+				self::_refuse( $request, $account );
+				return;
+			}
+
+			self::$_made['crm-clients/account-link'] = $client['number'];
+
+			\Nino\Http::ok( $request, [ 'account' => $account ] );
+		} );
+	}
+
+	/**
+	 *	Send an account its link again: the invitation where it never signed in, a link to sign in where it did.
+	 *	An account that is switched off has nothing to sign in to (409 crm_clients_off); the cap of mails of the kernel is a 429 of its own
+	 */
+	public static function apiAccountResend( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		self::_run( $request, static function() use ( &$appData, &$request ): void {
+
+			$target = self::_target( $appData, $request, \Nino\Admin\Admin::postData(), true, true );
+
+			if( $target === null )
+				return;
+
+			[ $client, $account ] = $target;
+
+			if( $account['active'] === false ) {
+				\Nino\Http::fail( $request, 409, 'the account is switched off', 'crm_clients_off', [], 'account' );
+				return;
+			}
+
+			if( \Crm\Clients::resend( $appData, $account ) === false ) {
+
+				if( \Nino\Mail::rateLimited( $appData ) === true )
+					\Nino\Http::fail( $request, 429, 'the kernel allows five mails an hour from one address', 'crm_clients_ratelimit' );
+				else
+					\Nino\Http::fail( $request, 500, 'the link could not be sent', 'crm_clients_mail' );
+
+				return;
+			}
+
+			self::$_made['crm-clients/account-resend'] = $client['number'];
+
+			\Nino\Http::ok( $request, [ 'sent' => true, 'kind' => $account['login'] === null ? 'invite' : 'login' ] );
+		} );
+	}
+
+	/**
+	 *	Switch an account on or off: active true or false, without it the other way round. An account of a client that is switched off
+	 *	stays off until the client is on again
+	 */
+	public static function apiAccountActive( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		self::_run( $request, static function() use ( &$appData, &$request ): void {
+
+			$data = \Nino\Admin\Admin::postData();
+			$target = self::_target( $appData, $request, $data, true, false );
+
+			if( $target === null )
+				return;
+
+			[ $client, $account ] = $target;
+			$active = is_bool( $data['active'] ?? null ) === true ? $data['active'] : $account['active'] === false;
+
+			if( $active === true && $client['active'] === false ) {
+				self::_refuse( $request, 'inactive' );
+				return;
+			}
+
+			$changed = \Crm\Clients::switchAccount( $appData, $account['id'], $active );
+
+			if( is_string( $changed ) === true ) {
+				self::_refuse( $request, $changed );
+				return;
+			}
+
+			self::$_made['crm-clients/account-active'] = $client['number'];
+
+			\Nino\Http::ok( $request, [ 'account' => $changed ] );
+		} );
+	}
+
+	/**
+	 *	Change the name of an account
+	 */
+	public static function apiAccountName( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		self::_run( $request, static function() use ( &$appData, &$request ): void {
+
+			$data = \Nino\Admin\Admin::postData();
+			$target = self::_target( $appData, $request, $data, true, false );
+
+			if( $target === null )
+				return;
+
+			[ $client, $account ] = $target;
+			$changed = \Crm\Clients::renameAccount( $appData, $account['id'], \Nino\Admin\Admin::postString( $data, 'name' ) );
+
+			if( is_string( $changed ) === true ) {
+				self::_refuse( $request, $changed );
+				return;
+			}
+
+			self::$_made['crm-clients/account-name'] = $client['number'];
+
+			\Nino\Http::ok( $request, [ 'account' => $changed ] );
+		} );
+	}
+
+	/**
+	 *	Delete an account in Members, and its row. The documents of the client and the requests of Sign are not touched
+	 */
+	public static function apiAccountRemove( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		self::_run( $request, static function() use ( &$appData, &$request ): void {
+
+			$target = self::_target( $appData, $request, \Nino\Admin\Admin::postData(), false, false );
+
+			if( $target === null )
+				return;
+
+			[ $client, $account ] = $target;
+
+			if( \Crm\Clients::removeAccount( $appData, $client['id'], $account['id'] ) !== 'ok' ) {
+				self::_refuse( $request, 'write' );
+				return;
+			}
+
+			self::$_made['crm-clients/account-remove'] = $client['number'];
+
+			\Nino\Http::ok( $request, [ 'removed' => true ] );
+		} );
 	}
 
 }

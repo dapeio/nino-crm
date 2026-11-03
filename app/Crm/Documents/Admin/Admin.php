@@ -162,14 +162,7 @@ class Admin {
 			return;
 
 		$data = \Nino\Admin\Admin::postData();
-		$search = \Nino\Admin\Admin::postString( $data, 'search' );
-
-		if( mb_strlen( $search, 'UTF-8' ) > 100 ) {
-			\Nino\Http::fail( $request, 400, 'the search is too long', 'crm_documents_long', [ 100 ], 'search' );
-			return;
-		}
-
-		$filter = [ 'search' => $search ];
+		$filter = [];
 
 		foreach( [ 'category', 'state' ] as $field )
 			$filter[$field] = \Nino\Admin\Admin::postString( $data, $field );

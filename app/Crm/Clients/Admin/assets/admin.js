@@ -1,6 +1,9 @@
 /**
- *	Crm\Clients\Admin		The panel Kunden of the CRM module: the list of the clients with a search, the card of one
- *											(its fields, active or not, its accounts of Members and the form that invites one) and, over
+ *	Crm\Clients\Admin		The panel Kunden of the CRM module: the list of the clients in the shell's table (Nino.adminUi.table()), the card of one
+ *											(its fields, active or not, the first account a new client is made with and, for a client that
+ *											exists, its accounts of Members - each row with its state and the actions: send the link again,
+ *											switch off or on, change the name, delete - and the dialog that links an existing account and the
+ *											form that invites one) and, over
  *											the list, the status of the module with the button that applies the install unit - the portal
  *											pages. Draws into the one region of templates/panel.tpl with the workbench's own builders;
  *											every word is a fill, every value of the server goes in as text, and every request goes
@@ -20,7 +23,6 @@
 	const crm = Nino.adminUi.panel( {
 		uri			: 'crm-clients',
 		mount		: 'crm-clients-app',
-		payload	: function() { return { search : Nino.admin['crm-clients']._search } },
 		dirty		: {
 			isDirty : function() { return Nino.admin['crm-clients']._dirty() },
 			save		: function( done ) { Nino.admin['crm-clients']._save( done ) },
@@ -41,10 +43,11 @@
 	Object.assign( crm, {
 
 		_clients	: [],
-		_search		: '',
 		_status		: null,
 		// The open card: { client (null for a new one), accounts, form, save, line, fields } - null while the list shows
 		_card			: null,
+		// The id of the client whose card was opened from the list: the row the focus returns to
+		_opened		: null,
 
 		_text : function( key, ...params ) {
 			return Nino.adminUi.format( Nino.content.getText( key ), ...params );
@@ -92,7 +95,7 @@
 		},
 
 		/**
-		 *	The list screen: the status of the module, the search, the clients and the button for a new one
+		 *	The list screen: the status of the module, the clients in the shell's table and the button for a new one
 		 *
 		 *	@return		void
 		 */
@@ -111,59 +114,43 @@
 			mount.appendChild( status );
 			crm._drawStatus( status );
 
-			const form = Nino.adminUi.el( 'form', 'crm-search' );
-			const field = Nino.adminUi.textField( { label : Nino.content.getText('/_admin/crm-clients/label/search'), value : crm._search, maxLength : 100, type : 'search', autocomplete : 'off' } );
-			field.querySelector('input').name = 'search';
-			form.appendChild( field );
-			form.appendChild( Nino.adminUi.button( Nino.content.getText('/_admin/crm-clients/label/find'), null, { type : 'submit', className : 'nino-admin-btn-secondary nino-admin-btn--small' } ) );
-			form.addEventListener( 'submit', function( event ) {
-				event.preventDefault();
-				crm._search = field.querySelector('input').value;
-				crm.reload();
+			// The shell's data table: search, sort and pages over the whole set, here in the browser
+			const table = Nino.adminUi.el( 'div', 'crm-table' );
+			table.id = 'crm-clients-table';
+			mount.appendChild( table );
+
+			Nino.adminUi.table( {
+				mount			: table,
+				rowKey		: 'id',
+				columns		: [
+					{ key : 'number', label : Nino.content.getText('/_admin/crm-clients/column/number'), type : 'string' },
+					{ key : 'company', label : Nino.content.getText('/_admin/crm-clients/field/company'), type : 'string' },
+					{ key : 'name', label : Nino.content.getText('/_admin/crm-clients/field/name'), type : 'string' },
+					{ key : 'email', label : Nino.content.getText('/_admin/crm-clients/field/email'), type : 'string' },
+					{ key : 'city', label : Nino.content.getText('/_admin/crm-clients/field/city'), type : 'string' },
+					{ key : 'accounts', label : Nino.content.getText('/_admin/crm-clients/column/accounts'), type : 'integer' },
+					{ key : 'active_accounts', label : Nino.content.getText('/_admin/crm-clients/column/active-accounts'), type : 'integer' },
+					{ key : 'active', label : Nino.content.getText('/_admin/crm-clients/column/active'), type : 'boolean' },
+				],
+				rows			: crm._clients,
+				labels		: {
+					search	: Nino.content.getText('/_admin/crm-clients/label/search'),
+					empty		: Nino.content.getText('/_admin/crm-clients/empty/clients'),
+					noMatch	: Nino.content.getText('/_admin/crm-clients/empty/found'),
+				},
+				onRowClick : function( client ) { crm._open( client.id ) },
 			} );
-			mount.appendChild( form );
-
-			if( crm._clients.length === 0 )
-				mount.appendChild( Nino.adminUi.emptyState( Nino.content.getText( crm._search === '' ? '/_admin/crm-clients/empty/clients' : '/_admin/crm-clients/empty/found' ) ) );
-			else {
-				const list = Nino.adminUi.el( 'ul', 'nino-admin-list' );
-
-				crm._clients.forEach( function( client ) { list.appendChild( crm._row( client ) ) } );
-				mount.appendChild( list );
-			}
 
 			const add = Nino.adminUi.button( Nino.content.getText('/_admin/crm-clients/label/new'), function() { crm._open( null ) }, { className : 'nino-admin-btn-primary' } );
 			mount.appendChild( Nino.adminUi.listActions( [ add ] ) );
 
-		},
+			// Back from a card the focus is on the row that was opened, as in the Elements panel
+			const opened = crm._opened === null ? null : table.querySelector( '[data-row="'+ crm._opened+ '"]' );
 
-		/**
-		 *	@param		{Object}	client
-		 *
-		 *	@return		{Element}
-		 */
-		_row : function( client ) {
+			if( opened !== null )
+				opened.focus();
 
-			const li = Nino.adminUi.el( 'li' );
-			const row = Nino.adminUi.el( 'button', 'nino-admin-list-link' );
-			const copy = Nino.adminUi.el( 'span', 'nino-admin-list-copy' );
-
-			row.type = 'button';
-			row.dataset.id = String( client.id );
-			copy.appendChild( Nino.adminUi.el( 'strong', '', client.number+ ' '+ crm._title( client ) ) );
-			copy.appendChild( Nino.adminUi.el( 'small', '', crm._text( client.accounts === 1 ? '/_admin/crm-clients/label/account' : '/_admin/crm-clients/label/accounts', client.accounts ) ) );
-			row.appendChild( copy );
-
-			if( client.active === false ) {
-				const badge = Nino.adminUi.el( 'span', 'nino-admin-badge', Nino.content.getText('/_admin/crm-clients/state/inactive') );
-				badge.dataset.state = 'muted';
-				row.appendChild( badge );
-			}
-
-			row.addEventListener( 'click', function() { crm._open( client.id ) } );
-			li.appendChild( row );
-
-			return li;
+			crm._opened = null;
 		},
 
 		/**
@@ -264,6 +251,8 @@
 				return;
 			}
 
+			crm._opened = String( id );
+
 			crm.call( 'get', { id : String( id ) }, function( status, response ) {
 
 				if( status !== 200 ) {
@@ -282,10 +271,11 @@
 		 *	@param		{Array}				accounts
 		 *	@param		{boolean}			[saved]			Whether the line says the card is saved
 		 *	@param		{Object}			[typed]			name => value of what the person typed and nobody saved, put back into the fields
+		 *	@param		{string}			[notice]		A sentence the box of the accounts says over the list
 		 *
 		 *	@return		void
 		 */
-		_drawCard : function( client, accounts, saved, typed ) {
+		_drawCard : function( client, accounts, saved, typed, notice ) {
 
 			const mount = crm.mount();
 
@@ -301,6 +291,10 @@
 				crm._close();
 			} );
 			mount.appendChild( back );
+
+			// What became of the first account, of an invitation or of a switch-off: at the top, where it is seen
+			if( typeof notice === 'string' && notice !== '' )
+				mount.appendChild( Nino.adminUi.el( 'p', 'crm-notice', notice ) );
 
 			const form = Nino.adminUi.el( 'form', 'crm-card' );
 			const fields = {};
@@ -339,6 +333,17 @@
 			fields.notes = notes;
 			form.appendChild( notesLabel );
 
+			// A new client is made with its first account where an address is given
+			if( client === null )
+				[ [ 'account_email', 'email', 'first-email', 160 ], [ 'account_name', 'text', 'first-name', 120 ] ].forEach( function( [ name, type, key, max ] ) {
+
+					const field = Nino.adminUi.textField( { label : Nino.content.getText('/_admin/crm-clients/field/'+ key), type : type, maxLength : max, autocomplete : 'off' } );
+
+					fields[name] = field.querySelector('input');
+					fields[name].name = name;
+					form.appendChild( field );
+				} );
+
 			const actions = Nino.adminUi.el( 'div', 'nino-admin-actions' );
 			actions.appendChild( save );
 
@@ -356,8 +361,9 @@
 							return;
 						}
 
-						// What was typed and not saved is typed again into the card that is drawn, which still counts it as unsaved
-						crm._drawCard( response.client, accounts, false, unsaved );
+						// What was typed and not saved is typed again into the card that is drawn, which still counts it as unsaved; the
+						// accounts are the ones the server has now - a client that is off has them off
+						crm._drawCard( response.client, response.accounts, false, unsaved, response.switched > 0 ? crm._text( '/_admin/crm-clients/active/switched', response.switched ) : '' );
 					} );
 				}, { className : 'nino-admin-btn-secondary' } ) );
 
@@ -479,14 +485,107 @@
 				if( typeof Nino.admin.dirty === 'object' )
 					Nino.admin.dirty.refresh();
 
-				// The card is drawn again from what is stored, and its line says it is saved
-				crm._drawCard( response.client, card.accounts, true );
+				// The card is drawn again from what is stored, and its line says it is saved. A client made with a first account has it
+				// in the list, and the box says what became of the account - also when it was refused: the client is made all the same
+				const first = response.first;
+				const accounts = first !== undefined && first.account !== null ? [ first.account ] : card.accounts;
+
+				crm._drawCard( response.client, accounts, true, undefined, first === undefined ? '' : crm._firstSentence( first ) );
 				done( true );
 			} );
 		},
 
 		/**
-		 *	The accounts of the client with their state, a link to the panel of Members and the form that invites one
+		 *	What became of the first account of a client that was made with one
+		 *
+		 *	@param		{Object}	first				{ account, mailed, refused: { code, params } or null }
+		 *
+		 *	@return		{string}
+		 */
+		_firstSentence : function( first ) {
+
+			if( first.refused !== null )
+				return crm._text( '/_admin/crm-clients/first/refused', Nino.adminUi.format( Nino.content.getText( '/_admin/error/'+ first.refused.code ), ...first.refused.params ) );
+
+			return Nino.content.getText( first.mailed === true ? '/_admin/crm-clients/invite/sent' : '/_admin/crm-clients/invite/not-mailed' );
+		},
+
+		/**
+		 *	Draw the box of the accounts again from a change of the list of the card - when the card is still the one of the client
+		 *
+		 *	@param		{Object}		client
+		 *	@param		{Function}	change			Gets the accounts of the card, answers the new list
+		 *	@param		{string}		[notice]		A sentence for the top of the card
+		 *
+		 *	@return		void
+		 */
+		_update : function( client, change, notice ) {
+
+			const card = crm._card;
+			const old = crm.mount() === null ? null : crm.mount().querySelector('.crm-accounts');
+
+			if( card === null || card.client === null || card.client.id !== client.id || old === null )
+				return;
+
+			card.accounts = change( card.accounts );
+			old.replaceWith( crm._accountsBox( card.client, card.accounts ) );
+
+			if( typeof notice === 'string' && notice !== '' )
+				crm._say( notice );
+		},
+
+		/**
+		 *	The sentence at the top of the card, under the back link: one at a time
+		 *
+		 *	@param		{string}	text
+		 *
+		 *	@return		void
+		 */
+		_say : function( text ) {
+
+			const mount = crm.mount();
+			const old = mount.querySelector('.crm-notice');
+			const note = Nino.adminUi.el( 'p', 'crm-notice', text );
+
+			if( old !== null )
+				old.replaceWith( note );
+			else
+				mount.querySelector('.nino-admin-back-link').after( note );
+		},
+
+		/**
+		 *	Post an action of an account, with the button off and the line busy while it is out
+		 *
+		 *	@param		{Element}		button
+		 *	@param		{Object}		line
+		 *	@param		{string}		action
+		 *	@param		{Object}		payload
+		 *	@param		{string}		failure			The key of the sentence of the action
+		 *	@param		{Function}	done				Gets the answer of a 200
+		 *
+		 *	@return		void
+		 */
+		_act : function( button, line, action, payload, failure, done ) {
+
+			button.disabled = true;
+			line.saving();
+
+			crm.call( action, payload, function( status, response ) {
+
+				button.disabled = false;
+
+				if( status !== 200 ) {
+					line.error( status, response, failure );
+					return;
+				}
+
+				done( response );
+			} );
+		},
+
+		/**
+		 *	The accounts of the client with their state and, for each, its actions; a link to the panel of Members, the dialog that
+		 *	links an account that exists and the form that invites a new one
 		 *
 		 *	@param		{Object}	client
 		 *	@param		{Array}		accounts
@@ -499,49 +598,246 @@
 
 			box.appendChild( Nino.adminUi.el( 'h3', '', Nino.content.getText('/_admin/crm-clients/label/accounts-title') ) );
 
+			// Without the feature Members nothing is known of the accounts: one sentence instead of rows that would all read "deleted"
+			if( accounts.some( function( account ) { return account.state === 'members-off' } ) === true ) {
+				box.appendChild( Nino.adminUi.hint( Nino.content.getText('/_admin/crm-clients/accounts/members-off') ) );
+				return box;
+			}
+
 			if( accounts.length === 0 )
 				box.appendChild( Nino.adminUi.emptyState( Nino.content.getText('/_admin/crm-clients/empty/accounts') ) );
 			else {
 				const list = Nino.adminUi.el( 'ul', 'nino-admin-list nino-admin-list-dense' );
 
-				accounts.forEach( function( account ) {
-
-					const li = Nino.adminUi.el( 'li' );
-					const copy = Nino.adminUi.el( 'div', 'nino-admin-list-copy' );
-					const login = crm._when( account.login );
-
-					copy.appendChild( Nino.adminUi.el( 'strong', '', crm._who( account ) ) );
-
-					if( account.gone === false ) {
-
-						// An account without a name is named by its address already
-						if( account.name !== '' )
-							copy.appendChild( Nino.adminUi.el( 'small', '', account.email ) );
-
-						copy.appendChild( Nino.adminUi.el( 'small', '', login === '' ? Nino.content.getText('/_admin/crm-clients/state/never') : crm._text( '/_admin/crm-clients/state/last', login ) ) );
-					}
-
-					li.appendChild( copy );
-
-					if( account.gone === false && account.active === false ) {
-						const badge = Nino.adminUi.el( 'span', 'nino-admin-badge', Nino.content.getText('/_admin/crm-clients/state/off') );
-						badge.dataset.state = 'muted';
-						li.appendChild( badge );
-					}
-
-					list.appendChild( li );
-				} );
-
+				accounts.forEach( function( account ) { list.appendChild( crm._accountRow( client, account ) ) } );
 				box.appendChild( list );
 			}
 
 			const link = Nino.adminUi.el( 'a', 'crm-members-link', Nino.content.getText('/_admin/crm-clients/label/members') );
 			link.href = Nino.admin.router.href( 'members', [] );
-			box.appendChild( link );
 
-			box.appendChild( crm._inviteForm( client, accounts ) );
+			// A client that is off takes no account, no link and no switch-on: the card says so once and does not offer them
+			if( client.active === false ) {
+				box.appendChild( Nino.adminUi.hint( Nino.content.getText('/_admin/crm-clients/accounts/inactive') ) );
+				box.appendChild( link );
+				return box;
+			}
+
+			const actions = Nino.adminUi.el( 'div', 'nino-admin-actions crm-link' );
+			const line = crm._line();
+
+			actions.appendChild( Nino.adminUi.button( Nino.content.getText('/_admin/crm-clients/label/link'), function() { crm._askLink( client, line ) }, { className : 'nino-admin-btn-secondary nino-admin-btn--small' } ) );
+			actions.appendChild( line.element );
+			box.appendChild( actions );
+			box.appendChild( link );
+			box.appendChild( crm._inviteForm( client ) );
 
 			return box;
+		},
+
+		/**
+		 *	One account: who it is, when it signed in last, whether it is off - and what can be done with it
+		 *
+		 *	@param		{Object}	client
+		 *	@param		{Object}	account
+		 *
+		 *	@return		{Element}
+		 */
+		_accountRow : function( client, account ) {
+
+			const li = Nino.adminUi.el( 'li', 'crm-account' );
+			const head = Nino.adminUi.el( 'div', 'crm-account-head' );
+			const copy = Nino.adminUi.el( 'div', 'nino-admin-list-copy' );
+			const login = crm._when( account.login );
+			const line = crm._line();
+			const actions = Nino.adminUi.el( 'div', 'nino-admin-actions crm-account-actions' );
+			const small = 'nino-admin-btn-secondary nino-admin-btn--small';
+			const post = function() { return { id : String( client.id ), account : account.id } };
+
+			li.dataset.id = account.id;
+			copy.appendChild( Nino.adminUi.el( 'strong', '', crm._who( account ) ) );
+
+			if( account.gone === false ) {
+
+				// An account without a name is named by its address already
+				if( account.name !== '' )
+					copy.appendChild( Nino.adminUi.el( 'small', '', account.email ) );
+
+				copy.appendChild( Nino.adminUi.el( 'small', '', login === '' ? Nino.content.getText('/_admin/crm-clients/state/never') : crm._text( '/_admin/crm-clients/state/last', login ) ) );
+			}
+
+			head.appendChild( copy );
+
+			if( account.gone === false && account.active === false ) {
+				const badge = Nino.adminUi.el( 'span', 'nino-admin-badge', Nino.content.getText('/_admin/crm-clients/state/off') );
+				badge.dataset.state = 'muted';
+				head.appendChild( badge );
+			}
+
+			li.appendChild( head );
+
+			if( account.gone === false ) {
+
+				// The invitation again for an account that never signed in, a link to sign in for one that did
+				const resend = Nino.adminUi.button( Nino.content.getText( account.login === null ? '/_admin/crm-clients/label/resend-invite' : '/_admin/crm-clients/label/resend-login' ), function() {
+					crm._act( resend, line, 'account-resend', post(), '/_admin/crm-clients/error/resend', function( response ) {
+						line.idle( Nino.content.getText( response.kind === 'invite' ? '/_admin/crm-clients/resend/invite' : '/_admin/crm-clients/resend/login' ) );
+					} );
+				}, { className : small, disabled : account.active === false || client.active === false } );
+
+				const toggle = Nino.adminUi.button( Nino.content.getText( account.active === true ? '/_admin/crm-clients/label/switch-off' : '/_admin/crm-clients/label/switch-on' ), function() {
+					crm._act( toggle, line, 'account-active', Object.assign( post(), { active : account.active === false } ), '/_admin/crm-clients/error/account-active', function( response ) {
+						crm._update( client, function( list ) { return list.map( function( each ) { return each.id === account.id ? response.account : each } ) } );
+					} );
+				}, { className : small, disabled : account.active === false && client.active === false } );
+
+				actions.appendChild( resend );
+				actions.appendChild( toggle );
+				actions.appendChild( Nino.adminUi.button( Nino.content.getText('/_admin/crm-clients/label/rename'), function() { crm._renameForm( client, account, li ) }, { className : small } ) );
+			}
+
+			// A row whose account is gone from Members is only a row: it says so, and only the row goes
+			const gone = account.gone === true;
+			const removeLabel = Nino.content.getText( gone === true ? '/_admin/crm-clients/label/remove-row' : '/_admin/crm-clients/label/delete-account' );
+			const remove = Nino.adminUi.button( removeLabel, function() {
+
+				Nino.adminUi.choiceDialog( {
+					title		: removeLabel,
+					message	: gone === true ? Nino.content.getText('/_admin/crm-clients/confirm/remove-row') : crm._text( '/_admin/crm-clients/confirm/delete-account', crm._who( account ) ),
+					choices	: [
+						{ value : 'yes', label : removeLabel, kind : 'danger' },
+						{ value : 'no', label : Nino.content.getText('/_admin/crm-clients/label/cancel'), kind : 'secondary' },
+					],
+					onChoose : function( choice ) {
+
+						if( choice !== 'yes' )
+							return;
+
+						crm._act( remove, line, 'account-remove', post(), '/_admin/crm-clients/error/account-remove', function() {
+							crm._update( client, function( list ) { return list.filter( function( each ) { return each.id !== account.id } ) } );
+						} );
+					},
+				} );
+			}, { className : 'nino-admin-btn-danger nino-admin-btn--small' } );
+
+			actions.appendChild( remove );
+			actions.appendChild( line.element );
+			li.appendChild( actions );
+
+			return li;
+		},
+
+		/**
+		 *	The form that changes the name of an account, in its row
+		 *
+		 *	@param		{Object}		client
+		 *	@param		{Object}		account
+		 *	@param		{Element}		li
+		 *
+		 *	@return		void
+		 */
+		_renameForm : function( client, account, li ) {
+
+			if( li.querySelector('.crm-account-name') !== null )
+				return;
+
+			const form = Nino.adminUi.el( 'form', 'crm-account-name' );
+			const name = Nino.adminUi.textField( { label : Nino.content.getText('/_admin/crm-clients/field/account-name'), value : account.name, maxLength : 120, autocomplete : 'off' } );
+			const save = Nino.adminUi.button( Nino.content.getText('/_admin/crm-clients/label/save'), null, { type : 'submit', className : 'nino-admin-btn-primary nino-admin-btn--small' } );
+			const cancel = Nino.adminUi.button( Nino.content.getText('/_admin/crm-clients/label/cancel'), function() { form.remove() }, { className : 'nino-admin-btn-secondary nino-admin-btn--small' } );
+			const line = crm._line();
+			const actions = Nino.adminUi.el( 'div', 'nino-admin-actions' );
+
+			name.querySelector('input').name = 'name';
+			form.appendChild( name );
+			actions.appendChild( save );
+			actions.appendChild( cancel );
+			actions.appendChild( line.element );
+			form.appendChild( actions );
+
+			form.addEventListener( 'submit', function( event ) {
+
+				event.preventDefault();
+
+				crm._act( save, line, 'account-name', { id : String( client.id ), account : account.id, name : name.querySelector('input').value }, '/_admin/crm-clients/error/account-name', function( response ) {
+					crm._update( client, function( list ) { return list.map( function( each ) { return each.id === account.id ? response.account : each } ) } );
+				} );
+			} );
+
+			li.appendChild( form );
+			name.querySelector('input').focus();
+		},
+
+		/**
+		 *	The dialog that links an account of Members that no client holds: it asks which accounts there are, and a select offers them
+		 *	by name and address
+		 *
+		 *	@param		{Object}	client
+		 *	@param		{Object}	line				The line beside the button, which says a refusal
+		 *
+		 *	@return		void
+		 */
+		_askLink : function( client, line ) {
+
+			line.saving();
+
+			crm.call( 'unlinked', {}, function( status, response ) {
+
+				if( status !== 200 ) {
+					line.error( status, response, '/_admin/crm-clients/error/unlinked' );
+					return;
+				}
+
+				if( response.accounts.length === 0 ) {
+					line.idle( Nino.content.getText('/_admin/crm-clients/link/none') );
+					return;
+				}
+
+				line.idle( '' );
+
+				const select = Nino.adminUi.selectField( {
+					key			: 'link_account',
+					label		: Nino.content.getText('/_admin/crm-clients/field/link-account'),
+					value		: response.accounts[0].id,
+					options	: response.accounts.map( function( account ) { return { value : account.id, label : account.name !== '' ? account.name+ ' · '+ account.email : account.email } } ),
+				} );
+				const content = Nino.adminUi.el( 'div', 'crm-link-form' );
+				const first = response.accounts[0];
+
+				select.querySelector('select').name = 'link_account';
+
+				// The dialog draws its content in place of the message: the sentence is part of the content
+				content.appendChild( Nino.adminUi.el( 'p', '', Nino.content.getText('/_admin/crm-clients/link/message') ) );
+				content.appendChild( select );
+
+				Nino.adminUi.choiceDialog( {
+					title		: Nino.content.getText('/_admin/crm-clients/link/title'),
+					// What a browser without <dialog> is asked: it can only agree to the first account, so it names it
+					message	: crm._text( '/_admin/crm-clients/link/confirm', first.name !== '' ? first.name+ ' · '+ first.email : first.email ),
+					content	: content,
+					choices	: [
+						{ value : 'yes', label : Nino.content.getText('/_admin/crm-clients/label/link-do'), kind : 'primary' },
+						{ value : 'no', label : Nino.content.getText('/_admin/crm-clients/label/cancel'), kind : 'secondary' },
+					],
+					onChoose : function( choice ) {
+
+						if( choice !== 'yes' )
+							return;
+
+						line.saving();
+
+						crm.call( 'account-link', { id : String( client.id ), account : select.querySelector('select').value }, function( code, answer ) {
+
+							if( code !== 200 ) {
+								line.error( code, answer, '/_admin/crm-clients/error/account-link' );
+								return;
+							}
+
+							crm._update( client, function( list ) { return list.concat( [ answer.account ] ) }, Nino.content.getText('/_admin/crm-clients/link/done') );
+						} );
+					},
+				} );
+			} );
 		},
 
 		/**
@@ -569,11 +865,10 @@
 		 *	The form that invites an account for the client: an address and a name
 		 *
 		 *	@param		{Object}	client
-		 *	@param		{Array}		accounts
 		 *
 		 *	@return		{Element}
 		 */
-		_inviteForm : function( client, accounts ) {
+		_inviteForm : function( client ) {
 
 			const form = Nino.adminUi.el( 'form', 'crm-invite' );
 			const email = Nino.adminUi.textField( { label : Nino.content.getText('/_admin/crm-clients/field/invite-email'), type : 'email', required : true, maxLength : 160, autocomplete : 'off' } );
@@ -609,14 +904,8 @@
 						return;
 					}
 
-					crm._drawCard( client, accounts.concat( [ response.account ] ) );
-
-					// The new card says whether the mail went out
-					const message = Nino.adminUi.el( 'p', 'crm-invited', Nino.content.getText( response.mailed === true ? '/_admin/crm-clients/invite/sent' : '/_admin/crm-clients/invite/not-mailed' ) );
-					const target = crm.mount().querySelector('.crm-invite');
-
-					if( target !== null )
-						target.parentNode.insertBefore( message, target );
+					// The new box says whether the mail went out
+					crm._update( client, function( list ) { return list.concat( [ response.account ] ) }, Nino.content.getText( response.mailed === true ? '/_admin/crm-clients/invite/sent' : '/_admin/crm-clients/invite/not-mailed' ) );
 				} );
 			} );
 

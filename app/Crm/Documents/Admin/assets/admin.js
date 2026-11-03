@@ -1,5 +1,5 @@
 /**
- *	Crm\Documents\Admin		The panel Belege of the CRM module: the list of the documents with its filters and a search, the
+ *	Crm\Documents\Admin		The panel Belege of the CRM module: the list of the documents in the shell's table with its filters, the
  *												editor of a draft (client, dates, the template of Pdf and its inputs, the lines with the live
  *												totals, notes), the page of a finalised document (the steps, the PDF, the documents it comes from
  *												and the ones that come from it) and the screen of the settings. Draws into the one region of
@@ -89,8 +89,11 @@
 		// The client of the address that was applied as a filter
 		_addressApplied	: '',
 		_settings		: { vat_mode : 'small_business', rates : [], currency : '' },
-		_filter			: { category : '', state : '', year : '', client : '', search : '' },
+		_filter			: { category : '', state : '', year : '', client : '' },
 		_status			: null,
+		// The filter whose select gets the focus back after the list is drawn again, and the id of the document opened from the list
+		_focus			: '',
+		_opened			: null,
 		// The open editor: { document (null for a new one), category, view, form, save, line, fields, rows, ... } - null while the list shows
 		_card				: null,
 
@@ -183,7 +186,7 @@
 		},
 
 		/**
-		 *	The list screen: the status of the module, the filters, the documents and the buttons for a new one
+		 *	The list screen: the status of the module, the filters, the documents in the shell's table and the buttons for a new one
 		 *
 		 *	@return		void
 		 */
@@ -204,16 +207,13 @@
 
 			mount.appendChild( docs._filters() );
 
-			if( docs._documents.length === 0 ) {
-				const filtered = Object.keys( docs._filter ).some( function( name ) { return docs._filter[name] !== '' } );
-				mount.appendChild( Nino.adminUi.emptyState( Nino.content.getText( filtered === true ? K+ 'empty/found' : K+ 'empty/documents' ) ) );
-			}
-			else {
-				const list = Nino.adminUi.el( 'ul', 'nino-admin-list' );
+			// The shell's table: search, sort and pages over the documents the filters let through, here in the browser
+			const table = Nino.adminUi.el( 'div', 'crm-table' );
+			const filtered = Object.keys( docs._filter ).some( function( name ) { return docs._filter[name] !== '' } );
 
-				docs._documents.forEach( function( document ) { list.appendChild( docs._row( document ) ) } );
-				mount.appendChild( list );
-			}
+			table.id = 'crm-documents-table';
+			mount.appendChild( table );
+			docs._table( table, filtered );
 
 			const buttons = [ 'invoice', 'offer', 'contract', 'privacy', 'information' ].map( function( category ) {
 				return Nino.adminUi.button( Nino.content.getText( K+ 'label/new-'+ category ), function() { docs._new( category ) }, { className : category === 'invoice' ? 'nino-admin-btn-primary' : 'nino-admin-btn-secondary' } );
@@ -221,10 +221,19 @@
 
 			buttons.push( Nino.adminUi.button( Nino.content.getText( K+ 'label/settings' ), function() { docs._openSettings() }, { className : 'nino-admin-btn-secondary' } ) );
 			mount.appendChild( Nino.adminUi.listActions( buttons ) );
+
+			// A filter that was changed keeps the keyboard focus on its select, which the render made anew; back from a document the focus is on its row
+			const focus = docs._focus !== '' ? mount.querySelector( '[name="'+ docs._focus+ '"]' ) : ( docs._opened === null ? null : table.querySelector( '[data-row="'+ docs._opened+ '"]' ) );
+
+			if( focus !== null )
+				focus.focus();
+
+			docs._focus = '';
+			docs._opened = null;
 		},
 
 		/**
-		 *	The form of the filters: category, state, year, client and a search
+		 *	The filters: category, state, year and client - each applies when it is changed
 		 *
 		 *	@return		{Element}
 		 */
@@ -239,6 +248,11 @@
 					label		: word( 'filter/'+ name ),
 					value		: docs._filter[name],
 					options	: [ { value : '', label : word( all ) } ].concat( options ),
+					onChange	: function( value ) {
+						docs._filter[name] = value;
+						docs._focus = name;
+						docs.reload();
+					},
 				} );
 
 				field.querySelector('select').name = name;
@@ -253,20 +267,6 @@
 			form.appendChild( choose( 'year', 'filter/all', docs._years.map( function( year ) { return { value : String( year ), label : String( year ) } } ) ) );
 			form.appendChild( choose( 'client', 'filter/all', docs._clients.map( function( client ) { return { value : String( client.id ), label : client.number+ ' '+ client.title } } ) ) );
 
-			const search = Nino.adminUi.textField( { label : word( 'label/search' ), value : docs._filter.search, maxLength : 100, type : 'search', autocomplete : 'off' } );
-			search.querySelector('input').name = 'search';
-			form.appendChild( search );
-			form.appendChild( Nino.adminUi.button( word( 'label/find' ), null, { type : 'submit', className : 'nino-admin-btn-secondary nino-admin-btn--small' } ) );
-
-			form.addEventListener( 'submit', function( event ) {
-
-				event.preventDefault();
-
-				[ 'category', 'state', 'year', 'client' ].forEach( function( name ) { docs._filter[name] = form.querySelector( '[name="'+ name+ '"]' ).value } );
-				docs._filter.search = search.querySelector('input').value;
-				docs.reload();
-			} );
-
 			return form;
 		},
 
@@ -275,41 +275,72 @@
 		},
 
 		/**
+		 *	The documents in the shell's table: the number (the title, or the word for a draft, where there is none), the kind, the client, the day,
+		 *	the gross and the state. The table searches and sorts on the plain value of a cell - the gross is the cents, the day the ISO day - and
+		 *	draws what a column renders: the day as d.m.Y, the gross with the currency, the state as its badge with the marks of the release and the request
+		 *
+		 *	@param		{Element}		mount
+		 *	@param		{boolean}		filtered			Whether a filter is set: nothing found then is not "no documents"
+		 *
+		 *	@return		void
+		 */
+		_table : function( mount, filtered ) {
+
+			const word = function( key ) { return Nino.content.getText( K+ key ) };
+
+			Nino.adminUi.table( {
+				mount			: mount,
+				rowKey		: 'id',
+				columns		: [
+					{ key : 'name', label : word( 'column/number' ), type : 'string' },
+					{ key : 'category_word', label : word( 'column/category' ), type : 'string' },
+					{ key : 'client_title', label : word( 'column/client' ), type : 'string' },
+					{ key : 'date', label : word( 'column/date' ), type : 'string', render : function( value ) { return docs._day( value ) } },
+					{ key : 'gross_value', label : word( 'column/gross' ), type : 'integer', render : function( value ) { return value === null ? '' : money.format( value, docs._settings.currency ) } },
+					{ key : 'state_word', label : word( 'column/state' ), type : 'string', render : function( value, document ) { return docs._stateCell( document ) } },
+				],
+				rows			: docs._documents.map( function( document ) {
+
+					return Object.assign( {}, document, {
+						name				: document.number !== '' ? document.number : ( document.title !== '' ? document.title : word( 'label/draft' ) ),
+						category_word : word( 'category/'+ document.category ),
+						// A document without lines has no amount
+						gross_value : PLAIN.indexOf( document.category ) !== -1 ? null : document.gross,
+						state_word	: word( 'state/'+ ( document.expired === true ? 'expired' : document.state ) ),
+					} );
+				} ),
+				labels		: {
+					search	: word( 'label/search' ),
+					empty		: word( filtered === true ? 'empty/found' : 'empty/documents' ),
+					noMatch	: word( 'empty/found' ),
+				},
+				onRowClick : function( document ) { docs._open( document.id ) },
+			} );
+		},
+
+		/**
 		 *	@param		{Object}	document			As list() has it
 		 *
-		 *	@return		{Element}
+		 *	@return		{Element}									Its badge, the mark of a release into the portal and the badge of a request under way
 		 */
-		_row : function( document ) {
+		_stateCell : function( document ) {
 
-			const li = Nino.adminUi.el( 'li' );
-			const row = Nino.adminUi.el( 'button', 'nino-admin-list-link' );
-			const copy = Nino.adminUi.el( 'span', 'nino-admin-list-copy' );
-			const plain = PLAIN.indexOf( document.category ) !== -1;
-			const details = [ Nino.content.getText( K+ 'category/'+ document.category ), document.client_title, docs._day( document.date ), plain === true ? '' : money.format( document.gross, docs._settings.currency ) ];
-			const name = document.number !== '' ? document.number : ( document.title !== '' ? document.title : Nino.content.getText( K+ 'label/draft' ) );
+			const cell = Nino.adminUi.el( 'span', 'crm-state' );
 
-			row.type = 'button';
-			row.dataset.id = String( document.id );
-			copy.appendChild( Nino.adminUi.el( 'strong', '', name ) );
-			copy.appendChild( Nino.adminUi.el( 'small', '', details.filter( function( part ) { return part !== '' } ).join(' · ') ) );
-			row.appendChild( copy );
-			row.appendChild( docs._badge( document ) );
+			cell.appendChild( docs._badge( document ) );
 
 			// A document in the portal wears the mark of it, and one that asked for a signature the state of the request
 			if( document.released === true ) {
 				const mark = Nino.adminUi.el( 'span', 'nino-admin-badge crm-released', Nino.content.getText( K+ 'label/released' ) );
 				mark.dataset.state = 'ok';
-				row.appendChild( mark );
+				cell.appendChild( mark );
 			}
 
 			// The badge of the request is for a request under way; a document that is signed or declined says it in its own badge
 			if( document.sign_state !== '' && document.state !== 'signed' && document.state !== 'declined' )
-				row.appendChild( docs._signBadge( document.sign_state ) );
+				cell.appendChild( docs._signBadge( document.sign_state ) );
 
-			row.addEventListener( 'click', function() { docs._open( document.id ) } );
-			li.appendChild( row );
-
-			return li;
+			return cell;
 		},
 
 		/**
@@ -388,6 +419,8 @@
 		 *	@return		void
 		 */
 		_open : function( id ) {
+
+			docs._opened = String( id );
 
 			docs.call( 'get', { id : String( id ) }, function( status, response ) {
 

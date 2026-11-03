@@ -74,7 +74,7 @@ class Documents {
 	 *	The documents, the newest first
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$filter				category, state (or expired), year, client_id, search (number, title, company and name of the client)
+	 *	@param		array 		$filter				category, state (or expired), year, client_id
 	 *	@param		bool			$sync					Whether the state of the requests waiting in Sign is read first; a caller that needs no state leaves it out
 	 *
 	 *	@return 	array											Each with its client's title as the document shows it
@@ -113,13 +113,6 @@ class Documents {
 		if( is_int( $filter['client_id'] ?? null ) === true ) {
 			$where[] = 'd.client_id = :client';
 			$params['client'] = $filter['client_id'];
-		}
-
-		$search = trim( (string) ( $filter['search'] ?? '' ) );
-
-		if( $search !== '' ) {
-			$where[] = '( d.number LIKE :s ESCAPE \'\\\' OR d.title LIKE :s ESCAPE \'\\\' OR c.company LIKE :s ESCAPE \'\\\' OR c.name LIKE :s ESCAPE \'\\\' OR json_extract( d.client_json, \'$.company\' ) LIKE :s ESCAPE \'\\\' OR json_extract( d.client_json, \'$.name\' ) LIKE :s ESCAPE \'\\\' )';
-			$params['s'] = '%'. addcslashes( $search, '%_\\' ). '%';
 		}
 
 		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.parent_id, d.client_json, d.released, d.sign_id, d.sign_state, c.company AS live_company, c.name AS live_name

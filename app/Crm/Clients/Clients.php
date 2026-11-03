@@ -8,6 +8,13 @@ declare(strict_types=1);
  *								A write answers the client as list() has it, or a string: 'empty' (neither company nor name),
  *								'email:email', 'long:<field>' or 'format:<field>' (the field a value was refused for),
  *								'unknown' (no such client). A database failure is a \PDOException the caller answers.
+ *
+ *								The accounts of a client are rows of client_accounts and accounts of Members. An account belongs
+ *								to at most one client (a unique index) and is the client's while it is in the client's group in
+ *								Members: one moved to another group there - in the Members panel - is no longer the client's,
+ *								whatever the row says. An account Members does not have any more (deleted there) stays as a row
+ *								that is gone, until the panel removes it. Without the feature Members nothing is known of the
+ *								accounts: every row counts, and its state is members-off.
  */
 namespace Crm;
 
@@ -30,28 +37,23 @@ class Clients {
 	private const string TIME = 'Y-m-d\TH:i:s\Z';
 
 	/**
-	 *	The clients, by number; a search matches number, company, name and email (LIKE, the wildcards of the
-	 *	search are taken literally)
+	 *	The clients, by number
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		string		$search
 	 *
-	 *	@return 	array										A list of clients, each with the number of its accounts
+	 *	@return 	array										A list of clients, each with the number of its accounts and of the active ones
 	 */
-	public static function list( array &$appData, string $search = '' ): array {
+	public static function list( array &$appData ): array {
 
-		$where = '';
-		$params = [];
-		$search = trim( $search );
+		$rows = Db::rows( $appData, 'SELECT c.* FROM clients c ORDER BY c.number' );
+		$linked = [];
 
-		if( $search !== '' ) {
-			$where = ' WHERE c.number LIKE :s ESCAPE \'\\\' OR c.company LIKE :s ESCAPE \'\\\' OR c.name LIKE :s ESCAPE \'\\\' OR c.email LIKE :s ESCAPE \'\\\'';
-			$params = [ 's' => '%'. addcslashes( $search, '%_\\' ). '%' ];
-		}
+		foreach( Db::rows( $appData, 'SELECT client_id, member_id FROM client_accounts ORDER BY rowid' ) as $link )
+			$linked[(int) $link['client_id']][] = $link['member_id'];
 
-		$rows = Db::rows( $appData, 'SELECT c.*, ( SELECT COUNT(*) FROM client_accounts a WHERE a.client_id = c.id ) AS accounts FROM clients c'. $where. ' ORDER BY c.number', $params );
+		$members = self::members( $appData );
 
-		return array_map( [ self::class, 'shape' ], $rows );
+		return array_map( static fn( array $row ): array => self::shape( $row, $linked[(int) $row['id']] ?? [], $members ), $rows );
 	}
 
 	/**
@@ -62,9 +64,9 @@ class Clients {
 	 */
 	public static function get( array &$appData, int $id ): ?array {
 
-		$row = Db::row( $appData, 'SELECT c.*, ( SELECT COUNT(*) FROM client_accounts a WHERE a.client_id = c.id ) AS accounts FROM clients c WHERE c.id = :id', [ 'id' => $id ] );
+		$row = Db::row( $appData, 'SELECT c.* FROM clients c WHERE c.id = :id', [ 'id' => $id ] );
 
-		return $row === null ? null : self::shape( $row );
+		return $row === null ? null : self::shape( $row, self::linked( $appData, $id ), self::members( $appData ) );
 	}
 
 	/**
@@ -84,10 +86,14 @@ class Clients {
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$input				Any of FIELDS
+	 *	@param		array|null	$first				The first account of the client: email and name. Without an email the client is made alone
 	 *
-	 *	@return 	array|string							The client; or why not, see the class
+	 *	@return 	array|string							The client; or why not, see the class. With a first account the client has the key first: what invite()
+	 *																		answered - the account and whether it was mailed - or the code it was refused with (Members' invalid, long,
+	 *																		taken, write; database where the account could not be linked). The client is made all the same: it is
+	 *																		in the books when its account is refused
 	 */
-	public static function add( array &$appData, array $input ): array|string {
+	public static function add( array &$appData, array $input, ?array $first = null ): array|string {
 
 		$values = self::clean( $input );
 
@@ -116,7 +122,23 @@ class Clients {
 			throw $e;
 		}
 
-		return (array) self::get( $appData, $id );
+		$client = (array) self::get( $appData, $id );
+		$email = trim( (string) ( $first['email'] ?? '' ) );
+
+		if( $email !== '' ) {
+
+			try {
+				$client['first'] = self::invite( $appData, $client, $email, (string) ( $first['name'] ?? '' ) );
+			}
+			catch( \PDOException $e ) {
+				$client['first'] = 'database';
+			}
+
+			// The client as it is with its account: the counts are the account's too
+			$client = (array) self::get( $appData, $id ) + [ 'first' => $client['first'] ];
+		}
+
+		return $client;
 	}
 
 	/**
@@ -147,20 +169,40 @@ class Clients {
 	}
 
 	/**
-	 *	Switch a client on or off. A client is never deleted: its documents belong to the books
+	 *	Switch a client on or off. A client is never deleted: its documents belong to the books. Switching it off
+	 *	switches its accounts off too - a client that is off must not reach the portal; switching it on does not
+	 *	switch them on again, that is for the owner to do by account
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		int				$id
 	 *	@param		bool			$active
 	 *
-	 *	@return 	array|string
+	 *	@return 	array|string							The client with switched, how many accounts were switched off; or 'unknown' or 'write' (an account could not be written - the client stays as it was)
 	 */
 	public static function setActive( array &$appData, int $id, bool $active ): array|string {
 
-		if( Db::exec( $appData, 'UPDATE clients SET active = :active, updated = :now WHERE id = :id', [ 'active' => $active === true ? 1 : 0, 'now' => gmdate( self::TIME ), 'id' => $id ] ) === 0 )
+		if( self::get( $appData, $id ) === null )
 			return 'unknown';
 
-		return (array) self::get( $appData, $id );
+		$switched = 0;
+
+		if( $active === false ) {
+
+			foreach( self::accountsDetailed( $appData, $id ) as $account ) {
+
+				if( $account['gone'] === true || $account['active'] === false )
+					continue;
+
+				if( is_string( \Nino\Modules\Members::change( $appData, $account['id'], [ 'active' => false ] ) ) === true )
+					return 'write';
+
+				$switched++;
+			}
+		}
+
+		Db::exec( $appData, 'UPDATE clients SET active = :active, updated = :now WHERE id = :id', [ 'active' => $active === true ? 1 : 0, 'now' => gmdate( self::TIME ), 'id' => $id ] );
+
+		return (array) self::get( $appData, $id ) + [ 'switched' => $switched ];
 	}
 
 	/**
@@ -176,17 +218,20 @@ class Clients {
 	}
 
 	/**
-	 *	Link an account of Members to a client, once
+	 *	Link an account of Members to a client, once. An account that another client holds is not linked: the unique
+	 *	index of member_id keeps it with the first
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		int				$id
 	 *	@param		string		$memberId
 	 *
-	 *	@return 	void
+	 *	@return 	bool											Whether the client holds the account now
 	 */
-	public static function link( array &$appData, int $id, string $memberId ): void {
+	public static function link( array &$appData, int $id, string $memberId ): bool {
 
 		Db::exec( $appData, 'INSERT OR IGNORE INTO client_accounts ( client_id, member_id ) VALUES ( :client, :member )', [ 'client' => $id, 'member' => $memberId ] );
+
+		return (int) ( Db::row( $appData, 'SELECT client_id FROM client_accounts WHERE member_id = :member', [ 'member' => $memberId ] )['client_id'] ?? 0 ) === $id;
 	}
 
 	/**
@@ -195,15 +240,233 @@ class Clients {
 	 *	@param		array 		&$appData
 	 *	@param		int				$id
 	 *
-	 *	@return 	array										Member ids, in the order they were linked
+	 *	@return 	array										Member ids, in the order they were linked; an account that Members has in another group is not among them
 	 */
 	public static function accounts( array &$appData, int $id ): array {
 
-		return array_column( Db::rows( $appData, 'SELECT member_id FROM client_accounts WHERE client_id = :id ORDER BY rowid', [ 'id' => $id ] ), 'member_id' );
+		$number = Db::row( $appData, 'SELECT number FROM clients WHERE id = :id', [ 'id' => $id ] )['number'] ?? null;
+
+		return $number === null ? [] : self::kept( (string) $number, self::linked( $appData, $id ), self::members( $appData ) );
 	}
 
 	/**
-	 *	The client an account of Members belongs to: an active one before an inactive one, the first linked first
+	 *	The accounts of a client as Members has them, with their state
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *
+	 *	@return 	array										Each as row() has it, in the order they were linked
+	 */
+	public static function accountsDetailed( array &$appData, int $id ): array {
+
+		$members = self::members( $appData );
+
+		// Without the feature nothing is known of an account: the row says that, not that the account is gone
+		if( Crm::featureOn( $appData, 'members' ) === false )
+			return array_map( static fn( string $member ): array => [ 'id' => $member, 'gone' => true, 'state' => 'members-off' ], self::accounts( $appData, $id ) );
+
+		return array_map( static fn( string $member ): array => self::row( $member, $members[$member] ?? null ), self::accounts( $appData, $id ) );
+	}
+
+	/**
+	 *	One account of a client as accountsDetailed() has it
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *	@param		string		$memberId
+	 *
+	 *	@return 	array|null								null where the client does not hold the account
+	 */
+	public static function accountOf( array &$appData, int $id, string $memberId ): ?array {
+
+		foreach( self::accountsDetailed( $appData, $id ) as $account )
+			if( $account['id'] === $memberId )
+				return $account;
+
+		return null;
+	}
+
+	/**
+	 *	The accounts of Members that no client holds: the ones without a row, and the ones whose row is a client's they have left
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array										Accounts as Members has them, sorted by name
+	 */
+	public static function unlinked( array &$appData ): array {
+
+		$holders = self::holders( $appData );
+
+		return array_values( array_filter( self::members( $appData ), static fn( array $account ): bool => ( $holders[$account['id']] ?? null ) !== $account['group'] ) );
+	}
+
+	/**
+	 *	Link an account of Members that no client holds to a client, and move it into the client's group
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *	@param		string		$memberId
+	 *
+	 *	@return 	array|string							The account as accountsDetailed() has it; or why not: 'unknown' (no such client), 'inactive' (the client is off), 'member' (Members has no such account), 'held' (a client holds it), 'write'
+	 */
+	public static function linkExisting( array &$appData, int $id, string $memberId ): array|string {
+
+		$client = self::get( $appData, $id );
+
+		if( $client === null )
+			return 'unknown';
+
+		if( $client['active'] === false )
+			return 'inactive';
+
+		$account = self::members( $appData )[$memberId] ?? null;
+
+		if( $account === null )
+			return 'member';
+
+		$pdo = Db::pdo( $appData );
+		$held = false;
+
+		$pdo->exec( 'BEGIN IMMEDIATE' );
+
+		try {
+			$holder = $pdo->prepare( 'SELECT c.number FROM client_accounts a JOIN clients c ON c.id = a.client_id WHERE a.member_id = :member' );
+			$holder->execute( [ 'member' => $memberId ] );
+			$number = $holder->fetchColumn();
+
+			// A row of a client the account has left is no holder: it goes, the account is free
+			if( $number !== false && self::group( (string) $number ) === $account['group'] )
+				$held = true;
+			else {
+				$pdo->prepare( 'DELETE FROM client_accounts WHERE member_id = :member' )->execute( [ 'member' => $memberId ] );
+				$pdo->prepare( 'INSERT INTO client_accounts ( client_id, member_id ) VALUES ( :client, :member )' )->execute( [ 'client' => $id, 'member' => $memberId ] );
+			}
+
+			$pdo->exec( 'COMMIT' );
+		}
+		catch( \Throwable $e ) {
+			$pdo->exec( 'ROLLBACK' );
+			throw $e;
+		}
+
+		if( $held === true )
+			return 'held';
+
+		if( $account['group'] !== $client['group'] ) {
+
+			$moved = \Nino\Modules\Members::change( $appData, $memberId, [ 'group' => $client['group'] ] );
+
+			// An account that could not be moved is not the client's: the row goes again
+			if( is_string( $moved ) === true ) {
+				Db::exec( $appData, 'DELETE FROM client_accounts WHERE member_id = :member', [ 'member' => $memberId ] );
+				return $moved === 'unknown' ? 'member' : 'write';
+			}
+
+			$account = $moved;
+		}
+
+		return self::row( $memberId, $account );
+	}
+
+	/**
+	 *	Make an account of Members in the group of a client, link it and mail the invitation
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client
+	 *	@param		string		$email
+	 *	@param		string		$name
+	 *
+	 *	@return 	array|string							account (as accountsDetailed() has it) and mailed; or Members' reason: 'invalid', 'long', 'taken' or 'write'. An account that cannot be linked is taken back and the \PDOException goes on
+	 */
+	public static function invite( array &$appData, array $client, string $email, string $name ): array|string {
+
+		$account = \Nino\Modules\Members::add( $appData, $email, $name, $client['group'] );
+
+		if( is_string( $account ) === true )
+			return $account;
+
+		// An account that cannot be linked is of no use to anybody and would make the retry a 'taken': it goes again
+		try {
+			self::link( $appData, $client['id'], $account['id'] );
+		}
+		catch( \PDOException $e ) {
+			\Nino\Modules\Members::remove( $appData, $account['id'] );
+			throw $e;
+		}
+
+		// The invited member lands on the portal
+		$mailed = \Nino\Modules\Members::link( $appData, $account, 'invite', '/portal', true );
+
+		return [ 'account' => self::row( $account['id'], $account ), 'mailed' => $mailed ];
+	}
+
+	/**
+	 *	Send an account its link again: the invitation where it never signed in, a link to sign in where it did
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$account			As accountsDetailed() has it, and not gone
+	 *
+	 *	@return 	bool											Whether the mail was delivered
+	 */
+	public static function resend( array &$appData, array $account ): bool {
+
+		return \Nino\Modules\Members::link( $appData, $account, $account['login'] === null ? 'invite' : 'login', '/portal', true );
+	}
+
+	/**
+	 *	Switch an account of Members on or off
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$memberId
+	 *	@param		bool			$active
+	 *
+	 *	@return 	array|string							The account as accountsDetailed() has it; or 'unknown' or 'write'
+	 */
+	public static function switchAccount( array &$appData, string $memberId, bool $active ): array|string {
+
+		$changed = \Nino\Modules\Members::change( $appData, $memberId, [ 'active' => $active ] );
+
+		return is_string( $changed ) === true ? $changed : self::row( $memberId, $changed );
+	}
+
+	/**
+	 *	Change the name of an account of Members
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$memberId
+	 *	@param		string		$name
+	 *
+	 *	@return 	array|string							The account as accountsDetailed() has it; or 'long', 'unknown' or 'write'
+	 */
+	public static function renameAccount( array &$appData, string $memberId, string $name ): array|string {
+
+		$changed = \Nino\Modules\Members::change( $appData, $memberId, [ 'name' => $name ] );
+
+		return is_string( $changed ) === true ? $changed : self::row( $memberId, $changed );
+	}
+
+	/**
+	 *	Delete an account: in Members, and its row. The documents of the client and the requests of Sign that name the account are not
+	 *	touched. An account Members has not got any more is only a row: the row goes
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *	@param		string		$memberId
+	 *
+	 *	@return 	string										'ok' or 'write' (Members could not write: nothing changed)
+	 */
+	public static function removeAccount( array &$appData, int $id, string $memberId ): string {
+
+		if( \Nino\Modules\Members::remove( $appData, $memberId ) === 'write' )
+			return 'write';
+
+		Db::exec( $appData, 'DELETE FROM client_accounts WHERE client_id = :client AND member_id = :member', [ 'client' => $id, 'member' => $memberId ] );
+
+		return 'ok';
+	}
+
+	/**
+	 *	The client an account of Members belongs to: the one that holds it, while the account is in the client's group
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		string		$memberId
@@ -212,9 +475,91 @@ class Clients {
 	 */
 	public static function ofMember( array &$appData, string $memberId ): ?array {
 
-		$row = Db::row( $appData, 'SELECT c.*, 0 AS accounts FROM clients c JOIN client_accounts a ON a.client_id = c.id WHERE a.member_id = :member ORDER BY c.active DESC, c.id LIMIT 1', [ 'member' => $memberId ] );
+		$row = Db::row( $appData, 'SELECT c.* FROM clients c JOIN client_accounts a ON a.client_id = c.id WHERE a.member_id = :member', [ 'member' => $memberId ] );
 
-		return $row === null ? null : self::shape( $row );
+		if( $row === null )
+			return null;
+
+		$members = self::members( $appData );
+
+		return self::kept( (string) $row['number'], [ $memberId ], $members ) === [] ? null : self::shape( $row, [ $memberId ], $members );
+	}
+
+	/**
+	 *	The accounts of Members by id; none where the feature is not active
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array										id => account, sorted by name
+	 */
+	private static function members( array &$appData ): array {
+
+		if( Crm::featureOn( $appData, 'members' ) === false )
+			return [];
+
+		$accounts = [];
+
+		foreach( \Nino\Modules\Members::accounts( $appData ) as $account )
+			$accounts[$account['id']] = $account;
+
+		return $accounts;
+	}
+
+	/**
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *
+	 *	@return 	array										The ids of the rows of a client, in the order they were linked
+	 */
+	private static function linked( array &$appData, int $id ): array {
+
+		return array_column( Db::rows( $appData, 'SELECT member_id FROM client_accounts WHERE client_id = :id ORDER BY rowid', [ 'id' => $id ] ), 'member_id' );
+	}
+
+	/**
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array										member id => the group of the client whose row it is
+	 */
+	private static function holders( array &$appData ): array {
+
+		$holders = [];
+
+		foreach( Db::rows( $appData, 'SELECT a.member_id, c.number FROM client_accounts a JOIN clients c ON c.id = a.client_id' ) as $row )
+			$holders[$row['member_id']] = self::group( (string) $row['number'] );
+
+		return $holders;
+	}
+
+	/**
+	 *	The ids of a client's rows that are still the client's
+	 *
+	 *	@param		string		$number
+	 *	@param		array 		$ids
+	 *	@param		array 		$members			As members() has them
+	 *
+	 *	@return 	array
+	 */
+	private static function kept( string $number, array $ids, array $members ): array {
+
+		return array_values( array_filter( $ids, static fn( string $id ): bool => isset( $members[$id] ) === false || $members[$id]['group'] === self::group( $number ) ) );
+	}
+
+	/**
+	 *	An account of a client
+	 *
+	 *	@param		string		$id
+	 *	@param		array|null	$account			As Members has it; null for one it has not (any more)
+	 *
+	 *	@return 	array										id, gone and state - gone, members-off (the feature is not active), off, invited (never signed in) or signed - and for one that is not gone email, name, active and login
+	 */
+	private static function row( string $id, ?array $account ): array {
+
+		if( $account === null )
+			return [ 'id' => $id, 'gone' => true, 'state' => 'gone' ];
+
+		return [ 'id' => $id, 'gone' => false, 'state' => $account['active'] === false ? 'off' : ( $account['login'] === null ? 'invited' : 'signed' ),
+			'email' => $account['email'], 'name' => $account['name'], 'active' => $account['active'], 'login' => $account['login'] ];
 	}
 
 	/**
@@ -263,14 +608,19 @@ class Clients {
 
 	/**
 	 *	@param		array 		$row
+	 *	@param		array 		$linked				The ids of the rows of the client
+	 *	@param		array 		$members			As members() has them
 	 *
-	 *	@return 	array
+	 *	@return 	array										With accounts, how many are the client's, and active_accounts, how many of them are on
 	 */
-	private static function shape( array $row ): array {
+	private static function shape( array $row, array $linked, array $members ): array {
+
+		$ids = self::kept( (string) $row['number'], $linked, $members );
 
 		$row['id'] = (int) $row['id'];
 		$row['active'] = (int) $row['active'] === 1;
-		$row['accounts'] = (int) $row['accounts'];
+		$row['accounts'] = count( $ids );
+		$row['active_accounts'] = count( array_filter( $ids, static fn( string $id ): bool => ( $members[$id]['active'] ?? false ) === true ) );
 		$row['group'] = self::group( (string) $row['number'] );
 
 		return $row;

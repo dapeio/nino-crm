@@ -9,16 +9,30 @@
 @layer nino.tool {
 
 #crm-clients-app .crm-status,
-#crm-clients-app .crm-search,
+#crm-clients-app .crm-table,
 #crm-clients-app .crm-accounts,
-#crm-clients-app .crm-invite {
+#crm-clients-app .crm-invite,
+#crm-clients-app .crm-link {
 	margin-top: 1rem;
 }
-#crm-clients-app .crm-search {
+#crm-clients-app .crm-account {
+	padding-block: .5rem;
+}
+#crm-clients-app .crm-account-head {
 	display: flex;
-	align-items: end;
+	align-items: flex-start;
+	justify-content: space-between;
 	gap: .75rem;
+}
+#crm-clients-app .crm-account-actions {
 	flex-wrap: wrap;
+	margin-top: .5rem;
+}
+#crm-clients-app .crm-account-name {
+	display: grid;
+	gap: .5rem;
+	max-width: 24rem;
+	margin-top: .5rem;
 }
 #crm-clients-app .crm-missing {
 	margin: 0 0 .75rem;

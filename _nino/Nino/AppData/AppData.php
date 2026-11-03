@@ -114,6 +114,9 @@ namespace Nino {
 			// the tcp peer is the visitor and X-Forwarded-For is ignored
 			// entirely (see \Nino\Http::getClientIp())
 			'/nino/http/proxies'	=> [],
+			// How many calls of \Nino\Mail::send() and sendAll() one client
+			// address may make in an hour; 0 is no cap
+			'/nino/mail/cap'			=> 5,
 			// webp for every derived image, where this gd can write one.
 			// Smaller than both formats it replaces, at the same quality:
 			// lossless where the alternative was png and lossy where it was
@@ -144,6 +147,15 @@ namespace Nino {
 			// finding into an apparently new one
 			'/nino/maintenance/status'	=> false,
 			'/nino/maintenance/retry'	=> 3600,
+			// 'production' or 'development'. Nothing in the kernel derives a
+			// behaviour from it: the keys that decide - whether errors are
+			// shown, whether pages are cached and for how long - stay the
+			// truth, and the Config panel writes them once, when the mode is
+			// switched (see \Nino\Modules\Config\Admin::MODES). The workbench
+			// reads it to say which of the two the project is in, and to
+			// decide how much it asks before a change. Appended at the end for
+			// the reason the maintenance keys above give
+			'/nino/mode'		=> 'production',
 		];
 
 		public static function prepare( array &$appData ): void {

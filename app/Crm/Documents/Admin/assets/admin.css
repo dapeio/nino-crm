@@ -10,11 +10,17 @@
 @layer nino.tool {
 
 #crm-documents-app .crm-status,
+#crm-documents-app .crm-table,
 #crm-documents-app .crm-filters,
 #crm-documents-app .crm-steps,
 #crm-documents-app .crm-relations,
 #crm-documents-app .crm-final {
 	margin-top: 1rem;
+}
+#crm-documents-app .crm-state {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .25rem;
 }
 #crm-documents-app .crm-filters,
 #crm-documents-app .crm-steps,

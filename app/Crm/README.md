@@ -4,7 +4,7 @@
 
 - eine SQLite-Datenbank `data/crm.sqlite` mit Migrationen (`PRAGMA user_version`),
 - die Kunden (Nummer `K-0001`, Firma, Name, Anschrift, E-Mail, Telefon, USt-IdNr., Notizen, aktiv) mit ihren Konten des Features Mitglieder,
-- das Panel **Kunden** (Liste mit Suche, Karte, anlegen, ändern, deaktivieren, Konto einladen),
+- das Panel **Kunden** (die Liste in der Tabelle der Workbench, Karte, anlegen, ändern, deaktivieren) - und in ihm die Logins der Kunden: Konten anlegen, einladen, verknüpfen, Link neu senden, ausschalten, umbenennen, löschen,
 - die Portalseiten hinter `/portal` und die Anmeldeseite `/login` als Installationseinheit, die das Panel auf einen Knopf einspielt,
 - den Shortcode `[crm-client]`, der im Portal die Firma des Kunden des angemeldeten Mitglieds schreibt,
 - die **Positionen** (der Katalog dessen, was Du verkaufst) und die **Belege**: Angebote, Rechnungen und Stornorechnungen mit Nummernkreisen, Festschreiben und einer PDF-Datei aus einer Vorlage des Features PDF - die Panels **Belege** und **Positionen** und die Route `/.crm/pdf/<id>`,
@@ -38,11 +38,27 @@ Die Einheit liegt in `app/Crm/unit/` und ist keine Einheit des Einrichtungsassis
 
 ## Die Konten der Kunden
 
-Jeder Kunde hat eine Gruppe in Mitglieder: seine Nummer als Slug (`k-0001`). **Konto einladen** legt ein Konto in dieser Gruppe an, verknüpft es mit dem Kunden und schickt die Einladung (der Link führt auf `/portal`). Ein Kunde mit Konten wird nie gelöscht, nur deaktiviert; ein deaktivierter Kunde bekommt keine neuen Konten. Das Konto selbst (sperren, löschen, neuen Link senden) verwaltest Du im Panel Mitglieder.
+Die Logins Deiner Kunden legst und verwaltest Du an **einer** Stelle: auf der Karte des Kunden im Panel Kunden. Das Panel Mitglieder ist das des Features und bleibt, wie es ist; Du musst es dafür nicht öffnen. Das Panel Kunden ruft nur die PHP-Schnittstelle von Mitglieder auf (`add`, `change`, `remove`, `link`, `account`, `accounts`) und schreibt nie in dessen Dateien; die Berechtigung `/_admin/crm-clients/manage` genügt, eine von Mitglieder braucht es nicht.
+
+Jeder Kunde hat eine Gruppe in Mitglieder: seine Nummer als Slug (`k-0001`). Ein Konto gehört zu **höchstens einem** Kunden (ein eindeutiger Index auf der Kennung des Kontos) und liegt in dessen Gruppe.
+
+- **Neuer Kunde mit erstem Konto:** Auf der Karte eines neuen Kunden stehen die Felder *E-Mail-Adresse des ersten Kontos* und *Name des ersten Kontos*. Mit Adresse legt *Speichern* den Kunden an, das Konto in seiner Gruppe, verknüpft es und schickt die Einladung (der Link führt auf `/portal`). Ohne Adresse entsteht der Kunde allein, wie bisher. Ist die Adresse ungültig oder schon ein Konto, oder der Name zu lang, ist der **Kunde trotzdem angelegt** und nur das Konto abgelehnt: Die Antwort trägt den Code der Ablehnung, die Karte sagt es in einem Satz, und das Konto lädst Du danach in der Karte ein. Ist das Feature Mitglieder nicht aktiv, entsteht mit einer Adresse nichts (409).
+- **Konto einladen** legt auf der Karte eines bestehenden Kunden ein weiteres Konto an (eine Firma, mehrere Personen). Ein deaktivierter Kunde bekommt kein Konto.
+- **Vorhandenes Konto verknüpfen:** Der Dialog bietet die Konten von Mitglieder an, die **kein Kunde** hat, nach Name und Adresse. Das Verknüpfen legt die Zeile an und setzt die Gruppe des Kontos auf die des Kunden (`Members::change`). Ein Konto, das schon ein Kunde hat, ist 409 (`crm_clients_held`).
+- **Jede Zeile** zeigt den Zustand des Kontos - nie angemeldet, zuletzt angemeldet am, ausgeschaltet, gelöscht - und die Knöpfe: **Link senden** (ein Konto, das sich noch nie angemeldet hat, bekommt die Einladung noch einmal, eines, das sich schon angemeldet hat, einen Link zum Anmelden; beide führen auf `/portal`; ein ausgeschaltetes Konto bekommt keinen, 409), **Ausschalten/Einschalten**, **Name ändern** und **Konto löschen** nach einer Rückfrage.
+- **Löschen** löscht das Konto in Mitglieder und seine Zeile. Die **Dokumente des Kunden und die Anfragen von Sign, die das Konto nennen, bleiben, wie sie sind** - sie gehören den Büchern, nicht dem Login. Ist das Feature Mitglieder nicht aktiv, sagt die Karte das in einem Satz statt Zeilen. Ein Konto vom Kunden zu lösen, ohne es zu löschen, gibt es nicht: ein Konto wird gelöscht oder ausgeschaltet, nie verwaist.
+- **Deaktivieren** eines Kunden schaltet auch **seine Konten aus**, damit er das Portal nicht mehr erreicht; die Antwort und die Karte sagen, wie viele. Aktivierst Du den Kunden wieder, bleiben die Konten aus - Du schaltest sie einzeln ein. Solange der Kunde aus ist, lassen sich seine Konten nicht einschalten und bekommen keinen Link (409 `crm_clients_inactive`); die Karte bietet es dann nicht an und sagt es in einem Satz. **Schaltest Du im Panel Mitglieder das Konto eines deaktivierten Kunden wieder ein, kommt es ins Portal:** Das Portal prüft das Aktiv-Kennzeichen des Kunden nicht (die Regel von C01).
+- **Die Liste** zeigt je Kunde, wie viele Konten er hat und wie viele davon eingeschaltet sind.
+
+Die Antworten sind Codes mit Sätzen: `crm_clients_email`, `crm_clients_long`, `crm_clients_taken` (die Antworten von Mitglieder für ungültige Adresse, zu langen Namen und vergebene Adresse), `crm_clients_write` (die Datei von Mitglieder war nicht zu schreiben), `crm_clients_member` (das Konto gehört nicht zu diesem Kunden), `crm_clients_off`, `crm_clients_mail` (die Mail wurde nicht angenommen). Die Obergrenze des Kernels für Mails je Stunde und Adresse ist ein 429 `crm_clients_ratelimit`. Ins Protokoll kommen die Nummer des Kunden und die Kennung des Kontos, nie eine Adresse.
+
+**Was im Panel Mitglieder geschieht.** Du kannst dort weiter alles tun; das Panel Kunden liest ein Konto, wie es ist. Die **Gruppe** sagt, zu welchem Kunden es gehört: Ein Konto, das Du dort in eine andere Gruppe verschiebst, ist **nicht mehr das des Kunden** - es steht nicht mehr auf dessen Karte, zählt nicht mehr mit, das Portal kennt es für keinen Kunden (`Clients::ofMember()`), und es wird in der Auswahl der Konten angeboten, die kein Kunde hat; ein anderer Kunde kann es verknüpfen, dann ersetzt die neue Zeile die alte. Ein Konto, das Du dort löschst, bleibt auf der Karte als *Konto gelöscht* stehen, bis Du die Zeile im Panel Kunden entfernst (*Zeile entfernen*; sie löscht nur die Zeile). Ein Konto, das Du dort anlegst, gehört keinem Kunden, bis Du es verknüpfst - auch wenn es in der Gruppe `k-0001` liegt.
+
+Die Migration `0004` legt den eindeutigen Index an. Hat eine ältere Datenbank ein Konto bei zwei Kunden (das Panel hat nie eines angelegt), bleibt die erste Verknüpfung und die spätere geht.
 
 ## Daten und Sicherung
 
-`data/crm.sqlite` (mit den Dateien `-wal` und `-shm` daneben, solange sie offen ist) gehört zum Projekt. **Die tägliche Sicherung von Nino enthält sie nicht**: keine Manifestdatei nennt sie. Sichere die Datei zusammen mit dem Server; ein späterer Patch kann sie in die Sicherung aufnehmen. Die Migrationen laufen beim ersten Zugriff eines Aufrufs; `PRAGMA user_version` sagt, wie weit die Datei ist (3 seit der Freigabe).
+`data/crm.sqlite` (mit den Dateien `-wal` und `-shm` daneben, solange sie offen ist) gehört zum Projekt. **Die tägliche Sicherung von Nino enthält sie nicht**: keine Manifestdatei nennt sie. Sichere die Datei zusammen mit dem Server; ein späterer Patch kann sie in die Sicherung aufnehmen. Die Migrationen laufen beim ersten Zugriff eines Aufrufs; `PRAGMA user_version` sagt, wie weit die Datei ist (4 seit den Konten der Kunden).
 
 **Die PDF-Dateien der Belege liegen in `data/crm/pdf/<Jahr>/<Nummer>.pdf` (ein Vertrag, ein Datenschutz- und ein Informationsdokument haben keine Nummer: ihre Datei heißt `contract-<id>.pdf`, `privacy-<id>.pdf`, `information-<id>.pdf`) und sind ebenfalls nicht in der Sicherung von Nino.** Sie gehören zu den Belegen: Die Datenbank kennt von jeder Datei den Pfad und den SHA-256. Sichere das Verzeichnis `data/crm/` zusammen mit `crm.sqlite`; eine Datei ohne ihre Zeile und eine Zeile ohne ihre Datei sind beide ein Fehler, den Du nicht mehr aus der Datenbank allein beheben kannst. Eine PDF-Datei wird einmal geschrieben und nie überschrieben.
 
@@ -55,6 +71,8 @@ Das Panel **Positionen** ist der Katalog: Bezeichnung (bis 200 Zeichen), Beschre
 Preise schreibst Du als `1.234,56`, `1234,56` oder `1234.56`; ein Punkt ohne Komma dahinter ist ein Dezimalpunkt (`1.234` ist darum **kein** Preis, sondern wird abgelehnt). Mengen haben bis zu drei Nachkommastellen (`1,5`, `0,25`, `1.25`); `1.000` und `1.500` werden abgelehnt, weil sie auf Deutsch tausend und auf Englisch eins bedeuten - schreibe `1000` oder `1,5`. Intern sind Preise Cent, Mengen Tausendstel und Sätze Hundertstel Prozent.
 
 ## Belege
+
+Die Liste der Belege ist ebenfalls die Tabelle der Workbench. Die Auswahlfelder *Art*, *Status*, *Jahr* und *Kunde* stehen darüber und gelten sofort beim Ändern (es gibt keinen Knopf *Filtern*); die Aktion `crm-documents/list` antwortet mit den Belegen, die die Filter durchlassen, und die Tabelle sucht, sortiert und blättert darin im Browser - die Spalte *Brutto* nach dem Betrag in Cent. Die Aktion kennt keinen Suchbegriff mehr. Die Tabelle sucht in den gespeicherten Werten, nicht im gezeigten Text: "119000" (Cent) findet einen Betrag von 1.190,00 €, "1.190" nicht; das gilt für beide Tabellen. Die Spalten sind Nummer (ohne Nummer der Titel, ohne Titel das Wort *Entwurf*), Art, Kunde, Datum, Brutto und Status (mit der Marke der Freigabe und dem Zustand der Unterschriftsanfrage); ein Klick auf eine Zeile öffnet den Beleg.
 
 Das Panel **Belege** hat sechs Arten: Angebot, Rechnung und Stornorechnung (Gutschrift) mit Zeilen und Summen - und Vertrag, Datenschutz und Information ohne beides (siehe unten). Jeder Beleg gehört zu einem aktiven Kunden und hat ein Datum. Unter *Neu* stehen Rechnung, Angebot, Vertrag, Datenschutz und Information; eine Stornorechnung entsteht nur aus einer Rechnung.
 
@@ -88,7 +106,7 @@ Ein Entwurf hat einen **Titel** (1 bis 120 Zeichen, eine Zeile; das Panel schlä
 
 Jeder festgeschriebene Beleg jeder Art kann **freigegeben** werden: Der Kunde sieht ihn dann auf der Seite Dokumente im Portal und kann ihn von dort laden. **Freigabe zurücknehmen** nimmt ihn wieder weg; die Datei und ihr SHA-256 bleiben, wie die Buchführung es verlangt.
 
-Ist **Mail an die Konten des Kunden** angehakt (der Standard), geht **eine Mail an jedes aktive Konto** des Kunden, mit einem Link auf `/portal/dokumente` (absolut, aus der Adresse der Website) und **ohne Anhang** - die Datei holt sich das Mitglied nach der Anmeldung im Portal. Die Mail ist deutsch (ein Konto von Mitglieder hat keine eigene Sprache), ihre Worte stehen in `Documents/Mail/text/de_DE.php`, ihr Aufbau in `Documents/Mail/templates/release.tpl`. Alle Mails einer Freigabe sind **ein** Aufruf der Obergrenze für Mails je Stunde und Adresse (fünf); ist sie erreicht, antwortet das Panel 429 und **nichts** ist geschehen (nicht freigegeben, nichts versendet). Hat die Website keine Adresse (der Text `/project/website/general/url`), gibt es keinen Link: Die Freigabe mit Mail ist dann 409.
+Ist **Mail an die Konten des Kunden** angehakt (der Standard), geht **eine Mail an jedes aktive Konto** des Kunden, mit einem Link auf `/portal/dokumente` (absolut, aus der Adresse der Website) und **ohne Anhang** - die Datei holt sich das Mitglied nach der Anmeldung im Portal. Die Mail ist deutsch (ein Konto von Mitglieder hat keine eigene Sprache), ihre Worte stehen in `Documents/Mail/text/de_DE.php`, ihr Aufbau in `Documents/Mail/templates/release.tpl`. Alle Mails einer Freigabe sind **ein** Aufruf der Obergrenze des Kernels für Mails je Stunde und Adresse; ist sie erreicht, antwortet das Panel 429 und **nichts** ist geschehen (nicht freigegeben, nichts versendet). Hat die Website keine Adresse (der Text `/project/website/general/url`), gibt es keinen Link: Die Freigabe mit Mail ist dann 409.
 
 **Versenden** im Panel ist genau die Freigabe mit Mail für Angebote, Rechnungen und Stornorechnungen: Ist der Beleg noch *offen* und ging mindestens eine Mail hinaus, wird er *versendet*. Hatte der Kunde kein aktives Konto oder kam keine Mail an, bleibt der Zustand und das Panel sagt es. Ein Vertrag und die anderen werden durch die Mail nicht *versendet*; ihren Schritt setzt Du selbst.
 
@@ -107,6 +125,8 @@ Der Beleg folgt der Anfrage: Unterschreibt das Mitglied oder lehnt es ab, ruft S
 **Auf einem Portal, das schon eingerichtet ist:** Der Knopf **Portal einrichten** ergänzt die Route `/portal/dokumente`, die Vorlage `page-portal-documents.tpl` und die Worte der Seite - und nichts, was Du geändert hast. Deine Vorlage `page-portal.tpl` bleibt, wie sie ist: Den Link auf die neue Seite trägst Du dort von Hand ein (`[button /template/page-portal/link-documents/label href="/template/page-portal/link-documents/href" style="primary"]`, die beiden Texte legt der Knopf an) oder Du spielst die Vorlage im Builder neu ein.
 
 ## Das Panel Kunden
+
+Die Liste der Kunden ist die **Tabelle der Workbench** (`Nino.adminUi.table()`): Suche, Sortierung nach Spalte und Seiten über alle Kunden laufen im Browser; die Aktion `crm-clients/list` antwortet mit allen Kunden und kennt keinen Suchbegriff. Die Spalten sind Nummer, Firma, Name, E-Mail, Ort, Konten, davon aktiv und aktiv; ein Klick auf eine Zeile öffnet die Karte, *Neuer Kunde* steht unter der Tabelle.
 
 Die Karte eines Kunden zeigt, wie viele Belege er hat und wie viele davon im Portal freigegeben sind. Der Link darunter öffnet das Panel Belege mit dem Filter *Kunde* auf diesen Kunden (die Adresse `#crm-documents/client/<id>`; das Panel liest sie beim Öffnen und setzt den Filter einmal).
 
@@ -144,6 +164,7 @@ Die Worte in der PDF-Datei (Angebot, Rechnung, Spaltenköpfe, die Hinweise) sind
 php app/Crm/tests/crm-smoke.php
 php app/Crm/tests/documents-smoke.php
 php app/Crm/tests/portal-smoke.php
+node app/Crm/tests/crm-js-smoke.js
 node app/Crm/tests/documents-js-smoke.js
 node app/Crm/tests/items-js-smoke.js
 ```
