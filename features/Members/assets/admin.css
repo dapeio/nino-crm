@@ -1,0 +1,43 @@
+@layer nino.system, nino.tool, nino.local;
+
+/**
+ *	Nino										A compact filesystembased php framework
+ *	Modules\Members					The members' accounts
+ *	admin.css								What the feature's /_admin panel needs beyond the design
+ *													system in _admin/assets/style.css. Joins the workbench's
+ *													style bundle while the feature is active (see the panel's
+ *													assets()), so the same layer rules apply: every rule is
+ *													scoped to #members-app, the root of templates/panel.tpl,
+ *													and nothing shared is restated.
+ *
+ *	@package								Dape/Nino
+ *	@author									David Perchermeier <mail@dape.io>
+ *	@link										https://github.com/dapeio/nino
+ */
+
+@layer nino.tool {
+
+/* The name and the state of an account stand in one line, the buttons under them */
+#members-app .members-row-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: .75rem;
+}
+#members-app .members-row-actions {
+	margin-top: .5rem;
+}
+/* The form of a change opens inside its row, set off from the line above it */
+#members-app .members-edit {
+	margin-top: .75rem;
+	padding-top: .75rem;
+	border-top: 1px solid var(--editor-separator);
+}
+#members-app #members-filter {
+	margin: 1rem 0 .5rem;
+}
+#members-app #members-rows {
+	margin-top: .5rem;
+}
+
+}

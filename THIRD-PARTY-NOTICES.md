@@ -181,3 +181,52 @@ DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 ```
+
+## The icons of the project's features
+
+The six features that live in this repository - Members, Pdf, Files, Review,
+Sign and Events - draw their icons the way the kernel does: the `icon()` of
+each feature's workbench panel (`features/*/Admin/Admin.php`) and the `icon` of
+every component a manifest declares (`features/*/feature.php`) carry the
+geometry of inline SVG icons from [Lucide](https://lucide.dev), release 0.577.0.
+They are covered by the [Lucide](#lucide) section above: the ISC License and,
+for the icons derived from Feather, the MIT License, whose notices are quoted
+there and travel with these copies as well.
+
+## Adobe Core 14 AFM metrics
+
+The Pdf feature measures text in the twelve standard fonts it can set - Helvetica,
+Times and Courier, each in regular, bold, italic and bold italic - by their
+character widths, and those are the metrics of Adobe's Core 14 AFM files as
+[Apache PDFBox](https://github.com/apache/pdfbox) redistributes them
+(`pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/`). Each font has a
+file of its own in `features/Pdf/Fonts/Metrics/`, a modified form of the AFM file:
+the widths of the glyphs WinAnsiEncoding addresses - the codes 32 to 255 - are all
+it keeps, and nothing of a font program is part of it. The two other fonts of the
+set, Symbol and ZapfDingbats, are not used and not shipped.
+
+Adobe asks that its copyright notices are retained, that a modification is noted
+in the modified file and that its paragraph travels with the files. The head of
+each of the twelve files carries the notices, says that it is modified and quotes
+the paragraph - a feature is published as an archive of its own directory, which
+does not carry this file - and this file does as well.
+
+| Files | Font | Notice of the AFM file |
+| --- | --- | --- |
+| `Fonts/Metrics/Helvetica.php`, `Helvetica-Bold.php`, `Helvetica-Oblique.php`, `Helvetica-BoldOblique.php` | Helvetica | Copyright (c) 1985, 1987, 1989, 1990, 1997 Adobe Systems Incorporated.  All Rights Reserved. Helvetica is a trademark of Linotype-Hell AG and/or its subsidiaries. |
+| `Fonts/Metrics/Times-Roman.php`, `Times-Bold.php`, `Times-Italic.php`, `Times-BoldItalic.php` | Times | Copyright (c) 1985, 1987, 1989, 1990, 1993, 1997 Adobe Systems Incorporated.  All Rights Reserved. Times is a trademark of Linotype-Hell AG and/or its subsidiaries. |
+| `Fonts/Metrics/Courier.php`, `Courier-Oblique.php` | Courier | Copyright (c) 1989, 1990, 1991, 1992, 1993, 1997 Adobe Systems Incorporated.  All Rights Reserved. |
+| `Fonts/Metrics/Courier-Bold.php`, `Courier-BoldOblique.php` | Courier | Copyright (c) 1989, 1990, 1991, 1993, 1997 Adobe Systems Incorporated.  All Rights Reserved. |
+
+The terms Adobe distributes the Core 14 AFM files under, as the `MustRead.html` of the
+set states them and as the `LICENSE.txt` of Apache PDFBox quotes them:
+
+```text
+This file and the 14 PostScript(R) AFM files it accompanies may be used,
+copied, and distributed for any purpose and without charge, with or without
+modification, provided that all copyright notices are retained; that the
+AFM files are not distributed without this file; that all modifications
+to this file or any of the AFM files are prominently noted in the modified
+file(s); and that this paragraph is not modified. Adobe Systems has no
+responsibility or obligation to support the use of the AFM files.
+```

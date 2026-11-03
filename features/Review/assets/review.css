@@ -1,0 +1,217 @@
+/**
+ *	Nino - Review
+ *	review.css	What the component needs on the site itself: the list of the audio and video files of
+ *							a member's group, the player of one of them with the comments under it and the form
+ *							that writes one. Bundled into the project's own /.cache/style.css by the manifest's
+ *							assets (docs/features.md, "Assets") - never rendered through the fill/shortcode
+ *							engine, so nothing in here is a textfill.
+ *
+ *							The component is painted from three properties, --review-ground (with the parts of
+ *							a ground), --review-space and --review-corners, whose defaults are the page's own
+ *							roles (--color-*, --space-*, --radius), which every site has, so they look at home
+ *							whatever the site's theme says. The Design feature (design/regular.css) moves them.
+ *							The defaults stand in :where(), which has no specificity: the bundle lists this file
+ *							after theme.css, and a default in a bare :root would win over the line that moves a
+ *							property by order.
+ */
+
+:where(:root) {
+	--review-ground: var(--color-background);
+	--review-ground-on: var(--color-text);
+	--review-ground-link: var(--color-accent);
+	--review-ground-border: var(--color-border);
+	--review-ground-focus: var(--color-focus);
+	--review-space: var(--space-2);
+	--review-corners: var(--radius);
+}
+
+/*	The player and the list paint a ground as a section does: the roles of the kernel that
+	follow a ground are pointed at it, so that the link, the ring of the focus, the button
+	and the lines are right on whichever ground is chosen	*/
+.review-player {
+	--color-ground: var(--review-ground);
+	--color-ink: var(--review-ground-on);
+	--color-title: var(--review-ground-on);
+	--color-subtitle: var(--review-ground-on);
+	--color-accent: var(--review-ground-link);
+	--color-focus: var(--review-ground-focus);
+	--color-border: var(--review-ground-border);
+	box-sizing: border-box;
+	margin: 0 0 var(--space-2);
+	padding: var(--review-space);
+	border: 1px solid var(--color-border);
+	border-radius: var(--review-corners);
+	background-color: var(--color-ground);
+	color: var(--color-ink);
+}
+
+.review-player__back {
+	margin: 0 0 var(--space-1);
+	font-size: var(--fontsize-small);
+}
+
+.review-player__title {
+	margin: 0 0 var(--space-1);
+	font-size: var(--text-2);
+	overflow-wrap: anywhere;
+}
+
+.review-player__media {
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	margin: 0 0 var(--space-2);
+}
+
+video.review-player__media {
+	height: auto;
+}
+
+.review-player__comments {
+	margin: 0 0 var(--space-1);
+	font-size: var(--text-1);
+}
+
+.review-player__count {
+	font-size: var(--fontsize-small);
+	font-weight: normal;
+}
+
+.review-list,
+.review-comments,
+.review-answers {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/*	A file of the list: the name, and beside it the folder and the kind	*/
+.review-item {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-2);
+	padding: var(--space-1) 0;
+	border-top: 1px solid var(--color-border);
+}
+
+.review-item__name {
+	overflow-wrap: anywhere;
+}
+
+.review-item__folder,
+.review-item__kind {
+	font-size: var(--fontsize-small);
+	white-space: nowrap;
+}
+
+.review-list__empty,
+.review-comments--none {
+	margin: 0;
+	padding: var(--space-1) 0;
+}
+
+/*	A comment: who, when and at which second of the track, then the text, then its answers	*/
+.review-comment,
+.review-answer {
+	padding: var(--space-1) 0;
+	border-top: 1px solid var(--color-border);
+}
+
+.review-comment__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0 var(--space-1);
+}
+
+.review-comment__time {
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
+}
+
+.review-comment__date {
+	font-size: var(--fontsize-small);
+}
+
+.review-comment__done {
+	padding: 0 var(--space-1);
+	border: 1px solid var(--color-border);
+	border-radius: var(--review-corners);
+	font-size: var(--fontsize-small);
+}
+
+.review-comment__text {
+	margin: var(--space-1) 0;
+	overflow-wrap: anywhere;
+}
+
+.review-comment__reply,
+.review-form__now,
+.review-form__cancel {
+	font: inherit;
+	font-size: var(--fontsize-small);
+	cursor: pointer;
+}
+
+/*	The answers stand a step in, under the comment they answer	*/
+.review-answers {
+	margin: var(--space-1) 0 0 var(--space-2);
+	padding-left: var(--space-1);
+	border-left: 2px solid var(--color-border);
+}
+
+.review-answer:first-child {
+	border-top: 0;
+}
+
+.review-form {
+	margin-top: var(--space-2);
+}
+
+.review-form__field {
+	margin: 0 0 var(--space-1);
+}
+
+.review-form__label {
+	display: block;
+	margin-bottom: .25rem;
+	font-weight: 600;
+}
+
+.review-form__at {
+	width: 6rem;
+	max-width: 100%;
+	font-variant-numeric: tabular-nums;
+}
+
+.review-form__text {
+	box-sizing: border-box;
+	width: 100%;
+	font: inherit;
+}
+
+.review-form__answering {
+	margin: 0 0 var(--space-1);
+	font-weight: 600;
+}
+
+.review-state {
+	margin: 0 0 var(--space-1);
+}
+
+@media (max-width: 36rem) {
+
+	.review-item {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+
+	.review-item__folder {
+		grid-column: 1;
+	}
+}
+
+/*	What the script hides with the attribute stays hidden: a display above is an author's declaration, which beats the browser's [hidden]	*/
+.review-player [hidden] {
+	display: none;
+}

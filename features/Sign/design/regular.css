@@ -1,0 +1,33 @@
+/*	@name			Regular
+ *	@name-de		Regulär
+ *	@description	The form and the list as the feature draws them without a theme: the ground of the page with a line round them, slightly rounded corners and the room of a card inside, and the pad on a ground of its own.
+ *	@description-de	Das Formular und die Liste, wie das Feature sie ohne ein Theme zeichnet: der Grund der Seite mit einer Linie darum, leicht gerundete Ecken und der Platz einer Karte darin, und das Feld zum Zeichnen auf einem eigenen Grund.
+ *
+ *	@knob	ground		ground	colours		Ground of the pad	= default
+ *	@knob-de	ground		Grund des Feldes zum Zeichnen
+ *	@knob	space		scale	surfaces	Space inside the form, the pad and the list
+ *	@knob-de	space		Innenabstand von Formular, Feld und Liste
+ *	@knob	corners		scale	surfaces	Corners of the form, the pad and the list
+ *	@knob-de	corners		Ecken von Formular, Feld und Liste
+ *
+ *	Regular is the starting point of this feature: the layout is sign.css's own, so this file
+ *	sets the ladders and nothing else, and the middle of each is the value sign.css has as its
+ *	default - the form under it looks as it does without Design. The pad, the form and the list
+ *	take the same three.
+ */
+
+:where(:root) {
+	/*	The padding of the form, of the pad and of the list	*/
+	--sign-space--least:		var(--space-1);
+	--sign-space--less:			calc( var(--space-1) * 1.5 );
+	--sign-space--default:		calc( var(--space-2) * 1.5 );
+	--sign-space--more:			var(--space-3);
+	--sign-space--most:			var(--space-4);
+
+	/*	The radius of the four corners: square at the sharp end, then the radii of the page	*/
+	--sign-corners--least:		0rem;
+	--sign-corners--less:		var(--radius-small);
+	--sign-corners--default:	var(--radius);
+	--sign-corners--more:		var(--radius-large);
+	--sign-corners--most:		.75rem;
+}

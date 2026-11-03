@@ -1,0 +1,1481 @@
+<?php
+declare(strict_types=1);
+
+/**
+ *	Nino
+ *	members-smoke.php	Contract test for the Members feature (Modules\Members): the
+ *										manifest and the activation through \Nino\Features, the
+ *										components, the panel and its permission with the codes
+ *										of its refusals, the request for a link and what it
+ *										answers (the same for every address, a cap for the visitor
+ *										and one for the address), the link that opens a page which
+ *										asks and the button of that page that signs in and spends
+ *										it, the gate in front of the protected paths - at every
+ *										address a route gives them -, the
+ *										sign-out and the epoch that signs everybody out, an account
+ *										that is switched off, deactivation, the looks for the Design
+ *										feature, and - where node is on the path - the panel script's
+ *										own test. Travels with the feature and runs against the
+ *										checkout three levels up, or the one NINO_ROOT names (see
+ *										tests/harness.php there).
+ *
+ *	Usage: php features/Members/tests/members-smoke.php
+ *	       NINO_ROOT=../nino php features/Members/tests/members-smoke.php
+ */
+
+// The checkout this test runs against: three levels up when the feature sits
+// in a project's features/, else the one NINO_ROOT names (a checkout beside
+// the catalogue, say). The features root is this feature's own parent either
+// way, so the kernel's autoloader serves the class from here
+$root = getenv( 'NINO_ROOT' ) ?: dirname( __DIR__, 3 );
+defined( 'NINO_FEATURES_DIR' ) === true || define( 'NINO_FEATURES_DIR', dirname( __DIR__, 2 ) );
+require $root. '/tests/harness.php';
+
+$appData = ninoSandbox( 'members' );
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+// The project directory and its fill, which \Nino\request() registers from the
+// same key on every request - empty here, the way a site at the domain root has
+// it - and the website's address, which every link of a mail is built on
+// (\Nino\Html::absoluteUrl()): a site served from a directory, so that the
+// directory is seen to be kept in them
+$appData['/nino/dir'] = '';
+\Nino\Html::addFills( $appData, [ '[[/nino/dir]]' => '', '[[/project/website/general/url]]' => 'example.org/club' ], '*' );
+
+// What the kernel boots with, as far as the feature touches it: the components,
+// the [csrf] field, the [template] shortcode the login page is rendered with and
+// the guard that refuses a post without its token
+$appData['/nino/modules'] = [ '\\Nino\\Modules\\Components', '\\Nino\\Modules\\Csrf', '\\Nino\\Modules\\Template' ];
+\Nino\AppData::writeContentData( $appData, [ '/nino/modules', '/nino/locales/available', '/nino/locales/native' ] );
+\Nino\Csrf::init( $appData );
+
+// The workbench's entry point, which ninoCall() hands a panel action
+$panel = [ \Nino\Admin\Admin::class, 'handlePost' ];
+
+/*	A transport takes the mail so nothing is actually sent - the same
+	\Nino\Mail::TRANSPORT callback the Mailer feature registers. $delivery is what
+	the stub says about the mail, so that a refusal is as easy to make as a delivery	*/
+$mails = [];
+$delivery = true;
+\Nino\Callbacks::registerCallback( $appData, \Nino\Mail::TRANSPORT, static function( array &$appData, array &$mail ) use ( &$mails, &$delivery ): void {
+	$mails[] = $mail;
+	$mail['sent'] = $delivery;
+} );
+
+// What the features that build on this one are told: the account of a sign-in and of a sign-out
+$told = [];
+\Nino\Callbacks::registerCallback( $appData, '/members/login', static function( array &$appData, array &$account ) use ( &$told ): void {
+	$told[] = [ 'login', $account ];
+} );
+\Nino\Callbacks::registerCallback( $appData, '/members/logout', static function( array &$appData, array &$account ) use ( &$told ): void {
+	$told[] = [ 'logout', $account ];
+} );
+
+/**
+ *	A request of the site the way the web server hands it over, answered by the
+ *	routes and the callbacks that are registered: the request built, the
+ *	global callbacks of the response run - the csrf guard and the gate among them -
+ *	and then the route's own. A post carries the csrf token of the session unless
+ *	$csrf is false. Nothing is rendered
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$uri
+ *	@param		string		$method
+ *	@param		array 		$post
+ *	@param		bool			$csrf					Whether a post carries the token
+ *
+ *	@return 	array										The request, response and all
+ */
+function membersServe( array &$appData, string $uri, string $method = 'GET', array $post = [], bool $csrf = true ): array {
+
+	// What a request keeps for itself alone is gone before the next one begins
+	unset( $appData['./members/state'], $appData['./members/forms'], $appData['./members/confirm'] );
+
+	$_POST = $post + ( $method === 'POST' && $csrf === true ? [ '_csrf' => \Nino\Csrf::getToken( $appData ) ] : [] );
+	$request = ninoVisit( $appData, $uri, $method );
+	\Nino\Http::response( $appData, $request );
+	$_POST = [];
+
+	return $request;
+}
+
+/**
+ *	What a response says in the four places a visitor and a test read it: the
+ *	status, the Location and Cache-Control headers and the body
+ *
+ *	@param		array 		$request
+ *
+ *	@return 	array										[ status, location, cache-control, body ]
+ */
+function membersAnswer( array $request ): array {
+
+	$response = $request['/nino/http/response'];
+
+	return [ $response['statusCode'], (string) ( $response['header']['Location'] ?? '' ), (string) ( $response['header']['Cache-Control'] ?? '' ), $response['body'] ?? '' ];
+}
+
+/**
+ *	The data files of the feature as they are on disk, read fresh
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$name					accounts, tokens or session
+ *
+ *	@return 	array
+ */
+function membersFile( array &$appData, string $name ): array {
+
+	$file = [ 'accounts' => '/data/members.php', 'tokens' => '/data/members-tokens.php', 'session' => '/data/members-session.php', 'tries' => '/data/members-tries.php' ][$name];
+	$state = \Nino\Filesystem::getFileContent( $appData, $file, [] );
+
+	return is_array( $state ) === true ? $state : [];
+}
+
+/**
+ *	A new window for every cap: the visitor's and the address's counter of the
+ *	feature and the mail cap of the kernel, which counts the same client
+ *
+ *	@param		array 		&$appData
+ *
+ *	@return 	void
+ */
+function membersFresh( array &$appData ): void {
+
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+}
+
+/**
+ *	The id of the account with an address
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$email
+ *
+ *	@return 	string										'' for an address nobody has
+ */
+function membersIdOf( array &$appData, string $email ): string {
+
+	return (string) ( array_column( \Nino\Modules\Members::accounts( $appData ), 'id', 'email' )[$email] ?? '' );
+}
+
+/**
+ *	Send an account a link and hand over its token, the way a member holds it: out of
+ *	the mail. Every cap starts afresh
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$account
+ *	@param		string		$kind					login or invite
+ *	@param		string		$target				The path the link leads to
+ *
+ *	@return 	string										'' where no mail went out
+ */
+function membersLink( array &$appData, array $account, string $kind = 'login', string $target = '' ): string {
+
+	global $mails;
+
+	membersFresh( $appData );
+	$count = count( $mails );
+
+	return \Nino\Modules\Members::link( $appData, $account, $kind, $target ) === true && count( $mails ) === $count + 1 ? membersTokenOf( $mails[$count] ) : '';
+}
+
+/**
+ *	Follow a link and press the button of the page it opens: the page is asked for, so that the session
+ *	holds the csrf token the page's form carries, and the token is posted with that one
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$token
+ *
+ *	@return 	array										The answer to the button
+ */
+function membersConfirm( array &$appData, string $token ): array {
+
+	membersServe( $appData, '/.members/login?t='. $token );
+
+	return membersAnswer( membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $token ] ) );
+}
+
+/**
+ *	Sign an account in the way a member does: ask for a link, follow it and press the button
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$account
+ *	@param		string		$target				The path the link leads to
+ *
+ *	@return 	array										The answer to the button
+ */
+function membersSignIn( array &$appData, array $account, string $target = '' ): array {
+
+	return membersConfirm( $appData, membersLink( $appData, $account, 'login', $target ) );
+}
+
+/**
+ *	A visitor who has never been here: no session, nobody signed in
+ *
+ *	@return 	void
+ */
+function membersVisitor(): void {
+
+	$_SESSION = [];
+}
+
+/**
+ *	The token a mail carries: the value of t in the link it holds, as an address a
+ *	visitor can follow - the path and the query, with the website's directory off
+ *
+ *	@param		array 		$mail
+ *
+ *	@return 	string										'' for a mail without a link
+ */
+function membersTokenOf( array $mail ): string {
+
+	return preg_match( '~href="https://example\.org/club/\.members/login\?t=([A-Za-z0-9_-]+)"~', (string) ( $mail['body'] ?? '' ), $found ) === 1 ? $found[1] : '';
+}
+
+/**
+ *	The elements of a rendered piece of html by xpath, as a document reads them
+ *
+ *	@param		string		$html
+ *	@param		string		$query
+ *
+ *	@return 	array										The DOMElements
+ */
+function membersFind( string $html, string $query ): array {
+
+	$document = new DOMDocument();
+	libxml_use_internal_errors( true );
+	$document->loadHTML( '<?xml encoding="UTF-8"><body>'. $html. '</body>' );
+	libxml_clear_errors();
+
+	return iterator_to_array( ( new DOMXPath( $document ) )->query( $query ) ?: [] );
+}
+
+/**
+ *	The text of the first element a query finds in a piece of html
+ *
+ *	@param		string		$html
+ *	@param		string		$query
+ *
+ *	@return 	string|null								Trimmed; null where the query finds nothing
+ */
+function membersText( string $html, string $query ): ?string {
+
+	$found = membersFind( $html, $query );
+
+	return $found === [] ? null : trim( $found[0]->textContent );
+}
+
+/**
+ *	@param		DOMElement	$element
+ *
+ *	@return 	array										The classes of the element
+ */
+function membersClasses( DOMElement $element ): array {
+
+	return array_values( array_filter( preg_split( '/\s+/', $element->getAttribute( 'class' ) ) ?: [] ) );
+}
+
+
+// --- The feature - manifest and activation -------------------------------------
+
+echo "The feature - manifest and activation\n";
+
+$dir = dirname( __DIR__ );
+$manifest = \Nino\Features::manifest( $dir );
+check( 'the manifest validates, key "members", without a warning', is_array( $manifest ) && $manifest['key'] === 'members' && ninoWarnings() === [] );
+check( 'key, class and version are what the directory and the plan say', is_array( $manifest ) && $manifest['module'] === '\\Nino\\Modules\\Members' && $manifest['version'] === '1.0.0' && $manifest['category'] === 'security'
+	&& \Nino\Features::satisfies( $manifest['nino'] ) === true && $manifest['requires'] === [] );
+check( 'it names itself in both interface languages', is_array( $manifest ) && \Nino\Features::localized( $manifest['name'], 'de_DE' ) !== \Nino\Features::localized( $manifest['name'], 'en_US' )
+	&& \Nino\Features::localized( $manifest['description'], 'de_DE' ) !== \Nino\Features::localized( $manifest['description'], 'en_US' ) );
+check( 'it owns the three files of the accounts, the links and the epoch - and not the counter, which is an hour long', is_array( $manifest ) && $manifest['data'] === [ '/data/members.php', '/data/members-tokens.php', '/data/members-session.php' ] );
+check( 'the settings are the five of the plan, each with its default and its bounds', is_array( $manifest ) && array_keys( $manifest['settings'] ) === [ 'paths', 'start', 'linkMinutes', 'inviteDays', 'attempts' ]
+	&& $manifest['settings']['paths']['type'] === 'lines' && $manifest['settings']['start']['default'] === '/'
+	&& [ $manifest['settings']['linkMinutes']['default'], $manifest['settings']['linkMinutes']['min'], $manifest['settings']['linkMinutes']['max'] ] === [ 15, 5, 1440 ]
+	&& [ $manifest['settings']['inviteDays']['default'], $manifest['settings']['inviteDays']['min'], $manifest['settings']['inviteDays']['max'] ] === [ 7, 1, 30 ]
+	&& [ $manifest['settings']['attempts']['default'], $manifest['settings']['attempts']['min'], $manifest['settings']['attempts']['max'] ] === [ 5, 1, 50 ] );
+check( 'it says all six sections of its manual in both languages, and its section of the privacy policy as a starting point', is_array( $manifest ) && (function() use ( $manifest ): bool {
+	foreach( \Nino\Features::MANUAL_SECTIONS as $section )
+		foreach( (array) ( $manifest['manual'][$section] ?? [] ) as $line )
+			if( is_array( $line ) === false || trim( (string) ( $line['en_US'] ?? '' ) ) === '' || trim( (string) ( $line['de_DE'] ?? '' ) ) === '' )
+				return false;
+	return isset( $manifest['manual']['install']['elements/privacy.php'] ) === true && count( $manifest['manual']['shortcodes'] ) >= 3 && count( $manifest['manual']['routes'] ) === 4 && count( $manifest['manual']['callbacks'] ) >= 4;
+} )() );
+
+// The catalogue's preview reads every manifest through the kernel, and is a script of the
+// catalogue: it is there when this test runs in the repository, not when the feature has
+// been dropped into a project - bin/check.sh and the CI run it as a step of their own
+$preview = dirname( __DIR__, 3 ). '/bin/catalogue.php';
+
+if( is_file( $preview ) === false )
+	echo "  note - no bin/catalogue.php beside this feature: the catalogue's preview was not asked\n";
+else {
+	$listed = json_decode( (string) shell_exec( escapeshellarg( PHP_BINARY ). ' '. escapeshellarg( $preview ). ' '. escapeshellarg( $root ). ' 2>/dev/null' ), true );
+	check( 'the catalogue preview lists it, with its category and its version', is_array( $listed ) && count( array_filter( (array) ( $listed['features'] ?? [] ), static fn( mixed $entry ): bool => is_array( $entry ) === true
+		&& ( $entry['key'] ?? '' ) === 'members' && ( $entry['category'] ?? '' ) === 'security' && ( $entry['version'] ?? '' ) === '1.0.0' ) ) === 1 );
+}
+
+$privacyType = $root. '/_nino/Nino/Modules/Legal';
+
+// The Legal module's type is what the feature's section is added to: put there first, where the kernel has the module
+if( class_exists( '\\Nino\\Modules\\Legal' ) === true ) {
+	$routes = [];
+	$blacklist = [];
+	$config = [];
+	\Nino\Features::applyUnit( $appData, $privacyType. '/install', [ 'de_DE', 'en_US' ], $routes, $blacklist, $config, true );
+}
+
+ninoWarnings();
+check( 'the registry lists it, inactive, with nothing in the way', ( \Nino\Features::get( $appData, 'members' )['active'] ?? null ) === false && ( \Nino\Features::get( $appData, 'members' )['problems'] ?? null ) === [] );
+check( 'activation succeeds', \Nino\Features::activate( $appData, 'members' ) === true );
+check( 'the class is listed in /nino/modules, and the version is recorded', in_array( '\\Nino\\Modules\\Members', \Nino\Filesystem::getFileContent( $appData, '/config.php', [] )['/nino/modules'], true ) === true
+	&& \Nino\Features::get( $appData, 'members' )['installed'] === '1.0.0' );
+check( 'the unit copied the login page and the confirm page, and merged its words into both languages', is_file( \Nino\Filesystem::path( $appData, '/templates/page-members-login.tpl' ) ) === true && is_file( \Nino\Filesystem::path( $appData, '/templates/page-members-confirm.tpl' ) ) === true
+	&& array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => trim( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/feature/members/login/button]]'] ?? '' ) ) === '' ) === [] );
+
+// Add-only: a copy the project changed stays when the feature is activated again
+$pageFile = \Nino\Filesystem::path( $appData, '/templates/page-members-login.tpl' );
+file_put_contents( $pageFile, "<!-- the project's own -->\n". (string) file_get_contents( $pageFile ) );
+$changedPage = (string) file_get_contents( $pageFile );
+unset( $appData['./nino/features/all'] );
+check( 'activating again leaves a copy of the page the project changed as it is', \Nino\Features::activate( $appData, 'members' ) === true && (string) file_get_contents( $pageFile ) === $changedPage );
+
+if( class_exists( '\\Nino\\Modules\\Legal' ) === false )
+	echo "  note - this Nino has no \\Nino\\Modules\\Legal: the section of the privacy policy was not looked for\n";
+else {
+	$privacy = \Nino\Filesystem::getFileContent( $appData, '/elements/privacy.php', [] );
+	check( 'the section of the privacy policy is there in both languages, at its position', isset( $privacy['de_DE']['members']['title'], $privacy['en_US']['members']['text'] ) === true && ( $privacy['*']['members']['order'] ?? null ) === 830 );
+
+	$privacy['en_US']['members']['text'] = '<p>The editor changed this.</p>';
+	\Nino\Filesystem::putFileContent( $appData, '/elements/privacy.php', $privacy );
+	unset( $appData['./nino/features/all'] );
+	\Nino\Features::activate( $appData, 'members' );
+	check( 'a second activation changes nothing of it - a section the editor changed stays', \Nino\Filesystem::getFileContent( $appData, '/elements/privacy.php', [] ) === $privacy );
+}
+
+\Nino\Html::init( $appData );
+\Nino\Modules::callModules( $appData, 'init' );
+
+echo "\nThe components - registry, and what a visitor is shown\n";
+
+$registry = \Nino\Modules\Components::components( $appData );
+$schemas = array_intersect_key( $registry, array_flip( [ 'members-login', 'members-logout', 'members-name', 'members-confirm' ] ) );
+
+check( 'the registry knows the four as this feature\'s own, each with what it draws, where it may stand and a picture of its own - the confirmation in a section alone, the others in a section, a card and a hero',
+	array_keys( $schemas ) === [ 'members-login', 'members-logout', 'members-name', 'members-confirm' ] && array_unique( array_column( $schemas, 'by' ) ) === [ 'members' ]
+	&& array_values( array_column( $schemas, 'draws' ) ) === [ 'form .members-login', 'a .members-logout', 'span .members-name', 'form .members-confirm' ]
+	&& array_values( array_column( $schemas, 'preview' ) ) === [ 'block', 'button', 'text', 'block' ]
+	&& array_values( array_map( 'json_encode', array_column( $schemas, 'in' ) ) ) === [ '["section","card","hero"]', '["section","card","hero"]', '["section","card","hero"]', '["section"]' ]
+	&& array_filter( $schemas, static fn( array $schema ): bool => $schema['source'] !== 'none' || $schema['loop'] !== false || count( $schema['icon'] ) < 2 ) === [] );
+check( '...only the form has an attribute: whether it stands in one line, off by default', array_keys( $schemas['members-login']['attributes'] ) === [ 'inline' ] && $schemas['members-login']['attributes']['inline']['type'] === 'bool'
+	&& \Nino\Modules\Components::defaults( $appData, 'members-login' ) === [ 'inline' => '0', 'class' => '' ] && \Nino\Modules\Components::defaults( $appData, 'members-logout' ) === [ 'class' => '' ]
+	&& \Nino\Modules\Components::defaults( $appData, 'members-name' ) === [ 'class' => '' ] && \Nino\Modules\Components::defaults( $appData, 'members-confirm' ) === [ 'class' => '' ] );
+check( '...and init registers no shortcode of its own beside them: the components are the manifest\'s', isset( $appData['./nino/html/shortcodes']['members-login'] ) === true
+	&& count( \Nino\Callbacks::registered( $appData, '/nino/html/shortcode/members-login' ) ) === 1 );
+
+// The page the visitor is on, as the form reads it: the query decides what it says, the path is where it goes back to
+ninoVisit( $appData, '/join?members=sent&x=1' );
+$form = \Nino\Html::renderHtml( $appData, '[members-login]' );
+$forms = membersFind( $form, '//form' );
+$fields = membersFind( $form, '//form//input' );
+$byName = [];
+
+foreach( $fields as $field )
+	$byName[ $field->getAttribute( 'name' ) ] = $field;
+
+check( 'for a visitor [members-login] is one form that posts to /.members/login, with a field for the address, a button and no password',
+	count( $forms ) === 1 && strtolower( $forms[0]->getAttribute( 'method' ) ) === 'post' && $forms[0]->getAttribute( 'action' ) === '/.members/login'
+	&& count( membersFind( $form, '//form//button[@type="submit"]' ) ) === 1 && array_keys( $byName ) === [ 'return', '_csrf', 'email' ]
+	&& $byName['email']->getAttribute( 'type' ) === 'email' && $byName['email']->hasAttribute( 'required' ) === true && $byName['email']->getAttribute( 'autocomplete' ) === 'email' );
+check( '...it carries the session\'s csrf token, and the page it is on as the one the answer goes back to - the path without its query',
+	$byName['_csrf']->getAttribute( 'type' ) === 'hidden' && $byName['_csrf']->getAttribute( 'value' ) === \Nino\Csrf::getToken( $appData )
+	&& $byName['return']->getAttribute( 'type' ) === 'hidden' && $byName['return']->getAttribute( 'value' ) === '/join' );
+check( '...its label belongs to the field', membersFind( $form, '//form//label' )[0]->getAttribute( 'for' ) === $byName['email']->getAttribute( 'id' ) && $byName['email']->getAttribute( 'id' ) !== '' );
+check( '...and it is no .nino-form: the kernel\'s script posts such a form by XHR, which swallows the redirect its answer is', in_array( 'nino-form', membersClasses( $forms[0] ), true ) === false
+	&& in_array( 'members-login', membersClasses( $forms[0] ), true ) === true );
+check( 'the query says what the form says above its button: a paragraph that is not empty and holds no key left unresolved', count( membersFind( $form, '//form/p[contains(concat(" ", normalize-space(@class), " "), " members-login__state ")]' ) ) === 1
+	&& trim( membersFind( $form, '//form/p' )[0]->textContent ) !== '' && str_contains( $form, '[[' ) === false );
+
+$states = [];
+$english = [];
+$language = \Nino\Locales::getCurrentLocale( $appData );
+
+foreach( [ 'sent', 'limit', 'invalid', 'out', 'expired' ] as $state ) {
+	ninoVisit( $appData, '/join?members='. $state );
+	$states[$state] = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' );
+	\Nino\Locales::useLocale( $appData, 'en_US' );
+	$english[$state] = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' );
+	\Nino\Locales::useLocale( $appData, $language );
+}
+
+// The language of the page is the one the words come in: a text a language has not got is shown in another, which the same words in two of them give away
+check( '...each of the five states has a message of its own, in the language of the page', array_filter( $states, static fn( array $found ): bool => count( $found ) !== 1 || trim( $found[0]->textContent ) === '' ) === []
+	&& count( array_unique( array_map( static fn( array $found ): string => trim( $found[0]->textContent ), $states ) ) ) === 5 && $language !== 'en_US'
+	&& array_filter( $states, static fn( array $found, string $state ): bool => count( $english[$state] ) !== 1 || trim( $english[$state][0]->textContent ) === trim( $found[0]->textContent ), ARRAY_FILTER_USE_BOTH ) === [] );
+
+$none = [];
+
+foreach( [ '', '?members=', '?members=SENT', '?members=other', '?members[]=sent', '?members=sent%20', '?members=<b>x</b>' ] as $query ) {
+	ninoVisit( $appData, '/join'. $query );
+	$none[$query] = count( membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' ) );
+}
+
+check( '...and anything else in the query, an array and a made-up word among it, is no state: there is no paragraph', array_filter( $none ) === [] );
+
+ninoVisit( $appData, '/join?members=sent' );
+$appData['./members/state'] = 'invalid';
+$set = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' );
+ninoVisit( $appData, '/join' );
+$setOnly = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' );
+unset( $appData['./members/state'] );
+$appData['./members/state'] = 'not a state';
+$setWrong = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' );
+unset( $appData['./members/state'] );
+
+check( 'a state a callback set wins over the query, and is a state without it - when it is one of the five', count( $set ) === 1 && count( $setOnly ) === 1 && $set[0]->textContent === $setOnly[0]->textContent
+	&& $set[0]->textContent !== $states['sent'][0]->textContent && $set[0]->textContent === $states['invalid'][0]->textContent && count( $setWrong ) === 0 );
+
+ninoVisit( $appData, '/join' );
+$twice = \Nino\Html::renderHtml( $appData, '[members-login inline="1" class="wide"][members-login]' );
+$both = membersFind( $twice, '//form' );
+$labels = membersFind( $twice, '//form//label' );
+
+check( 'inline puts the form on one line and the label for screen readers only; a class of the call is added to the form', count( $both ) === 2
+	&& in_array( 'nino-form--inline', membersClasses( $both[0] ), true ) === true && in_array( 'wide', membersClasses( $both[0] ), true ) === true && in_array( 'nino-sr-only', membersClasses( $labels[0] ), true ) === true
+	&& in_array( 'nino-form--inline', membersClasses( $both[1] ), true ) === false && in_array( 'wide', membersClasses( $both[1] ), true ) === false && in_array( 'nino-sr-only', membersClasses( $labels[1] ), true ) === false );
+check( '...two forms on a page do not share an id, each label pointing at its own field', $labels[0]->getAttribute( 'for' ) !== $labels[1]->getAttribute( 'for' )
+	&& count( membersFind( $twice, '//input[@id="'. $labels[0]->getAttribute( 'for' ). '"]' ) ) === 1 && count( membersFind( $twice, '//input[@id="'. $labels[1]->getAttribute( 'for' ). '"]' ) ) === 1 );
+check( '[members-logout] and [members-name] show a visitor nothing at all, so that a frame can carry them for everybody - and [members-confirm] shows nothing where no link is being confirmed',
+	\Nino\Html::renderHtml( $appData, '[members-logout]' ) === '' && \Nino\Html::renderHtml( $appData, '[members-name]' ) === '' && \Nino\Html::renderHtml( $appData, '[members-logout class="x"]' ) === ''
+	&& \Nino\Html::renderHtml( $appData, '[members-confirm]' ) === '' );
+check( 'a hand-written call with an attribute nobody declared still renders', count( membersFind( \Nino\Html::renderHtml( $appData, '[members-login nonsense="1"]' ), '//form' ) ) === 1 && ninoWarnings() === [] );
+
+// The two pages are page templates the Builder composes: the copy the project has was changed above, so the file of the unit is read from another name
+if( class_exists( '\\Nino\\Modules\\Builder\\Document' ) === false )
+	echo "  note - there is no Builder feature beside this one: the pages were not offered to it\n";
+else {
+	$builder = [];
+
+	foreach( [ 'page-members-login', 'page-members-confirm' ] as $page ) {
+		$original = (string) file_get_contents( $dir. '/install/templates/'. $page. '.tpl' );
+		file_put_contents( \Nino\Filesystem::path( $appData, '/templates/page-members-original.tpl' ), $original );
+		$listed = array_values( array_filter( \Nino\Modules\Builder\Document::list( $appData )['templates'] ?? [], static fn( array $each ): bool => $each['file'] === 'page-members-original' ) );
+		$read = \Nino\Modules\Builder\Document::load( $appData, 'page-members-original' );
+		$written = ( $read['status'] ?? 0 ) === 200 ? \Nino\Modules\Builder\Document::source( $appData, $read['model'] ) : [];
+		$builder[$page] = count( $listed ) === 1 && $listed[0]['readable'] === true && $listed[0]['editable'] === true && $listed[0]['sections'] === 1 && ( $read['status'] ?? 0 ) === 200
+			&& \Nino\Modules\Builder\Document::problems( $appData, $read['model'], \Nino\Modules\Builder\Document::schemas( $appData ) ) === [] && ( $written['source'] ?? null ) === $original;
+		unlink( \Nino\Filesystem::path( $appData, '/templates/page-members-original.tpl' ) );
+	}
+
+	check( 'the Builder lists the login page and the confirm page as pages it can read and edit - one section each, with [members-login] and [members-confirm] components it knows - and writes them back byte for byte', $builder === [ 'page-members-login' => true, 'page-members-confirm' => true ] );
+}
+
+// The look of the site's mails: the base unit's words, which a project has from its wizard
+if( is_file( $root. '/_admin/install/library/base/text/global.php' ) === true )
+	\Nino\Html::addFills( $appData, (array) include $root. '/_admin/install/library/base/text/global.php', '*' );
+
+\Nino\Html::addFills( $appData, [ '[[/nino/dir]]' => '', '[[/project/website/general/url]]' => 'example.org/club' ], '*' );
+
+// The minimum of a page: the frames the login page is rendered between
+file_put_contents( \Nino\Filesystem::path( $appData, '/templates/html-header.tpl' ), '<html><body>' );
+file_put_contents( \Nino\Filesystem::path( $appData, '/templates/html-footer.tpl' ), '</body></html>' );
+
+// Pages for the protected paths and outside them
+$appData['/nino/http/routes']['GET://club/news'] = [ 'uri' => '/club/news', 'body' => 'FOR MEMBERS' ];
+$appData['/nino/http/routes']['GET://clubhouse'] = [ 'uri' => '/clubhouse', 'body' => 'FOR EVERYBODY' ];
+$appData['/nino/http/routes']['GET://news'] = [ 'uri' => '/news', 'body' => 'FOR EVERYBODY' ];
+
+// The page /club has an address in each language its routes give it: the German ones carry its uri and a locale of their own
+$appData['/nino/http/routes']['GET://club'] = [ 'uri' => '/club', 'locale' => 'en_US', 'body' => 'FOR MEMBERS' ];
+$appData['/nino/http/routes']['GET://verein'] = [ 'uri' => '/club', 'locale' => 'de_DE', 'body' => 'FOR MEMBERS' ];
+$appData['/nino/http/routes']['GET://verein/*'] = [ 'uri' => '/club/*', 'locale' => 'de_DE', 'body' => 'FOR MEMBERS' ];
+
+echo "\n";
+
+
+// --- The panel -----------------------------------------------------------------
+
+echo "Modules\\Members\\Admin - the accounts, and their permission\n";
+
+// A set-up project with a full-access account, the way the wizard leaves one
+$appData['/nino/install/completed'] = true;
+ninoUser( $appData, 'plain@example.com', [], 'plain password' );
+ninoUser( $appData, 'admin@example.com' );
+
+check( 'the panel is in the registry while the feature is active, in the rail\'s group of the features', isset( \Nino\Admin\Admin::panels( $appData )['members'] ) === true
+	&& \Nino\Admin\Admin::panels( $appData )['members']['group'] === 'features' );
+check( '...with one action for each thing it does, all under its slug', array_keys( array_filter( \Nino\Admin\Admin::actions( $appData ), static fn( string $action ): bool => str_starts_with( $action, 'members/' ), ARRAY_FILTER_USE_KEY ) )
+	=== [ 'members/list', 'members/add', 'members/save', 'members/delete', 'members/link', 'members/signout' ] );
+
+$posts = [ 'members/list' => [], 'members/add' => [ 'email' => 'nobody@example.org' ], 'members/save' => [ 'id' => '0123456789ab', 'name' => 'x' ], 'members/delete' => [ 'id' => '0123456789ab' ],
+	'members/link' => [ 'id' => '0123456789ab' ], 'members/signout' => [] ];
+$denied = [ 'signed out' => [], 'without the permission' => [] ];
+
+unset( $appData['./nino/auth/current'] );
+
+foreach( $posts as $action => $data ) {
+	[ $status, $body ] = ninoCall( $appData, $panel, $data, $action );
+	$denied['signed out'][$action] = [ $status, $body['code'] ?? '' ];
+}
+
+\Nino\Auth::loginUser( $appData, 'plain@example.com', 'plain password' );
+
+foreach( $posts as $action => $data ) {
+	[ $status, $body ] = ninoCall( $appData, $panel, $data, $action );
+	$denied['without the permission'][$action] = [ $status, $body['code'] ?? '' ];
+}
+
+check( 'every action refuses a visitor with 401 and the code session', array_values( array_unique( array_map( 'json_encode', $denied['signed out'] ) ) ) === [ '[401,"session"]' ] && count( $denied['signed out'] ) === 6 );
+check( '...and an account without the permission with 403, writing nothing', array_values( array_unique( array_map( 'json_encode', $denied['without the permission'] ) ) ) === [ '[403,""]' ]
+	&& membersFile( $appData, 'accounts' ) === [] && $mails === [] && membersFile( $appData, 'session' ) === [] );
+
+\Nino\Auth::loginUser( $appData, 'admin@example.com', 'correct horse battery staple' );
+membersFresh( $appData );
+
+[ $status, $body ] = ninoCall( $appData, $panel, [], 'members/list' );
+check( 'the list of a project without a member is empty, and so are the groups', $status === 200 && $body === [ 'accounts' => [], 'groups' => [] ] );
+
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'email' => ' Ada@Example.ORG ', 'name' => ' Ada Lovelace ', 'group' => 'Premium Members', 'invite' => false ], 'members/add' );
+$stored = membersFile( $appData, 'accounts' )['accounts'] ?? [];
+$id = (string) array_key_first( $stored );
+$record = $stored[$id] ?? [];
+
+check( 'add stores the account the way the plan has it: an id of 12 hex characters, the address in lower case, the name trimmed, the group as a slug, active, the time of its making, no sign-in yet',
+	$status === 200 && preg_match( '/^[0-9a-f]{12}$/D', $id ) === 1 && count( $stored ) === 1 && array_keys( $record ) === [ 'email', 'name', 'group', 'active', 'created', 'login' ]
+	&& $record['email'] === 'ada@example.org' && $record['name'] === 'Ada Lovelace' && $record['group'] === 'premium-members' && $record['active'] === true && $record['login'] === null
+	&& preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $record['created'] ) === 1 && abs( strtotime( $record['created'] ) - time() ) < 10 );
+check( '...and answers with it, id and all, and with no invitation sent when the form did not ask for one', $body['account'] === [ 'id' => $id ] + $record && $body['invited'] === false && $mails === [] );
+check( '...the module\'s own readings agree: account(), accounts(), groups() and, with no session, current()', \Nino\Modules\Members::account( $appData, $id ) === [ 'id' => $id ] + $record
+	&& \Nino\Modules\Members::accounts( $appData ) === [ [ 'id' => $id ] + $record ] && \Nino\Modules\Members::groups( $appData ) === [ 'premium-members' ]
+	&& \Nino\Modules\Members::account( $appData, 'ffffffffffff' ) === null && \Nino\Modules\Members::current( $appData ) === null );
+
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'email' => 'ADA@example.org', 'name' => 'Another Ada' ], 'members/add' );
+check( 'an address that is a member\'s already - in whatever case - is refused with 400, the code members_taken and the field email', $status === 400 && $body['code'] === 'members_taken' && $body['field'] === 'email' && count( membersFile( $appData, 'accounts' )['accounts'] ) === 1 );
+
+$refused = [];
+
+foreach( [ 'a text' => 'not an address', 'empty' => '', 'two addresses' => 'a@example.org, b@example.org', 'a list' => [ 'a@example.org' ], 'too long' => str_repeat( 'a', 250 ). '@example.org' ] as $kind => $email ) {
+	ninoWarnings();
+	[ $status, $body ] = ninoCall( $appData, $panel, [ 'email' => $email ], 'members/add' );
+	$refused[$kind] = [ $status, $body['code'] ?? '', $body['field'] ?? '', ninoWarnings() ];
+}
+
+check( 'an address that is none - a text, nothing, two, a list, one too long - is 400, members_invalid, the field email, and no warning', array_values( array_unique( array_map( 'json_encode', $refused ) ) ) === [ '[400,"members_invalid","email",[]]' ] && count( $refused ) === 5 );
+
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'email' => 'long@example.org', 'name' => str_repeat( 'x', 121 ) ], 'members/add' );
+[ $statusEdge ] = ninoCall( $appData, $panel, [ 'email' => 'edge@example.org', 'name' => str_repeat( 'ü', 120 ), 'invite' => false ], 'members/add' );
+check( 'a name of more than 120 characters is 400 with the code members_long, the limit in its params and the field name - 120 of them are fine, counted as characters',
+	$status === 400 && $body['code'] === 'members_long' && $body['params'] === [ 120 ] && $body['field'] === 'name' && $statusEdge === 200 && count( membersFile( $appData, 'accounts' )['accounts'] ) === 2 );
+
+foreach( [ 'members_invalid', 'members_taken', 'members_long', 'members_unknown', 'members_inactive', 'members_mail', 'members_ratelimit' ] as $code )
+	foreach( [ 'en_US', 'de_DE' ] as $locale )
+		check( "...the code $code has its sentence in $locale", trim( \Nino\Admin\Admin::textFills( $appData, '/features/Members/text', $locale )['[[/_admin/error/'. $code. ']]'] ?? '' ) !== '' );
+
+foreach( [ 'en_US', 'de_DE' ] as $locale )
+	check( "...the sentence of members_ratelimit in $locale is not empty and names the hour", preg_match( '/Stunde|hour/', trim( \Nino\Admin\Admin::textFills( $appData, '/features/Members/text', $locale )['[[/_admin/error/members_ratelimit]]'] ?? '' ) ) === 1 );
+
+// An invitation: the account is added and a link goes to its address, valid for the days the setting names
+membersFresh( $appData );
+$mails = [];
+$before = time();
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'email' => 'bert@example.org', 'name' => 'bert', 'group' => '', 'invite' => true ], 'members/add' );
+$bert = (string) ( $body['account']['id'] ?? '' );
+$token = membersTokenOf( $mails[0] ?? [] );
+$tokens = membersFile( $appData, 'tokens' );
+$entry = $tokens[ hash( 'sha256', $token ) ] ?? [];
+$mailText = strip_tags( (string) ( $mails[0]['body'] ?? '' ) );
+
+check( 'add with the invitation ticked sends one mail to the address: a link of the website with a token of 43 characters, the site named and no key or token left in the text',
+	$status === 200 && $body['invited'] === true && count( $mails ) === 1 && $mails[0]['to'] === 'bert@example.org' && strlen( $token ) === 43 && trim( (string) $mails[0]['subject'] ) !== '' && str_contains( (string) $mails[0]['subject'], '[[' ) === false
+	&& str_contains( (string) $mails[0]['body'], '[[' ) === false && str_contains( $mailText, \Nino\Html::renderTextfill( $appData, '/project/company/general/name' ) ) === true );
+check( '...the mail replies to the contact address of the project', $mails[0]['replyTo'] === \Nino\Html::renderTextfill( $appData, '/project/company/contact/email' ) && $mails[0]['replyTo'] !== '' );
+check( '...the file of the links keeps the sha256 of the token and never the token: an invitation of this account, good for the days of the setting, with no page to go on to',
+	count( $tokens ) === 1 && array_keys( $entry ) === [ 'account', 'kind', 'expires', 'target' ] && $entry['account'] === $bert && $entry['kind'] === 'invite' && $entry['target'] === ''
+	&& $entry['expires'] >= $before + 7 * 86400 - 2 && $entry['expires'] <= time() + 7 * 86400 + 2 && str_contains( (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/members-tokens.php' ) ), $token ) === false );
+check( '...and says the days: the setting\'s number stands in the text', preg_match( '/(?<![\d.])7(?![\d.])/', $mailText ) === 1 );
+
+\Nino\Features::saveSettings( $appData, 'members', [ 'inviteDays' => 3 ] );
+membersFresh( $appData );
+$mails = [];
+ninoCall( $appData, $panel, [ 'email' => 'c@example.org', 'invite' => true ], 'members/add' );
+check( '...a different number of days is the number in the next one, and the entry runs out then', preg_match( '/(?<![\d.])3(?![\d.])/', strip_tags( (string) ( $mails[0]['body'] ?? '' ) ) ) === 1
+	&& ( membersFile( $appData, 'tokens' )[ hash( 'sha256', membersTokenOf( $mails[0] ?? [] ) ) ]['expires'] ?? 0 ) <= time() + 3 * 86400 + 2 );
+\Nino\Features::saveSettings( $appData, 'members', [ 'inviteDays' => 7 ] );
+
+// The site\'s own language, whoever is at the screen: the account is written to in the language of the website, and the screen\'s stays
+$appData['./nino/locales/current'] = 'en_US';
+membersFresh( $appData );
+$mails = [];
+ninoCall( $appData, $panel, [ 'email' => 'd@example.org', 'invite' => true ], 'members/add' );
+$native = \Nino\Html::getFills( $appData, 'de_DE' )['[[/feature/members/mail/invite-subject]]'];
+$other = \Nino\Html::getFills( $appData, 'en_US' )['[[/feature/members/mail/invite-subject]]'];
+check( 'an invitation goes out in the site\'s native language, and the language of the request is back afterwards', $native !== $other && ( $mails[0]['subject'] ?? '' ) === $native && $appData['./nino/locales/current'] === 'en_US' );
+$appData['./nino/locales/current'] = 'de_DE';
+ninoCall( $appData, $panel, [ 'id' => membersIdOf( $appData, 'd@example.org' ) ], 'members/delete' );
+
+// A mail no transport takes: the account is there all the same, and the answer says that the mail is what failed
+membersFresh( $appData );
+$delivery = false;
+ninoWarnings();
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'email' => 'zoe@example.org', 'name' => 'Zoe', 'invite' => true ], 'members/add' );
+$delivery = true;
+check( 'an invitation that could not be sent is a 500 with the code members_mail - and the account is there', $status === 500 && $body['code'] === 'members_mail'
+	&& in_array( 'zoe@example.org', array_column( membersFile( $appData, 'accounts' )['accounts'], 'email' ), true ) === true );
+
+// The list: sorted by name, the address where there is none - and the member made last, with the group that sorts last, is neither the last of the list nor the last of the groups
+ninoCall( $appData, $panel, [ 'id' => membersIdOf( $appData, 'edge@example.org' ) ], 'members/delete' );
+ninoCall( $appData, $panel, [ 'email' => 'abe@example.org', 'name' => 'abe', 'group' => 'Zeta', 'invite' => false ], 'members/add' );
+
+[ $status, $body ] = ninoCall( $appData, $panel, [], 'members/list' );
+check( 'the list is sorted by name, without regard to case, and by the address where an account has no name; the groups are the ones in use', $status === 200
+	&& array_column( $body['accounts'], 'email' ) === [ 'abe@example.org', 'ada@example.org', 'bert@example.org', 'c@example.org', 'zoe@example.org' ] && $body['groups'] === [ 'premium-members', 'zeta' ]
+	&& array_keys( $body['accounts'][0] ) === [ 'id', 'email', 'name', 'group', 'active', 'created', 'login' ] );
+
+// save: the member has signed in once, which is a time the change keeps
+$stamped = membersFile( $appData, 'accounts' );
+$stamped['accounts'][$id]['login'] = '2024-05-06T07:08:09Z';
+\Nino\Filesystem::putFileContent( $appData, '/data/members.php', $stamped );
+$whole = membersFile( $appData, 'accounts' )['accounts'];
+ninoWarnings();
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'id' => $id, 'name' => ' Ada L. ', 'group' => 'Old Staff', 'active' => false, 'email' => 'other@example.org', 'created' => '1999-01-01T00:00:00Z', 'login' => '1999-01-01T00:00:00Z' ], 'members/save' );
+$after = membersFile( $appData, 'accounts' )['accounts'];
+check( 'save changes the name, the group and whether the account is active, and keeps everything else of it - the address and the times a request names among it', $status === 200
+	&& $after[$id] === [ 'email' => 'ada@example.org', 'name' => 'Ada L.', 'group' => 'old-staff', 'active' => false, 'created' => $whole[$id]['created'], 'login' => '2024-05-06T07:08:09Z' ] && $body['account'] === [ 'id' => $id ] + $after[$id] );
+check( '...and every other account as it was', array_diff_key( $after, [ $id => 1 ] ) === array_diff_key( $whole, [ $id => 1 ] ) );
+
+ninoCall( $appData, $panel, [ 'id' => $id, 'name' => 'Ada Lovelace' ], 'members/save' );
+ninoCall( $appData, $panel, [ 'id' => $id, 'active' => 'no', 'group' => [ 'x' ] ], 'members/save' );
+$partial = membersFile( $appData, 'accounts' )['accounts'][$id];
+check( 'what is not posted - or is posted as something else than it is - stays: a name alone changes the name, a word for the flag and a list for the group change nothing', $partial['name'] === 'Ada Lovelace'
+	&& $partial['group'] === 'old-staff' && $partial['active'] === false && ninoWarnings() === [] );
+
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'id' => $id, 'name' => str_repeat( 'x', 121 ) ], 'members/save' );
+check( '...a name that is too long is refused the way add refuses it, and nothing is saved', $status === 400 && $body['code'] === 'members_long' && $body['field'] === 'name' && membersFile( $appData, 'accounts' )['accounts'][$id] === $partial );
+
+$unknown = [];
+
+foreach( [ 'no such id' => 'ffffffffffff', 'a path' => '../etc/passwd', 'nothing' => '', 'too short' => 'abc', 'a list' => [ $id ] ] as $kind => $wrong )
+	foreach( [ 'members/save', 'members/delete', 'members/link' ] as $action ) {
+		[ $status, $body ] = ninoCall( $appData, $panel, [ 'id' => $wrong, 'name' => 'x' ], $action );
+		$unknown[$kind. ' '. $action] = [ $status, $body['code'] ?? '' ];
+	}
+
+check( 'an id nobody has - or one that is none - is 404 with the code members_unknown on save, delete and link alike, and changes nothing', array_values( array_unique( array_map( 'json_encode', $unknown ) ) ) === [ '[404,"members_unknown"]' ]
+	&& count( $unknown ) === 15 && membersFile( $appData, 'accounts' )['accounts'][$id] === $partial );
+
+// link
+membersFresh( $appData );
+$mails = [];
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'id' => $id ], 'members/link' );
+check( 'an account that is switched off is sent no link: 400, the code members_inactive, no mail and no token', $status === 400 && $body['code'] === 'members_inactive' && $mails === [] && array_filter( membersFile( $appData, 'tokens' ), static fn( array $each ): bool => $each['account'] === $id ) === [] );
+
+ninoCall( $appData, $panel, [ 'id' => $id, 'active' => true ], 'members/save' );
+$tokensBefore = membersFile( $appData, 'tokens' );
+$before = time();
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'id' => $id ], 'members/link' );
+$token = membersTokenOf( $mails[0] ?? [] );
+$entry = membersFile( $appData, 'tokens' )[ hash( 'sha256', $token ) ] ?? [];
+check( 'link sends the member a link to sign in: one mail to the address, a token of the kind login that runs out after the minutes of the setting, and not the days of an invitation', $status === 200 && $body === [ 'sent' => true ]
+	&& count( $mails ) === 1 && $mails[0]['to'] === 'ada@example.org' && ( $entry['kind'] ?? '' ) === 'login' && ( $entry['account'] ?? '' ) === $id && ( $entry['expires'] ?? 0 ) >= $before + 900 - 2 && ( $entry['expires'] ?? 0 ) <= time() + 900 + 2
+	&& preg_match( '/(?<![\d.])15(?![\d.])/', strip_tags( (string) $mails[0]['body'] ) ) === 1 );
+check( '...and the links that were out stay good', array_diff_key( membersFile( $appData, 'tokens' ), [ hash( 'sha256', $token ) => 1 ] ) === $tokensBefore );
+
+membersFresh( $appData );
+$delivery = false;
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'id' => $id ], 'members/link' );
+$delivery = true;
+check( 'a link whose mail was not taken is a 500 with the code members_mail', $status === 500 && $body['code'] === 'members_mail' );
+
+// The kernel's own cap of mails an hour from one address is a failure of its own, and the person at the screen is told so
+membersFresh( $appData );
+
+for( $each = 0; $each < 5; $each++ )
+	\Nino\Mail::send( $appData, 'cap@example.org', 'x', 'x', '' );
+
+$mails = [];
+[ $statusLink, $bodyLink ] = ninoCall( $appData, $panel, [ 'id' => $id ], 'members/link' );
+[ $statusAdd, $bodyAdd ] = ninoCall( $appData, $panel, [ 'email' => 'capped@example.org', 'invite' => true ], 'members/add' );
+$cappedId = membersIdOf( $appData, 'capped@example.org' );
+check( 'a mail the kernel\'s cap refuses is a 429 with the code members_ratelimit - on a link and on an invitation alike - and the account of the invitation is there all the same, with no mail gone out',
+	$statusLink === 429 && ( $bodyLink['code'] ?? '' ) === 'members_ratelimit' && $statusAdd === 429 && ( $bodyAdd['code'] ?? '' ) === 'members_ratelimit' && $cappedId !== '' && $mails === [] );
+ninoCall( $appData, $panel, [ 'id' => $cappedId ], 'members/delete' );
+membersFresh( $appData );
+
+// delete
+$before = membersFile( $appData, 'accounts' )['accounts'];
+[ $status ] = ninoCall( $appData, $panel, [ 'id' => $bert ], 'members/delete' );
+$after = membersFile( $appData, 'accounts' )['accounts'];
+check( 'delete removes the account it is given - that one and no other', $status === 200 && array_keys( $after ) === array_values( array_diff( array_keys( $before ), [ $bert ] ) ) && $after === array_diff_key( $before, [ $bert => 1 ] ) );
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'id' => $bert ], 'members/delete' );
+check( '...and the same account again is an id nobody has', $status === 404 && $body['code'] === 'members_unknown' && membersFile( $appData, 'accounts' )['accounts'] === $after );
+
+// the Dashboard and the activity log
+check( 'the Dashboard\'s tile counts the accounts, with a label that has its sentence in both languages', \Nino\Modules\Members\Admin::summary( $appData )['value'] === count( $after )
+	&& array_filter( [ 'en_US', 'de_DE' ], static fn( string $locale ): bool => trim( (string) ( \Nino\Admin\Admin::textFills( $GLOBALS['appData'], '/features/Members/text', $locale )['[['. \Nino\Modules\Members\Admin::summary( $GLOBALS['appData'] )['label']. ']]'] ?? '' ) ) === '' ) === [] );
+
+$lines = [];
+
+foreach( [ 'members/add', 'members/save', 'members/delete', 'members/link', 'members/signout', 'members/list' ] as $action )
+	$lines[$action] = \Nino\Modules\Members\Admin::log( $action, [ 'id' => $id, 'email' => 'ada@example.org', 'name' => 'Ada Lovelace' ] );
+
+check( 'the activity log has a line for every action that changes something - none for a read - and not the address nor the name of a member in any of them',
+	$lines['members/list'] === '' && array_filter( array_diff_key( $lines, [ 'members/list' => 1 ] ), static fn( string $line ): bool => $line === '' ) === []
+	&& array_filter( $lines, static fn( string $line ): bool => str_contains( $line, 'ada@example.org' ) === true || str_contains( $line, 'Lovelace' ) === true ) === [] && str_contains( $lines['members/save'], $id ) === true
+	&& \Nino\Modules\Members\Admin::log( 'members/save', [ 'id' => '<script>' ] ) === \Nino\Modules\Members\Admin::log( 'members/save', [] ) );
+
+// signout
+$epochs = [];
+[ $status, $body ] = ninoCall( $appData, $panel, [], 'members/signout' );
+$epochs[] = membersFile( $appData, 'session' )['epoch'] ?? '';
+ninoCall( $appData, $panel, [], 'members/signout' );
+$epochs[] = membersFile( $appData, 'session' )['epoch'] ?? '';
+check( 'signout writes a new epoch of 32 hex characters each time it is pressed', $status === 200 && $body === [ 'signedOut' => true ] && array_filter( $epochs, static fn( string $epoch ): bool => preg_match( '/^[0-9a-f]{32}$/D', $epoch ) !== 1 ) === []
+	&& $epochs[0] !== $epochs[1] && array_keys( membersFile( $appData, 'session' ) ) === [ 'epoch' ] );
+
+echo "\n";
+
+
+// --- The request for a link ----------------------------------------------------
+
+echo "Modules\\Members - the request for a link: the same answer for every address, and the caps\n";
+
+// The accounts of the rest of the test: one that signs in, one that is switched off, one of no name
+unset( $appData['./nino/auth/current'] );
+\Nino\Filesystem::putFileContent( $appData, '/data/members.php', [] );
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', [] );
+$ada = \Nino\Modules\Members::add( $appData, 'ada@example.org', 'Ada Lovelace', 'staff' );
+$off = \Nino\Modules\Members::add( $appData, 'off@example.org', 'Off', '' );
+$bare = \Nino\Modules\Members::add( $appData, 'bare@example.org', '', '' );
+\Nino\Modules\Members::change( $appData, $off['id'], [ 'active' => false ] );
+$appData['/nino/http/routes']['GET://'] = [ 'uri' => '/home', 'body' => 'HOME' ];
+
+membersFresh( $appData );
+membersVisitor();
+$mails = [];
+$before = time();
+$unknown = membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'nobody@example.org', 'return' => '/join' ] );
+$mailsUnknown = count( $mails );
+$tokensUnknown = membersFile( $appData, 'tokens' );
+$known = membersServe( $appData, '/.members/login', 'POST', [ 'email' => ' ADA@Example.org ', 'return' => '/join' ] );
+$tokens = membersFile( $appData, 'tokens' );
+$token = membersTokenOf( $mails[0] ?? [] );
+$entry = $tokens[ hash( 'sha256', $token ) ] ?? [];
+
+check( 'a request for an address nobody has and one for a member\'s answer the same: a redirect (303), back to the page the form was on with ?members=sent, stored by no one',
+	membersAnswer( $unknown ) === [ 303, '/join?members=sent', 'no-store', '' ] && membersAnswer( $known ) === membersAnswer( $unknown ) );
+check( '...and only the member\'s leaves a mail and a token: nothing for the address nobody has', $mailsUnknown === 0 && $tokensUnknown === [] && count( $mails ) === 1 && count( $tokens ) === 1 );
+check( '...a token of the kind login for that account, run out after the minutes of the setting, with no page to lead to; mailed to the address, which is the one of the account and no other',
+	array_keys( $entry ) === [ 'account', 'kind', 'expires', 'target' ] && $entry['account'] === $ada['id'] && $entry['kind'] === 'login' && $entry['target'] === '' && $entry['expires'] >= $before + 900 - 2 && $entry['expires'] <= time() + 900 + 2
+	&& $mails[0]['to'] === 'ada@example.org' && strlen( $token ) === 43 && str_contains( (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/members-tokens.php' ) ), $token ) === false );
+
+$off1 = membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'off@example.org', 'return' => '/join' ] );
+check( 'a member who is switched off is answered like the others - and gets nothing', membersAnswer( $off1 ) === membersAnswer( $unknown ) && count( $mails ) === 1 && count( membersFile( $appData, 'tokens' ) ) === 1 );
+
+// What a post can hold that is no address, and no string: the same answer, no warning, nothing sent
+membersFresh( $appData );
+ninoWarnings();
+$odd = [];
+
+foreach( [ 'nothing' => [], 'a list' => [ 'email' => [ 'ada@example.org' ] ], 'a text' => [ 'email' => 'ada' ], 'two' => [ 'email' => 'ada@example.org, off@example.org' ], 'long' => [ 'email' => str_repeat( 'a', 300 ). '@example.org' ] ] as $kind => $post ) {
+	$request = membersServe( $appData, '/.members/login', 'POST', $post + [ 'return' => [ '/join' ] ] );
+	$odd[$kind] = membersAnswer( $request );
+}
+
+check( 'a post without an address, with a list for the address or the return, or with a text that is none is answered the same, without a warning and without a mail', array_values( array_unique( array_map( 'json_encode', $odd ) ) ) === [ '[303,"\\/?members=sent","no-store",""]' ]
+	&& ninoWarnings() === [] && count( $mails ) === 1 );
+
+// Where the answer goes back to: a path of this site and nothing else
+membersFresh( $appData );
+$goes = [];
+
+foreach( [ '/club/page?x=1#f' => '/club/page?members=sent', '//evil.example/x' => '/?members=sent', '/\\evil.example' => '/?members=sent', 'https://evil.example' => '/?members=sent', '/javascript:alert(1)' => '/?members=sent',
+	"/a\r\nSet-Cookie: x=1" => '/?members=sent', '/a b' => '/?members=sent', "/a\r\nb" => '/?members=sent', "/a\tb" => '/?members=sent', "/a\x00b" => '/?members=sent', "/a\x7fb" => '/?members=sent', '/.members/login' => '/?members=sent', '' => '/?members=sent', 'relative/path' => '/?members=sent', '/a/b:c' => '/a/b:c?members=sent' ] as $return => $expected ) {
+	membersFresh( $appData );
+	$goes[$return] = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'nobody@example.org', 'return' => $return ] ) )[1] === $expected;
+}
+
+check( 'the answer goes back to the page the form was on without its query - and to the start page for anything that is not a path of this site, an endpoint among it', array_filter( $goes, static fn( bool $same ): bool => $same === false ) === [] );
+
+check( 'the start page is a setting that is a path of this site: a path is taken, an address of another host, a protocol-relative one and a text with a space are refused',
+	\Nino\Features::saveSettings( $appData, 'members', [ 'start' => '/club' ] ) === [] && array_filter( [ 'https://evil.example', '//evil.example', '/\\evil.example', '/a b', 'club', '/javascript:x', "/a\nb", '/a?b' ],
+		static fn( string $value ): bool => \Nino\Features::saveSettings( $appData, 'members', [ 'start' => $value ] ) === [] ) === [] && \Nino\Features::setting( $appData, 'members', 'start', '' ) === '/club' );
+membersFresh( $appData );
+$start = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'nobody@example.org', 'return' => '//evil.example' ] ) );
+
+// The field cleared and an endpoint of a module are settings the manifest lets through, and no start page: the front page is
+$elsewhere = [];
+
+foreach( [ '', '/.members/logout' ] as $value ) {
+	\Nino\Features::saveSettings( $appData, 'members', [ 'start' => $value ] );
+	membersFresh( $appData );
+	$elsewhere[$value] = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'nobody@example.org', 'return' => '//evil.example' ] ) )[1];
+}
+
+\Nino\Features::saveSettings( $appData, 'members', [ 'start' => '/' ] );
+check( '...and the start page is where an answer goes that has no page of its own to go back to - the front page where the setting is empty or none', $start[1] === '/club?members=sent'
+	&& $elsewhere === [ '' => '/?members=sent', '/.members/logout' => '/?members=sent' ] );
+
+// The page that asked for the login: kept by the gate, taken into the link, and gone from the session
+\Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [ '/club' ] ] );
+membersFresh( $appData );
+membersVisitor();
+$mails = [];
+membersFresh( $appData );
+membersServe( $appData, '/club/news' );
+membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/club/news' ] );
+$withTarget = membersFile( $appData, 'tokens' )[ hash( 'sha256', membersTokenOf( $mails[0] ?? [] ) ) ] ?? [];
+$kept = \Nino\Runtime::getSessionValue( $appData, './members/target' );
+membersFresh( $appData );
+membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/news' ] );
+$without = membersFile( $appData, 'tokens' )[ hash( 'sha256', membersTokenOf( $mails[1] ?? [] ) ) ] ?? [];
+check( 'the path a protected page was asked for is the target of the next link, and is gone from the session once a link carries it - the link after that has none', ( $withTarget['target'] ?? null ) === '/club/news' && $kept === null && ( $without['target'] ?? null ) === '' );
+\Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [] ] );
+
+// The csrf guard: no token, no request
+membersFresh( $appData );
+membersVisitor();
+$mails = [];
+$tokensBefore = membersFile( $appData, 'tokens' );
+$none = membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/join' ], false );
+$wrong = membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/join', '_csrf' => 'not-the-token' ], false );
+check( 'a request without the csrf token - or with another - is answered with a redirect (303) to the page the form was on and ?members=expired, in place of the kernel\'s bare 403, sends no mail, makes no token and is not counted', membersAnswer( $none ) === [ 303, '/join?members=expired', 'no-store', '' ] && membersAnswer( $wrong ) === membersAnswer( $none ) && $mails === []
+	&& membersFile( $appData, 'tokens' ) === $tokensBefore && membersFile( $appData, 'tries' ) === [] );
+
+// The cap of the visitor: attempts an hour, then ?members=limit and nothing else
+membersFresh( $appData );
+$mails = [];
+$tokensBefore = membersFile( $appData, 'tokens' );
+$limits = [];
+
+for( $try = 1; $try <= 6; $try++ ) {
+	$limits[$try] = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => $try === 6 ? 'ada@example.org' : 'nobody'. $try. '@example.org', 'return' => '/join' ] ) )[1];
+}
+
+check( 'the sixth request of one visitor in an hour - the setting attempts says five - is answered ?members=limit, and leaves no token and no mail, a member\'s address or not',
+	array_values( array_slice( $limits, 0, 5 ) ) === array_fill( 0, 5, '/join?members=sent' ) && $limits[6] === '/join?members=limit' && $mails === [] && membersFile( $appData, 'tokens' ) === $tokensBefore );
+check( '...the counter has a file of its own, hashed - the accounts are what they were, and neither the address of the visitor nor an email address is written anywhere in it',
+	count( membersFile( $appData, 'accounts' )['accounts'] ) === 3 && count( membersFile( $appData, 'tries' ) ) === 6 && str_contains( (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/members-tries.php' ) ), '127.0.0.1' ) === false
+	&& str_contains( (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/members-tries.php' ) ), 'example.org' ) === false );
+
+\Nino\Features::saveSettings( $appData, 'members', [ 'attempts' => 2 ] );
+membersFresh( $appData );
+$twice = [];
+
+for( $try = 1; $try <= 3; $try++ )
+	$twice[$try] = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'nobody'. $try. '@example.org', 'return' => '/join' ] ) )[1];
+
+check( '...the number is the setting\'s', $twice === [ 1 => '/join?members=sent', 2 => '/join?members=sent', 3 => '/join?members=limit' ] );
+
+// The cap of the address: three an hour, whoever asks
+\Nino\Features::saveSettings( $appData, 'members', [ 'attempts' => 50 ] );
+membersFresh( $appData );
+$mails = [];
+$asked = [];
+
+foreach( [ '10.0.0.1', '10.0.0.2', '10.0.0.3', '10.0.0.4' ] as $address ) {
+	$_SERVER['REMOTE_ADDR'] = $address;
+	$asked[] = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/join' ] ) )[1];
+}
+
+$out = [ count( $mails ), array_values( array_unique( array_column( $mails, 'to' ) ) ) ];
+$_SERVER['REMOTE_ADDR'] = '10.0.0.5';
+$other = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'bare@example.org', 'return' => '/join' ] ) )[1];
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+check( 'the fourth request for one address in an hour is answered ?members=limit, whoever asks and from wherever - three links are out, and another address still gets its own',
+	$asked === [ '/join?members=sent', '/join?members=sent', '/join?members=sent', '/join?members=limit' ] && $out === [ 3, [ 'ada@example.org' ] ] && $other === '/join?members=sent' && count( $mails ) === 4 );
+\Nino\Features::saveSettings( $appData, 'members', [ 'attempts' => 5 ] );
+
+// A mail that is not taken, and a site without an address: the same answer, and a warning for the log
+membersFresh( $appData );
+membersVisitor();
+$mails = [];
+$delivery = false;
+ninoWarnings();
+membersServe( $appData, '/club/news' );
+$refused = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/join' ] ) );
+$delivery = true;
+$warned = ninoWarnings();
+\Nino\Html::removeFill( $appData, '/project/website/general/url', '*' );
+\Nino\Html::removeFill( $appData, '/project/website/general/url', 'de_DE' );
+$appData['./nino/html/fills']['*']['[[/project/website/general/url]]'] = '';
+membersFresh( $appData );
+$mails = [];
+$noAddress = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/join' ] ) );
+$warnedNoAddress = ninoWarnings();
+\Nino\Html::addFills( $appData, [ '[[/project/website/general/url]]' => 'example.org/club' ], '*' );
+check( 'a mail that no transport takes is swallowed into the same answer, with a warning for the log that names no address', $refused === [ 303, '/join?members=sent', 'no-store', '' ] && count( $warned ) >= 1
+	&& array_filter( $warned, static fn( string $warning ): bool => str_contains( $warning, 'ada@example.org' ) === true ) === [] );
+check( '...so is a site that has no address to build the link on: nothing is sent, the same answer, a warning', $noAddress === [ 303, '/join?members=sent', 'no-store', '' ] && $mails === [] && count( $warnedNoAddress ) === 1 );
+
+echo "\n";
+
+
+// --- Following the link --------------------------------------------------------
+
+echo "Modules\\Members - following the link: a page asks, the button signs in, and it is spent\n";
+
+// Nobody has signed in yet: there is no epoch, and the first sign-in is what writes one
+@unlink( \Nino\Filesystem::path( $appData, '/data/members-session.php' ) );
+unset( $appData['./nino/filesystem/cache']['/data/members-session.php'] );
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', [] );
+membersVisitor();
+$mails = [];
+$told = [];
+$token = membersLink( $appData, $ada );
+$withTarget = membersLink( $appData, $ada, 'login', '/club/news' );
+$tokensBefore = membersFile( $appData, 'tokens' );
+
+// Following the link only asks: a mail scanner, a browser that fetches ahead and a HEAD follow links too
+$opened = membersServe( $appData, '/.members/login?t='. $token );
+$page = \Nino\Html::renderHtml( $appData, (string) membersAnswer( $opened )[3] );
+$pageWithTarget = \Nino\Html::renderHtml( $appData, (string) membersAnswer( membersServe( $appData, '/.members/login?t='. $withTarget ) )[3] );
+$headed = membersServe( $appData, '/.members/login?t='. $token, 'HEAD' );
+
+check( 'following the link only asks: the page that names the account is answered (200, stored by no one, headed by the details of the start page, with no referrer) - and the tokens are in the file as they were, nobody is signed in, no epoch is written, nobody is told',
+	membersAnswer( $opened ) === [ 200, '', 'no-store', '[template /templates/page-members-confirm]' ] && $opened['/nino/http/response']['header']['Referrer-Policy'] === 'no-referrer' && $opened['/nino/http/response']['uri'] === '/home'
+	&& membersFile( $appData, 'tokens' ) === $tokensBefore && \Nino\Modules\Members::current( $appData ) === null && membersFile( $appData, 'session' ) === [] && $told === [] );
+check( '...so does a HEAD for it, which is folded to a GET: the same answer and nothing used up', membersAnswer( $headed ) === membersAnswer( $opened ) && $headed['/nino/http/request']['rawMethod'] === 'HEAD'
+	&& membersFile( $appData, 'tokens' ) === $tokensBefore && \Nino\Modules\Members::current( $appData ) === null );
+
+$confirmForm = membersFind( $page, '//form[contains(@class, "members-confirm")]' );
+$confirmFields = [];
+
+foreach( membersFind( $page, '//form//input' ) as $field )
+	$confirmFields[ $field->getAttribute( 'name' ) ] = $field->getAttribute( 'value' );
+
+check( '...and the page is a whole one: a title, and one form that names the account and posts the token with the csrf token of the session - and nothing of where the member goes after it',
+	count( membersFind( $page, '//h2' ) ) === 1 && membersText( $page, '//h2' ) !== '' && count( $confirmForm ) === 1 && strtolower( $confirmForm[0]->getAttribute( 'method' ) ) === 'post' && $confirmForm[0]->getAttribute( 'action' ) === '/.members/confirm'
+	&& in_array( 'nino-form', membersClasses( $confirmForm[0] ), true ) === false && membersText( $page, '//p[contains(@class, "members-confirm__name")]' ) === 'Ada Lovelace'
+	&& array_keys( $confirmFields ) === [ 'token', '_csrf' ] && $confirmFields['token'] === $token && $confirmFields['_csrf'] === \Nino\Csrf::getToken( $appData ) && count( membersFind( $page, '//form//button[@type="submit"]' ) ) === 1
+	&& count( membersFind( $page, '//form/p[contains(@class, "members-login__state")]' ) ) === 0 && str_contains( $pageWithTarget, '/club/news' ) === false && str_contains( $pageWithTarget, 'return' ) === false && str_contains( $page, '[[' ) === false );
+
+// The csrf guard: a button pressed with a session that is not the one the page was drawn for uses nothing up, and the page is there again
+$blocked = membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $token ], false );
+$blockedPage = \Nino\Html::renderHtml( $appData, (string) membersAnswer( $blocked )[3] );
+check( 'a button pressed without the csrf token uses nothing up: the page is answered again (403, with no referrer) with the message that the session has run out, a form with the token of the session as it is now - instead of the kernel\'s bare 403',
+	membersAnswer( $blocked ) === [ 403, '', 'no-store', '[template /templates/page-members-confirm]' ] && $blocked['/nino/http/response']['header']['Referrer-Policy'] === 'no-referrer'
+	&& membersText( $blockedPage, '//form/p[contains(@class, "members-login__state")]' ) === trim( $states['expired'][0]->textContent ) && membersText( $blockedPage, '//p[contains(@class, "members-confirm__name")]' ) === 'Ada Lovelace'
+	&& membersFile( $appData, 'tokens' ) === $tokensBefore && \Nino\Modules\Members::current( $appData ) === null && $told === [] );
+
+$csrfBefore = \Nino\Csrf::getToken( $appData );
+$stamp = time();
+$followed = membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $token ] );
+$signedIn = \Nino\Modules\Members::current( $appData );
+$record = membersFile( $appData, 'accounts' )['accounts'][ $ada['id'] ] ?? [];
+
+check( 'pressing the button signs the member in and sends them on (303) to the start page, with no state on it', membersAnswer( $followed ) === [ 303, '/', 'no-store', '' ] && $signedIn !== null && $signedIn['id'] === $ada['id'] );
+check( '...the time of the sign-in is stamped on the account, in UTC, and is the one the module reads', preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', (string) ( $record['login'] ?? '' ) ) === 1 && abs( strtotime( (string) $record['login'] ) - $stamp ) < 10
+	&& ( $signedIn['login'] ?? null ) === $record['login'] && $record['email'] === 'ada@example.org' );
+check( '...the token is spent: the file of the links holds nothing of it any more - and the other link is still there', membersFile( $appData, 'tokens' ) === array_diff_key( $tokensBefore, [ hash( 'sha256', $token ) => 1 ] ) && count( membersFile( $appData, 'tokens' ) ) === 1 );
+check( '...the first sign-in wrote the epoch, the session holds the account and that epoch, and the csrf token of the session was replaced', preg_match( '/^[0-9a-f]{32}$/D', membersFile( $appData, 'session' )['epoch'] ?? '' ) === 1
+	&& \Nino\Runtime::getSessionValue( $appData, './members/account' ) === [ 'id' => $ada['id'], 'epoch' => membersFile( $appData, 'session' )['epoch'] ] && \Nino\Csrf::getToken( $appData ) !== $csrfBefore );
+check( '...and the features that build on it are told, once, with the account', count( $told ) === 1 && $told[0][0] === 'login' && $told[0][1] === $signedIn );
+
+// Where the member goes is what the record of the token on the server says, whatever the post adds
+membersVisitor();
+$forged = membersAnswer( membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $withTarget, 'target' => '//evil.example', 'return' => '//evil.example', 'redirect' => '//evil.example' ] ) );
+check( '...and where they are sent is the path the record of the token carries - nothing the post says about it', $forged === [ 303, '/club/news', 'no-store', '' ] && count( membersFile( $appData, 'tokens' ) ) === 0 );
+
+membersVisitor();
+$toldBefore = count( $told );
+$againPage = membersServe( $appData, '/.members/login?t='. $token );
+$again = membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $token ] );
+$page = \Nino\Html::renderHtml( $appData, (string) membersAnswer( $again )[3] );
+check( 'the same link again - on the page and on the button - is answered with the login page in place: 400, stored by no one, headed by the details of the start page',
+	membersAnswer( $againPage ) === [ 400, '', 'no-store', '[template /templates/page-members-login]' ] && membersAnswer( $again ) === membersAnswer( $againPage ) && $again['/nino/http/response']['uri'] === '/home' && \Nino\Modules\Members::current( $appData ) === null );
+check( '...and that page is a whole one: a title, the form, and the message that the link does not work, with the page it is on to go back to', count( membersFind( $page, '//h2' ) ) === 1 && membersText( $page, '//h2' ) !== ''
+	&& count( membersFind( $page, '//form[contains(@class, "members-login")]' ) ) === 1 && count( membersFind( $page, '//form/p[contains(@class, "members-login__state")]' ) ) === 1
+	&& membersText( $page, '//form/p[contains(@class, "members-login__state")]' ) === trim( $states['invalid'][0]->textContent ) && count( $told ) === $toldBefore );
+
+// The member, in the three components
+membersSignIn( $appData, $ada );
+$member = \Nino\Html::renderHtml( $appData, '[members-login class="quiet"]' );
+$signed = membersFind( $member, '//div[contains(@class, "members-signed")]' );
+check( 'for a member [members-login] is their name and a link to sign out - no form, no field - with the class of the call', count( $signed ) === 1 && membersClasses( $signed[0] ) === [ 'members-signed', 'quiet' ] && count( membersFind( $member, '//form' ) ) === 0 && count( membersFind( $member, '//input' ) ) === 0
+	&& trim( membersFind( $member, '//strong[contains(@class, "members-signed__name")]' )[0]->textContent ) === 'Ada Lovelace'
+	&& membersFind( $member, '//a[contains(@class, "members-logout")]' )[0]->getAttribute( 'href' ) === '/.members/logout' );
+$logout = membersFind( \Nino\Html::renderHtml( $appData, '[members-logout class="quiet"]' ), '//a' );
+$name = membersFind( \Nino\Html::renderHtml( $appData, '[members-name class="quiet"]' ), '//span' );
+check( '[members-logout] is that link and [members-name] the name, each with the class of the call', count( $logout ) === 1 && $logout[0]->getAttribute( 'href' ) === '/.members/logout' && membersClasses( $logout[0] ) === [ 'members-logout', 'quiet' ]
+	&& count( $name ) === 1 && $name[0]->textContent === 'Ada Lovelace' && membersClasses( $name[0] ) === [ 'members-name', 'quiet' ] );
+
+$hostile = [ '<img src=x onerror=alert(1)>' => 'img', '"><script>alert(1)</script>' => 'script', '[[/project/company/general/name]]' => '', '[members-logout]' => '' ];
+$escaped = [];
+
+foreach( $hostile as $name => $element ) {
+	\Nino\Modules\Members::change( $appData, $ada['id'], [ 'name' => $name ] );
+	$html = \Nino\Html::renderHtml( $appData, '[members-name][members-login]' );
+	$asked = \Nino\Html::renderHtml( $appData, (string) membersAnswer( membersServe( $appData, '/.members/login?t='. membersLink( $appData, $ada ) ) )[3] );
+	$escaped[$name] = ( $element === '' || count( membersFind( $html, '//'. $element ) ) === 0 ) && str_contains( $html, '[[/project' ) === false && count( membersFind( $html, '//a[contains(@class, "members-logout")]' ) ) === 1
+		&& membersFind( $html, '//span[contains(@class, "members-name")]' )[0]->textContent === $name
+		&& ( $element === '' || count( membersFind( $asked, '//'. $element ) ) === 0 ) && str_contains( $asked, '[[/project' ) === false && membersText( $asked, '//p[contains(@class, "members-confirm__name")]' ) === $name;
+}
+
+check( 'a name is text wherever it is written: markup in it is not an element, and a key or a shortcode in it is neither filled in nor run', array_filter( $escaped, static fn( bool $safe ): bool => $safe === false ) === [] && count( $escaped ) === 4 );
+
+\Nino\Modules\Members::change( $appData, $ada['id'], [ 'name' => '' ] );
+check( 'an account without a name is shown by its address', membersFind( \Nino\Html::renderHtml( $appData, '[members-name]' ), '//span' )[0]->textContent === 'ada@example.org' );
+\Nino\Modules\Members::change( $appData, $ada['id'], [ 'name' => 'Ada Lovelace' ] );
+
+// A link that does not lead in, in each of the ways it can fail - asked for on the page and pressed on the button
+$tokensBefore = membersFile( $appData, 'tokens' );
+$told = [];
+ninoWarnings();
+$notValid = [];
+
+foreach( [ 'no token' => [ '/.members/login', [] ], 'an empty one' => [ '/.members/login?t=', [ 'token' => '' ] ], 'a short one' => [ '/.members/login?t=abc', [ 'token' => 'abc' ] ],
+	'a list' => [ '/.members/login?t[]=x', [ 'token' => [ 'x' ] ] ], 'one nobody made' => [ '/.members/login?t='. str_repeat( 'A', 43 ), [ 'token' => str_repeat( 'A', 43 ) ] ],
+	'one with a character it cannot have' => [ '/.members/login?t='. str_repeat( 'A', 42 ). '*', [ 'token' => str_repeat( 'A', 42 ). '*' ] ] ] as $kind => [ $uri, $post ] ) {
+	membersVisitor();
+	$notValid[$kind. ', asked'] = membersAnswer( membersServe( $appData, $uri ) );
+	$notValid[$kind. ', pressed'] = membersAnswer( membersServe( $appData, '/.members/confirm', 'POST', $post ) );
+}
+
+check( 'a link with no token, an empty one, a short one, a list, one nobody made or one with a character it cannot have is answered the same on the page and on the button, without a warning, and nobody is signed in by it',
+	array_values( array_unique( array_map( 'json_encode', $notValid ) ) ) === [ '[400,"","no-store","[template \\/templates\\/page-members-login]"]' ] && count( $notValid ) === 12 && ninoWarnings() === [] && \Nino\Modules\Members::current( $appData ) === null
+	&& membersFile( $appData, 'tokens' ) === $tokensBefore && $told === [] );
+
+$locations = [];
+foreach( [ 'a target on another host' => [ 'target' => '//evil.example/x' ], 'a target of a scheme' => [ 'target' => 'javascript:alert(1)' ], 'a target that is an endpoint' => [ 'target' => '/.members/logout' ], 'a path' => [ 'target' => '/club/news' ] ] as $kind => $change ) {
+	membersVisitor();
+	$token = membersLink( $appData, $ada );
+	$stored = membersFile( $appData, 'tokens' );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', [ hash( 'sha256', $token ) => $change + $stored[ hash( 'sha256', $token ) ] ] );
+	$locations[$kind] = membersConfirm( $appData, $token )[1];
+}
+membersVisitor();
+$token = membersLink( $appData, $ada );
+$stored = membersFile( $appData, 'tokens' );
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', [ hash( 'sha256', $token ) => [ 'kind' => 'reset' ] + $stored[ hash( 'sha256', $token ) ] ] );
+$resetAsked = membersAnswer( membersServe( $appData, '/.members/login?t='. $token ) );
+$reset = membersConfirm( $appData, $token );
+
+check( 'a link goes on to the path it carries, if that is a path of this site - the start page for any other: another host, a scheme, an endpoint', $locations === [ 'a target on another host' => '/', 'a target of a scheme' => '/', 'a target that is an endpoint' => '/', 'a path' => '/club/news' ] );
+check( '...and a token of a kind this feature does not make is none, on the page and on the button', $resetAsked[0] === 400 && $reset[0] === 400 && \Nino\Modules\Members::current( $appData ) === null );
+
+// Run out: refused, on the page and on the button, and dropped from the file with everything else that has - in the same write that adds or spends one
+membersVisitor();
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', [] );
+$old = membersLink( $appData, $ada );
+$stale = membersLink( $appData, $ada );
+$file = membersFile( $appData, 'tokens' );
+$file[ hash( 'sha256', $old ) ]['expires'] = time() - 1;
+$file[ hash( 'sha256', $stale ) ]['expires'] = time() - 3600;
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
+$fresh = membersLink( $appData, $ada );
+$afterIssue = membersFile( $appData, 'tokens' );
+$expired = membersAnswer( membersServe( $appData, '/.members/login?t='. $old ) );
+$expiredPressed = membersAnswer( membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $old ] ) );
+check( 'a token that has run out is refused - the same page, 400, on the page and on the button', $expired === [ 400, '', 'no-store', '[template /templates/page-members-login]' ] && $expiredPressed === $expired && \Nino\Modules\Members::current( $appData ) === null );
+check( '...and the entries that have run out go in the write that makes the next token, and the one that spends one', array_keys( $afterIssue ) === [ hash( 'sha256', $fresh ) ] && count( membersFile( $appData, 'tokens' ) ) === 1 );
+
+$file = membersFile( $appData, 'tokens' );
+$file[ hash( 'sha256', $old ) ] = [ 'account' => $ada['id'], 'kind' => 'login', 'expires' => time() - 5, 'target' => '' ];
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
+
+// What cannot be a token is not looked up, so it writes nothing either - the dead entry is still there when it has been pressed
+membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => 'abc' ] );
+$untouched = membersFile( $appData, 'tokens' ) === $file;
+membersConfirm( $appData, $fresh );
+check( '...a link that is followed takes the dead entries with it - and a text that cannot be a token leaves the file as it is', $untouched === true && membersFile( $appData, 'tokens' ) === [] );
+
+// An invitation signs in in the same two steps
+membersVisitor();
+$told = [];
+$invite = membersLink( $appData, $ada, 'invite' );
+$inviteAsked = membersAnswer( membersServe( $appData, '/.members/login?t='. $invite ) );
+$stillThere = count( membersFile( $appData, 'tokens' ) );
+$invited = membersAnswer( membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $invite ] ) );
+check( 'an invitation\'s link works in the same two steps: the page asks and uses nothing up, the button signs in and spends it', $inviteAsked[0] === 200 && $stillThere === 1 && $invited[0] === 303 && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $ada['id']
+	&& membersFile( $appData, 'tokens' ) === [] && count( $told ) === 1 );
+
+// An account that is switched off or gone holds a link that leads nowhere - asked for it is not valid, and pressed it is spent on the way
+membersVisitor();
+$told = [];
+$gone = \Nino\Modules\Members::add( $appData, 'gone@example.org', 'Gone', '' );
+$offLink = membersLink( $appData, $off );
+$goneLink = membersLink( $appData, $gone );
+\Nino\Modules\Members::remove( $appData, $gone['id'] );
+$a = membersAnswer( membersServe( $appData, '/.members/login?t='. $offLink ) );
+$b = membersAnswer( membersServe( $appData, '/.members/login?t='. $goneLink ) );
+$askedOnly = count( membersFile( $appData, 'tokens' ) );
+$c = membersAnswer( membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $offLink ] ) );
+$d = membersAnswer( membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $goneLink ] ) );
+check( 'a link for an account that is switched off, or was deleted, is not valid either - refused on the page, spent by the button, and nobody is signed in', $a[0] === 400 && $b[0] === 400 && $c[0] === 400 && $d[0] === 400 && $askedOnly === 2
+	&& \Nino\Modules\Members::current( $appData ) === null && membersFile( $appData, 'tokens' ) === [] && $told === [] );
+
+echo "\n";
+
+
+// --- The gate ------------------------------------------------------------------
+
+echo "Modules\\Members - the gate in front of the protected paths\n";
+
+// The setting is lines: a prefix with a slash behind it is the prefix, the tools and the endpoints of the modules
+// cannot be protected, the front page is no prefix, and what is there twice is there once
+check( 'the protected paths are the lines of the setting, made prefixes: no trailing slash, nothing under /_ or /., not the front page, each once',
+	\Nino\Features::saveSettings( $appData, 'members', [ 'paths' => "/club\n/clubs/\n/_admin\n/.members\n/\n  \n/club/\nclub-without-slash" ] ) === [] && \Nino\Modules\Members::prefixes( $appData ) === [ '/club', '/clubs' ] );
+
+$under = [];
+
+foreach( [ '/club' => true, '/club/news' => true, '/club/a/b' => true, '/clubs/x' => true, '/clubhouse' => false, '/club2' => false, '/news' => false, '/' => false, '/_admin' => false, '/_admin/club' => false, '/.members/login' => false, '' => false ] as $uri => $expected )
+	$under[$uri] = \Nino\Modules\Members::protects( $appData, $uri ) === $expected;
+
+check( '...and a path is protected when it is a prefix or lies below one - and not when it only begins with the same letters', array_filter( $under, static fn( bool $same ): bool => $same === false ) === [] );
+
+membersVisitor();
+$gated = membersServe( $appData, '/club/news' );
+$login = \Nino\Html::renderHtml( $appData, (string) membersAnswer( $gated )[3] );
+$keptFirst = \Nino\Runtime::getSessionValue( $appData, './members/target' );
+$prefix = membersServe( $appData, '/club' );
+
+check( 'a visitor under a protected path is shown the login page in place of the page: 401, not stored by anyone, and the page it asked for is kept in the session', membersAnswer( $gated ) === [ 401, '', 'no-store', '[template /templates/page-members-login]' ]
+	&& $keptFirst === '/club/news' );
+check( '...the page the visitor sees is the whole login page, its form going back to the page asked for', count( membersFind( $login, '//h2' ) ) === 1 && count( membersFind( $login, '//form[contains(@class, "members-login")]' ) ) === 1
+	&& membersFind( $login, '//form//input[@name="return"]' )[0]->getAttribute( 'value' ) === '/club/news' );
+$unanswered = membersAnswer( membersServe( $appData, '/clubs/nobody-wrote-this' ) );
+check( '...the prefix itself is shut as well, and so is a path below it that no route answers, and the session keeps the path asked for last', membersAnswer( $prefix ) === [ 401, '', 'no-store', '[template /templates/page-members-login]' ]
+	&& $unanswered === membersAnswer( $prefix ) && \Nino\Runtime::getSessionValue( $appData, './members/target' ) === '/clubs/nobody-wrote-this' );
+
+membersVisitor();
+$outside = [ membersAnswer( membersServe( $appData, '/clubhouse' ) ), membersAnswer( membersServe( $appData, '/news' ) ) ];
+$own = [ membersAnswer( membersServe( $appData, '/.members/login' ) )[0], membersAnswer( membersServe( $appData, '/.members/logout' ) )[0], membersAnswer( membersServe( $appData, '/_admin' ) )[0] ];
+check( 'a path outside the protected ones, the endpoints of the feature and the workbench are not gated: the page is the page, and the session keeps no path', $outside[0][0] === 200 && $outside[0][3] === 'FOR EVERYBODY' && $outside[1][3] === 'FOR EVERYBODY'
+	&& $own === [ 400, 303, 404 ] && \Nino\Runtime::getSessionValue( $appData, './members/target' ) === null );
+
+// The member passes
+membersVisitor();
+membersSignIn( $appData, $ada );
+$passed = membersAnswer( membersServe( $appData, '/club/news' ) );
+$sibling = $_SESSION;
+membersVisitor();
+$other = membersAnswer( membersServe( $appData, '/club/news' ) );
+check( 'a signed-in member passes: the page is the page, with its own status', $passed === [ 200, '', 'no-store', 'FOR MEMBERS' ] );
+check( '...and another visitor, in a session of their own, is still shown the login page', $other[0] === 401 && $other[3] === '[template /templates/page-members-login]' );
+$_SESSION = $sibling;
+
+// A page has an address for each language its routes give it. The setting names the page, /club: the German address and the German subtree are the same page
+membersVisitor();
+$german = [];
+
+foreach( [ '/club', '/verein', '/verein/vorstand' ] as $each )
+	$german[$each] = membersAnswer( membersServe( $appData, $each ) );
+
+$keptGerman = \Nino\Runtime::getSessionValue( $appData, './members/target' );
+membersSignIn( $appData, $ada );
+$germanMember = [];
+
+foreach( [ '/club', '/verein', '/verein/vorstand' ] as $each )
+	$germanMember[$each] = membersAnswer( membersServe( $appData, $each ) );
+
+check( 'a page that has a route for each language is shut at every address: the German one and the German subtree answer a visitor with the login page, as the page\'s own address does, and keep the path asked for - and a member passes at all three',
+	array_values( array_unique( array_map( 'json_encode', $german ) ) ) === [ '[401,"","no-store","[template \\/templates\\/page-members-login]"]' ] && count( $german ) === 3 && $keptGerman === '/verein/vorstand'
+	&& array_values( array_unique( array_map( 'json_encode', $germanMember ) ) ) === [ '[200,"","no-store","FOR MEMBERS"]' ] && count( $germanMember ) === 3 );
+$_SESSION = $sibling;
+
+// The Seo feature is told what a crawler has no business with
+$exclude = [ '/old/*' ];
+\Nino\Callbacks::doCallbacks( $appData, '/seo/exclude', $exclude );
+check( 'the Seo feature is given the protected paths to keep out of its sitemap, each with everything below it, after the ones it had - and the addresses of a protected page in the other languages, which Seo matches as they stand',
+	$exclude === [ '/old/*', '/club/*', '/clubs/*', '/verein', '/verein/*' ] );
+
+// The full-page cache: nothing under a protected path, and nothing a member has seen
+$fresh = $appData;
+$fresh['./nino/callbacks'] = [];
+$fresh['/nino/cache/blacklist'] = [ '/mine/*' ];
+\Nino\Modules\Members::init( $fresh );
+$none = $appData;
+$none['./nino/callbacks'] = [];
+$none['/nino/cache/blacklist'] = [];
+\Nino\Features::saveSettings( $none, 'members', [ 'paths' => [] ] );
+\Nino\Modules\Members::init( $none );
+check( 'the protected paths join the blacklist of the full-page cache when the feature boots - after the entries the project has, once - and an empty setting adds nothing', $fresh['/nino/cache/blacklist'] === [ '/mine/*', '/club/*', '/clubs/*' ]
+	&& $none['/nino/cache/blacklist'] === [] );
+
+$cached = static function() use ( &$appData ): int {
+	return count( glob( \Nino\Filesystem::path( $appData, '/data/cache' ). '/*.php' ) ?: [] );
+};
+$appData['/nino/cache/status'] = true;
+$appData['/nino/cache/blacklist'] = [];
+\Nino\Filesystem::removeDir( \Nino\Filesystem::path( $appData, '/data/cache' ) );
+unset( $appData['./nino/auth/current'] );
+
+membersVisitor();
+$page = membersServe( $appData, '/news' );
+\Nino\Modules\Cache::callbackOutput( $appData, $page );
+$storedForVisitor = $cached();
+\Nino\Filesystem::removeDir( \Nino\Filesystem::path( $appData, '/data/cache' ) );
+$appData['/nino/cache/blacklist'] = [];
+membersSignIn( $appData, $ada );
+$page = membersServe( $appData, '/news' );
+\Nino\Modules\Cache::callbackOutput( $appData, $page );
+$listedNow = $appData['/nino/cache/blacklist'];
+
+// A path the list has already is not put there twice, and a request that has no path adds nothing to it
+$appData['/nino/cache/blacklist'] = [ '/news', '/mine/*' ];
+membersServe( $appData, '/news' );
+$listedTwice = $appData['/nino/cache/blacklist'];
+$appData['/nino/cache/blacklist'] = [];
+$pathless = [];
+\Nino\Modules\Members::callbackGate( $appData, $pathless );
+check( 'a page for a visitor is stored by the full-page cache, and the same page for a member is not - it may carry their name, and its path is kept out of the cache for that request, once', $storedForVisitor === 1 && $cached() === 0
+	&& $listedNow === [ '/news' ] && $listedTwice === [ '/news', '/mine/*' ] && $appData['/nino/cache/blacklist'] === [] );
+$appData['/nino/cache/status'] = false;
+$appData['/nino/cache/blacklist'] = [];
+
+// Logging out, and the epoch
+echo "\n";
+
+echo "Modules\\Members - signing out, for one member and for everybody\n";
+
+membersSignIn( $appData, $ada );
+$told = [];
+$out = membersServe( $appData, '/.members/logout' );
+check( 'the logout link signs the member out and goes (303) to the start page with ?members=out, stored by no one; the features that build on it are told, with the account', membersAnswer( $out ) === [ 303, '/?members=out', 'no-store', '' ]
+	&& \Nino\Modules\Members::current( $appData ) === null && \Nino\Runtime::getSessionValue( $appData, './members/account' ) === null && count( $told ) === 1 && $told[0][0] === 'logout' && $told[0][1]['id'] === $ada['id'] );
+$told = [];
+$again = membersServe( $appData, '/.members/logout' );
+check( '...and it is the same for somebody who is not signed in - and nobody is told of that', membersAnswer( $again ) === membersAnswer( $out ) && $told === [] );
+ninoVisit( $appData, '/?members=out' );
+$page = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' );
+check( '...and the page it goes to says so: the state out, in the form', count( $page ) === 1 && $page[0]->textContent === $states['out'][0]->textContent );
+
+\Nino\Features::saveSettings( $appData, 'members', [ 'start' => '/club' ] );
+check( '...the start page of the setting is where it goes', membersAnswer( membersServe( $appData, '/.members/logout' ) )[1] === '/club?members=out' );
+\Nino\Features::saveSettings( $appData, 'members', [ 'start' => '/' ] );
+
+// Everybody out at once: two members in two browsers, a new epoch, and both are out
+membersVisitor();
+membersSignIn( $appData, $ada );
+$browserA = $_SESSION;
+membersVisitor();
+membersSignIn( $appData, $bare );
+$browserB = $_SESSION;
+$_SESSION = $browserA;
+$inBefore = [ \Nino\Modules\Members::current( $appData )['id'] ?? '', ( $_SESSION = $browserB ) ? \Nino\Modules\Members::current( $appData )['id'] ?? '' : '' ];
+$epochBefore = membersFile( $appData, 'session' )['epoch'];
+\Nino\Auth::loginUser( $appData, 'admin@example.com', 'correct horse battery staple' );
+[ $status ] = ninoCall( $appData, $panel, [], 'members/signout' );
+$_SESSION = $browserA;
+$outA = \Nino\Modules\Members::current( $appData );
+$_SESSION = $browserB;
+$outB = \Nino\Modules\Members::current( $appData );
+check( 'signing everybody out ends the sessions of every browser at once - they hold the account of the old epoch', $inBefore === [ $ada['id'], $bare['id'] ] && $status === 200 && $outA === null && $outB === null
+	&& membersFile( $appData, 'session' )['epoch'] !== $epochBefore );
+$gatedNow = membersServe( $appData, '/club/news' );
+check( '...and a protected path is shut to them', membersAnswer( $gatedNow )[0] === 401 );
+
+unset( $appData['./nino/auth/current'] );
+membersSignIn( $appData, $bare );
+check( '...they sign in again with a link, under the new epoch', ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $bare['id'] );
+
+// An account that is switched off, or gone, with a session
+membersVisitor();
+membersSignIn( $appData, $ada );
+\Nino\Modules\Members::change( $appData, $ada['id'], [ 'active' => false ] );
+$whileOff = [ \Nino\Modules\Members::current( $appData ), membersAnswer( membersServe( $appData, '/club/news' ) )[0], \Nino\Html::renderHtml( $appData, '[members-name][members-logout]' ) ];
+\Nino\Modules\Members::change( $appData, $ada['id'], [ 'active' => true ] );
+check( 'an account that is switched off reads as signed out at once, whatever its session says: no member, the login page on a protected path, no name and no link to sign out',
+	$whileOff[0] === null && $whileOff[1] === 401 && $whileOff[2] === '' && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $ada['id'] );
+
+$extra = \Nino\Modules\Members::add( $appData, 'extra@example.org', 'Extra', '' );
+membersVisitor();
+membersSignIn( $appData, $extra );
+\Nino\Modules\Members::remove( $appData, $extra['id'] );
+check( '...so does one that was deleted', \Nino\Modules\Members::current( $appData ) === null && membersAnswer( membersServe( $appData, '/club/news' ) )[0] === 401 );
+\Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [] ] );
+
+// The sign-in is a value of the kernel's session and nothing else: the answers set no cookie of their own
+membersVisitor();
+$token = membersLink( $appData, $ada );
+$asked = membersServe( $appData, '/.members/login?t='. $token );
+$request = membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $token ] );
+check( 'the sign-in is a value of the session - the answers that ask for it and bring it set no cookie of their own, nor does the one that ends it', array_key_exists( 'Set-Cookie', $asked['/nino/http/response']['header'] ) === false
+	&& array_key_exists( 'Set-Cookie', $request['/nino/http/response']['header'] ) === false && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $ada['id']
+	&& array_key_exists( 'Set-Cookie', membersServe( $appData, '/.members/logout' )['/nino/http/response']['header'] ) === false );
+
+echo "\n";
+
+
+// --- Deactivation ---------------------------------------------------------------
+
+echo "Modules\\Members - deactivation takes the panel away and keeps what the project has\n";
+
+$kept = [ 'accounts' => membersFile( $appData, 'accounts' ), 'tokens' => membersFile( $appData, 'tokens' ), 'session' => membersFile( $appData, 'session' ) ];
+check( 'before it, the three files of the feature are there', array_filter( [ '/data/members.php', '/data/members-tokens.php', '/data/members-session.php' ], static fn( string $file ): bool => \Nino\Filesystem::fileExists( $GLOBALS['appData'], $file ) === false ) === [] );
+\Nino\Auth::loginUser( $appData, 'admin@example.com', 'correct horse battery staple' );
+check( 'deactivation succeeds', \Nino\Features::deactivate( $appData, 'members' ) === true );
+check( '...the panel is not in the registry any more, and its actions are unknown', isset( \Nino\Admin\Admin::panels( $appData )['members'] ) === false && ninoCall( $appData, $panel, [], 'members/list' )[0] === 404 );
+check( '...the three files stay as they were, and so does the copy of the login page', $kept === [ 'accounts' => membersFile( $appData, 'accounts' ), 'tokens' => membersFile( $appData, 'tokens' ), 'session' => membersFile( $appData, 'session' ) ]
+	&& $kept['accounts'] !== [] && is_file( \Nino\Filesystem::path( $appData, '/templates/page-members-login.tpl' ) ) === true );
+check( '...and the class is out of /nino/modules', in_array( '\\Nino\\Modules\\Members', \Nino\Filesystem::getFileContent( $appData, '/config.php', [] )['/nino/modules'], true ) === false );
+
+echo "\n";
+
+
+// --- The look for the Design feature -----------------------------------------------
+
+echo "The look - the files in design/, read by their grammar\n";
+
+/*	One stylesheet in design/, a variant of the feature for the Design feature (its manual, under Base, says what a variant
+	is), and the block it shows on the specimen. A head of lines "@tag words", the ladders of the knobs and nothing else: the
+	layout is members.css's own. Read here by its grammar - which tags, which fields, which names. What a head says is never
+	compared	*/
+$designDir = $dir. '/design';
+$look = (string) file_get_contents( $designDir. '/regular.css' );
+preg_match( '#^\s*/\*(.*?)\*/#s', $look, $comment );
+$head = [];
+
+foreach( (array) preg_split( '/\R/', $comment[1] ?? '' ) as $line )
+	if( preg_match( '/^\s*\*?\s*(@[a-z]+(?:-de)?)\s+(\S.*?)\s*$/', (string) $line, $found ) === 1 )
+		$head[ $found[1] ][] = $found[2];
+
+$ruleOf = static function( string $css ): array {
+	$rules = [];
+	preg_match_all( '/([^{}]+)\{([^{}]*)\}/', (string) preg_replace( '#/\*.*?\*/#s', '', $css ), $found, PREG_SET_ORDER );
+	foreach( $found as $rule ) {
+		preg_match_all( '/(--[a-z0-9-]+)\s*:\s*([^;]+);/', $rule[2], $declared, PREG_SET_ORDER );
+		$rules[ trim( $rule[1] ) ] = array_column( $declared, 2, 1 ) + ( $rules[ trim( $rule[1] ) ] ?? [] );
+	}
+	return $rules;
+};
+$ladders = $ruleOf( $look );
+$defaults = $ruleOf( (string) file_get_contents( $dir. '/assets/members.css' ) )[':where(:root)'] ?? [];
+$knobs = [];
+
+foreach( $head['@knob'] ?? [] as $text ) {
+	$fields = (array) preg_split( '/\s+/', $text, 4 );
+	preg_match( '/^(.*?)(?:\s+=\s+(\S+))?$/', (string) ( $fields[3] ?? '' ), $label );
+	$knobs[ (string) $fields[0] ] = [ (string) ( $fields[1] ?? '' ), (string) ( $fields[2] ?? '' ), $label[2] ?? null, trim( (string) ( $label[1] ?? '' ) ) ];
+}
+
+check( 'the feature brings one look, regular, and the block for the specimen beside it', array_map( 'basename', glob( $designDir. '/*' ) ?: [] ) === [ 'preview.tpl', 'regular.css' ] );
+check( 'its head names and describes it in both languages, once each, and says the German in other words than the English',
+	array_filter( [ '@name', '@name-de', '@description', '@description-de' ], static fn( string $tag ): bool => count( $head[$tag] ?? [] ) !== 1 ) === [] && $head['@name'] !== $head['@name-de'] && $head['@description'] !== $head['@description-de'] );
+check( 'it declares the three knobs, once each and in order, with their kind and tab - the ground with the surface it stands at, the two scales without - each with its words in both languages',
+	$knobs === [ 'ground' => [ 'ground', 'colours', 'default', 'Ground of the login form' ], 'space' => [ 'scale', 'surfaces', null, 'Space inside the login form' ], 'corners' => [ 'scale', 'surfaces', null, 'Corners of the login form' ] ]
+	&& count( $head['@knob'] ) === 3 && array_map( static fn( string $text ): string => (string) preg_split( '/\s+/', $text, 2 )[0], $head['@knob-de'] ?? [] ) === [ 'ground', 'space', 'corners' ]
+	&& array_filter( $head['@knob-de'], static fn( string $text ): bool => count( (array) preg_split( '/\s+/', $text, 2 ) ) < 2 ) === [] );
+
+$rungs = [];
+
+foreach( [ 'space', 'corners' ] as $scale )
+	foreach( [ 'least', 'less', 'default', 'more', 'most' ] as $step )
+		$rungs[] = '--members-'. $scale. '--'. $step;
+
+check( 'each scale declares its five rungs, once each, on :where(:root) - and nothing else is declared, no rule is written and no colour is a literal',
+	array_keys( $ladders ) === [ ':where(:root)' ] && array_keys( $ladders[':where(:root)'] ) === $rungs && array_sum( array_map( static fn( string $rung ): int => substr_count( $look, $rung. ':' ), $rungs ) ) === 10
+	&& preg_match( '/#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|hwb|oklch|oklab)\(|!important/i', (string) preg_replace( '#/\*.*?\*/#s', '', $look ) ) !== 1 );
+check( 'the middle of each is the value members.css has as its default, so the form under it looks as it does without the Design feature',
+	( $ladders[':where(:root)']['--members-space--default'] ?? null ) === ( $defaults['--members-space'] ?? false ) && ( $ladders[':where(:root)']['--members-corners--default'] ?? null ) === ( $defaults['--members-corners'] ?? false )
+	&& isset( $defaults['--members-ground'], $defaults['--members-ground-on'], $defaults['--members-ground-link'], $defaults['--members-ground-border'], $defaults['--members-ground-focus'] ) === true );
+
+$block = (string) file_get_contents( $designDir. '/preview.tpl' );
+preg_match_all( '/\sid="([^"]*)"/', $block, $blockIds );
+check( 'the block for the specimen: one grid row with the form written out and no shortcode, every id members- something and none twice, no section of its own, no inline handler and no script',
+	str_starts_with( $block, '<div class="nino-grid-row">' ) === true && count( membersFind( $block, '//form[contains(@class, "members-login")]' ) ) === 1 && preg_match( '/\[members-[a-z]+/', $block ) !== 1
+	&& $blockIds[1] !== [] && count( array_unique( $blockIds[1] ) ) === count( $blockIds[1] ) && array_filter( $blockIds[1], static fn( string $each ): bool => str_starts_with( $each, 'members-' ) === false ) === []
+	&& stripos( $block, '<section' ) === false && preg_match( '/\son[a-z]+\s*=|<script/i', $block ) !== 1 );
+
+$designSetup = '\\Nino\\Modules\\Design\\Setup';
+$designPreview = '\\Nino\\Modules\\Design\\Preview';
+$designCompiler = '\\Nino\\Modules\\Design\\Compiler';
+
+if( class_exists( $designSetup ) === false || class_exists( $designCompiler ) === false )
+	echo "  note - there is no Design feature beside this one: the look is not run through it here, bin/check.sh runs it with it in the checkout\n";
+else {
+	$library = \Nino\Features::dir(). '/Design/library';
+	$modulesKept = (array) ( $appData['/nino/modules'] ?? [] );
+	$localeKept = $appData['./nino/locales/current'];
+
+	/** Which of the two features are on: their classes are listed in /nino/modules, and what the kernel and the Design feature have read of the features is read again */
+	$featuresOn = static function( array $names ) use ( &$appData, $modulesKept ): void {
+		$appData['/nino/modules'] = array_merge( array_values( array_diff( $modulesKept, [ '\\Nino\\Modules\\Members', '\\Nino\\Modules\\Design' ] ) ), array_map( static fn( string $name ): string => '\\Nino\\Modules\\'. $name, $names ) );
+		unset( $appData['./nino/features/all'], $appData['./nino/features/listed'], $appData['./design/features'] );
+	};
+
+	ninoWarnings();
+	$featuresOn( [ 'Members', 'Design' ] );
+
+	$scanNotes = [];
+	$scan = $designSetup::features( $appData, $scanNotes );
+	$feature = $scan['members'] ?? [];
+	$variants = $feature['catalogue'] ?? [];
+	$told = [ 'ground' => [ 'ground', 'colours' ], 'space' => [ 'scale', 'surfaces' ], 'corners' => [ 'scale', 'surfaces' ] ];
+
+	check( 'with the Design feature on, the scan lists this feature by its one look, which it has before anything is chosen, and has nothing to say of it',
+		isset( $scan['members'] ) === true && realpath( (string) $feature['dir'] ) === realpath( $dir ) && array_keys( $variants ) === [ 'regular' ] && $feature['default'] === 'regular' && $scanNotes === [] );
+
+	$appData['./nino/locales/current'] = 'en_US';
+	$english = $designSetup::features( $appData )['members']['catalogue']['regular'] ?? [];
+	$appData['./nino/locales/current'] = 'de_DE';
+	$german = $designSetup::features( $appData )['members']['catalogue']['regular'] ?? [];
+	$answers = [];
+
+	foreach( $variants['regular']['knobs'] ?? [] as $name => $knob )
+		$answers[$name] = [ $knob['kind'], $knob['tab'] ];
+
+	check( '...described in the language of the workbench by the lines of its head, and answering to the three knobs with the kind and the tab the head names, each scale published by its ladder',
+		( $english['name'] ?? null ) === $head['@name'][0] && ( $english['description'] ?? null ) === $head['@description'][0] && ( $german['name'] ?? null ) === $head['@name-de'][0] && ( $german['description'] ?? null ) === $head['@description-de'][0]
+		&& $answers === $told && ( $variants['regular']['knobs']['space']['ladder'] ?? [] ) === [ 'space' ] && ( $variants['regular']['knobs']['corners']['ladder'] ?? [] ) === [ 'corners' ] );
+
+	$blockTold = [];
+	$inside = $designSetup::previewOf( (string) $feature['dir'], 'members', $blockTold );
+	$blocks = $designPreview::blocks( $appData );
+	check( 'the block stands the check Design holds it to, the scan publishes its anchor, feature-members, and the preview makes the section of it', $inside === trim( $block ) && $blockTold === [] && ( $feature['anchor'] ?? null ) === 'feature-members'
+		&& array_keys( $blocks ) === [ 'members' ] && preg_match( '~^<section id="feature-members" class="nino-section"[^>]*>\s*(.*?)\s*</section>$~s', $blocks['members'], $section ) === 1 && str_contains( $section[1] ?? '', 'id="members-form"' ) === true );
+
+	$featuresOn( [ 'Members', 'Design' ] );
+	$notes = [];
+	$sheet = $designCompiler::compile( $appData, $designSetup::normalize( $appData, [ 'features' => [ 'members' => [ 'set' => 'regular' ] ] ], $library, $notes ), $library, $notes );
+	$selected = [];
+
+	foreach( [ 'space', 'corners' ] as $scale )
+		if( str_contains( $sheet, "\n\t--members-". $scale. ': var('. sprintf( $designSetup::KNOB_TOKEN, 'members', $scale, 'default' ). ");\n" ) === false )
+			$selected[] = $scale;
+
+	foreach( \Nino\Modules\Design\Colours::parts() as $part )
+		if( str_contains( $sheet, "\n\t--members-ground". ( $part === 'bg' ? '' : '-'. $part ). ': var('. \Nino\Modules\Design\Colours::token( 'default', $part ). ");\n" ) === false )
+			$selected[] = 'ground '. $part;
+
+	check( 'with the look chosen the sheet carries its stylesheet as the file has it, a line for the ladder of both scales and every part of the ground the palette solved, and compiles without a note',
+		$selected === [] && $notes === [] && str_contains( $sheet, rtrim( $look, "\n" ) ) === true );
+
+	$moved = $designCompiler::compile( $appData, $designSetup::normalize( $appData, [ 'features' => [ 'members' => [ 'set' => 'regular', 'knobs' => [ 'space' => -2, 'corners' => 2, 'ground' => 'dark' ] ] ] ], $library, $notes ), $library, $notes );
+	check( '...a position that is moved reaches the sheet as the rung it stands for, and a ground that is chosen as the palette\'s token of that surface',
+		str_contains( $moved, "\n\t--members-space: var(". sprintf( $designSetup::KNOB_TOKEN, 'members', 'space', 'least' ). ");\n" ) === true && str_contains( $moved, "\n\t--members-corners: var(". sprintf( $designSetup::KNOB_TOKEN, 'members', 'corners', 'most' ). ");\n" ) === true
+		&& str_contains( $moved, "\n\t--members-ground: var(". \Nino\Modules\Design\Colours::token( 'dark', 'bg' ). ");\n" ) === true );
+
+	// The bundle of a project the wizard has set up lists the sheet of the feature after the theme the Design feature writes
+	$bundled = $appData;
+	$bundled['/nino/html/assets'] = [ '/.cache/style.css' => array_merge( (array) ( \Nino\AppData::DEFAULTS['/nino/html/assets']['/.cache/style.css'] ?? [] ), [ $designCompiler::TARGET, '/assets/style.css' ] ) ];
+	\Nino\Features::registerAssets( $bundled );
+	$bundle = $bundled['/nino/html/assets']['/.cache/style.css'];
+	check( 'in a booted project the bundle lists members.css after the theme.css the Design feature writes its sheet to - the order the :where() of its defaults is for',
+		in_array( '/features/Members/assets/members.css', $bundle, true ) === true && array_search( '/features/Members/assets/members.css', $bundle, true ) > array_search( $designCompiler::TARGET, $bundle, true ) );
+
+	$appData['/nino/modules'] = $modulesKept;
+	$appData['./nino/locales/current'] = $localeKept;
+	unset( $appData['./nino/features/all'], $appData['./nino/features/listed'], $appData['./design/features'] );
+}
+
+echo "\n";
+
+
+// --- The panel's script, where node is on the path -----------------------------------
+//
+// members-js-smoke.js beside this file draws the screen over the kernel's own
+// Nino.admin.js and a stand-in for the rest of Nino - the checkout this suite runs
+// against, which is handed on; this suite runs it too where node is on the path, so
+// that bin/check.sh and CI cover both halves in one go
+$node = function_exists( 'shell_exec' ) === true ? trim( (string) @shell_exec( 'command -v node 2>/dev/null' ) ) : '';
+
+if( $node === '' || function_exists( 'exec' ) === false )
+	echo "  --  - node is not available here: members-js-smoke.js was NOT run\n";
+else {
+	$output = [];
+	$exit = 1;
+	exec( 'NINO_ROOT='. escapeshellarg( $root ). ' '. escapeshellarg( $node ). ' '. escapeshellarg( __DIR__. '/members-js-smoke.js' ). ' 2>&1', $output, $exit );
+	check( 'members-js-smoke.js passes - '. ( $output === [] ? 'no output' : end( $output ) ), $exit === 0 );
+}
+
+echo "\n";
+ninoDone( $appData );

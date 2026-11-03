@@ -1,0 +1,33 @@
+/*	@name			Regular
+ *	@name-de		Regulär
+ *	@description	The login form as the feature draws it without a theme: the ground of the page with a line round it, slightly rounded corners and the room of a card inside.
+ *	@description-de	Das Anmeldeformular, wie das Feature es ohne ein Theme zeichnet: der Grund der Seite mit einer Linie darum, leicht gerundete Ecken und der Platz einer Karte darin.
+ *
+ *	@knob	ground		ground	colours		Ground of the login form	= default
+ *	@knob-de	ground		Grund des Anmeldeformulars
+ *	@knob	space		scale	surfaces	Space inside the login form
+ *	@knob-de	space		Innenabstand des Anmeldeformulars
+ *	@knob	corners		scale	surfaces	Corners of the login form
+ *	@knob-de	corners		Ecken des Anmeldeformulars
+ *
+ *	Regular is the starting point of this feature: the layout is members.css's own, so this file
+ *	sets the ladders and nothing else, and the middle of each is the value members.css has as its
+ *	default - the form under it looks as it does without Design. The form of the page a link opens
+ *	and the line of a signed-in member are drawn on the same ground and take the same three.
+ */
+
+:where(:root) {
+	/*	The padding of the forms and of the line of a signed-in member	*/
+	--members-space--least:		var(--space-1);
+	--members-space--less:		var(--space-2);
+	--members-space--default:	calc( var(--space-2) * 1.5 );
+	--members-space--more:		var(--space-3);
+	--members-space--most:		var(--space-4);
+
+	/*	The radius of the four corners: square at the sharp end, then the radii of the page	*/
+	--members-corners--least:		0rem;
+	--members-corners--less:		var(--radius-small);
+	--members-corners--default:		var(--radius);
+	--members-corners--more:		var(--radius-large);
+	--members-corners--most:		.75rem;
+}

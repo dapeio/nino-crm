@@ -1,0 +1,182 @@
+/**
+ *	Nino - Sign
+ *	sign.css		What the components need on the site itself: the form of the signing page with the
+ *							frame of the document and the pad, and the list of a member's requests. Bundled
+ *							into the project's own /.cache/style.css by the manifest's assets
+ *							(docs/features.md, "Assets") - never rendered through the fill/shortcode engine, so
+ *							nothing in here is a textfill.
+ *
+ *							The form and the list are drawn from three properties, --sign-ground (with the parts
+ *							of a ground: the ground of the pad), --sign-space and --sign-corners, whose defaults
+ *							are the page's own roles (--color-*, --space-*, --radius), which every site has, so
+ *							they look at home whatever the site's theme says. The Design feature
+ *							(design/regular.css) moves them. The defaults stand in :where(), which has no
+ *							specificity: the bundle lists this file after theme.css, and a default in a bare
+ *							:root would win over the line that moves a property by order.
+ */
+
+:where(:root) {
+	--sign-ground: var(--color-background);
+	--sign-ground-on: var(--color-text);
+	--sign-ground-link: var(--color-accent);
+	--sign-ground-border: var(--color-border);
+	--sign-ground-focus: var(--color-focus);
+	--sign-space: calc( var(--space-2) * 1.5 );
+	--sign-corners: var(--radius);
+}
+
+.sign-form,
+.sign-list {
+	box-sizing: border-box;
+	max-width: 48rem;
+	margin: 0 auto var(--space-2);
+	padding: var(--sign-space);
+	border: 1px solid var(--color-border);
+	border-radius: var(--sign-corners);
+}
+
+.sign-form__title {
+	margin: 0 0 var(--space-1);
+}
+
+/*	The document: a frame as wide as the form, tall enough to read a page of	*/
+.sign-form__frame {
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	height: 28rem;
+	max-height: 70vh;
+	border: 1px solid var(--color-border);
+	border-radius: var(--sign-corners);
+	background-color: var(--color-background);
+}
+
+.sign-form__open {
+	margin: var(--space-1) 0 var(--space-2);
+}
+
+.sign-form__consent {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-1);
+	margin: var(--space-2) 0;
+}
+
+.sign-form__consent input {
+	flex: none;
+	margin-top: .25em;
+}
+
+.sign-form__state {
+	margin: 0 0 var(--space-1);
+}
+
+.sign-form__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+}
+
+.sign-form__link {
+	margin: var(--space-1) 0 0;
+}
+
+/*	The pad paints a ground as a section does: the roles of the kernel that follow a ground are pointed at it, so that
+	the field of the name, its label, the ring of the focus and the button in it are right on whichever ground is chosen	*/
+.sign-pad {
+	--color-ground: var(--sign-ground);
+	--color-ink: var(--sign-ground-on);
+	--color-title: var(--sign-ground-on);
+	--color-subtitle: var(--sign-ground-on);
+	--color-accent: var(--sign-ground-link);
+	--color-focus: var(--sign-ground-focus);
+	--color-border: var(--sign-ground-border);
+	box-sizing: border-box;
+	margin: 0 0 var(--space-2);
+	padding: var(--sign-space);
+	border: 1px solid var(--color-border);
+	border-radius: var(--sign-corners);
+	background-color: var(--color-ground);
+	color: var(--color-ink);
+}
+
+.sign-pad__label {
+	display: block;
+	margin: 0 0 var(--space-1);
+}
+
+/*	A pen, a finger and a mouse draw on it: the page does not scroll under a stroke	*/
+.sign-pad__canvas {
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 40rem;
+	aspect-ratio: 3 / 1;
+	touch-action: none;
+	cursor: crosshair;
+	border: 1px dashed var(--color-border);
+	border-radius: var(--sign-corners);
+	background-color: transparent;
+	color: var(--color-ink);
+}
+
+.sign-pad__clear {
+	margin-top: var(--space-1);
+}
+
+.sign-pad__draw,
+.sign-pad__typed {
+	margin: 0 0 var(--space-2);
+}
+
+.sign-pad__typed:last-child,
+.sign-pad__draw:last-child {
+	margin-bottom: 0;
+}
+
+.sign-pad__typed .nino-form-input {
+	max-width: 40rem;
+}
+
+/*	The list: a row for each request, the title and its state side by side, the links under them	*/
+.sign-list__rows {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.sign-list__row,
+.sign-list__none {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-2);
+	padding: var(--space-1) 0;
+	border-top: 1px solid var(--color-border);
+}
+
+.sign-list__rows > :first-child {
+	border-top: 0;
+}
+
+.sign-list__title {
+	flex: 1 1 14rem;
+	font-weight: 600;
+}
+
+/*	What still waits for a signature is set off from what is done	*/
+.sign-list__row[data-sign-state="requested"] .sign-list__state,
+.sign-list__row[data-sign-state="viewed"] .sign-list__state {
+	font-weight: 600;
+}
+
+.sign-list__date {
+	opacity: .8;
+}
+
+/*	What the script and the markup hide with the attribute stays hidden: a display of a rule above is an author's declaration,
+	which beats the browser's [hidden]	*/
+.sign-form [hidden],
+.sign-list [hidden] {
+	display: none;
+}

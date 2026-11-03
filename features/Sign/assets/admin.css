@@ -1,0 +1,77 @@
+@layer nino.system, nino.tool, nino.local;
+
+/**
+ *	Nino										A compact filesystembased php framework
+ *	Modules\Sign						A member signs a document of the Pdf feature
+ *	admin.css								What the feature's /_admin panel needs beyond the design
+ *													system in _admin/assets/style.css. Joins the workbench's
+ *													style bundle while the feature is active (see the panel's
+ *													assets()), so the same layer rules apply: every rule is
+ *													scoped to #sign-app, the root of templates/panel.tpl, and
+ *													nothing shared is restated.
+ *
+ *	@package								Dape/Nino
+ *	@author									David Perchermeier <mail@dape.io>
+ *	@link										https://github.com/dapeio/nino
+ */
+
+@layer nino.tool {
+
+/* The name and the badge of a request stand in one line, the buttons under them */
+#sign-app .sign-row-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: .75rem;
+}
+#sign-app .sign-row-actions {
+	margin-top: .5rem;
+}
+/* The record opens inside its row, set off from the line above it */
+#sign-app .sign-record {
+	margin: .75rem 0 0;
+	padding-top: .75rem;
+	border-top: 1px solid var(--editor-separator);
+}
+#sign-app .sign-record dt {
+	font-weight: 600;
+}
+#sign-app .sign-record dd {
+	margin: 0 0 .5rem;
+	overflow-wrap: anywhere;
+}
+#sign-app .sign-new,
+#sign-app .sign-rows {
+	margin-top: 1rem;
+}
+#sign-app .sign-input-area {
+	display: block;
+}
+#sign-app textarea.nino-admin-input {
+	min-height: 5rem;
+	resize: vertical;
+}
+/* The links that open a PDF are drawn as the small buttons beside them are: the workbench dresses the button element,
+   and a link has to be given what the element brings with it */
+#sign-app a.sign-open {
+	display: inline-flex;
+	align-items: center;
+	border-radius: var(--editor-radius-sm);
+	box-shadow: inset 0 0 0 1px var(--editor-border), var(--editor-shadow-sm);
+	cursor: pointer;
+	font-weight: 650;
+	line-height: 1.4rem;
+	text-decoration: none;
+}
+#sign-app a.sign-open:hover {
+	background: var(--editor-blue-soft);
+}
+
+/* What the script hides with the attribute stays hidden: a display of the shell or of a rule above is an author's
+   declaration, which beats the browser's [hidden]. This rule is the last of the layer, the layer is after the shell's,
+   and the root stands in front of it */
+#sign-app [hidden] {
+	display: none;
+}
+
+}

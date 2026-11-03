@@ -158,6 +158,25 @@ Die Daten des Inhabers (Name, Anschrift, Steuernummer, Bankverbindung, Logo, Unt
 
 Die Worte in der PDF-Datei (Angebot, Rechnung, Spaltenköpfe, die Hinweise) sind deutsch und stehen in `Documents/Render/text/de_DE.php`.
 
+## Die Features des Projekts
+
+Sechs Features gehören diesem Projekt und liegen versioniert in `features/`: **Members** (Mitglieder), **Pdf**, **Files** (Dateien), **Review**, **Sign** und **Events**. Der Katalog führt sie nicht mehr; sie sind White-Label-Code geblieben, und ein späteres Projekt kann sie in den Katalog zurückholen. Die `.gitignore` nimmt genau diese sechs Verzeichnisse von der Regel für `features/` aus, alles andere dort ist Katalog-Inhalt, der je Projekt eingespielt wird. **Builder** und **Design** kopierst Du weiterhin aus dem Katalog; sie sind nicht Teil dieses Repositorys.
+
+Änderungen an den sechs kommen aus diesem Repository, nicht aus dem Katalog: Du änderst sie hier, im Commit des Projekts. Was sie an Fremdem tragen (die Lucide-Icons, die Adobe-Metriken von Pdf), steht in `THIRD-PARTY-NOTICES.md`.
+
+Ihre Tests laufen mit dem Kernel dieses Projekts, vom Wurzelverzeichnis des Projekts aus:
+
+```sh
+NINO_ROOT=. php features/Members/tests/members-smoke.php
+NINO_ROOT=. php features/Pdf/tests/pdf-smoke.php
+NINO_ROOT=. php features/Files/tests/files-smoke.php
+NINO_ROOT=. php features/Review/tests/review-smoke.php
+NINO_ROOT=. php features/Sign/tests/sign-smoke.php
+NINO_ROOT=. php features/Events/tests/events-smoke.php
+```
+
+Ohne `NINO_ROOT` finden die Tests den Kernel selbst (drei Verzeichnisse über dem Test); die Variable macht den Aufruf eindeutig.
+
 ## Test
 
 ```bash

@@ -1,0 +1,105 @@
+/**
+ *	Nino - Members
+ *	members.css		What the components need on the site itself: the login
+ *								form, the form of the page a link opens, the line of a
+ *								signed-in member, the link that signs out and the name.
+ *								Bundled into the project's own /.cache/style.css
+ *								by the manifest's assets (docs/features.md, "Assets") -
+ *								never rendered through the fill/shortcode engine, so nothing in
+ *								here is a textfill.
+ *
+ *								The forms and the line are painted from three properties,
+ *								--members-ground (with the parts of a ground), --members-space
+ *								and --members-corners, whose defaults are the page's own roles
+ *								(--color-*, --space-*, --radius), which every site has, so they
+ *								look at home whatever the site's theme says. The Design feature
+ *								(design/regular.css) moves them. The defaults stand in :where(),
+ *								which has no specificity: the bundle lists this file after
+ *								theme.css, and a default in a bare :root would win over the line
+ *								that moves a property by order.
+ */
+
+:where(:root) {
+	--members-ground: var(--color-background);
+	--members-ground-on: var(--color-text);
+	--members-ground-link: var(--color-accent);
+	--members-ground-border: var(--color-border);
+	--members-ground-focus: var(--color-focus);
+	--members-space: calc( var(--space-2) * 1.5 );
+	--members-corners: var(--radius);
+}
+
+/*	The forms and the line paint a ground as a section does: the roles of the kernel
+	that follow a ground are pointed at it, so that the field, its label, the ring of
+	the focus and the button in it are right on whichever ground is chosen	*/
+.members-login,
+.members-confirm,
+.members-signed {
+	--color-ground: var(--members-ground);
+	--color-ink: var(--members-ground-on);
+	--color-title: var(--members-ground-on);
+	--color-subtitle: var(--members-ground-on);
+	--color-accent: var(--members-ground-link);
+	--color-focus: var(--members-ground-focus);
+	--color-border: var(--members-ground-border);
+	box-sizing: border-box;
+	max-width: 32rem;
+	margin: 0 auto var(--space-2);
+	padding: var(--members-space);
+	border: 1px solid var(--color-border);
+	border-radius: var(--members-corners);
+	background-color: var(--color-ground);
+	color: var(--color-ink);
+}
+
+.members-confirm__intro,
+.members-confirm__name {
+	margin: 0 0 var(--space-1);
+}
+
+.members-confirm__name {
+	font-weight: 600;
+}
+
+.members-login__label {
+	display: block;
+	margin-bottom: var(--space-1);
+}
+
+/*	The message above the button: what happened to the request, in words	*/
+.members-login__state {
+	margin: 0 0 var(--space-1);
+}
+
+/*	One line: the field and the button side by side, the message over both	*/
+.members-login.nino-form--inline .nino-form-input {
+	flex: 1 1 14rem;
+	margin: 0;
+}
+
+.members-login.nino-form--inline .members-login__state {
+	flex-basis: 100%;
+}
+
+.members-signed {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1);
+}
+
+.members-signed__name {
+	font-weight: 600;
+}
+
+.members-signed .members-logout {
+	margin-left: auto;
+}
+
+.members-logout {
+	text-decoration: underline;
+}
+
+.members-name {
+	font-weight: 600;
+}

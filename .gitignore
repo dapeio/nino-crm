@@ -23,6 +23,16 @@
 /features/*
 !/features/.htaccess
 
+# Six features are the project's, not the catalogue's: they are versioned
+# here, and updates to them come from this repository. The rest of features/
+# stays catalogue content installed per project
+!/features/Members/
+!/features/Pdf/
+!/features/Files/
+!/features/Review/
+!/features/Sign/
+!/features/Events/
+
 .DS_Store
 Thumbs.db
 

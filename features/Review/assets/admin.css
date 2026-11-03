@@ -1,0 +1,90 @@
+@layer nino.system, nino.tool, nino.local;
+
+/**
+ *	Nino										A compact filesystembased php framework
+ *	Modules\Review					Comments at a time in the track of an audio or video file
+ *	admin.css								What the feature's /_admin panel needs beyond the design
+ *													system in _admin/assets/style.css. Joins the workbench's
+ *													style bundle while the feature is active (see the panel's
+ *													assets()), so the same layer rules apply: every rule is
+ *													scoped to #review-app, the root of templates/panel.tpl, and
+ *													nothing shared is restated.
+ *
+ *	@package								Dape/Nino
+ *	@author									David Perchermeier <mail@dape.io>
+ *	@link										https://github.com/dapeio/nino
+ */
+
+@layer nino.tool {
+
+/* The name and the badge of a file stand in one line, the button under them */
+#review-app .review-row-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: .75rem;
+}
+#review-app .review-row-actions {
+	margin-top: .5rem;
+}
+#review-app .review-group,
+#review-app .review-folder,
+#review-app .review-file-title {
+	margin-top: 1rem;
+}
+/* The player runs over the width of the screen */
+#review-app .review-media {
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	margin: .75rem 0;
+}
+#review-app video.review-media {
+	height: auto;
+}
+/* A comment: the time that takes the player there, who wrote it and when, then the text, which keeps its line breaks */
+#review-app .review-comment-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: .5rem;
+}
+#review-app .review-time {
+	font-variant-numeric: tabular-nums;
+}
+#review-app .review-text {
+	margin: .5rem 0 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+/* The answers stand a step in, under the comment they answer */
+#review-app .review-answers-list {
+	margin: .75rem 0 0 1rem;
+	padding: 0 0 0 .75rem;
+	list-style: none;
+	border-left: 2px solid var(--editor-separator);
+}
+#review-app .review-answer-row + .review-answer-row {
+	margin-top: .75rem;
+}
+/* The form of the owner's comment, set off from the comments above it */
+#review-app .review-form {
+	margin-top: 1.5rem;
+	padding-top: 1rem;
+	border-top: 1px solid var(--editor-separator);
+}
+#review-app .review-answering {
+	display: flex;
+	align-items: center;
+	gap: .5rem;
+	font-weight: 600;
+}
+
+/* What the script hides with the attribute stays hidden: a display of the shell or of a rule above is an author's
+   declaration, which beats the browser's [hidden]. This rule is the last of the layer, the layer is after the shell's,
+   and the root stands in front of it */
+#review-app [hidden] {
+	display: none;
+}
+
+}

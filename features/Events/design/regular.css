@@ -1,0 +1,33 @@
+/*	@name			Regular
+ *	@name-de		Regulär
+ *	@description	The chip of a date as the feature draws it without a theme: the alt ground of the page with a line round it, slightly rounded corners and a half step of room above and below the text.
+ *	@description-de	Der Chip eines Termins, wie das Feature ihn ohne ein Theme zeichnet: der Alt-Grund der Seite mit einer Linie darum, leicht gerundete Ecken und ein halber Schritt Platz über und unter dem Text.
+ *
+ *	@knob	ground		ground	colours		Ground of the chip	= alt
+ *	@knob-de	ground		Grund des Chips
+ *	@knob	space		scale	surfaces	Space inside the chip
+ *	@knob-de	space		Innenabstand des Chips
+ *	@knob	corners		scale	surfaces	Corners of the chip
+ *	@knob-de	corners		Ecken des Chips
+ *
+ *	Regular is the starting point of this feature: the layout is events.css's own, so this file
+ *	sets the ladders and nothing else, and the middle of each is the value events.css has as its
+ *	default - the chip under it looks as it does without Design. The two links stand on the page
+ *	and take no knob.
+ */
+
+:where(:root) {
+	/*	The horizontal padding of the chip; the vertical one is half of it	*/
+	--events-space--least:		calc( var(--space-1) * .5 );
+	--events-space--less:		calc( var(--space-1) * .75 );
+	--events-space--default:	var(--space-1);
+	--events-space--more:		var(--space-2);
+	--events-space--most:		var(--space-3);
+
+	/*	The radius of the four corners: square at the sharp end, then the radii of the page, then a pill	*/
+	--events-corners--least:	0rem;
+	--events-corners--less:		var(--radius-small);
+	--events-corners--default:	var(--radius-large);
+	--events-corners--more:		.75rem;
+	--events-corners--most:		1.25rem;
+}

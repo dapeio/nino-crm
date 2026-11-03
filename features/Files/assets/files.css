@@ -1,0 +1,157 @@
+/**
+ *	Nino - Files
+ *	files.css		What the components need on the site itself: the browser of the
+ *							files of a member's group and the form that uploads into the
+ *							folder of the group. Bundled into the project's own
+ *							/.cache/style.css by the manifest's assets (docs/features.md,
+ *							"Assets") - never rendered through the fill/shortcode engine, so
+ *							nothing in here is a textfill.
+ *
+ *							The two are painted from three properties, --files-ground (with
+ *							the parts of a ground), --files-space and --files-corners, whose
+ *							defaults are the page's own roles (--color-*, --space-*, --radius),
+ *							which every site has, so they look at home whatever the site's
+ *							theme says. The Design feature (design/regular.css) moves them.
+ *							The defaults stand in :where(), which has no specificity: the
+ *							bundle lists this file after theme.css, and a default in a bare
+ *							:root would win over the line that moves a property by order.
+ */
+
+:where(:root) {
+	--files-ground: var(--color-background);
+	--files-ground-on: var(--color-text);
+	--files-ground-link: var(--color-accent);
+	--files-ground-border: var(--color-border);
+	--files-ground-focus: var(--color-focus);
+	--files-space: var(--space-2);
+	--files-corners: var(--radius);
+}
+
+/*	The browser and the form paint a ground as a section does: the roles of the kernel
+	that follow a ground are pointed at it, so that the link, the ring of the focus, the
+	button and the lines are right on whichever ground is chosen	*/
+.files-browser,
+.files-upload {
+	--color-ground: var(--files-ground);
+	--color-ink: var(--files-ground-on);
+	--color-title: var(--files-ground-on);
+	--color-subtitle: var(--files-ground-on);
+	--color-accent: var(--files-ground-link);
+	--color-focus: var(--files-ground-focus);
+	--color-border: var(--files-ground-border);
+	box-sizing: border-box;
+	margin: 0 0 var(--space-2);
+	padding: var(--files-space);
+	border: 1px solid var(--color-border);
+	border-radius: var(--files-corners);
+	background-color: var(--color-ground);
+	color: var(--color-ink);
+}
+
+.files-folder + .files-folder {
+	margin-top: var(--files-space);
+}
+
+.files-folder__title {
+	margin: 0 0 var(--space-1);
+	font-size: var(--text-2);
+}
+
+.files-folder__count {
+	font-size: var(--fontsize-small);
+	font-weight: normal;
+}
+
+.files-folder__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/*	A row: the name, and beside it the size, the day and the link that saves it	*/
+.files-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto auto;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-2);
+	padding: var(--space-1) 0;
+	border-top: 1px solid var(--color-border);
+}
+
+.files-row__name {
+	overflow-wrap: anywhere;
+}
+
+.files-row__size,
+.files-row__date {
+	font-size: var(--fontsize-small);
+	white-space: nowrap;
+}
+
+.files-folder__empty,
+.files-browser__none {
+	margin: 0;
+	padding: var(--space-1) 0;
+}
+
+@media (max-width: 36rem) {
+
+	.files-row {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+
+	.files-row__date {
+		grid-column: 1;
+	}
+}
+
+.files-upload__label {
+	display: block;
+	margin-bottom: var(--space-1);
+	font-weight: 600;
+}
+
+.files-upload__input {
+	display: block;
+	max-width: 100%;
+	margin-bottom: var(--space-1);
+}
+
+.files-upload__hint,
+.files-upload__state {
+	margin: 0 0 var(--space-1);
+}
+
+.files-upload__hint {
+	font-size: var(--fontsize-small);
+}
+
+/*	The list the script fills: a row for each file, its name and its word, and under them the progress	*/
+.files-upload__list {
+	margin: var(--space-2) 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.files-upload__item {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: .25rem var(--space-2);
+	padding: var(--space-1) 0;
+	border-top: 1px solid var(--color-border);
+}
+
+.files-upload__name {
+	overflow-wrap: anywhere;
+}
+
+.files-upload__bar {
+	grid-column: 1 / -1;
+	width: 100%;
+	accent-color: var(--color-accent);
+}
+
+/*	What the script hides with the attribute stays hidden: a display above is an author's declaration, which beats the browser's [hidden]	*/
+.files-upload [hidden] {
+	display: none;
+}

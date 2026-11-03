@@ -1,0 +1,75 @@
+/**
+ *	Nino - Events
+ *	events.css		What the components need on the site itself: the chip that
+ *								writes a date and the two links, to one date and to the feed.
+ *								Bundled into the project's own /.cache/style.css by the
+ *								manifest's assets (docs/features.md, "Assets") - never
+ *								rendered through the fill/shortcode engine, so nothing in
+ *								here is a textfill.
+ *
+ *								The chip is painted from three properties, --events-ground
+ *								(with the parts of a ground), --events-space and
+ *								--events-corners, whose defaults are the roles of the
+ *								kernel's alt ground and its tokens (--color-*, --space-*,
+ *								--radius-*) - which every site has - so it looks at home
+ *								whatever the site's theme says. The Design feature
+ *								(design/regular.css) moves them. The defaults stand in
+ *								:where(), which has no specificity: the bundle lists this
+ *								file after theme.css, and a default in a bare :root would
+ *								win over the line that moves a property by order.
+ */
+
+:where(:root) {
+	--events-ground: var(--color-section-alt-bg);
+	--events-ground-on: var(--color-section-alt-text);
+	--events-ground-link: var(--color-accent-alt);
+	--events-ground-border: var(--color-border-alt);
+	--events-ground-focus: var(--color-focus-alt);
+	--events-space: var(--space-1);
+	--events-corners: var(--radius-large);
+}
+
+/*	The chip: the date as a short line on a ground of its own. A date that is over is
+	set back, one that takes place today is set off by its weight - the words say the
+	same in text, so nothing is told by the tone alone	*/
+.events-when {
+	display: inline-block;
+	justify-self: start;
+	box-sizing: border-box;
+	padding: calc( var(--events-space) / 2 ) var(--events-space);
+	border: 1px solid var(--events-ground-border);
+	border-radius: var(--events-corners);
+	background-color: var(--events-ground);
+	color: var(--events-ground-on);
+	font-size: var(--fontsize-small);
+	font-variant-numeric: tabular-nums;
+	line-height: 1.4;
+}
+
+.events-when--today {
+	font-weight: 600;
+}
+
+.events-when--past {
+	opacity: .7;
+}
+
+/*	The two links stand on the page and are drawn as a link of it: no ground of their own	*/
+.events-ics,
+.events-feed {
+	display: inline-block;
+	justify-self: start;
+	color: var(--color-accent);
+	text-decoration: underline;
+}
+
+.events-ics:hover,
+.events-feed:hover {
+	text-decoration: none;
+}
+
+.events-ics:focus-visible,
+.events-feed:focus-visible {
+	outline: 2px solid var(--color-focus);
+	outline-offset: 2px;
+}

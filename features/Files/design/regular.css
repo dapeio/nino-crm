@@ -1,0 +1,33 @@
+/*	@name			Regular
+ *	@name-de		Regulär
+ *	@description	The browser and the form as the feature draws them without a theme: the ground of the page with a line round it, slightly rounded corners and the room of a card inside, the rows set off from each other by a line.
+ *	@description-de	Der Browser und das Formular, wie das Feature sie ohne ein Theme zeichnet: der Grund der Seite mit einer Linie darum, leicht gerundete Ecken und der Platz einer Karte darin, die Zeilen durch eine Linie voneinander abgesetzt.
+ *
+ *	@knob	ground		ground	colours		Ground of the rows	= default
+ *	@knob-de	ground		Grund der Zeilen
+ *	@knob	space		scale	surfaces	Space inside the browser and the form
+ *	@knob-de	space		Innenabstand von Browser und Formular
+ *	@knob	corners		scale	surfaces	Corners of the browser and the form
+ *	@knob-de	corners		Ecken von Browser und Formular
+ *
+ *	Regular is the starting point of this feature: the layout is files.css's own, so this file
+ *	sets the ladders and nothing else, and the middle of each is the value files.css has as its
+ *	default - the browser under it looks as it does without Design. The folders, the rows and the
+ *	form are drawn on the same ground and take the same three.
+ */
+
+:where(:root) {
+	/*	The padding of the browser and of the form	*/
+	--files-space--least:		var(--space-1);
+	--files-space--less:		calc( var(--space-1) * 1.5 );
+	--files-space--default:		var(--space-2);
+	--files-space--more:		var(--space-3);
+	--files-space--most:		var(--space-4);
+
+	/*	The radius of the four corners: square at the sharp end, then the radii of the page	*/
+	--files-corners--least:		0rem;
+	--files-corners--less:		var(--radius-small);
+	--files-corners--default:	var(--radius);
+	--files-corners--more:		var(--radius-large);
+	--files-corners--most:		.75rem;
+}
