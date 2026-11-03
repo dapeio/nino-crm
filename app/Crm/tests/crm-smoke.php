@@ -84,10 +84,10 @@ check( 'there is no database before the first connection', is_file( $file ) === 
 $pdo = \Crm\Db::pdo( $appData );
 check( 'the first connection creates /data/crm.sqlite', is_file( $file ) === true );
 check( 'it ran every migration there is', \Crm\Db::migrated() === count( \Crm\Db::migrations() ) && count( \Crm\Db::migrations() ) >= 1 );
-check( 'user_version is the number of the last migration', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 1 );
+check( 'user_version is the number of the last migration', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === max( array_keys( \Crm\Db::migrations() ) ) );
 
 $tables = array_column( \Crm\Db::rows( $appData, 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' ORDER BY name' ), 'name' );
-check( 'the tables are clients, client_accounts and settings', $tables === [ 'client_accounts', 'clients', 'settings' ] );
+check( 'the tables of the first schema are there: clients, client_accounts and settings (later migrations add their own)', array_diff( [ 'client_accounts', 'clients', 'settings' ], $tables ) === [] );
 check( 'the journal is WAL and foreign keys are on', strtolower( (string) $pdo->query( 'PRAGMA journal_mode' )->fetchColumn() ) === 'wal' && (int) $pdo->query( 'PRAGMA foreign_keys' )->fetchColumn() === 1 );
 check( 'vat_mode is small_business', ( \Crm\Db::row( $appData, 'SELECT value FROM settings WHERE key = :k', [ 'k' => 'vat_mode' ] )['value'] ?? '' ) === 'small_business' );
 
@@ -101,7 +101,7 @@ catch( \PDOException $e ) {
 	$boot = $e->getMessage();
 }
 
-check( 'a second boot runs no migration', $boot === '' && \Crm\Db::migrated() === 0 && (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 1 );
+check( 'a second boot runs no migration', $boot === '' && \Crm\Db::migrated() === 0 && (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === max( array_keys( \Crm\Db::migrations() ) ) );
 check( 'the busy timeout is 5 seconds', (int) $pdo->query( 'PRAGMA busy_timeout' )->fetchColumn() === 5000 );
 check( 'the connection is one per request', \Crm\Db::pdo( $appData ) === $pdo );
 

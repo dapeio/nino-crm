@@ -2,8 +2,8 @@
 declare(strict_types=1);
 /**
  *	Crm\Crm		The project module of the CRM. Listed in /nino/modules by the owner (one line in private/config.php);
- *						init() registers behaviour and writes nothing: the panel Kunden (adminPanels()), the component
- *						[crm-client] and the callbacks that keep the portal's lookup true when a member signs in or out. The database
+ *						init() registers behaviour and writes nothing: the panels Kunden, Belege and Positionen (adminPanels()), the
+ *						component [crm-client], the callbacks that keep the portal's lookup true when a member signs in or out, and the route /.crm/pdf/<id> that answers the PDF of a finalised document. The database
  *						is opened on first use, the portal pages come with the install unit the panel applies.
  */
 namespace Crm;
@@ -29,6 +29,10 @@ class Crm {
 
 		\Nino\Callbacks::registerCallback( $appData, '/members/login', [ Portal::class, 'callbackSession' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/members/logout', [ Portal::class, 'callbackSession' ] );
+
+		// The PDF of a document is answered to the workbench session that may manage the documents (see Render::callbackDownload())
+		$appData['/nino/http/routes']['GET://.crm/pdf/*'] = [ 'uri' => '/.crm/pdf/*' ];
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.crm/pdf/*', [ \Crm\Documents\Render::class, 'callbackDownload' ] );
 	}
 
 	/**
@@ -53,6 +57,6 @@ class Crm {
 	 */
 	public static function adminPanels( array &$appData ): array {
 
-		return [ \Crm\Clients\Admin::class ];
+		return [ \Crm\Clients\Admin::class, \Crm\Documents\Admin::class, \Crm\Items\Admin::class ];
 	}
 }
