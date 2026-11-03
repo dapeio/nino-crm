@@ -4,10 +4,9 @@ declare(strict_types=1);
 /**
  *	documents-smoke.php		Contract test for the documents of the project module \Crm\Crm: migration 0002, the settings and their
  *												rules, the money arithmetic (the cases of money-cases.json, which the script of the panel runs as
- *												well), the items, the drafts, finalising (number, frozen client, totals, PDF, hash, rollback, parallel
+ *												well), the items (the elements of the type Positionen), the drafts, finalising (number, frozen client, totals, PDF, hash, rollback, parallel
  *												numbers), the states, the credit note, the immutability of a finalised document, the route that
- *												answers the PDF, what the slots and tokens hold, and the panels Belege and Positionen with their
- *												actions. Runs over the kernel's tests/harness.php three levels up.
+ *												answers the PDF, what the slots and tokens hold, and the panel Belege with its actions. Runs over the kernel's tests/harness.php three levels up.
  *
  *	Usage: php app/Crm/tests/documents-smoke.php
  */
@@ -20,7 +19,7 @@ use Crm\Documents;
 use Crm\Documents\Money;
 use Crm\Documents\Numbers;
 use Crm\Documents\Render;
-use Crm\Items;
+use Crm\Positionen;
 use Crm\Settings;
 
 /**
@@ -73,8 +72,8 @@ echo "Migration 0002\n";
 
 $pdo = Db::pdo( $appData );
 $tables = array_column( Db::rows( $appData, 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' ORDER BY name' ), 'name' );
-check( 'the tables of C01 and of C02 are there', $tables === [ 'client_accounts', 'clients', 'document_lines', 'documents', 'items', 'sequences', 'settings' ] );
-check( 'user_version is 4 and the first boot ran the four migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 4 && Db::migrated() === 4 );
+check( 'the tables of C01 and of C02 are there - and the table of the items is not: migration 0005 dropped it', $tables === [ 'client_accounts', 'clients', 'document_lines', 'documents', 'sequences', 'settings' ] );
+check( 'user_version is 5 and the first boot ran the five migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 5 && Db::migrated() === 5 );
 
 Db::close();
 Db::pdo( $appData );
@@ -262,11 +261,10 @@ $ignored = ninoWarnings();
 
 $panel = [ \Nino\Admin\Admin::class, 'handlePost' ];
 $panels = \Nino\Admin\Admin::panels( $appData );
-check( 'the panels are Kunden, Belege and Positionen in the content group, between Kunden and the end', isset( $panels['crm-clients'], $panels['crm-documents'], $panels['crm-items'] ) && $panels['crm-documents']['group'] === 'content' && $panels['crm-items']['group'] === 'content'
-	&& ltrim( (string) $panels['crm-documents']['class'], '\\' ) === \Crm\Documents\Admin::class && ltrim( (string) $panels['crm-items']['class'], '\\' ) === \Crm\Items\Admin::class );
-check( '...their permissions are /_admin/crm-documents/manage and /_admin/crm-items/manage', \Crm\Documents\Admin::perm() === '/_admin/crm-documents/manage' && \Crm\Items\Admin::perm() === '/_admin/crm-items/manage'
-	&& ( $panels['crm-documents']['perm'] ?? '' ) === \Crm\Documents\Admin::MANAGE_PERM && ( $panels['crm-items']['perm'] ?? '' ) === \Crm\Items\Admin::MANAGE_PERM );
-check( '...and the order in the rail is Kunden, Belege, Positionen', \Crm\Clients\Admin::nav()[2] < \Crm\Documents\Admin::nav()[2] && \Crm\Documents\Admin::nav()[2] < \Crm\Items\Admin::nav()[2] );
+check( 'the panels are Kunden and Belege in the content group, and no other of the module', array_keys( array_filter( $panels, static fn( string $uri ): bool => str_starts_with( $uri, 'crm-' ), ARRAY_FILTER_USE_KEY ) ) === [ 'crm-clients', 'crm-documents' ]
+	&& $panels['crm-clients']['group'] === 'content' && $panels['crm-documents']['group'] === 'content' && ltrim( (string) $panels['crm-documents']['class'], '\\' ) === \Crm\Documents\Admin::class && \Crm\Crm::adminPanels( $appData ) === [ \Crm\Clients\Admin::class, \Crm\Documents\Admin::class ] );
+check( '...their permissions are /_admin/crm-clients/manage and /_admin/crm-documents/manage', \Crm\Documents\Admin::perm() === '/_admin/crm-documents/manage' && ( $panels['crm-documents']['perm'] ?? '' ) === \Crm\Documents\Admin::MANAGE_PERM );
+check( '...and the order in the rail is Kunden, Belege', \Crm\Clients\Admin::nav()[2] < \Crm\Documents\Admin::nav()[2] );
 check( 'the module registers the route GET /.crm/pdf/* and its callback', ( $appData['/nino/http/routes']['GET://.crm/pdf/*']['uri'] ?? '' ) === '/.crm/pdf/*' && isset( $appData['./nino/callbacks']['/nino/http/response/GET://.crm/pdf/*'] ) === true );
 
 ninoUser( $appData, 'admin@example.com' );
@@ -297,40 +295,98 @@ $second = \Crm\Clients::add( $appData, [ 'name' => 'Ben Süd', 'street' => 'Lind
 $third = \Crm\Clients::add( $appData, [ 'company' => 'Dritte AG' ] );
 $third = \Crm\Clients::setActive( $appData, $third['id'], false );
 
-// --- Items -------------------------------------------------------------------------------------------------------------
+// --- Positionen --------------------------------------------------------------------------------------------------------
 
-echo "\nItems\n";
+echo "\nPositionen\n";
 
-$web = Items::add( $appData, [ 'title' => ' Webdesign ', 'description' => 'Pro Stunde', 'unit' => 'Std.', 'price' => '85,50' ] );
-check( 'add() makes an item: trimmed, the price read from text, active, last in the order, no rate in small_business', is_array( $web ) && $web['title'] === 'Webdesign' && $web['price_net'] === 8550 && $web['vat_rate'] === 0 && $web['active'] === true && $web['sort'] === 1 );
-$hosting = Items::add( $appData, [ 'title' => 'Hosting', 'price' => 1200, 'unit' => 'Monat' ] );
-check( 'a price given as an int is cents', is_array( $hosting ) && $hosting['price_net'] === 1200 && $hosting['sort'] === 2 );
-check( 'a title is needed, at most 200 long; a description 2000; a unit 20', Items::add( $appData, [ 'title' => '  ' ] ) === 'empty:title' && Items::add( $appData, [ 'title' => str_repeat( 'x', 201 ) ] ) === 'long:title'
-	&& Items::add( $appData, [ 'title' => 'T', 'description' => str_repeat( 'x', 2001 ) ] ) === 'long:description' && Items::add( $appData, [ 'title' => 'T', 'unit' => str_repeat( 'x', 21 ) ] ) === 'long:unit' && Items::add( $appData, [ 'title' => [ 'x' ] ] ) === 'format:title' );
-check( 'a price that is no amount, or past 10^9 cents, is refused; a negative one is a price', Items::add( $appData, [ 'title' => 'T', 'price' => 'abc' ] ) === 'amount:price' && Items::add( $appData, [ 'title' => 'T', 'price' => '10000000,01' ] ) === 'amount:price'
-	&& Items::add( $appData, [ 'title' => 'T', 'price' => 2000000000 ] ) === 'amount:price' && ( Items::add( $appData, [ 'title' => 'Rabatt', 'price' => '-5' ] )['price_net'] ?? 0 ) === -500 );
-check( 'in small_business a rate other than 0 is refused', Items::add( $appData, [ 'title' => 'T', 'vat_rate' => 1900 ] ) === 'rate:vat_rate' && Items::add( $appData, [ 'title' => 'T', 'vat_rate' => '0' ] ) === 'rate:vat_rate' );
-check( 'a refused item is not stored', count( Items::list( $appData ) ) === 3 );
+$positionenState = static function() use ( $post ): string {
 
-Settings::set( $appData, 'vat_mode', 'regular' );
-$regularItem = Items::add( $appData, [ 'title' => 'Beratung', 'price' => '100', 'vat_rate' => 1900 ] );
-check( 'in regular a rate of the list is taken and one that is not in it is refused', ( $regularItem['vat_rate'] ?? 0 ) === 1900 && Items::add( $appData, [ 'title' => 'T', 'vat_rate' => 1600 ] ) === 'rate:vat_rate' );
-Settings::set( $appData, 'vat_mode', 'small_business' );
+	foreach( $post( 'crm-documents/status' )[1]['items'] as $item )
+		if( $item['key'] === 'positionen' )
+			return $item['state'];
 
-$changed = Items::change( $appData, $web['id'], [ 'price' => '90', 'description' => 'Pro Stunde, netto' ] );
-check( 'change() changes what is given and keeps the rest, the order and the active flag', is_array( $changed ) && $changed['price_net'] === 9000 && $changed['title'] === 'Webdesign' && $changed['unit'] === 'Std.' && $changed['sort'] === 1 && $changed['active'] === true );
-check( 'change() validates and writes nothing on a refusal; an item nobody has is unknown', Items::change( $appData, $web['id'], [ 'title' => '' ] ) === 'empty:title' && Items::get( $appData, $web['id'] )['title'] === 'Webdesign' && Items::change( $appData, 999, [ 'title' => 'x' ] ) === 'unknown' );
-$titleOnly = Items::change( $appData, $web['id'], [ 'title' => 'Webdesign Pro' ] );
-check( 'change() with a title alone keeps the price, the unit and the description', is_array( $titleOnly ) && $titleOnly['price_net'] === 9000 && $titleOnly['unit'] === 'Std.' && $titleOnly['description'] === 'Pro Stunde, netto' );
-Items::change( $appData, $web['id'], [ 'title' => 'Webdesign' ] );
-check( 'a price is read with blanks around it, as a person types it', ( Items::add( $appData, [ 'title' => 'Blanks', 'price' => '  12,50 ' ] )['price_net'] ?? 0 ) === 1250 );
-Items::order( $appData, [ $web['id'] ] );
-Db::exec( $appData, 'DELETE FROM items WHERE title = :t', [ 't' => 'Blanks' ] );
-check( 'setActive() switches an item; it is not deleted', ( Items::setActive( $appData, $hosting['id'], false )['active'] ?? true ) === false && Items::get( $appData, $hosting['id'] ) !== null && Items::setActive( $appData, 999, true ) === 'unknown' );
-check( 'list() has every item in order, or the active ones', array_column( Items::list( $appData ), 'title' ) === [ 'Webdesign', 'Hosting', 'Rabatt', 'Beratung' ] && array_column( Items::list( $appData, true ), 'title' ) === [ 'Webdesign', 'Rabatt', 'Beratung' ] );
-check( 'list() searches title and description, taking the wildcards literally', array_column( Items::list( $appData, false, 'stunde' ), 'title' ) === [ 'Webdesign' ] && Items::list( $appData, false, '%' ) === [] && Items::list( $appData, false, '_' ) === [] );
-check( 'order() puts the ids given first and the rest after, as they were', Items::order( $appData, [ $regularItem['id'], $web['id'] ] ) === true && array_column( Items::list( $appData ), 'title' ) === [ 'Beratung', 'Webdesign', 'Hosting', 'Rabatt' ] );
-check( 'order() refuses an id nobody has and an id twice, and changes nothing', Items::order( $appData, [ 999 ] ) === 'unknown' && Items::order( $appData, [ $web['id'], $web['id'] ] ) === 'unknown' && Items::order( $appData, [ 'x' ] ) === 'unknown' && array_column( Items::list( $appData ), 'title' )[0] === 'Beratung' );
+	return '';
+};
+
+check( 'before the setup the type is not there: missing() says so, and list() and get() have nothing', Positionen::missing( $appData ) === true && Positionen::list( $appData ) === [] && Positionen::list( $appData, 'x', false ) === [] && Positionen::get( $appData, 'webdesign' ) === null );
+check( '...the status of Belege names the type, and the editor has no items', $positionenState() === 'missing' && $post( 'crm-documents/list' )[1]['items'] === [] );
+
+// The blacklist of the texts is the wizard's and other units' before the setup: a key that is not the unit's has to survive it
+\Nino\Filesystem::mutate( $appData, '/text/blacklist.php', static fn( array $list ): array => array_values( array_unique( array_merge( $list, [ '/_admin/elements/field/other/title' ] ) ) ) );
+$foreignBefore = count( (array) \Nino\Filesystem::getFileContent( $appData, '/text/blacklist.php', [] ) );
+
+[ $status, $body ] = $post( 'crm-clients/setup' );
+check( 'the setup of Kunden brings the type: it is among what was added, and the file is the unit\'s own', $status === 200 && $body['added']['types'] === [ 'positionen.php' ] && $body['existed']['types'] === [] && Positionen::missing( $appData ) === false
+	&& \Nino\Filesystem::getFileContent( $appData, '/elements/positionen.php', [] ) === include $root. '/app/Crm/unit/positionen.php' );
+
+$model = \Nino\Elements::getElementModel( $appData, '/positionen' );
+check( 'the model has the seven fields of the plan: the words per language, the numbers for all', array_keys( $model ) === [ 'title', 'description', 'unit', 'price', 'vat', 'hidden', 'sort' ]
+	&& array_keys( array_filter( $model, static fn( array $field ): bool => ( $field['locale'] ?? false ) === true ) ) === [ 'title', 'description', 'unit' ]
+	&& $model['title']['type'] === 'string' && $model['title']['required'] === true && $model['title']['maxlength'] === 200 && $model['description']['maxlength'] === 2000 && $model['description']['breaks'] === true && $model['description']['inputsize'] === 4 && $model['unit']['maxlength'] === 20 );
+check( '...the price is a double with the euro sign, required; the rate a double with the percent sign; hidden a boolean without a default - off is the normal case, which the bucket for all says; sort an integer', $model['price']['type'] === 'double' && $model['price']['required'] === true && $model['price']['suffix'] === '€'
+	&& $model['vat']['type'] === 'double' && $model['vat']['suffix'] === '%' && isset( $model['vat']['required'] ) === false && $model['hidden']['type'] === 'boolean' && isset( $model['hidden']['default'] ) === false && ( \Nino\Filesystem::getFileContent( $appData, '/elements/positionen.php', [] )['*']['*'] ?? null ) === [ 'hidden' => false ] && $model['sort']['type'] === 'integer' );
+check( '...and the status of Belege no longer names it', $positionenState() === 'ok' );
+
+$keys = [ 'field/positionen/title', 'field/positionen/description', 'field/positionen/unit', 'field/positionen/price', 'field/positionen/vat', 'field/positionen/hidden', 'field/positionen/sort', 'type/positionen/hint' ];
+$blacklisted = (array) \Nino\Filesystem::getFileContent( $appData, '/text/blacklist.php', [] );
+check( 'the setup brings the words of the Elements form for the type: the labels of the seven fields and the hint, in both languages, and not empty', array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => array_filter( $keys, static fn( string $key ): bool => trim( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/_admin/elements/'. $key. ']]'] ?? '' ) ) === '' ) !== [] ) === []
+	&& \Nino\Filesystem::getFileContent( $appData, '/text/de_DE.php', [] )['[[/_admin/elements/field/positionen/hidden]]'] === 'Ausgeblendet' && \Nino\Filesystem::getFileContent( $appData, '/text/en_US.php', [] )['[[/_admin/elements/field/positionen/hidden]]'] === 'Hidden' );
+check( '...and they are on the blacklist of the texts, as the words of the workbench are, and the unit lists exactly those', array_diff( array_map( static fn( string $key ): string => '/_admin/elements/'. $key, $keys ), $blacklisted ) === []
+	&& ( \Nino\Features::readUnitManifest( $root. '/app/Crm/unit' )['blacklist'] ?? [] ) === array_map( static fn( string $key ): string => '/_admin/elements/'. $key, $keys ) );
+check( '...added to the blacklist, not written over it: the key that was there before is still there, and the list grew by the unit\'s eight', in_array( '/_admin/elements/field/other/title', $blacklisted, true ) === true && count( $blacklisted ) === $foreignBefore + count( $keys ) );
+
+$own = (array) \Nino\Filesystem::getFileContent( $appData, '/elements/positionen.php', [] );
+$own['model']['price']['suffix'] = 'EUR';
+\Nino\Filesystem::putFileContent( $appData, '/elements/positionen.php', $own );
+[ $status, $body ] = $post( 'crm-clients/setup' );
+check( 'a type the project has is left as it is - add-only: a field it changed stays changed, and the setup says the type was there', $status === 200 && $body['added']['types'] === [] && $body['existed']['types'] === [ 'positionen.php' ]
+	&& \Nino\Elements::getElementModel( $appData, '/positionen' )['price']['suffix'] === 'EUR' );
+$blacklisted = (array) \Nino\Filesystem::getFileContent( $appData, '/text/blacklist.php', [] );
+check( '...and the second press leaves the blacklist as it was: no key twice, the foreign one still there', count( $blacklisted ) === $foreignBefore + count( $keys ) && count( array_unique( $blacklisted ) ) === count( $blacklisted ) && in_array( '/_admin/elements/field/other/title', $blacklisted, true ) === true );
+$own['model']['price']['suffix'] = '€';
+\Nino\Filesystem::putFileContent( $appData, '/elements/positionen.php', $own );
+
+// What the owner enters in the Elements panel: the words per language, the numbers for all. Workshop has a text in English only
+$made = [
+	\Nino\Elements::insertElement( $appData, '/positionen/hosting', [ 'price' => 90, 'vat' => 0, 'sort' => 1, 'title' => 'Hosting', 'unit' => 'Monat' ], 'de_DE' ),
+	\Nino\Elements::updateElement( $appData, '/positionen/hosting', [ 'title' => 'Hosting plan', 'unit' => 'month' ], 'en_US' ),
+	\Nino\Elements::insertElement( $appData, '/positionen/beratung', [ 'price' => 90.5, 'vat' => 19, 'sort' => 2, 'title' => 'Beratung', 'unit' => 'Tag' ], 'de_DE' ),
+	\Nino\Elements::updateElement( $appData, '/positionen/beratung', [ 'title' => 'Consulting', 'description' => 'Advice for one day', 'unit' => 'day' ], 'en_US' ),
+	\Nino\Elements::insertElement( $appData, '/positionen/webdesign', [ 'price' => 85.5, 'vat' => 0, 'sort' => 3, 'title' => ' Webdesign ', 'description' => 'Pro Stunde', 'unit' => 'Std.' ], 'de_DE' ),
+	\Nino\Elements::updateElement( $appData, '/positionen/webdesign', [ 'title' => 'Web design', 'description' => 'Per hour', 'unit' => 'h' ], 'en_US' ),
+	\Nino\Elements::insertElement( $appData, '/positionen/workshop', [ 'price' => 250, 'vat' => 7, 'sort' => 4, 'title' => 'Workshop', 'description' => 'A day with your team', 'unit' => 'day' ], 'en_US' ),
+	\Nino\Elements::insertElement( $appData, '/positionen/cent', [ 'price' => 0.005, 'vat' => 7.5, 'sort' => 5, 'title' => 'Cent' ], 'de_DE' ),
+	\Nino\Elements::insertElement( $appData, '/positionen/rabatt', [ 'price' => -0.005, 'vat' => 0, 'sort' => 6, 'title' => 'Rabatt' ], 'de_DE' ),
+	\Nino\Elements::insertElement( $appData, '/positionen/altlast', [ 'price' => 1, 'hidden' => true, 'sort' => 7, 'title' => 'Altlast' ], 'de_DE' ),
+];
+check( 'the elements are made through the kernel\'s API, in German and in English', array_filter( $made, static fn( mixed $element ): bool => is_array( $element ) === false ) === [] && ninoWarnings() === [] );
+
+$items = Positionen::list( $appData );
+$byId = array_column( $items, null, 'id' );
+check( 'list() answers the active items in the order of their field sort, by the name of the element', array_column( $items, 'id' ) === [ 'hosting', 'beratung', 'webdesign', 'workshop', 'cent', 'rabatt' ] && array_column( $items, 'sort' ) === [ 1, 2, 3, 4, 5, 6 ] );
+check( '...with the words of the native language, trimmed - the site is German - and not those of the English version', $byId['webdesign']['title'] === 'Webdesign' && $byId['webdesign']['description'] === 'Pro Stunde' && $byId['webdesign']['unit'] === 'Std.' && $byId['hosting']['title'] === 'Hosting' && $byId['hosting']['unit'] === 'Monat' );
+check( '...a field that is empty in German shows the text of another language: the description of Beratung, and every word of Workshop, which has English only', $byId['beratung']['title'] === 'Beratung' && $byId['beratung']['description'] === 'Advice for one day'
+	&& $byId['workshop']['title'] === 'Workshop' && $byId['workshop']['description'] === 'A day with your team' && $byId['workshop']['unit'] === 'day' && $byId['cent']['description'] === '' && $byId['cent']['unit'] === '' );
+check( '...the price in cents and the rate in hundredths: 90 is 9000, 90.5 is 9050, 85.5 is 8550, 19 is 1900, 7 is 700, 7.5 is 750, 0 is 0', array_column( $items, 'price' ) === [ 9000, 9050, 8550, 25000, 1, -1 ] && array_column( $items, 'vat' ) === [ 0, 1900, 0, 700, 750, 0 ] );
+check( '...0.005 is rounded half away from zero, to 1 cent, and -0.005 to -1', $byId['cent']['price'] === 1 && $byId['rabatt']['price'] === -1 );
+check( '...every answer has the eight keys, the id a string and the flag a bool', array_unique( array_map( static fn( array $item ): string => implode( ',', array_keys( $item ) ), $items ) ) === [ 'id,title,description,unit,price,vat,active,sort' ] && array_filter( $items, static fn( array $item ): bool => is_string( $item['id'] ) === false || $item['active'] !== true ) === [] );
+$fresh = \Nino\Elements::insertElement( $appData, '/positionen/frisch', [ 'price' => 5, 'title' => 'Frisch' ], 'de_DE' );
+check( 'an item entered with a title and a price and nothing else - as the form of the Elements panel starts it - is offered in the list and in the editor', is_array( $fresh ) && in_array( 'frisch', array_column( Positionen::list( $appData ), 'id' ), true ) === true
+	&& in_array( 'Frisch', array_column( $post( 'crm-documents/list' )[1]['items'], 'title' ), true ) === true && Positionen::get( $appData, 'frisch' )['active'] === true );
+\Nino\Elements::deleteElement( $appData, '/positionen/frisch', 'de_DE' );
+check( 'an item that is hidden is left out, and given when it is asked for', in_array( 'altlast', array_column( $items, 'id' ), true ) === false && array_column( Positionen::list( $appData, '', false ), 'id' ) === [ 'hosting', 'beratung', 'webdesign', 'workshop', 'cent', 'rabatt', 'altlast' ]
+	&& array_column( Positionen::list( $appData, 'alt', false ), 'active' ) === [ false ] && Positionen::list( $appData, 'alt' ) === [] );
+check( 'the search is over the title: case does not matter, blanks around it go, the wildcards are taken literally, and the words of the other language are not searched', array_column( Positionen::list( $appData, 'WEB' ), 'id' ) === [ 'webdesign' ] && array_column( Positionen::list( $appData, ' hosting ' ), 'id' ) === [ 'hosting' ]
+	&& array_column( Positionen::list( $appData, 'work' ), 'id' ) === [ 'workshop' ] && Positionen::list( $appData, '%' ) === [] && Positionen::list( $appData, '_' ) === [] && Positionen::list( $appData, 'Consulting' ) === [] && Positionen::list( $appData, 'Stunde' ) === [] );
+check( 'get() answers one item by the name of its element, as list() has it; a name nobody has, a name that is none and a uri are null', Positionen::get( $appData, 'webdesign' ) === $byId['webdesign'] && Positionen::get( $appData, 'altlast' )['active'] === false
+	&& Positionen::get( $appData, 'nobody' ) === null && Positionen::get( $appData, '../x' ) === null && Positionen::get( $appData, '/positionen/webdesign' ) === null && Positionen::get( $appData, '' ) === null );
+
+\Nino\Elements::updateElement( $appData, '/positionen/cent', [ 'sort' => 0 ], 'de_DE' );
+$resorted = array_column( Positionen::list( $appData ), 'id' );
+\Nino\Elements::updateElement( $appData, '/positionen/cent', [ 'sort' => 5 ], 'de_DE' );
+check( 'the order is the field sort and not the order the elements were made in', $resorted === [ 'cent', 'hosting', 'beratung', 'webdesign', 'workshop', 'rabatt' ] && array_column( Positionen::list( $appData ), 'id' ) === [ 'hosting', 'beratung', 'webdesign', 'workshop', 'cent', 'rabatt' ] );
+
+$catalogue = array_column( Positionen::list( $appData ), 'title' );
 
 // --- Drafts -----------------------------------------------------------------------------------------------------------
 
@@ -472,7 +528,7 @@ $gone = Documents::add( $appData, 'invoice', $first['id'], [ 'lines' => $lines ]
 check( 'remove() deletes a draft with its lines', Documents::remove( $appData, $gone['id'] ) === true && Documents::get( $appData, $gone['id'] ) === null && (int) Db::row( $appData, 'SELECT COUNT(*) AS n FROM document_lines WHERE document_id = :id', [ 'id' => $gone['id'] ] )['n'] === 0 );
 $next = Documents::add( $appData, 'invoice', $first['id'] );
 check( 'the id of a deleted draft is not given to the next document: the ids count on', $next['id'] > $gone['id'] && str_contains( (string) Db::row( $appData, 'SELECT sql FROM sqlite_master WHERE name = \'documents\'' )['sql'], 'AUTOINCREMENT' ) === true
-	&& str_contains( (string) Db::row( $appData, 'SELECT sql FROM sqlite_master WHERE name = \'items\'' )['sql'], 'AUTOINCREMENT' ) === true && str_contains( (string) Db::row( $appData, 'SELECT sql FROM sqlite_master WHERE name = \'document_lines\'' )['sql'], 'AUTOINCREMENT' ) === true );
+	&& str_contains( (string) Db::row( $appData, 'SELECT sql FROM sqlite_master WHERE name = \'document_lines\'' )['sql'], 'AUTOINCREMENT' ) === true );
 Documents::remove( $appData, $next['id'] );
 
 // --- Finalising -------------------------------------------------------------------------------------------------------
@@ -921,8 +977,8 @@ function docServe( array &$appData, string $uri ): array {
 
 \Nino\Auth::insertUser( $appData, 'plain@example.com', 'plain password', [] );
 \Nino\Auth::insertUser( $appData, 'docs@example.com', 'docs password', [ '/_admin/crm-documents/manage' ] );
-\Nino\Auth::insertUser( $appData, 'items@example.com', 'items password', [ '/_admin/crm-items/manage' ] );
-$passwords = [ 'admin@example.com' => 'correct horse battery staple', 'plain@example.com' => 'plain password', 'docs@example.com' => 'docs password', 'items@example.com' => 'items password' ];
+\Nino\Auth::insertUser( $appData, 'clients@example.com', 'clients password', [ '/_admin/crm-clients/manage' ] );
+$passwords = [ 'admin@example.com' => 'correct horse battery staple', 'plain@example.com' => 'plain password', 'docs@example.com' => 'docs password', 'clients@example.com' => 'clients password' ];
 $as = static function( string $who ) use ( &$appData, $passwords ): void {
 	$_SESSION = [];
 	unset( $appData['./nino/auth/current'] );
@@ -939,7 +995,7 @@ $as( '' );
 check( 'a visitor is told 404, with a plain body and no file', $nothing( docServe( $appData, $uri ) ) === true && str_starts_with( docServe( $appData, $uri )['header']['Content-Type'], 'text/plain' ) );
 $as( 'plain@example.com' );
 check( 'an account without the permission is told the same 404', $nothing( docServe( $appData, $uri ) ) === true );
-$as( 'items@example.com' );
+$as( 'clients@example.com' );
 check( '...the permission of the other panel does not open it', $nothing( docServe( $appData, $uri ) ) === true );
 
 $as( 'docs@example.com' );
@@ -1009,35 +1065,28 @@ echo "\nThe panel Belege: files, words, permission\n";
 $assets = \Crm\Documents\Admin::assets();
 check( 'its assets, template and text directory are files of the module; the arithmetic of the editor comes first', count( $assets ) === 3 && array_filter( $assets, static fn( string $asset ): bool => is_file( $root. $asset ) === false ) === [] && str_ends_with( $assets[0], '/Money/assets/money.js' ) === true
 	&& is_file( $root. \Crm\Documents\Admin::template(). '.tpl' ) === true && is_file( $root. \Crm\Documents\Admin::text(). '/de_DE.php' ) === true && is_file( $root. \Crm\Documents\Admin::text(). '/en_US.php' ) === true );
-check( 'the panel Positionen brings the same arithmetic first', str_ends_with( \Crm\Items\Admin::assets()[0], '/Money/assets/money.js' ) === true && array_filter( \Crm\Items\Admin::assets(), static fn( string $asset ): bool => is_file( $root. $asset ) === false ) === []
-	&& is_file( $root. \Crm\Items\Admin::template(). '.tpl' ) === true && is_file( $root. \Crm\Items\Admin::text(). '/de_DE.php' ) === true && is_file( $root. \Crm\Items\Admin::text(). '/en_US.php' ) === true );
 
 $words = [];
 $sources = [];
 
-foreach( [ 'documents' => [ \Crm\Documents\Admin::class, 'Documents', 'crm-documents' ], 'items' => [ \Crm\Items\Admin::class, 'Items', 'crm-items' ] ] as $name => [ $class, $dir, $uri ] ) {
+foreach( [ 'documents' => [ \Crm\Documents\Admin::class, 'Documents', 'crm-documents' ] ] as $name => [ $class, $dir, $uri ] ) {
 
 	$words[$name] = [ 'de_DE' => require $root. $class::text(). '/de_DE.php', 'en_US' => require $root. $class::text(). '/en_US.php' ];
 	$sources[$name] = (string) file_get_contents( $root. '/app/Crm/'. $dir. '/Admin/Admin.php' ). (string) file_get_contents( $root. '/app/Crm/'. $dir. '/Admin/assets/admin.js' );
 
 	check( 'the words of '. $uri. ' are the same keys in German and English, none empty', array_keys( $words[$name]['de_DE'] ) === array_keys( $words[$name]['en_US'] ) && array_filter( $words[$name]['de_DE'] + $words[$name]['en_US'], static fn( string $text ): bool => trim( $text ) === '' ) === [] && count( $words[$name]['de_DE'] ) > 25 );
 	check( '...the name in the rail and the label of the Dashboard tile have their words', isset( $words[$name]['de_DE']['[['. $class::nav()[1]. ']]'], $words[$name]['en_US']['[['. $class::nav()[1]. ']]'] ) === true
-		&& ( $name === 'items' || isset( $words[$name]['de_DE']['[[/_admin/crm-documents/label/open]]'], $words[$name]['en_US']['[[/_admin/crm-documents/label/open]]'] ) === true ) );
+		&& isset( $words[$name]['de_DE']['[[/_admin/crm-documents/label/open]]'], $words[$name]['en_US']['[[/_admin/crm-documents/label/open]]'] ) === true );
 	check( '...the German ones speak Du', preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $words[$name]['de_DE'] ) ) !== 1 );
 	check( '...and a %s of the German is one of the English, in the same number', array_filter( array_keys( $words[$name]['de_DE'] ), static fn( string $key ): bool => substr_count( $words[$name]['de_DE'][$key], '%s' ) !== substr_count( $words[$name]['en_US'][$key] ?? '', '%s' ) ) === [] );
 
-	preg_match_all( "~'(crm_(?:documents|items)_[a-z_]+)'~", $sources[$name], $codes );
+	preg_match_all( "~'(crm_documents_[a-z_]+)'~", $sources[$name], $codes );
 	$codes = array_filter( array_unique( $codes[1] ), static fn( string $code ): bool => str_ends_with( $code, '_' ) === false );
 
-	if( $name === 'documents' )
-		$codes = array_unique( array_merge( $codes, array_map( static fn( string $kind ): string => 'crm_documents_line_'. $kind, [ 'empty', 'long', 'format', 'amount', 'rate' ] ) ) );
+	$codes = array_unique( array_merge( $codes, array_map( static fn( string $kind ): string => 'crm_documents_line_'. $kind, [ 'empty', 'long', 'format', 'amount', 'rate' ] ) ) );
 
-	check( 'every code '. $uri. ' answers has its text in both languages', array_filter( $codes, static fn( string $code ): bool => isset( $words[$name]['de_DE']['[[/_admin/error/'. $code. ']]'], $words[$name]['en_US']['[[/_admin/error/'. $code. ']]'] ) === false ) === [] && count( $codes ) >= ( $name === 'documents' ? 25 : 8 ) );
+	check( 'every code '. $uri. ' answers has its text in both languages', array_filter( $codes, static fn( string $code ): bool => isset( $words[$name]['de_DE']['[[/_admin/error/'. $code. ']]'], $words[$name]['en_US']['[[/_admin/error/'. $code. ']]'] ) === false ) === [] && count( $codes ) >= 25 );
 	check( '...and every text of an error is a code the panel answers', array_filter( array_keys( $words[$name]['de_DE'] ), static fn( string $key ): bool => str_starts_with( $key, '[[/_admin/error/' ) === true && in_array( substr( $key, 16, -2 ), $codes, true ) === false ) === [] );
-
-	preg_match_all( "~'(/_admin/{$uri}/[a-z/-]+)'~", (string) file_get_contents( $root. '/app/Crm/'. $dir. '/Admin/assets/admin.js' ), $keys );
-	if( $name === 'items' )
-		check( 'every fill key the script of '. $uri. ' asks for whole has its text', array_filter( array_unique( $keys[1] ), static fn( string $key ): bool => str_ends_with( $key, '/' ) === false && isset( $words[$name]['de_DE']['[['. $key. ']]'] ) === false ) === [] && count( $keys[1] ) > 10 );
 }
 
 $jsDocs = (string) file_get_contents( $root. '/app/Crm/Documents/Admin/assets/admin.js' );
@@ -1056,22 +1105,20 @@ check( 'every fill key the script of crm-documents asks for in pieces has its te
 		array_map( static fn( string $s ): string => 'column/'. $s, [ 'title', 'description', 'qty', 'unit', 'price', 'rate', 'amount', 'actions' ] ),
 		array_map( static fn( string $s ): string => 'setting/'. $s, [ 'vat-mode', 'vat-rates', 'payment-days', 'offer-days', 'currency', 'number-offer', 'number-invoice', 'number-credit', 'mode-small-business', 'mode-regular' ] ),
 		array_map( static fn( string $s ): string => 'setting-hint/'. $s, [ 'vat-mode', 'vat-rates', 'payment-days', 'offer-days', 'currency', 'number-offer', 'number-invoice', 'number-credit' ] ),
-		array_map( static fn( string $s ): string => 'status/'. $s, [ 'module-off', 'data-unwritable', 'pdf-missing', 'pdf-off', 'pdf-problem', 'templates-offer-none', 'templates-invoice-none', 'pdf-dir-unwritable' ] ),
+		array_map( static fn( string $s ): string => 'status/'. $s, [ 'module-off', 'data-unwritable', 'positionen-missing', 'pdf-missing', 'pdf-off', 'pdf-problem', 'templates-offer-none', 'templates-invoice-none', 'pdf-dir-unwritable' ] ),
 		array_map( static fn( string $s ): string => 'field/'. $s, [ 'client', 'date', 'due-date', 'valid-until', 'period-from', 'period-to', 'sent-at', 'paid-at', 'reverse-charge', 'title', 'offer', 'offer-choose', 'offer-follow', 'release-mail', 'sign-account', 'sign-days' ] ),
 		array_map( static fn( string $s ): string => 'error/'. $s, [ 'from-offer', 'credit', 'release', 'unrelease', 'sign' ] )
 	), static fn( string $key ): bool => isset( $words['documents']['de_DE']['[[/_admin/crm-documents/'. $key. ']]'], $words['documents']['en_US']['[[/_admin/crm-documents/'. $key. ']]'] ) === false ) === [] );
 
 $mine = [ 'crm-documents/list', 'crm-documents/get', 'crm-documents/save', 'crm-documents/remove', 'crm-documents/finalise', 'crm-documents/state', 'crm-documents/from-offer', 'crm-documents/credit', 'crm-documents/release', 'crm-documents/unrelease', 'crm-documents/sign', 'crm-documents/settings-get', 'crm-documents/settings-save', 'crm-documents/templates', 'crm-documents/status' ];
 check( 'its actions are the fifteen of the plan', array_keys( \Crm\Documents\Admin::actions() ) === $mine );
-check( 'the actions of Positionen are the five of the plan', array_keys( \Crm\Items\Admin::actions() ) === [ 'crm-items/list', 'crm-items/get', 'crm-items/save', 'crm-items/active', 'crm-items/order' ] );
 
 $posts = [
 	'crm-documents/list' => [], 'crm-documents/get' => [ 'id' => '1' ], 'crm-documents/save' => [ 'category' => 'invoice', 'client_id' => '1' ], 'crm-documents/remove' => [ 'id' => '1' ], 'crm-documents/finalise' => [ 'id' => '1' ],
 	'crm-documents/state' => [ 'id' => '1', 'state' => 'sent' ], 'crm-documents/from-offer' => [ 'id' => '1' ], 'crm-documents/credit' => [ 'id' => '1' ], 'crm-documents/release' => [ 'id' => '1' ], 'crm-documents/unrelease' => [ 'id' => '1' ], 'crm-documents/sign' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-documents/settings-get' => [], 'crm-documents/settings-save' => [ 'payment_days' => '99' ],
 	'crm-documents/templates' => [ 'category' => 'invoice' ], 'crm-documents/status' => [],
-	'crm-items/list' => [], 'crm-items/get' => [ 'id' => '1' ], 'crm-items/save' => [ 'title' => 'Nobody' ], 'crm-items/active' => [ 'id' => '1' ], 'crm-items/order' => [ 'ids' => [ 1 ] ],
 ];
-$before = [ count( Documents::list( $appData ) ), count( Items::list( $appData ) ), Settings::all( $appData ), $sequences() ];
+$before = [ count( Documents::list( $appData ) ), count( Positionen::list( $appData, '', false ) ), Settings::all( $appData ), $sequences() ];
 $denied = [ 'signed out' => [], 'without the permission' => [], 'with the other panel\'s permission' => [] ];
 
 $as( '' );
@@ -1082,15 +1129,15 @@ $as( 'plain@example.com' );
 foreach( $posts as $action => $data )
 	$denied['without the permission'][$action] = $post( $action, $data )[0]. ( $post( $action, $data )[1]['code'] ?? '' );
 
-$as( 'items@example.com' );
+$as( 'clients@example.com' );
 foreach( $posts as $action => $data )
 	if( str_starts_with( $action, 'crm-documents/' ) === true )
 		$denied['with the other panel\'s permission'][$action] = $post( $action, $data )[0];
 
-check( 'every action refuses a visitor with 401 and the code session', array_values( array_unique( $denied['signed out'] ) ) === [ '401session' ] && array_keys( $denied['signed out'] ) === array_keys( $posts ) );
+check( 'every action refuses a visitor with 401 and the code session', array_values( array_unique( $denied['signed out'] ) ) === [ '401session' ] && array_diff( $mine, array_keys( $denied['signed out'] ) ) === [] );
 check( '...an account without the permission with 403', array_values( array_unique( $denied['without the permission'] ) ) === [ '403' ] );
 check( '...so does one with the permission of the other panel; and nothing was written by any of them', array_values( array_unique( $denied['with the other panel\'s permission'] ) ) === [ 403 ]
-	&& $before === [ count( Documents::list( $appData ) ), count( Items::list( $appData ) ), Settings::all( $appData ), $sequences() ] );
+	&& $before === [ count( Documents::list( $appData ) ), count( Positionen::list( $appData, '', false ) ), Settings::all( $appData ), $sequences() ] );
 
 $as( 'admin@example.com' );
 
@@ -1098,7 +1145,7 @@ echo "\nThe actions of Belege\n";
 
 [ $status, $body ] = $post( 'crm-documents/list' );
 check( 'list answers the documents, the years, the clients to filter by, the settings with the rates, and the active items', $status === 200 && count( $body['documents'] ) === count( Documents::list( $appData ) ) && $body['years'] === Documents::years( $appData ) && array_column( $body['clients'], 'number' ) === [ 'K-0001', 'K-0002', 'K-0003' ]
-	&& $body['clients'][2]['active'] === false && $body['settings']['vat_mode'] === 'small_business' && $body['settings']['rates'] === [ 1900, 700, 0 ] && $body['settings']['currency'] === '€' && array_column( $body['items'], 'title' ) === [ 'Beratung', 'Webdesign', 'Rabatt' ] );
+	&& $body['clients'][2]['active'] === false && $body['settings']['vat_mode'] === 'small_business' && $body['settings']['rates'] === [ 1900, 700, 0 ] && $body['settings']['currency'] === '€' && array_column( $body['items'], 'title' ) === $catalogue );
 $stillLapsed = Documents::add( $appData, 'offer', $first['id'], [ 'date' => '2021-03-03', 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
 Documents::finalise( $appData, $stillLapsed['id'] );
 check( 'list filters by category, state, year and client', array_unique( array_column( $post( 'crm-documents/list', [ 'category' => 'offer' ] )[1]['documents'], 'category' ) ) === [ 'offer' ] && array_unique( array_column( $post( 'crm-documents/list', [ 'state' => 'draft' ] )[1]['documents'], 'state' ) ) === [ 'draft' ]
@@ -1109,7 +1156,7 @@ check( 'a year or a client that is no number is 400 crm_documents_format; a sear
 
 [ $status, $body ] = $post( 'crm-documents/get', [ 'id' => (string) $target['id'] ] );
 check( 'get answers the document with its lines and its client, the templates of its tag with their inputs, the clients, the settings and the items', $status === 200 && $body['document']['number'] === $target['number'] && count( $body['document']['lines'] ) === 2 && $body['document']['client']['company'] === 'Studio Nord GmbH'
-	&& isset( $body['document']['client_frozen'] ) === false && array_column( $body['templates'], 'key' ) === [ 'rechnung' ] && array_column( $body['templates'][0]['inputs'], 'name' ) === [ 'intro', 'footnote' ] && $body['templates'][0]['inputs'][0]['required'] === true && count( $body['clients'] ) === 3 && count( $body['items'] ) === 3 );
+	&& isset( $body['document']['client_frozen'] ) === false && array_column( $body['templates'], 'key' ) === [ 'rechnung' ] && array_column( $body['templates'][0]['inputs'], 'name' ) === [ 'intro', 'footnote' ] && $body['templates'][0]['inputs'][0]['required'] === true && count( $body['clients'] ) === 3 && array_column( $body['items'], 'title' ) === $catalogue );
 check( '...the address of its PDF: the route of the module below the directory of the project', $body['document']['pdf_url'] === '/.crm/pdf/'. $target['id'] );
 $appData['/nino/dir'] = '/club';
 check( '...below the directory the project is served from', $post( 'crm-documents/get', [ 'id' => (string) $target['id'] ] )[1]['document']['pdf_url'] === '/club/.crm/pdf/'. $target['id'] );
@@ -1251,12 +1298,12 @@ $stateOf = static function( array $body, string $key ): string {
 	return '';
 };
 [ $status, $body ] = $post( 'crm-documents/status' );
-check( 'status names the module, the data directory, Pdf, the templates of both tags and the directory of the PDFs', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'pdf', 'templates-offer', 'templates-invoice', 'pdf-dir' ] );
+check( 'status names the module, the data directory, Pdf, the templates of both tags, the directory of the PDFs and the element type of the items', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'pdf', 'templates-offer', 'templates-invoice', 'pdf-dir', 'positionen' ] );
 check( '...all of it is ok here', array_unique( array_column( $body['items'], 'state' ) ) === [ 'ok' ] );
 \Nino\Features::deactivate( $appData, 'pdf' );
 check( 'with Pdf off no template is offered, by templates and by get', $post( 'crm-documents/templates', [ 'category' => 'invoice' ] )[1]['templates'] === [] && $post( 'crm-documents/get', [ 'id' => (string) $target['id'] ] )[1]['templates'] === [] );
 $body = $post( 'crm-documents/status' )[1];
-check( 'Pdf off is told alone: the line names Pdf and no template, the other lines of the module stay', $stateOf( $body, 'pdf' ) === 'off' && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'pdf', 'pdf-dir' ] );
+check( 'Pdf off is told alone: the line names Pdf and no template, the other lines of the module stay', $stateOf( $body, 'pdf' ) === 'off' && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'pdf', 'pdf-dir', 'positionen' ] );
 \Nino\Features::activate( $appData, 'pdf' );
 \Nino\Html::init( $appData );
 $post( 'pdf/templates/delete', [ 'key' => 'angebot' ] );
@@ -1322,13 +1369,9 @@ check( 'the kinds of refusal are answered with their status, code, field and par
 echo "\nThe database refuses\n";
 
 Db::exec( $appData, 'CREATE TRIGGER no_documents BEFORE INSERT ON documents BEGIN SELECT RAISE( ABORT, \'no\' ); END' );
-Db::exec( $appData, 'CREATE TRIGGER no_items BEFORE INSERT ON items BEGIN SELECT RAISE( ABORT, \'no\' ); END' );
-check( 'a failure of the database is 500 with the code of the panel, in Belege and in Positionen', ( $r = $post( 'crm-documents/save', [ 'category' => 'invoice', 'client_id' => (string) $first['id'] ] ) )[0] === 500 && $r[1]['code'] === 'crm_documents_database'
-	&& ( $r = $post( 'crm-items/save', [ 'title' => 'x' ] ) )[0] === 500 && $r[1]['code'] === 'crm_items_database' );
+check( 'a failure of the database is 500 with the code of the panel', ( $r = $post( 'crm-documents/save', [ 'category' => 'invoice', 'client_id' => (string) $first['id'] ] ) )[0] === 500 && $r[1]['code'] === 'crm_documents_database' );
 Db::exec( $appData, 'DROP TRIGGER no_documents' );
-Db::exec( $appData, 'DROP TRIGGER no_items' );
-check( 'an id with a leading zero, or none, is 400 with the code of the panel on the field id', ( $r = $post( 'crm-documents/get', [ 'id' => '01' ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_id' && $r[1]['field'] === 'id' && $post( 'crm-documents/get', [ 'id' => '' ] )[0] === 400
-	&& ( $r = $post( 'crm-items/get', [ 'id' => '01' ] ) )[0] === 400 && $r[1]['field'] === 'id' );
+check( 'an id with a leading zero, or none, is 400 with the code of the panel on the field id', ( $r = $post( 'crm-documents/get', [ 'id' => '01' ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_id' && $r[1]['field'] === 'id' && $post( 'crm-documents/get', [ 'id' => '' ] )[0] === 400 );
 
 echo "\nThe schema\n";
 
@@ -1369,54 +1412,75 @@ foreach( (array) include \Crm\Db::migrations()[1] as $statement )
 $file->exec( 'PRAGMA user_version = 1' );
 $file->exec( 'UPDATE settings SET value = \'regular\' WHERE key = \'vat_mode\'' );
 $file = null;
-check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 3 );
+check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 4 );
 Db::close();
 \Nino\Filesystem::removeDir( ninoSandboxDir( $old ) );
 
-// --- The panel Positionen ---------------------------------------------------------------------------------------------
+// --- The items in the editor ---------------------------------------------------------------------------------------------
 
-echo "\nThe actions of Positionen\n";
+echo "\nThe items in the editor\n";
 
-[ $status, $body ] = $post( 'crm-items/list' );
-check( 'list answers the items in their order, with the mode, the rates and the currency the card draws with', $status === 200 && array_column( $body['items'], 'title' ) === array_column( Items::list( $appData ), 'title' ) && $body['settings'] === [ 'vat_mode' => 'small_business', 'rates' => [ 1900, 700, 0 ], 'currency' => '€' ] );
-check( 'list searches, and a search that is too long is 400 crm_items_long', array_column( $post( 'crm-items/list', [ 'search' => 'stunde' ] )[1]['items'], 'title' ) === [ 'Webdesign' ] && ( $r = $post( 'crm-items/list', [ 'search' => str_repeat( 'x', 101 ) ] ) )[0] === 400 && $r[1]['code'] === 'crm_items_long' && $r[1]['params'] === [ 100 ] );
-check( 'get answers one item; a bad id is 400 crm_items_id, nobody 404 crm_items_unknown', $post( 'crm-items/get', [ 'id' => (string) $web['id'] ] )[1]['item']['title'] === 'Webdesign' && ( $r = $post( 'crm-items/get', [ 'id' => 'x' ] ) )[0] === 400 && $r[1]['code'] === 'crm_items_id' && ( $r = $post( 'crm-items/get', [ 'id' => '9999' ] ) )[0] === 404 && $r[1]['code'] === 'crm_items_unknown' );
+[ $status, $body ] = $post( 'crm-documents/list' );
+$editor = $body['items'];
+check( 'list gives the editor the active items in the shape it reads: price_net in cents, vat_rate 0 in small_business', $status === 200 && array_column( $editor, 'title' ) === $catalogue && array_unique( array_map( static fn( array $item ): string => implode( ',', array_keys( $item ) ), $editor ) ) === [ 'id,title,description,unit,price_net,vat_rate,active,sort' ]
+	&& array_column( $editor, 'price_net' ) === [ 9000, 9050, 8550, 25000, 1, -1 ] && array_column( $editor, 'vat_rate' ) === [ 0, 0, 0, 0, 0, 0 ] && $editor[2]['description'] === 'Pro Stunde' && $editor[2]['unit'] === 'Std.' );
+check( '...the templates of a new draft come with the items as they are now, so that an item entered meanwhile is offered', $post( 'crm-documents/templates', [ 'category' => 'invoice' ] )[1]['items'] === $editor );
+check( '...get gives it the same', $post( 'crm-documents/get', [ 'id' => (string) $target['id'] ] )[1]['items'] === $editor );
 
-[ $status, $body ] = $post( 'crm-items/save', [ 'title' => 'Fotoshooting', 'price' => '1.234,56', 'unit' => 'Tag', 'description' => 'Ganztägig', 'vat_rate' => 0 ] );
-check( 'save without an id adds an item', $status === 200 && $body['item']['title'] === 'Fotoshooting' && $body['item']['price_net'] === 123456 && $body['item']['active'] === true );
-$photo = $body['item'];
-[ $status, $body ] = $post( 'crm-items/save', [ 'id' => (string) $photo['id'], 'price' => '1000' ] );
-check( 'save with an id changes it and keeps the rest', $status === 200 && $body['item']['price_net'] === 100000 && $body['item']['title'] === 'Fotoshooting' && $body['item']['unit'] === 'Tag' );
-
-$refusals = [
-	'no title'          => [ [ 'title' => ' ' ], 400, 'crm_items_empty', 'title' ],
-	'a long title'      => [ [ 'title' => str_repeat( 'x', 201 ) ], 400, 'crm_items_long', 'title' ],
-	'a long unit'       => [ [ 'title' => 'T', 'unit' => str_repeat( 'x', 21 ) ], 400, 'crm_items_long', 'unit' ],
-	'a title that is no text' => [ [ 'title' => [ 'x' ] ], 400, 'crm_items_format', 'title' ],
-	'a price that is none' => [ [ 'title' => 'T', 'price' => 'teuer' ], 400, 'crm_items_amount', 'price' ],
-	'a rate that is none' => [ [ 'title' => 'T', 'vat_rate' => 1900 ], 400, 'crm_items_rate', 'vat_rate' ],
-];
-
-foreach( $refusals as $why => [ $data, $code, $text, $field ] ) {
-	[ $status, $body ] = $post( 'crm-items/save', $data );
-	check( 'save: '. $why. ' is '. $code. ' '. $text. ' on '. $field, $status === $code && ( $body['code'] ?? '' ) === $text && ( $body['field'] ?? '' ) === $field );
-}
-
-check( '...a long title names its limit; a refused save wrote nothing', $post( 'crm-items/save', $refusals['a long title'][0] )[1]['params'] === [ 200 ] && count( Items::list( $appData ) ) === 5 );
-check( 'save of an id nobody has is 404', $post( 'crm-items/save', [ 'id' => '9999', 'title' => 'x' ] )[0] === 404 );
-check( 'active without a value switches the item off, active true on again; nobody is 404', $post( 'crm-items/active', [ 'id' => (string) $photo['id'] ] )[1]['item']['active'] === false && $post( 'crm-items/active', [ 'id' => (string) $photo['id'], 'active' => true ] )[1]['item']['active'] === true && $post( 'crm-items/active', [ 'id' => '9999' ] )[0] === 404 );
-[ $status, $body ] = $post( 'crm-items/order', [ 'ids' => [ $photo['id'], $web['id'] ] ] );
-check( 'order puts the ids given first and answers the list', $status === 200 && array_column( $body['items'], 'id' )[0] === $photo['id'] && array_column( $body['items'], 'id' )[1] === $web['id'] );
-check( '...ids that are none, or one twice, or an id nobody has: 400 crm_items_id and 404, and the order stays', ( $r = $post( 'crm-items/order', [ 'ids' => 'x' ] ) )[0] === 400 && $r[1]['code'] === 'crm_items_id' && $post( 'crm-items/order', [ 'ids' => [ '1' ] ] )[0] === 400 && $post( 'crm-items/order', [ 'ids' => [ $web['id'], $web['id'] ] ] )[0] === 404
-	&& $post( 'crm-items/order', [ 'ids' => [ 9999 ] ] )[0] === 404 && array_column( Items::list( $appData ), 'id' )[0] === $photo['id'] );
-check( 'the log line of Positionen names the id and no title and no price', \Crm\Items\Admin::log( 'crm-items/list', [] ) === '' && preg_match( '/^Added item \d*$/D', trim( \Crm\Items\Admin::log( 'crm-items/save', [ 'title' => 'Geheim', 'price' => '99,99' ] ) ) ) === 1
-	&& \Crm\Items\Admin::log( 'crm-items/order', [] ) !== '' && str_contains( \Crm\Items\Admin::log( 'crm-items/save', [ 'id' => '4', 'title' => 'Geheim' ] ), 'Geheim' ) === false );
-
-// A regular project: the card offers the rates
 Settings::set( $appData, 'vat_mode', 'regular' );
-[ $status, $body ] = $post( 'crm-items/save', [ 'title' => 'Buch', 'price' => '20', 'vat_rate' => 700 ] );
-check( 'in regular an item is saved with a rate of the list, and the list says the mode', $status === 200 && $body['item']['vat_rate'] === 700 && $post( 'crm-items/list' )[1]['settings']['vat_mode'] === 'regular' );
+$editorRegular = $post( 'crm-documents/list' )[1]['items'];
+check( '...in regular the rate of the item, in hundredths', array_column( $editorRegular, 'vat_rate' ) === [ 0, 1900, 0, 700, 750, 0 ] && array_column( $editorRegular, 'price_net' ) === array_column( $editor, 'price_net' ) );
+
+// The editor copies the item into the line when it is chosen, and posts the line
+$lineOf = static fn( array $item ): array => [ 'title' => $item['title'], 'description' => $item['description'], 'unit' => $item['unit'], 'qty' => '2', 'price' => $item['price_net'], 'vat_rate' => $item['vat_rate'] ];
+$copied = Documents::add( $appData, 'invoice', $first['id'], [ 'lines' => [ $lineOf( $editorRegular[1] ), $lineOf( $editorRegular[2] ) ] ] );
+check( 'a line made from an item carries its native words, its price in cents and its rate', is_array( $copied ) && count( $copied['lines'] ) === 2 && $copied['lines'][0]['title'] === 'Beratung' && $copied['lines'][0]['description'] === 'Advice for one day' && $copied['lines'][0]['unit'] === 'Tag'
+	&& $copied['lines'][0]['price_net'] === 9050 && $copied['lines'][0]['vat_rate'] === 1900 && $copied['lines'][1]['title'] === 'Webdesign' && $copied['lines'][1]['unit'] === 'Std.' && $copied['lines'][1]['price_net'] === 8550 && $copied['net'] === 2 * ( 9050 + 8550 ) );
+
+\Nino\Elements::updateElement( $appData, '/positionen/webdesign', [ 'price' => 120, 'title' => 'Webdesign neu' ], 'de_DE' );
+\Nino\Elements::updateElement( $appData, '/positionen/beratung', [ 'description' => 'Neu', 'price' => 100 ], 'de_DE' );
+$after = Documents::get( $appData, $copied['id'] );
+check( '...and never follows a change of the element afterwards: the line has what it copied', $after['lines'] === $copied['lines'] && $after['net'] === $copied['net'] && Positionen::get( $appData, 'webdesign' )['price'] === 12000 && Positionen::get( $appData, 'webdesign' )['title'] === 'Webdesign neu' && Positionen::get( $appData, 'beratung' )['price'] === 10000 && Positionen::get( $appData, 'beratung' )['description'] === 'Neu' );
+\Nino\Elements::updateElement( $appData, '/positionen/webdesign', [ 'price' => 85.5, 'title' => 'Webdesign' ], 'de_DE' );
+\Nino\Elements::updateElement( $appData, '/positionen/beratung', [ 'description' => '', 'price' => 90.5 ], 'de_DE' );
+
+check( 'a rate that is not in the list of the project is refused at the creation of the line as it was: the item Cent has 7.5 %', Documents::add( $appData, 'invoice', $first['id'], [ 'lines' => [ $lineOf( $editorRegular[4] ) ] ] ) === 'line:0:rate:vat_rate'
+	&& is_array( Documents::add( $appData, 'invoice', $first['id'], [ 'lines' => [ $lineOf( $editorRegular[3] ) ] ] ) ) );
 Settings::set( $appData, 'vat_mode', 'small_business' );
+check( 'a title that is longer than a line takes is refused by the line, whatever the element says', Documents::add( $appData, 'invoice', $first['id'], [ 'lines' => [ [ 'title' => str_repeat( 'x', 201 ), 'qty' => '1', 'price' => 100, 'vat_rate' => 0 ] ] ] ) === 'line:0:long:title' );
+
+foreach( Db::rows( $appData, 'SELECT id FROM documents WHERE state = \'draft\' AND id >= :id', [ 'id' => $copied['id'] ] ) as $row )
+	Documents::remove( $appData, (int) $row['id'] );
+
+// --- Migration 0005 on a database that has items ---------------------------------------------------------------------------
+
+echo "\nMigration 0005\n";
+
+$dropped = ninoSandbox( 'crm-documents-dropped' );
+\Nino\Filesystem::forceDir( $dropped, '/data' );
+$file = new \PDO( 'sqlite:'. \Nino\Filesystem::path( $dropped, \Crm\Db::FILE ) );
+
+foreach( [ 1, 2, 3, 4 ] as $number )
+	foreach( (array) include \Crm\Db::migrations()[$number] as $statement )
+		$file->exec( (string) $statement );
+
+$file->exec( 'PRAGMA user_version = 4' );
+$file->exec( 'INSERT INTO items ( title, price_net, created, updated ) VALUES ( \'Alt\', 100, \'x\', \'x\' ), ( \'Auch alt\', 200, \'x\', \'x\' )' );
+$file->exec( 'INSERT INTO clients ( id, number, company, created, updated ) VALUES ( 1, \'K-0001\', \'Alt GmbH\', \'x\', \'x\' )' );
+$file->exec( 'INSERT INTO documents ( category, client_id, number, state, date, vat_mode, template_key, created, updated ) VALUES ( \'invoice\', 1, \'R-2025-0001\', \'paid\', \'2025-05-05\', \'small_business\', \'rechnung\', \'x\', \'x\' )' );
+$file->exec( 'INSERT INTO document_lines ( document_id, sort, title, qty, price_net, vat_rate, amount_net ) VALUES ( 1, 0, \'Alt\', 1000, 100, 0, 100 )' );
+check( 'the database before has the table of the items with its rows', (int) $file->query( 'SELECT COUNT(*) FROM items' )->fetchColumn() === 2 );
+$file = null;
+$kept = Documents::get( $dropped, 1 );
+check( 'migration 0005 on a database of the fourth schema runs once: version 5, the table of the items is gone', (int) Db::pdo( $dropped )->query( 'PRAGMA user_version' )->fetchColumn() === 5 && Db::migrated() === 1
+	&& Db::rows( $dropped, 'SELECT name FROM sqlite_master WHERE name = \'items\'' ) === [] && Db::rows( $dropped, 'SELECT name FROM sqlite_sequence WHERE name = \'items\'' ) === [] );
+check( '...the document and its line are as they were: the line has the words it copied', is_array( $kept ) && $kept['number'] === 'R-2025-0001' && count( $kept['lines'] ) === 1 && $kept['lines'][0]['title'] === 'Alt' && $kept['lines'][0]['price_net'] === 100 );
+check( '...it is one statement and nothing else, and document_lines is not in it', ( include $root. '/app/Crm/Db/migrations/0005-positionen.php' ) === [ 'DROP TABLE IF EXISTS items' ] && str_contains( implode( ' ', (array) include $root. '/app/Crm/Db/migrations/0005-positionen.php' ), 'document_lines' ) === false );
+Db::close();
+Db::pdo( $dropped );
+check( '...and the next boot runs nothing', Db::migrated() === 0 && Documents::get( $dropped, 1 ) === $kept );
+Db::close();
+\Nino\Filesystem::removeDir( ninoSandboxDir( $dropped ) );
 
 // --- Migration 0003 on a database that has documents -----------------------------------------------------------------
 
@@ -1435,7 +1499,7 @@ $file->exec( 'INSERT INTO clients ( id, number, company, created, updated ) VALU
 $file->exec( 'INSERT INTO documents ( category, client_id, number, state, date, vat_mode, template_key, created, updated ) VALUES ( \'invoice\', 1, \'R-2025-0001\', \'paid\', \'2025-05-05\', \'small_business\', \'rechnung\', \'x\', \'x\' )' );
 $file = null;
 $old = Documents::get( $upgraded, 1 );
-check( 'a database of the second schema with a document is migrated once: version 4, the two migrations that were missing', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 4 && Db::migrated() === 2 );
+check( 'a database of the second schema with a document is migrated once: version 5, the three migrations that were missing', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 5 && Db::migrated() === 3 );
 check( '...the document is as it was, with the new columns at their defaults: no title, not released, no request, no signing day', is_array( $old ) === false ? false : $old['number'] === 'R-2025-0001' && $old['state'] === 'paid' && $old['title'] === '' && $old['released'] === false && $old['released_at'] === null
 	&& $old['sign_id'] === '' && $old['sign_state'] === '' && $old['signed_at'] === null );
 Db::close();
@@ -1773,7 +1837,7 @@ $node = trim( (string) shell_exec( 'command -v node 2>/dev/null' ) );
 if( $node === '' )
 	echo "  note - node is not on the path: the suites of the panels' scripts were not run\n";
 else
-	foreach( [ 'documents-js-smoke.js' => 60, 'items-js-smoke.js' => 25 ] as $suite => $least ) {
+	foreach( [ 'documents-js-smoke.js' => 60 ] as $suite => $least ) {
 
 		$output = (string) shell_exec( escapeshellarg( $node ). ' '. escapeshellarg( __DIR__. '/'. $suite ). ' 2>&1' );
 		$ran = preg_match( '/(\d+) checks, (\d+) failed/', $output, $counts ) === 1;

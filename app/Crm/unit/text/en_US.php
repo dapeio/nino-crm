@@ -75,4 +75,14 @@ return [
 	// The login page, page-login.tpl
 	'[[/template/page-login/intro/title]]'               => 'Sign in',
 	'[[/template/page-login/intro/text]]'                => 'Enter the email address of your account. We send you a link by email - that signs you in, no password needed.',
+
+	// The Elements panel's own words for the type Positionen - the workbench's, not the site's (listed in the unit's blacklist)
+	'[[/_admin/elements/field/positionen/title]]' => 'Title',
+	'[[/_admin/elements/field/positionen/description]]' => 'Description',
+	'[[/_admin/elements/field/positionen/unit]]' => 'Unit',
+	'[[/_admin/elements/field/positionen/price]]' => 'Price (net)',
+	'[[/_admin/elements/field/positionen/vat]]' => 'VAT rate',
+	'[[/_admin/elements/field/positionen/hidden]]' => 'Hidden',
+	'[[/_admin/elements/field/positionen/sort]]' => 'Order',
+	'[[/_admin/elements/type/positionen/hint]]' => 'What you sell: the texts are per language, price and VAT rate are the same for all. Hidden takes an item out of the editor of the documents and off the page; with Hidden at No it is offered.',
 ];

@@ -352,12 +352,20 @@ class Admin {
 
 		$templates = array_values( (array) ( $manifest['templates'] ?? [] ) );
 		$hadTemplates = array_values( array_filter( $templates, static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/templates/'. $file ) ) );
+		$types = array_values( (array) ( $manifest['elementTypes'] ?? [] ) );
+		$hadTypes = array_values( array_filter( $types, static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/elements/'. $file ) ) );
 		$textsBefore = count( (array) \Nino\Filesystem::getFileContent( $appData, '/text/'. $native. '.php', [] ) );
 
 		$applied = \Nino\Features::applyUnit( $appData, $unit, \Nino\Locales::getAvailableLocales( $appData ), $routes, $blacklist, $config, false );
 
 		if( $applied !== true ) {
 			\Nino\Http::fail( $request, 500, 'the portal unit could not be applied: '. $applied );
+			return;
+		}
+
+		// The Elements panel's own words for the type are the workbench's: the Text panel does not offer them
+		if( $blacklist !== [] && \Nino\Filesystem::mutate( $appData, '/text/blacklist.php', static fn( array $list ): array => array_values( array_unique( array_merge( $list, $blacklist ) ) ) ) === false ) {
+			\Nino\Http::fail( $request, 500, 'the blacklist of the text keys could not be written' );
 			return;
 		}
 
@@ -415,6 +423,7 @@ class Admin {
 			'added' => [
 				'routes'    => array_keys( $addedRoutes ),
 				'templates' => array_values( array_diff( $templates, $hadTemplates ) ),
+				'types'     => array_values( array_diff( $types, $hadTypes ) ),
 				'texts'     => count( (array) \Nino\Filesystem::getFileContent( $appData, '/text/'. $native. '.php', [] ) ) - $textsBefore,
 				'paths'     => $paths,
 				'start'     => $start,
@@ -422,6 +431,7 @@ class Admin {
 			'existed' => [
 				'routes'    => array_values( array_diff( array_keys( (array) ( $manifest['routes'] ?? [] ) ), array_keys( $addedRoutes ) ) ),
 				'templates' => $hadTemplates,
+				'types'     => $hadTypes,
 				'paths'     => $paths === false,
 				'start'     => $start === false,
 			],
@@ -433,7 +443,7 @@ class Admin {
 	 *	  module   ok, off (the class is not in /nino/modules)
 	 *	  data     ok, unwritable (the data directory)
 	 *	  members, files, review, sign, pdf     ok, off (installed, not active), missing (not installed), problem
-	 *	  portal   ok (routes, templates and the protected path are there), partial, none
+	 *	  portal   ok (routes, templates, the element types and the protected path are there), partial, none - and what it lacks: lacks lists routes, templates, types and paths
 	 */
 	public static function apiStatus( array &$appData, array &$request ): void {
 
@@ -466,12 +476,17 @@ class Admin {
 		$routes = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 		$routes = is_array( $routes ) ? $routes : [];
 		$wanted = array_keys( (array) ( $manifest['routes'] ?? [] ) );
-		$present = count( array_filter( $wanted, static fn( string $key ): bool => isset( $routes[$key] ) === true ) )
-			+ count( array_filter( (array) ( $manifest['templates'] ?? [] ), static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/templates/'. $file ) ) )
-			+ ( in_array( '/portal', (array) \Nino\Features::setting( $appData, 'members', 'paths', [] ), true ) === true ? 1 : 0 );
-		$total = count( $wanted ) + count( (array) ( $manifest['templates'] ?? [] ) ) + 1;
+		$kinds = [
+			'routes'    => [ count( array_filter( $wanted, static fn( string $key ): bool => isset( $routes[$key] ) === true ) ), count( $wanted ) ],
+			'templates' => [ count( array_filter( (array) ( $manifest['templates'] ?? [] ), static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/templates/'. $file ) ) ), count( (array) ( $manifest['templates'] ?? [] ) ) ],
+			'types'     => [ count( array_filter( (array) ( $manifest['elementTypes'] ?? [] ), static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/elements/'. $file ) ) ), count( (array) ( $manifest['elementTypes'] ?? [] ) ) ],
+			'paths'     => [ in_array( '/portal', (array) \Nino\Features::setting( $appData, 'members', 'paths', [] ), true ) === true ? 1 : 0, 1 ],
+		];
+		$present = array_sum( array_column( $kinds, 0 ) );
+		$total = array_sum( array_column( $kinds, 1 ) );
+		$lacks = array_keys( array_filter( $kinds, static fn( array $count ): bool => $count[0] < $count[1] ) );
 
-		$items[] = [ 'key' => 'portal', 'state' => $present === $total ? 'ok' : ( $present === 0 ? 'none' : 'partial' ) ];
+		$items[] = [ 'key' => 'portal', 'state' => $present === $total ? 'ok' : ( $present === 0 ? 'none' : 'partial' ), 'lacks' => $lacks ];
 
 		\Nino\Http::ok( $request, [ 'items' => $items ] );
 	}
@@ -743,7 +758,7 @@ class Admin {
 			if( \Crm\Clients::resend( $appData, $account ) === false ) {
 
 				if( \Nino\Mail::rateLimited( $appData ) === true )
-					\Nino\Http::fail( $request, 429, 'the kernel allows five mails an hour from one address', 'crm_clients_ratelimit' );
+					\Nino\Http::fail( $request, 429, 'the mail cap of the kernel for one address is reached', 'crm_clients_ratelimit' );
 				else
 					\Nino\Http::fail( $request, 500, 'the link could not be sent', 'crm_clients_mail' );
 

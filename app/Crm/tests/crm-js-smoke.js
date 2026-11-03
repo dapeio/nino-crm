@@ -58,6 +58,7 @@ function world( locale, modal ) {
 	const guarded = [];
 	const asked = [];
 	const dialogs = [];
+	const scrolled = [];
 
 	const mount = element('div');
 	mount.id = 'crm-clients-app';
@@ -68,6 +69,8 @@ function world( locale, modal ) {
 	page.createElement = function( tag ) {
 		const el = make( tag );
 		Object.defineProperty( el, 'name', { get : function() { return el.attributes.name ?? '' }, set : function( value ) { el.setAttribute( 'name', value ) } } );
+
+		el.scrollIntoView = function( options ) { scrolled.push( { element : el, options : options } ) };
 
 		if( tag === 'dialog' && modal === true ) {
 			el.open = false;
@@ -117,6 +120,7 @@ function world( locale, modal ) {
 		guarded : guarded,
 		asked : asked,
 		dialogs : dialogs,
+		scrolled : scrolled,
 		missing : missing,
 		find : find,
 		all : function( from, predicate ) { return findAll( from ?? mount, predicate ) },
@@ -236,6 +240,12 @@ console.log( '\nThe rows - the shell\'s table\n' );
 console.log( '\nThe status and the setup\n' );
 
 {
+	const partial = drawn( 'en_US', undefined, OK.map( function( item ) { return item.key === 'portal' ? { key : 'portal', state : 'partial', lacks : [ 'types', 'paths' ] } : item } ) );
+	const names = partial.said( '/_admin/crm-clients/status/lacks-types' )+ ', '+ partial.said( '/_admin/crm-clients/status/lacks-paths' );
+	check( 'a portal that is only partly there names what it lacks, one name for each part', partial.has('/_admin/crm-clients/status/lacks-types') === true && partial.texts().indexOf( partial.said( '/_admin/crm-clients/status/portal-partial', names ) ) !== -1 && partial.missing.length === 0 );
+}
+
+{
 	const w = drawn('en_US');
 	check( 'a module that misses nothing says so, and the button that sets the portal up is hidden', w.texts().indexOf( w.word('/_admin/crm-clients/status/allok') ) !== -1 && w.button( w.mount, w.word('/_admin/crm-clients/label/setup') ).hidden === true );
 
@@ -248,10 +258,11 @@ console.log( '\nThe status and the setup\n' );
 	button.click();
 	check( 'the button posts crm-clients/setup with nothing, and is off while the request is out', missing.last().action === 'crm-clients/setup' && JSON.stringify( missing.last().payload ) === '{}' && button.disabled === true );
 
-	missing.answer( 200, { added : { routes : [ 'a', 'b' ], templates : [ 'x' ], texts : 7, paths : true, start : true }, existed : { routes : [ 'c' ], templates : [ 'y', 'z' ], paths : false } } );
+	missing.answer( 200, { added : { routes : [ 'a', 'b' ], templates : [ 'x' ], types : [ 'positionen.php' ], texts : 7, paths : true, start : true }, existed : { routes : [ 'c' ], templates : [ 'y', 'z' ], types : [ 'q.php' ], paths : false } } );
 	check( 'the box is asked for again after it', missing.last().action === 'crm-clients/status' );
 	missing.answer( 200, { items : OK } );
-	check( 'what the setup did stays on the screen after the box is drawn again', missing.has('/_admin/crm-clients/setup/done') === true && missing.texts().indexOf( missing.said( '/_admin/crm-clients/setup/done', 2, 1, 7, 3 ) ) !== -1 );
+	check( 'what the setup did stays on the screen after the box is drawn again', missing.has('/_admin/crm-clients/setup/done') === true && missing.texts().indexOf( missing.said( '/_admin/crm-clients/setup/done', 2, 1, 1, 7, 4 ) ) !== -1 );
+	check( '...and the sentence has a place for each of the five numbers: routes, templates, element types, words, and what was there', missing.word( '/_admin/crm-clients/setup/done' ).split('%s').length === 6 );
 
 	const refused = drawn( 'en_US', undefined, OK.map( function( item ) { return item.key === 'portal' ? { key : 'portal', state : 'none' } : item } ) );
 	const again = refused.button( refused.mount, refused.word('/_admin/crm-clients/label/setup') );
@@ -374,9 +385,9 @@ console.log( '\nThe accounts and the invitation\n' );
 	const copy = function( row ) { return w.all( row, function( el ) { return el.tagName === 'STRONG' || el.tagName === 'SMALL' } ).map( function( el ) { return el.textContent } ) };
 
 	check( 'one row for each account: the name, the address and when the member signed in last - or that they never did', rows.length === 4
-		&& copy( rows[0] ).join('|') === [ 'Anna Nord', 'anna@example.org', w.said( '/_admin/crm-clients/state/last', '2026-11-02' ) ].join('|') && copy( rows[2] )[2] === w.word('/_admin/crm-clients/state/never') );
+		&& copy( rows[0] ).join('|') === [ 'Anna Nord', 'anna@example.org', w.said( '/_admin/crm-clients/state/last', '02.11.2026' ) ].join('|') && copy( rows[2] )[2] === w.word('/_admin/crm-clients/state/never') );
 	check( 'an account without a name is named by its address once', copy( rows[1] ).join('|') === [ 'b@example.org', w.word('/_admin/crm-clients/state/never') ].join('|') );
-	check( 'an account that is off wears the badge, one that is gone says so', w.all( rows[1], function( el ) { return el.textContent === w.word('/_admin/crm-clients/state/off') } ).length === 1 && copy( rows[3] ).join('|') === w.word('/_admin/crm-clients/state/gone') );
+	check( 'an account that is off wears the badge, one that is gone says so', w.all( rows[1], function( el ) { return el.textContent === w.word('/_admin/crm-clients/state/off') } ).length === 1 && copy( rows[3] ).join('|') === w.said( '/_admin/crm-clients/state/gone', 'dddd' ) );
 	check( 'what Members sends is text: a name that is markup makes no element', copy( rows[2] )[0] === '<b>Bold</b>' && w.all( w.mount, function( el ) { return el.tagName === 'B' } ).length === 0 );
 	check( 'a link leads to the panel of Members', w.find( box, function( el ) { return el.tagName === 'A' && el.href === '#members' } ) !== null );
 
@@ -573,9 +584,16 @@ console.log( '\nThe dialog without <dialog>, a row that is gone, a client that i
 	check( 'the row of an account that is gone has the button "remove row", not "delete account"', w.button( row, w.word('/_admin/crm-clients/label/remove-row') ) !== null && w.button( row, w.word('/_admin/crm-clients/label/delete-account') ) === null );
 	w.button( row, w.word('/_admin/crm-clients/label/remove-row') ).click();
 	check( '...it asks in its own words - the row of a deleted account - and does not say the account is deleted in Members', w.has('/_admin/crm-clients/confirm/remove-row') === true && w.texts( w.dialogs[0] ).indexOf( w.word('/_admin/crm-clients/confirm/remove-row') ) !== -1
-		&& w.texts( w.dialogs[0] ).indexOf( w.said( '/_admin/crm-clients/confirm/delete-account', w.word('/_admin/crm-clients/state/gone') ) ) === -1 );
+		&& w.texts( w.dialogs[0] ).indexOf( w.said( '/_admin/crm-clients/confirm/delete-account', w.said( '/_admin/crm-clients/state/gone', 'dddd' ) ) ) === -1 );
 	w.button( w.dialogs[0], w.word('/_admin/crm-clients/label/remove-row') ).click();
 	check( '...and posts the removal', w.last().action === 'crm-clients/account-remove' && JSON.stringify( w.last().payload ) === '{"id":"1","account":"dddddddddddd"}' );
+
+	// A row that is gone names itself: the last four characters of the id - or the address the row has stored
+	const twins = opened( 'en_US', A, [ GONE, { id : 'eeeeeeee0042', gone : true, state : 'gone' }, { id : 'ffffffffffff', gone : true, state : 'gone', email : 'old@example.org' } ] );
+	const named = twins.all( twins.mount, function( el ) { return el.tagName === 'STRONG' } ).map( function( el ) { return el.textContent } );
+	check( 'two rows that are gone are told apart: each says so and names the last four characters of its id', named[0] === twins.said( '/_admin/crm-clients/state/gone', 'dddd' ) && named[1] === twins.said( '/_admin/crm-clients/state/gone', '0042' ) && named[0] !== named[1]
+		&& twins.word('/_admin/crm-clients/state/gone').indexOf('%s') !== -1 );
+	check( '...and a row that has an address stored names that', named[2] === twins.said( '/_admin/crm-clients/state/gone', 'old@example.org' ) );
 	const german = opened( 'de_DE', A, [ GONE ], true );
 	check( 'the words are German', german.has('/_admin/crm-clients/confirm/remove-row') === true && german.button( german.mount, german.word('/_admin/crm-clients/label/remove-row') ) !== null && german.missing.length === 0 );
 
@@ -603,11 +621,12 @@ console.log( '\nThe notices and the focus\n' );
 	w.answer( 200, { account : Object.assign( {}, ACCOUNT, { id : 'eeeeeeeeeeee', email : 'n@example.org', login : null, state : 'invited' } ), mailed : false } );
 	check( 'the notice of an invitation stands at the top of the card, under the back link and above the form of the client - not in the box of the accounts', notices( w ).length === 1 && notices( w )[0].textContent === w.word('/_admin/crm-clients/invite/not-mailed')
 		&& w.mount.children.indexOf( notices( w )[0] ) === 1 && w.mount.children.indexOf( notices( w )[0] ) < w.mount.children.indexOf( card( w ) ) );
+	check( '...and it is scrolled into view where it stands: an invitation sent from the bottom of a long card does not say its sentence out of sight', w.scrolled.length === 1 && w.scrolled[0].element === notices( w )[0] && JSON.stringify( w.scrolled[0].options ) === '{"block":"nearest"}' );
 
 	w.input( invite( w ), 'email' ).value = 'o@example.org';
 	fire( invite( w ), 'submit' );
 	w.answer( 200, { account : Object.assign( {}, ACCOUNT, { id : 'ffffffffffff', email : 'o@example.org' } ), mailed : true } );
-	check( '...and there is one notice at a time', notices( w ).length === 1 && notices( w )[0].textContent === w.word('/_admin/crm-clients/invite/sent') );
+	check( '...and there is one notice at a time, which is scrolled into view as well', notices( w ).length === 1 && notices( w )[0].textContent === w.word('/_admin/crm-clients/invite/sent') && w.scrolled.length === 2 && w.scrolled[1].element === notices( w )[0] );
 
 	const refused = drawn('en_US');
 	refused.button( refused.mount, refused.word('/_admin/crm-clients/label/new') ).click();
@@ -615,7 +634,7 @@ console.log( '\nThe notices and the focus\n' );
 	refused.input( refused.mount, 'account_email' ).value = 'taken@example.org';
 	fire( card( refused ), 'submit' );
 	refused.answer( 200, { client : Object.assign( {}, A, { id : 7, number : 'K-0007' } ), first : { account : null, mailed : false, refused : { code : 'crm_clients_taken', params : [], field : 'email' } } } );
-	check( 'the sentence about a refused first account is at the top of the card as well', notices( refused ).length === 1 && refused.mount.children.indexOf( notices( refused )[0] ) === 1 );
+	check( 'the sentence about a refused first account is at the top of the card as well, and in view', notices( refused ).length === 1 && refused.mount.children.indexOf( notices( refused )[0] ) === 1 && refused.scrolled.length === 1 && refused.scrolled[0].element === notices( refused )[0] && refused.scrolled[0].options.block === 'nearest' );
 
 	const back = drawn('en_US');
 	back.find( back.mount, function( el ) { return el.tagName === 'TR' && el.dataset.row === '2' } ).click();
@@ -717,6 +736,9 @@ console.log( '\nThe German words\n' );
 	card.answer( 200, { accounts : [ { id : 'eeeeeeeeeeee', email : 'e@example.org', name : '', group : '' } ] } );
 	check( 'the German card with its rows, its dialog and its first-account fields has every word', card.missing.length === 0 && card.has('/_admin/crm-clients/label/resend-invite') === true && card.has('/_admin/crm-clients/confirm/delete-account') === true
 		&& card.texts( card.dialogs[0] ).indexOf( card.word('/_admin/crm-clients/link/title') ) !== -1 && /\bDu\b|Deine|Dein/.test( card.word('/_admin/crm-clients/active/switched') ) === true );
+	check( '...and the sentence of the setup puts no noun behind a number, so that one of anything does not read as many', /%s\s+\p{L}/u.test( card.word('/_admin/crm-clients/setup/done') ) === false );
+	check( '...a row that is gone and the sentence of the setup have a place for what they name, in German as in English', card.word('/_admin/crm-clients/state/gone').split('%s').length === 2 && card.word('/_admin/crm-clients/setup/done').split('%s').length === 6
+		&& card.texts().indexOf( card.said( '/_admin/crm-clients/state/gone', 'dddd' ) ) !== -1 );
 }
 
 done();

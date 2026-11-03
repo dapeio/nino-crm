@@ -75,4 +75,14 @@ return [
 	// Die Anmeldeseite, page-login.tpl
 	'[[/template/page-login/intro/title]]'               => 'Anmelden',
 	'[[/template/page-login/intro/text]]'                => 'Gib die E-Mail-Adresse Deines Kontos ein. Wir schicken Dir einen Link per E-Mail - damit meldest Du Dich an, ganz ohne Passwort.',
+
+	// Die Worte des Elemente-Panels für den Typ Positionen - die der Workbench, nicht der Website (in der Blacklist der Einheit)
+	'[[/_admin/elements/field/positionen/title]]' => 'Titel',
+	'[[/_admin/elements/field/positionen/description]]' => 'Beschreibung',
+	'[[/_admin/elements/field/positionen/unit]]' => 'Einheit',
+	'[[/_admin/elements/field/positionen/price]]' => 'Preis (netto)',
+	'[[/_admin/elements/field/positionen/vat]]' => 'Steuersatz',
+	'[[/_admin/elements/field/positionen/hidden]]' => 'Ausgeblendet',
+	'[[/_admin/elements/field/positionen/sort]]' => 'Reihenfolge',
+	'[[/_admin/elements/type/positionen/hint]]' => 'Was Du verkaufst: Die Texte gelten je Sprache, Preis und Steuersatz für alle. Ausgeblendet nimmt eine Position aus dem Editor der Belege und von der Seite; steht Ausgeblendet auf Nein, ist sie angeboten.',
 ];

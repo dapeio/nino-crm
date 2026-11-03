@@ -449,7 +449,7 @@
 					return;
 				}
 
-				docs._draw( { document : null, category : category, templates : response.templates, clients : docs._clients, settings : docs._settings, items : docs._catalogue, offers : response.offers, accounts : [] } );
+				docs._draw( { document : null, category : category, templates : response.templates, clients : docs._clients, settings : docs._settings, items : response.items, offers : response.offers, accounts : [] } );
 			} );
 		},
 

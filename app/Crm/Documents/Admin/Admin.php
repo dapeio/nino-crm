@@ -154,7 +154,7 @@ class Admin {
 	}
 
 	/**
-	 *	The documents by the filters, the clients and years to filter by, the settings the screen draws with and the active items a line is filled from
+	 *	The documents by the filters, the clients and years to filter by, the settings the screen draws with and the active items of the catalogue (the elements of the type Positionen) a line is filled from
 	 */
 	public static function apiList( array &$appData, array &$request ): void {
 
@@ -187,7 +187,7 @@ class Admin {
 				'years'     => Documents::years( $appData ),
 				'clients'   => self::_clients( $appData ),
 				'settings'  => self::_settings( $appData ),
-				'items'     => \Crm\Items::list( $appData, true ),
+				'items'     => self::_catalogue( $appData ),
 				'offers'    => self::_offers( $appData ),
 			] );
 		} );
@@ -546,7 +546,7 @@ class Admin {
 		}
 
 		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request, $category ): void {
-			\Nino\Http::ok( $request, [ 'templates' => self::_templates( $appData, $category ), 'offers' => self::_offers( $appData ) ] );
+			\Nino\Http::ok( $request, [ 'templates' => self::_templates( $appData, $category ), 'offers' => self::_offers( $appData ), 'items' => self::_catalogue( $appData ) ] );
 		} );
 	}
 
@@ -557,6 +557,7 @@ class Admin {
 	 *	  pdf              ok, off (installed, not active), missing (not installed), problem
 	 *	  templates-offer, templates-invoice     ok, none (Pdf has no template of the tag) - only while Pdf is active
 	 *	  pdf-dir          ok, unwritable (the directory the PDF files are kept in, or the one above it where it is not made yet)
+	 *	  positionen       ok, missing (the element type /positionen, which the button Portal einrichten in Kunden brings)
 	 */
 	public static function apiStatus( array &$appData, array &$request ): void {
 
@@ -592,6 +593,7 @@ class Admin {
 			$dir = dirname( $dir );
 
 		$items[] = [ 'key' => 'pdf-dir', 'state' => is_dir( $dir ) === true && is_writable( $dir ) === true ? 'ok' : 'unwritable' ];
+		$items[] = [ 'key' => 'positionen', 'state' => \Crm\Positionen::missing( $appData ) === true ? 'missing' : 'ok' ];
 
 		\Nino\Http::ok( $request, [ 'items' => $items ] );
 	}
@@ -693,11 +695,35 @@ class Admin {
 			'templates' => self::_templates( $appData, $document['category'] ),
 			'clients'   => self::_clients( $appData ),
 			'settings'  => self::_settings( $appData ),
-			'items'     => \Crm\Items::list( $appData, true ),
+			'items'     => self::_catalogue( $appData ),
 			'offers'    => self::_offers( $appData ),
 			'accounts'  => $signable === true ? self::_accounts( $appData, $document['client_id'] ) : [],
 			'sign_days' => max( 1, min( 90, (int) \Nino\Features::setting( $appData, 'sign', 'days', 14 ) ) ),
 		];
+	}
+
+	/**
+	 *	The items a line is filled from: the active elements of the type Positionen in the native language, as the editor reads them
+	 *	(price_net in cents, vat_rate in hundredths). Where the project is a small business the rate is not asked for and 0 is written
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											id, title, description, unit, price_net, vat_rate, active and sort of each
+	 */
+	private static function _catalogue( array &$appData ): array {
+
+		$small = \Crm\Settings::get( $appData, 'vat_mode' ) === 'small_business';
+
+		return array_map( static fn( array $item ): array => [
+			'id'          => $item['id'],
+			'title'       => $item['title'],
+			'description' => $item['description'],
+			'unit'        => $item['unit'],
+			'price_net'   => $item['price'],
+			'vat_rate'    => $small === true ? 0 : $item['vat'],
+			'active'      => $item['active'],
+			'sort'        => $item['sort'],
+		], \Crm\Positionen::list( $appData ) );
 	}
 
 	/**

@@ -121,7 +121,7 @@ $thirdFile->exec( 'INSERT INTO client_accounts ( client_id, member_id ) VALUES (
 $thirdFile = null;
 $migrated = \Crm\Db::pdo( $third );
 $rows = \Crm\Db::rows( $third, 'SELECT client_id, member_id FROM client_accounts ORDER BY rowid' );
-check( 'migration 0004 on a database of the third schema runs once: version 4, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 1 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 4
+check( 'migrations 0004 and 0005 on a database of the third schema run once: version 5, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 2 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 5
 	&& array_map( 'json_encode', $rows ) === [ '{"client_id":2,"member_id":"aaaaaaaaaaaa"}', '{"client_id":1,"member_id":"bbbbbbbbbbbb"}' ] );
 check( '...and the index that keeps an account on one client is unique', (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'client_accounts_member_unique\' AND sql LIKE \'%UNIQUE%\'' )['n'] === 1 );
 \Crm\Db::close();
@@ -307,7 +307,8 @@ $source = (string) file_get_contents( $root. '/app/Crm/Clients/Admin/Admin.php' 
 preg_match_all( "~'(crm_clients_[a-z]+)'~", $source, $codes );
 preg_match_all( "~/_admin/crm-clients/[a-z/-]+~", (string) file_get_contents( $root. '/app/Crm/Clients/Admin/assets/admin.js' ), $keys );
 check( 'every code the panel answers has its text in both languages', array_filter( array_unique( $codes[1] ), static fn( string $code ): bool => isset( $words['de_DE']['[[/_admin/error/'. $code. ']]'], $words['en_US']['[[/_admin/error/'. $code. ']]'] ) === false ) === [] && count( array_unique( $codes[1] ) ) >= 10 );
-check( 'every fill key the script asks for whole has its text', array_filter( array_unique( $keys[0] ), static fn( string $key ): bool => str_ends_with( $key, '/' ) === false && isset( $words['de_DE']['[['. $key. ']]'] ) === false ) === [] );
+check( 'every fill key the script asks for whole has its text', array_filter( array_unique( $keys[0] ), static fn( string $key ): bool => str_ends_with( $key, '/' ) === false && str_ends_with( $key, '-' ) === false && isset( $words['de_DE']['[['. $key. ']]'] ) === false ) === []
+	&& array_filter( [ 'routes', 'templates', 'types', 'paths' ], static fn( string $kind ): bool => isset( $words['de_DE']['[[/_admin/crm-clients/status/lacks-'. $kind. ']]'], $words['en_US']['[[/_admin/crm-clients/status/lacks-'. $kind. ']]'] ) === false ) === [] );
 $called = [];
 
 foreach( [ 'members', 'files', 'review', 'sign', 'pdf' ] as $key ) {
@@ -444,12 +445,14 @@ $appData['/nino/modules'] = $modulesNow;
 } );
 $routesBefore = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 check( 'nothing of the portal exists before the button: no route, no template, no protected path', isset( $routesBefore['GET://portal'] ) === false && isset( $appData['/nino/http/routes']['GET://portal'] ) === false
-	&& is_file( \Nino\Filesystem::path( $appData, '/templates/page-portal.tpl' ) ) === false && \Nino\Features::setting( $appData, 'members', 'paths', [] ) === [] );
+	&& is_file( \Nino\Filesystem::path( $appData, '/templates/page-portal.tpl' ) ) === false && \Nino\Features::setting( $appData, 'members', 'paths', [] ) === [] && \Crm\Positionen::missing( $appData ) === true );
 
 [ $status, $body ] = ninoCall( $appData, $panel, [], 'crm-clients/setup' );
 $manifest = \Nino\Features::readUnitManifest( $root. '/app/Crm/unit' );
 check( 'setup applies the unit and says what it added', $status === 200 && count( $body['added']['routes'] ) === 7 && count( $body['added']['templates'] ) === 7 && $body['added']['texts'] > 20 && $body['added']['paths'] === true
 	&& $body['existed']['routes'] === [] && $body['existed']['templates'] === [] );
+check( '...and the element type of the items: it is among what was added, the file is there, and the unit names it', $body['added']['types'] === [ 'positionen.php' ] && $body['existed']['types'] === [] && \Crm\Positionen::missing( $appData ) === false
+	&& ( $manifest['elementTypes'] ?? [] ) === [ 'positionen.php' ] && is_file( $root. '/app/Crm/unit/positionen.php' ) === true );
 check( 'the routes are in the persisted routes and in the live ones', array_diff( array_keys( $manifest['routes'] ), array_keys( \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) ) ) === [] && array_diff( array_keys( $manifest['routes'] ), array_keys( $appData['/nino/http/routes'] ) ) === [] );
 check( 'the unit has the page /portal/dokumente: its route, its template and its words in both languages', ( $manifest['routes']['GET://portal/dokumente']['body'] ?? '' ) === '[template /templates/page-portal-documents]' && in_array( 'page-portal-documents.tpl', $manifest['templates'], true ) === true
 	&& isset( \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://portal/dokumente'] ) === true
@@ -501,7 +504,7 @@ $textFile['[[/template/page-portal/intro/title]]'] = 'Mein eigener Titel';
 $routesAfter = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 [ $status, $body ] = ninoCall( $appData, $panel, [], 'crm-clients/setup' );
 check( 'a second setup adds nothing and says what was there', $status === 200 && $body['added']['routes'] === [] && $body['added']['templates'] === [] && $body['added']['texts'] === 0 && $body['added']['paths'] === false && $body['added']['start'] === false
-	&& count( $body['existed']['routes'] ) === 7 && count( $body['existed']['templates'] ) === 7 );
+	&& $body['added']['types'] === [] && count( $body['existed']['routes'] ) === 7 && count( $body['existed']['templates'] ) === 7 && $body['existed']['types'] === [ 'positionen.php' ] );
 check( '...a template the project changed survives it', (string) file_get_contents( $pageFile ) === $changed );
 check( '...so does a word the project changed', \Nino\Filesystem::getFileContent( $appData, '/text/de_DE.php', [] )['[[/template/page-portal/intro/title]]'] === 'Mein eigener Titel' );
 check( '...and the routes are the same, a route the project changed is not written again', \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) === $routesAfter && \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://portal']['body'] === '[template /templates/page-own]' );
@@ -509,6 +512,13 @@ check( '...and the routes are the same, a route the project changed is not writt
 	$content['/nino/http/routes']['GET://portal']['body'] = '[template /templates/page-portal]';
 	return $content;
 } );
+
+// The element type is a part of the portal: without it the status says so, and the button brings it again
+unlink( \Nino\Filesystem::path( $appData, '/elements/positionen.php' ) );
+check( 'a portal whose element type is gone is only partly there and says what it lacks, and the button is offered', $stateOf( ninoCall( $appData, $panel, [], 'crm-clients/status' )[1], 'portal' ) === 'partial' && array_column( ninoCall( $appData, $panel, [], 'crm-clients/status' )[1]['items'], 'lacks', 'key' )['portal'] === [ 'types' ] && \Crm\Positionen::missing( $appData ) === true );
+[ $status, $body ] = ninoCall( $appData, $panel, [], 'crm-clients/setup' );
+check( '...the setup adds the type and nothing else, and the portal is ok again', $status === 200 && $body['added']['types'] === [ 'positionen.php' ] && $body['added']['routes'] === [] && $body['added']['templates'] === [] && $body['added']['texts'] === 0
+	&& $stateOf( ninoCall( $appData, $panel, [], 'crm-clients/status' )[1], 'portal' ) === 'ok' );
 
 // A project that protects paths and has a start page already keeps them
 \Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [ '/club' ], 'start' => '/club' ] );
@@ -789,6 +799,8 @@ for( $round = 0; $round < 6; $round++ )
 	$sent[] = $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'] ] );
 
 check( 'the cap of five mails an hour is a 429 crm_clients_ratelimit, and no mail goes out then', array_column( $sent, 0 ) === [ 200, 200, 200, 200, 200, 429 ] && $sent[5][1]['code'] === 'crm_clients_ratelimit' );
+check( '...and the sentence of the 429, in both languages, and the internal message name the kernel\'s cap and not its number', $sent[5][1]['error'] !== '' && preg_match( '/\b(five|fünf|5)\b/iu', $sent[5][1]['error'] ) !== 1
+	&& array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => preg_match( '/\b(five|fünf|5)\b/iu', (string) ( require $root. '/app/Crm/Clients/Admin/text/'. $locale. '.php' )['[[/_admin/error/crm_clients_ratelimit]]'] ) !== 0 ) === [] );
 $resetCap();
 $cleared = ninoWarnings();
 
@@ -927,6 +939,56 @@ foreach( [ 'unlinked' => [], 'account-link' => [ 'id' => (string) $first['id'], 
 check( 'every action of an account is 409 crm_clients_members while Members is off', array_values( array_unique( array_map( 'json_encode', $offAnswers ) ) ) === [ '[409,"crm_clients_members"]' ] && array_map( static fn( string $action ): string => 'crm-clients/'. $action, array_keys( $offAnswers ) ) === array_values( array_filter( array_keys( \Crm\Clients\Admin::actions() ), static fn( string $action ): bool => $action === 'crm-clients/unlinked' || str_starts_with( $action, 'crm-clients/account-' ) ) ) );
 $counted = \Crm\Clients::get( $appData, $first['id'] ) ?? [];
 check( 'the list still counts: the rows, none of them active (nothing is known of the accounts)', ( $counted['accounts'] ?? 0 ) === count( \Crm\Clients::accounts( $appData, $first['id'] ) ) && ( $counted['accounts'] ?? 0 ) >= 2 && ( $counted['active_accounts'] ?? 1 ) === 0 );
+
+// --- The templates of Members -----------------------------------------------------------------------------------------------
+
+echo "\nThe templates of Members\n";
+
+// Members is the project's since C05 and its two pages are drawn with the classes of the kernel's Nino.css. The check is the one of
+// the kernel's tests/install-library-templates-js-smoke.js, run over the templates of this project: every nino-* class a template names
+// has an owner in the kernel's style sheets and scripts or in the library of the installer
+$owned = [];
+
+foreach( [ $root. '/_nino', $root. '/_admin/install/library' ] as $base )
+	foreach( new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $base, \FilesystemIterator::SKIP_DOTS ) ) as $source ) {
+
+		$extension = $source->getExtension();
+
+		if( $extension !== 'css' && $extension !== 'js' )
+			continue;
+
+		preg_match_all( $extension === 'css' ? '/\.(nino-[a-z0-9-]+)/' : '/\b(nino-[a-z0-9-]+)\b/', (string) file_get_contents( $source->getPathname() ), $found );
+		$owned += array_fill_keys( $found[1], true );
+	}
+
+$classes = [];
+
+foreach( [ 'page-members-login.tpl', 'page-members-confirm.tpl' ] as $name ) {
+
+	$template = (string) file_get_contents( $root. '/features/Members/install/templates/'. $name );
+	preg_match_all( '/\bclass\s*=\s*(["\'])(.*?)\1/s', $template, $attributes );
+
+	foreach( $attributes[2] as $list )
+		foreach( preg_split( '/\s+/', trim( $list ) ) ?: [] as $class )
+			if( str_starts_with( $class, 'nino-' ) === true )
+				$classes[$name][] = $class;
+}
+
+check( 'the two pages of Members name classes the kernel owns: the narrow row is a row, not a section', array_keys( $classes ) === [ 'page-members-login.tpl', 'page-members-confirm.tpl' ] && count( $owned ) > 500
+	&& array_filter( array_merge( ...array_values( $classes ) ), static fn( string $class ): bool => isset( $owned[$class] ) === false ) === [] && in_array( 'nino-grid-row--narrow', $classes['page-members-login.tpl'], true ) === true && in_array( 'nino-grid-row--narrow', $classes['page-members-confirm.tpl'], true ) === true );
+
+// --- The README -----------------------------------------------------------------------------------------------------------
+
+echo "\nThe README\n";
+
+$readme = (string) file_get_contents( $root. '/app/Crm/README.md' );
+$german = require $root. '/app/Crm/Clients/Admin/text/de_DE.php';
+check( 'the README calls the buttons of an account by the words they have: Einladung senden and Anmelde-Link senden, and says Status where the screens do', str_contains( $readme, '**'. $german['[[/_admin/crm-clients/label/resend-invite]]']. '**' ) === true
+	&& str_contains( $readme, '**'. $german['[[/_admin/crm-clients/label/resend-login]]']. '**' ) === true && str_contains( $readme, '**Link senden**' ) === false && str_contains( $readme, 'Zustand' ) === false && str_contains( $readme, 'Zustände' ) === false );
+check( '...the section on the items names the element type, the Elements panel, the loop of the Builder and the table that is gone', str_contains( $readme, '/positionen' ) === true && str_contains( $readme, 'Panel **Elemente**' ) === true && str_contains( $readme, '[elements /positionen sort="sort" query="hidden=0"]' ) === true
+	&& str_contains( $readme, '`items` ist weg' ) === true && str_contains( $readme, 'nicht übernommen' ) === true && str_contains( $readme, 'noch einmal' ) === true && str_contains( $readme, 'schreibt die Zeile des Belegs 0' ) === true );
+
+check( 'the screens say Status and not Zustand, in the words of the panels', array_filter( [ 'Clients', 'Documents' ], static fn( string $dir ): bool => str_contains( (string) file_get_contents( $root. '/app/Crm/'. $dir. '/Admin/text/de_DE.php' ), 'Zustand' ) === true ) === [] );
 
 // --- The script of the panel ---------------------------------------------------------------------------------------------
 

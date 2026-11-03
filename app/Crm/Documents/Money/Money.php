@@ -11,7 +11,7 @@ namespace Crm\Documents;
 
 class Money {
 
-	// The largest price a line or an item takes, in cents; the largest quantity, in thousandths; the largest amount of a line and of a document
+	// The largest price a line takes, in cents; the largest quantity, in thousandths; the largest amount of a line and of a document
 	public const int MAX_PRICE = 1000000000;
 	public const int MAX_QTY = 10000000;
 	public const int MAX_LINE = 100000000000;

@@ -65,7 +65,8 @@
 		},
 
 		/**
-		 *	The name of an account of Members: its name, its address where it has no name
+		 *	The name of an account of Members: its name, its address where it has no name; a row whose account is gone says so and
+		 *	keeps the address it has stored or, without one, the last four characters of the id, so that it can be told from another
 		 *
 		 *	@param		{Object}	account
 		 *
@@ -74,20 +75,20 @@
 		_who : function( account ) {
 
 			if( account.gone === true )
-				return Nino.content.getText('/_admin/crm-clients/state/gone');
+				return crm._text( '/_admin/crm-clients/state/gone', typeof account.email === 'string' && account.email !== '' ? account.email : account.id.slice( -4 ) );
 
 			return account.name !== '' ? account.name : account.email;
 		},
 
 		/**
-		 *	The day of a time of the server - 'Y-m-d\TH:i:s\Z', UTC
+		 *	The day of a time of the server - 'Y-m-d\TH:i:s\Z', UTC - as d.m.Y, the way the documents show a day
 		 *
 		 *	@param		{*}				time
 		 *
 		 *	@return		{string}									'' for none
 		 */
 		_when : function( time ) {
-			return typeof time === 'string' && /^\d{4}-\d{2}-\d{2}T/.test( time ) === true ? time.slice( 0, 10 ) : '';
+			return typeof time === 'string' && /^\d{4}-\d{2}-\d{2}T/.test( time ) === true ? time.slice( 8, 10 )+ '.'+ time.slice( 5, 7 )+ '.'+ time.slice( 0, 4 ) : '';
 		},
 
 		_line : function() {
@@ -182,7 +183,13 @@
 
 					missing.forEach( function( item ) {
 						const key = '/_admin/crm-clients/status/'+ item.key+ '-'+ item.state;
-						list.appendChild( Nino.adminUi.el( 'li', '', Nino.content.getText( key ) ) );
+
+						// A portal that is only partly there names what it lacks
+						const text = item.state === 'partial' && Array.isArray( item.lacks ) === true
+							? crm._text( key, item.lacks.map( function( kind ) { return Nino.content.getText( '/_admin/crm-clients/status/lacks-'+ kind ) } ).join(', ') )
+							: Nino.content.getText( key );
+
+						list.appendChild( Nino.adminUi.el( 'li', '', text ) );
 					} );
 
 					box.appendChild( list );
@@ -231,10 +238,10 @@
 		 */
 		_setupSentence : function( answer ) {
 
-			const added = answer.added ?? { routes : [], templates : [], texts : 0, paths : false };
-			const existed = answer.existed ?? { routes : [], templates : [] };
+			const added = answer.added ?? { routes : [], templates : [], types : [], texts : 0, paths : false };
+			const existed = answer.existed ?? { routes : [], templates : [], types : [] };
 
-			return crm._text( '/_admin/crm-clients/setup/done', added.routes.length, added.templates.length, added.texts, existed.routes.length+ existed.templates.length );
+			return crm._text( '/_admin/crm-clients/setup/done', added.routes.length, added.templates.length, added.types.length, added.texts, existed.routes.length+ existed.templates.length+ existed.types.length );
 		},
 
 		/**
@@ -293,8 +300,11 @@
 			mount.appendChild( back );
 
 			// What became of the first account, of an invitation or of a switch-off: at the top, where it is seen
-			if( typeof notice === 'string' && notice !== '' )
-				mount.appendChild( Nino.adminUi.el( 'p', 'crm-notice', notice ) );
+			if( typeof notice === 'string' && notice !== '' ) {
+				const note = Nino.adminUi.el( 'p', 'crm-notice', notice );
+				mount.appendChild( note );
+				note.scrollIntoView( { block : 'nearest' } );
+			}
 
 			const form = Nino.adminUi.el( 'form', 'crm-card' );
 			const fields = {};
@@ -551,6 +561,9 @@
 				old.replaceWith( note );
 			else
 				mount.querySelector('.nino-admin-back-link').after( note );
+
+			// An action at the bottom of a long card says its sentence at the top: the sentence comes into view
+			note.scrollIntoView( { block : 'nearest' } );
 		},
 
 		/**

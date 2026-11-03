@@ -158,8 +158,8 @@ const SMALL = { vat_mode : 'small_business', vat_rates : '1900,700,0', payment_d
 const REGULAR = Object.assign( {}, SMALL, { vat_mode : 'regular' } );
 const CLIENTS = [ { id : 1, number : 'K-0001', title : 'Studio Nord', active : true }, { id : 2, number : 'K-0002', title : 'Ben Süd', active : true }, { id : 3, number : 'K-0003', title : 'Dritte AG', active : false } ];
 const ITEMS = [
-	{ id : 1, title : 'Webdesign', description : 'Pro Stunde', unit : 'Std.', price_net : 9000, vat_rate : 1900, active : true, sort : 1 },
-	{ id : 2, title : 'Hosting', description : '', unit : 'Monat', price_net : 1200, vat_rate : 0, active : true, sort : 2 },
+	{ id : 'webdesign', title : 'Webdesign', description : 'Pro Stunde', unit : 'Std.', price_net : 9000, vat_rate : 1900, active : true, sort : 1 },
+	{ id : 'hosting', title : 'Hosting', description : '', unit : 'Monat', price_net : 1200, vat_rate : 0, active : true, sort : 2 },
 ];
 const TEMPLATES = [ { key : 'rechnung', name : 'Rechnung', inputs : [ { name : 'intro', label : 'Intro', multiline : true, required : true }, { name : 'footnote', label : 'Fußnote', multiline : false, required : false } ] } ];
 const OFFERS = [
@@ -174,7 +174,7 @@ const LISTED = [
 	{ id : 7, category : 'offer', number : 'A-2020-0001', state : 'open', expired : true, title : '', released : false, sign_state : '', date : '2020-01-01', gross : 500, client_id : 2, client_title : 'Ben Süd', parent_id : null },
 	{ id : 8, category : 'credit', number : 'G-2026-0001', state : 'paid', expired : false, title : '', released : false, sign_state : '', date : '2026-10-05', gross : -1200, client_id : 1, client_title : 'Studio Nord', parent_id : 6 },
 ];
-const ALL = [ 'module', 'data', 'pdf', 'templates-offer', 'templates-invoice', 'pdf-dir' ];
+const ALL = [ 'module', 'data', 'pdf', 'templates-offer', 'templates-invoice', 'pdf-dir', 'positionen' ];
 const OK = ALL.map( function( key ) { return { key : key, state : 'ok' } } );
 
 /** A document as the server's get() has it */
@@ -223,7 +223,7 @@ function opened( locale, document, settings ) {
 function created( locale, category, settings, templates ) {
 	const w = drawn( locale, undefined, settings );
 	w.button( w.mount, w.word( K+ 'label/new-'+ category ) ).click();
-	w.answer( 200, { templates : templates ?? TEMPLATES, offers : OFFERS } );
+	w.answer( 200, { templates : templates ?? TEMPLATES, offers : OFFERS, items : ITEMS } );
 	return w;
 }
 
@@ -353,6 +353,9 @@ console.log( '\nThe rows - the shell\'s table\n' );
 	back.answer( 200, view( doc( { id : 7, category : 'offer', number : 'A-2020-0001', state : 'open' } ) ) );
 	back.find( back.mount, function( el ) { return el.tagName === 'A' && String( el.className ).indexOf('nino-admin-back-link') !== -1 } ).click();
 	back.answer( 200, { documents : LISTED, years : [ 2026, 2020 ], clients : CLIENTS, settings : SMALL, items : ITEMS } );
+	check( 'the status is asked again whenever the list is drawn again, so that work in another panel shows: the type that came meanwhile is told as it stands', back.last().action === 'crm-documents/status' );
+	back.answer( 200, { items : OK.map( function( item ) { return item.key === 'positionen' ? { key : 'positionen', state : 'missing' } : item } ) } );
+	check( '...and what it answers is drawn', back.texts().indexOf( back.word( K+ 'status/positionen-missing' ) ) !== -1 );
 	check( 'back from a document the focus is on the row that was opened', back.find( back.mount, function( el ) { return el.tagName === 'TR' && el.dataset.row === '7' } ).focused === true );
 
 	const empty = drawn( 'en_US', [] );
@@ -395,9 +398,10 @@ console.log( '\nThe status\n' );
 	const w2 = world('en_US');
 	w2.panel.showCurrent();
 	w2.answer( 200, { documents : [], years : [], clients : [], settings : SMALL, items : [] } );
-	w2.answer( 200, { items : OK.map( function( item ) { return item.key === 'pdf' ? { key : 'pdf', state : 'off' } : item.key === 'templates-offer' ? { key : 'templates-offer', state : 'none' } : item.key === 'pdf-dir' ? { key : 'pdf-dir', state : 'unwritable' } : item } ) } );
+	w2.answer( 200, { items : OK.map( function( item ) { return item.key === 'pdf' ? { key : 'pdf', state : 'off' } : item.key === 'templates-offer' ? { key : 'templates-offer', state : 'none' } : item.key === 'pdf-dir' ? { key : 'pdf-dir', state : 'unwritable' } : item.key === 'positionen' ? { key : 'positionen', state : 'missing' } : item } ) } );
 	check( 'what is missing is told line by line, in the words of its state', w2.has( K+ 'status/pdf-off' ) === true && w2.texts().indexOf( w2.word( K+ 'status/pdf-off' ) ) !== -1 && w2.texts().indexOf( w2.word( K+ 'status/templates-offer-none' ) ) !== -1
 		&& w2.texts().indexOf( w2.word( K+ 'status/pdf-dir-unwritable' ) ) !== -1 && w2.texts().indexOf( w2.word( K+ 'status/allok' ) ) === -1 && w2.missing.length === 0 );
+	check( '...the element type of the items is told when it is missing, with the sentence that the button of Kunden brings it', w2.has( K+ 'status/positionen-missing' ) === true && w2.texts().indexOf( w2.word( K+ 'status/positionen-missing' ) ) !== -1 && w2.word( K+ 'status/positionen-missing' ).indexOf( 'Set up the portal' ) !== -1 );
 
 	const failed = world('en_US');
 	failed.panel.showCurrent();
@@ -414,7 +418,7 @@ console.log( '\nA new draft\n' );
 	check( 'a button for each kind; the one for an invoice asks for the templates of the kind, with nothing else', w.last().action === 'crm-documents/templates' && JSON.stringify( w.last().payload ) === '{"category":"invoice"}' && [ 'offer', 'contract', 'privacy', 'information' ].every( function( kind ) { return w.button( w.mount, w.word( K+ 'label/new-'+ kind ) ) !== null } )
 		&& w.word( K+ 'label/new-credit' ) === undefined );
 
-	w.answer( 200, { templates : TEMPLATES, offers : OFFERS } );
+	w.answer( 200, { templates : TEMPLATES, offers : OFFERS, items : ITEMS } );
 	const day = today();
 	const clients = w.all( w.select( w.mount, 'client_id' ), function( el ) { return el.tagName === 'OPTION' } ).map( function( el ) { return el.value } );
 
@@ -497,6 +501,16 @@ console.log( '\nThe lines and the live totals\n' );
 }
 
 console.log( '\nThe items of the catalogue\n' );
+
+{
+	// The items are asked for again with the templates when a new draft opens: what was entered in the Elements panel meanwhile is offered
+	const w = drawn( 'en_US' );
+	w.button( w.mount, w.word( K+ 'label/new-invoice' ) ).click();
+	w.answer( 200, { templates : TEMPLATES, offers : OFFERS, items : [ { id : 'neu', title : 'Neu entstanden', description : '', unit : '', price_net : 500, vat_rate : 0, active : true, sort : 1 } ] } );
+	w.button( w.mount, w.word( K+ 'label/add-line' ) ).click();
+	const list = w.find( w.mount, function( el ) { return el.tagName === 'DATALIST' } );
+	check( 'a new draft offers the items the server answered with its templates, not those of the list drawn before', list !== null && w.all( list, function( el ) { return el.tagName === 'OPTION' } ).map( function( el ) { return el.value } ).join() === 'Neu entstanden' );
+}
 
 {
 	const w = created( 'en_US', 'invoice' );
@@ -785,7 +799,7 @@ console.log( '\nWhat the editor posts, once more\n' );
 	const offer = drawn('en_US');
 	offer.button( offer.mount, offer.word( K+ 'label/new-offer' ) ).click();
 	check( 'the button for an offer asks for the templates of an offer', offer.last().action === 'crm-documents/templates' && offer.last().payload.category === 'offer' );
-	offer.answer( 200, { templates : TEMPLATES } );
+	offer.answer( 200, { templates : TEMPLATES, items : ITEMS } );
 	offer.entry().save( function() {} );
 	check( '...and what is saved is an offer, with a validity date and no due date', offer.last().payload.category === 'offer' && offer.last().payload.valid_until === later( today(), 30 ) && offer.last().payload.due_date === undefined );
 
@@ -1227,7 +1241,7 @@ console.log( '\nThe script itself\n' );
 {
 	// The harness does not parse markup, so an element made of the server's text cannot be seen above: the pin is on the
 	// source - every value goes in as text, and the only markup assigned is the empty string that clears a region
-	const pieces = [ OWN+ 'assets/admin.js', 'app/Crm/Documents/Money/assets/money.js', 'app/Crm/Items/Admin/assets/admin.js' ].map( function( file ) { return fs.readFileSync( path.join( root, file ), 'utf8' ) } );
+	const pieces = [ OWN+ 'assets/admin.js', 'app/Crm/Documents/Money/assets/money.js' ].map( function( file ) { return fs.readFileSync( path.join( root, file ), 'utf8' ) } );
 
 	check( 'the scripts assign no markup: innerHTML only to clear, no outerHTML, no insertAdjacentHTML, no document.write, no eval', pieces.every( function( source ) {
 		return source.match( /innerHTML\s*=(?!\s*'';)/g ) === null && /outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function/.test( source ) === false;

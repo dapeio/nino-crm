@@ -3,7 +3,7 @@
  *												price and an amount are cents, a quantity is thousandths (1500 = 1,5), a rate is hundredths of a
  *												percent (1900 = 19 %). Every rounding is half away from zero in integers: the products can pass
  *												2^53, so they are computed as BigInt and handed back as numbers once they are small again.
- *												Joins the workbench's script bundle with the panels Belege and Positionen; the live totals of the
+ *												Joins the workbench's script bundle with the panel Belege; the live totals of the
  *												editor are these, the totals of a finalised document are the server's, and tests/money-cases.json
  *												is run against both.
  */

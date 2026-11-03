@@ -19,7 +19,7 @@ declare(strict_types=1);
  *											  empty:title             a document without lines has no title
  *											  reverse                 a reverse charge where the document has VAT mode small_business
  *											  lines, total            more than MAX_LINES lines; a net total past Money::MAX_TOTAL
- *											  line:<i>:<kind>:<field> a line (counted from 0) whose field is wrong, see Items::clean() and qty; no field for a line that is no array
+ *											  line:<i>:<kind>:<field> a line (counted from 0) whose field is wrong, see Lines::clean() and qty; no field for a line that is no array
  *											  pdf, template, inputs:<name>, empty    at finalise: Pdf is off; no template of the tag; a required input is
  *											                          missing; the document has no line
  *											  number                  the number format is none or the number is taken
@@ -32,6 +32,7 @@ declare(strict_types=1);
  */
 namespace Crm;
 
+use Crm\Documents\Lines;
 use Crm\Documents\Mail;
 use Crm\Documents\Money;
 use Crm\Documents\Numbers;
@@ -1219,7 +1220,7 @@ class Documents {
 	}
 
 	/**
-	 *	One line: the fields of an item and a quantity. A reverse charge sets the rate to 0
+	 *	One line: the words and numbers of a line and a quantity. A reverse charge sets the rate to 0
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$line
@@ -1235,12 +1236,12 @@ class Documents {
 		if( $reverse === true )
 			$line['vat_rate'] = 0;
 
-		$values = Items::clean( $appData, $line, $reverse === true ? 'small_business' : $vatMode );
+		$values = Lines::clean( $appData, $line, $reverse === true ? 'small_business' : $vatMode );
 
 		if( is_string( $values ) === true )
 			return $values;
 
-		$qty = Items::amount( $line['qty'] ?? null, 'qty' );
+		$qty = Lines::amount( $line['qty'] ?? null, 'qty' );
 
 		if( $qty === null || $qty === 0 )
 			return 'amount:qty';

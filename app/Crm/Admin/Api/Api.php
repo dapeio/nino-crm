@@ -2,7 +2,7 @@
 declare(strict_types=1);
 /**
  *	Crm\Admin\Api		What the panels of the module after Kunden share: running an action over the database, and reading the id
- *									of a record from a post. A panel's codes are its own (crm_items_..., crm_documents_...); the code of a
+ *									of a record from a post. A panel's codes are its own (crm_clients_..., crm_documents_...); the code of a
  *									failure is handed in.
  */
 namespace Crm\Admin;
