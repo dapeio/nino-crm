@@ -380,8 +380,10 @@
 
 			mount.appendChild( form );
 
-			if( client !== null )
+			if( client !== null ) {
 				mount.appendChild( crm._accountsBox( client, accounts ) );
+				mount.appendChild( crm._documentsBox( client ) );
+			}
 
 			if( client === null )
 				fields.company.focus();
@@ -538,6 +540,27 @@
 			box.appendChild( link );
 
 			box.appendChild( crm._inviteForm( client, accounts ) );
+
+			return box;
+		},
+
+		/**
+		 *	How many documents the client has and how many of them are released to the portal, and the way into the panel Belege, where the
+		 *	documents of a client are found: the address carries the client (#crm-documents/client/<id>), which Belege reads as its filter Kunde
+		 *
+		 *	@param		{Object}	client				With documents: { total, released }
+		 *
+		 *	@return		{Element}
+		 */
+		_documentsBox : function( client ) {
+
+			const box = Nino.adminUi.el( 'div', 'crm-documents-box' );
+			const link = Nino.adminUi.el( 'a', 'crm-documents-link', Nino.content.getText('/_admin/crm-clients/label/documents') );
+
+			box.appendChild( Nino.adminUi.el( 'h3', '', Nino.content.getText('/_admin/crm-clients/label/documents-title') ) );
+			box.appendChild( Nino.adminUi.el( 'p', 'crm-documents-count', crm._text( '/_admin/crm-clients/documents/count', String( client.documents.total ), String( client.documents.released ) ) ) );
+			link.href = Nino.admin.router.href( 'crm-documents', [ 'client', String( client.id ) ] );
+			box.appendChild( link );
 
 			return box;
 		},

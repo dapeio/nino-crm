@@ -75,7 +75,7 @@ function world( locale ) {
 				refresh : function() {},
 				guard : function( names, proceed ) { guarded.push( names ); proceed() },
 			},
-			router : { href : function( panel ) { return '#'+ panel } },
+			router : { href : function( panel, parts ) { return '#'+ [ panel ].concat( parts ?? [] ).join('/') } },
 		},
 	};
 
@@ -119,9 +119,9 @@ function world( locale ) {
 	};
 }
 
-const A = { id : 1, number : 'K-0001', company : 'Studio Nord', name : 'Anna Nord', street : 'Hafenstr. 1', zip : '20095', city : 'Hamburg', country : 'DE', email : 'anna@example.org', phone : '+49 40 1', vat_id : 'DE123456789', notes : 'Notes', active : true, accounts : 2, group : 'k-0001' };
-const B = { id : 2, number : 'K-0002', company : '', name : 'Ben Süd', street : '', zip : '', city : '', country : 'DE', email : '', phone : '', vat_id : '', notes : '', active : false, accounts : 1, group : 'k-0002' };
-const C = { id : 3, number : 'K-0003', company : '<img src=x onerror=alert(1)>', name : '', street : '', zip : '', city : '', country : 'DE', email : '', phone : '', vat_id : '', notes : '', active : true, accounts : 0, group : 'k-0003' };
+const A = { id : 1, number : 'K-0001', company : 'Studio Nord', name : 'Anna Nord', street : 'Hafenstr. 1', zip : '20095', city : 'Hamburg', country : 'DE', email : 'anna@example.org', phone : '+49 40 1', vat_id : 'DE123456789', notes : 'Notes', active : true, accounts : 2, group : 'k-0001', documents : { total : 5, released : 2 } };
+const B = { id : 2, number : 'K-0002', company : '', name : 'Ben Süd', street : '', zip : '', city : '', country : 'DE', email : '', phone : '', vat_id : '', notes : '', active : false, accounts : 1, group : 'k-0002', documents : { total : 0, released : 0 } };
+const C = { id : 3, number : 'K-0003', company : '<img src=x onerror=alert(1)>', name : '', street : '', zip : '', city : '', country : 'DE', email : '', phone : '', vat_id : '', notes : '', active : true, accounts : 0, group : 'k-0003', documents : { total : 1, released : 0 } };
 const ALL = [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'portal' ];
 const OK = ALL.map( function( key ) { return { key : key, state : 'ok' } } );
 const FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id', 'notes' ];
@@ -239,6 +239,28 @@ console.log( '\nThe card\n' );
 	const fresh = drawn('en_US');
 	fresh.button( fresh.mount, fresh.word('/_admin/crm-clients/label/new') ).click();
 	check( 'a new client starts with the country DE and the rest empty, and asks nothing of the server', fresh.input( fresh.mount, 'country' ).value === 'DE' && fresh.input( fresh.mount, 'company' ).value === '' && fresh.requests.filter( function( request ) { return request.action === 'crm-clients/get' } ).length === 0 );
+}
+
+console.log( '\nThe documents of the client\n' );
+
+{
+	const w = opened( 'en_US', A );
+	const box = w.find( w.mount, function( el ) { return String( el.className ).split(' ').indexOf('crm-documents-box') !== -1 } );
+
+	check( 'the card of a client shows how many documents it has and how many of them are released to the portal', box !== null && w.texts( box ).indexOf( 'Documents: 5, released to the portal: 2' ) !== -1 );
+	check( '...and a link into the panel Documents, which carries the client in the address', w.find( box, function( el ) { return el.tagName === 'A' && el.href === '#crm-documents/client/1' && el.textContent === w.word('/_admin/crm-clients/label/documents') } ) !== null );
+
+	w.input( w.mount, 'city' ).value = 'Bremen';
+	w.entry().save( function() {} );
+	w.answer( 200, { client : Object.assign( {}, A, { city : 'Bremen' } ) } );
+	check( '...it stays after a save, drawn from the client the server answers', w.texts().indexOf( 'Documents: 5, released to the portal: 2' ) !== -1 );
+
+	const fresh = drawn('de_DE');
+	fresh.button( fresh.mount, fresh.word('/_admin/crm-clients/label/new') ).click();
+	check( 'a client that is not saved yet has no documents to count', fresh.find( fresh.mount, function( el ) { return String( el.className ).split(' ').indexOf('crm-documents-box') !== -1 } ) === null );
+
+	const german = opened( 'de_DE', C );
+	check( 'the words are German with the same counts', german.texts().indexOf( 'Dokumente: 1, davon im Portal freigegeben: 0' ) !== -1 );
 }
 
 console.log( '\nSaving\n' );

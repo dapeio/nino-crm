@@ -3,7 +3,9 @@ declare(strict_types=1);
 /**
  *	Crm\Documents\Admin		The panel Belege of the CRM module: the documents (list with filters, the editor of a draft with its
  *												lines, finalising, the steps of a finalised document, the offer that becomes an invoice and the
- *												invoice that is taken back by a credit note) and the settings of the documents. The panel
+ *												invoice that is taken back by a credit note; the contract, the privacy and the information document
+ *												without lines; the release of a document to the portal with its mail and the request for a signature
+ *												through Sign) and the settings of the documents. The panel
  *												validates what it is posted and answers the failures a person can cause with codes; the rules of
  *												the data are Crm\Documents', the storage Crm\Db's. A database failure is answered 500 with the
  *												code crm_documents_database.
@@ -35,10 +37,26 @@ class Admin {
 		'number'   => [ 409, 'crm_documents_number', '' ],
 		'render'   => [ 500, 'crm_documents_render', '' ],
 		'write'    => [ 500, 'crm_documents_write', '' ],
+		'offer'    => [ 400, 'crm_documents_offer', 'parent_id' ],
+		'address'  => [ 409, 'crm_documents_address', '' ],
+		'limit'    => [ 429, 'crm_documents_limit', '' ],
+		'pending'  => [ 409, 'crm_documents_pending', '' ],
+		'days'     => [ 400, 'crm_documents_days', 'days' ],
+		'field'    => [ 409, 'crm_documents_field', 'template_key' ],
+		'account'  => [ 400, 'crm_documents_account', 'account' ],
+		'sign'     => [ 409, 'crm_documents_sign', '' ],
+	];
+
+	// What Sign refuses a request with, as the status and the code a person is answered
+	private const array SIGN_REFUSALS = [
+		'template' => [ 409, 'crm_documents_sign_template' ],
+		'input'    => [ 409, 'crm_documents_sign_input' ],
+		'render'   => [ 500, 'crm_documents_sign_render' ],
+		'write'    => [ 500, 'crm_documents_sign_write' ],
 	];
 
 	// The fields of a draft a post may carry
-	private const array FIELDS = [ 'date', 'due_date', 'valid_until', 'period_from', 'period_to', 'template_key', 'inputs', 'reverse_charge', 'lines' ];
+	private const array FIELDS = [ 'date', 'due_date', 'valid_until', 'period_from', 'period_to', 'template_key', 'inputs', 'reverse_charge', 'lines', 'title' ];
 
 	// What an action made or touched, by action: written by the action, read by log() in the same request
 	private static array $_made = [];
@@ -57,6 +75,9 @@ class Admin {
 			'crm-documents/state'         => [ self::class, 'apiState' ],
 			'crm-documents/from-offer'    => [ self::class, 'apiFromOffer' ],
 			'crm-documents/credit'        => [ self::class, 'apiCredit' ],
+			'crm-documents/release'       => [ self::class, 'apiRelease' ],
+			'crm-documents/unrelease'     => [ self::class, 'apiUnrelease' ],
+			'crm-documents/sign'          => [ self::class, 'apiSign' ],
 			'crm-documents/settings-get'  => [ self::class, 'apiSettingsGet' ],
 			'crm-documents/settings-save' => [ self::class, 'apiSettingsSave' ],
 			'crm-documents/templates'     => [ self::class, 'apiTemplates' ],
@@ -124,6 +145,9 @@ class Admin {
 			'crm-documents/state'         => 'Moved document '. $of,
 			'crm-documents/from-offer'    => 'Made an invoice draft from offer '. $of,
 			'crm-documents/credit'        => 'Made a credit note draft from invoice '. $of,
+			'crm-documents/release'       => 'Released document '. $of,
+			'crm-documents/unrelease'     => 'Took back document '. $of,
+			'crm-documents/sign'          => 'Asked for a signature on document '. $of,
 			'crm-documents/settings-save' => 'Saved the settings of the documents',
 			default                       => '',
 		};
@@ -171,6 +195,7 @@ class Admin {
 				'clients'   => self::_clients( $appData ),
 				'settings'  => self::_settings( $appData ),
 				'items'     => \Crm\Items::list( $appData, true ),
+				'offers'    => self::_offers( $appData ),
 			] );
 		} );
 	}
@@ -211,6 +236,11 @@ class Admin {
 
 		if( preg_match( '/^[1-9][0-9]{0,9}$/D', $client ) === 1 )
 			$input['client_id'] = (int) $client;
+
+		$offer = \Nino\Admin\Admin::postString( $data, 'parent_id' );
+
+		if( preg_match( '/^[1-9][0-9]{0,9}$/D', $offer ) === 1 )
+			$input['parent_id'] = (int) $offer;
 
 		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request, $data, $input ): void {
 
@@ -272,7 +302,7 @@ class Admin {
 	}
 
 	/**
-	 *	Finalise a draft
+	 *	Finalise a draft; answers the view of the finalised document, as get does
 	 */
 	public static function apiFinalise( array &$appData, array &$request ): void {
 
@@ -293,9 +323,10 @@ class Admin {
 				return;
 			}
 
-			self::$_made['crm-documents/finalise'] = $final['number'];
+			self::$_made['crm-documents/finalise'] = Render::name( $final );
 
-			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $final ) ] );
+			// The screen draws the page of the document from this: the accounts of the client and the days of Sign come with it
+			\Nino\Http::ok( $request, self::_view( $appData, $final ) );
 		} );
 	}
 
@@ -323,7 +354,7 @@ class Admin {
 				return;
 			}
 
-			self::$_made['crm-documents/state'] = $moved['number']. ' to '. $moved['state'];
+			self::$_made['crm-documents/state'] = Render::name( $moved ). ' to '. $moved['state'];
 
 			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $moved ) ] );
 		} );
@@ -341,6 +372,108 @@ class Admin {
 	 */
 	public static function apiCredit( array &$appData, array &$request ): void {
 		self::_derived( $appData, $request, 'crm-documents/credit', [ Documents::class, 'creditOf' ] );
+	}
+
+	/**
+	 *	Release a finalised document to the portal; mail true also mails the accounts of its client (and sends an offer, an invoice or a
+	 *	credit note that was open). Answers the document and how many mails were delivered
+	 */
+	public static function apiRelease( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
+
+			$data = \Nino\Admin\Admin::postData();
+			$document = self::_document( $appData, $request, $data );
+
+			if( $document === null )
+				return;
+
+			$mail = ( $data['mail'] ?? false ) === true;
+			$released = Documents::release( $appData, $document['id'], $mail );
+
+			if( is_string( $released ) === true ) {
+				self::_refused( $request, $released );
+				return;
+			}
+
+			self::$_made['crm-documents/release'] = Render::name( $document );
+
+			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $released['document'] ), 'mailed' => $released['mailed'], 'mail' => $mail ] );
+		} );
+	}
+
+	/**
+	 *	Take a document back from the portal
+	 */
+	public static function apiUnrelease( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
+
+			$document = self::_document( $appData, $request, \Nino\Admin\Admin::postData() );
+
+			if( $document === null )
+				return;
+
+			$taken = Documents::unrelease( $appData, $document['id'] );
+
+			if( is_string( $taken ) === true ) {
+				self::_refused( $request, $taken );
+				return;
+			}
+
+			self::$_made['crm-documents/unrelease'] = Render::name( $document );
+
+			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $taken ) ] );
+		} );
+	}
+
+	/**
+	 *	Ask an account of the client of a contract or a privacy document for a signature through Sign: account is the id of the account,
+	 *	days how long the link is good for (1 to 90; none is the setting of Sign)
+	 */
+	public static function apiSign( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		$data = \Nino\Admin\Admin::postData();
+		$account = \Nino\Admin\Admin::postString( $data, 'account' );
+		$days = \Nino\Admin\Admin::postString( $data, 'days' );
+
+		if( preg_match( '/^[a-f0-9]{12}$/D', $account ) !== 1 ) {
+			\Nino\Http::fail( $request, 400, 'the account is none', 'crm_documents_account', [], 'account' );
+			return;
+		}
+
+		if( $days !== '' && preg_match( '/^[0-9]{1,3}$/D', $days ) !== 1 ) {
+			\Nino\Http::fail( $request, 400, 'the days are none', 'crm_documents_days', [], 'days' );
+			return;
+		}
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request, $data, $account, $days ): void {
+
+			$document = self::_document( $appData, $request, $data );
+
+			if( $document === null )
+				return;
+
+			$asked = Documents::requestSignature( $appData, $document['id'], $account, $days === '' ? null : (int) $days );
+
+			if( is_string( $asked ) === true ) {
+				self::_refused( $request, $asked );
+				return;
+			}
+
+			self::$_made['crm-documents/sign'] = Render::name( $document );
+
+			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $asked['document'] ), 'mailed' => $asked['mailed'] ] );
+		} );
 	}
 
 	/**
@@ -419,7 +552,9 @@ class Admin {
 			return;
 		}
 
-		\Nino\Http::ok( $request, [ 'templates' => self::_templates( $appData, $category ) ] );
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request, $category ): void {
+			\Nino\Http::ok( $request, [ 'templates' => self::_templates( $appData, $category ), 'offers' => self::_offers( $appData ) ] );
+		} );
 	}
 
 	/**
@@ -528,7 +663,8 @@ class Admin {
 	}
 
 	/**
-	 *	A document as the screen has it: the frozen client is the client, and the address of its PDF is there once it has one
+	 *	A document as the screen has it: the frozen client is the client, and the address of its PDF is there once it has one; a document
+	 *	that asked for a signature has the addresses of the PDFs of the request, which Sign answers to the workbench
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document
@@ -538,13 +674,17 @@ class Admin {
 	private static function _shown( array &$appData, array $document ): array {
 
 		unset( $document['client_frozen'] );
-		$document['pdf_url'] = $document['pdf_path'] === '' ? '' : \Nino\Filesystem::getDir( $appData ). '/.crm/pdf/'. $document['id'];
+		$dir = \Nino\Filesystem::getDir( $appData );
+		$document['pdf_url'] = $document['pdf_path'] === '' ? '' : $dir. '/.crm/pdf/'. $document['id'];
+		$document['sign_shown_url'] = $document['sign_id'] === '' ? '' : $dir. '/.sign/pdf?r='. $document['sign_id']. '&kind=shown';
+		$document['sign_signed_url'] = $document['sign_state'] === 'signed' ? $dir. '/.sign/pdf?r='. $document['sign_id']. '&kind=signed' : '';
 
 		return $document;
 	}
 
 	/**
-	 *	A document with the templates of its tag and the settings the editor draws with
+	 *	A document with the templates of its tag, the settings the editor draws with, the offers a contract can hang on and - for a
+	 *	document that can ask for a signature - the accounts of its client
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document
@@ -553,7 +693,58 @@ class Admin {
 	 */
 	private static function _view( array &$appData, array $document ): array {
 
-		return [ 'document' => self::_shown( $appData, $document ), 'templates' => self::_templates( $appData, $document['category'] ), 'clients' => self::_clients( $appData ), 'settings' => self::_settings( $appData ), 'items' => \Crm\Items::list( $appData, true ) ];
+		$signable = in_array( $document['category'], Documents::SIGNABLE, true ) === true && $document['state'] !== 'draft';
+
+		return [
+			'document'  => self::_shown( $appData, $document ),
+			'templates' => self::_templates( $appData, $document['category'] ),
+			'clients'   => self::_clients( $appData ),
+			'settings'  => self::_settings( $appData ),
+			'items'     => \Crm\Items::list( $appData, true ),
+			'offers'    => self::_offers( $appData ),
+			'accounts'  => $signable === true ? self::_accounts( $appData, $document['client_id'] ) : [],
+			'sign_days' => max( 1, min( 90, (int) \Nino\Features::setting( $appData, 'sign', 'days', 14 ) ) ),
+		];
+	}
+
+	/**
+	 *	The offers a contract can hang on: finalised, the newest first
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											id, number, date, client_id and client_title of each
+	 */
+	private static function _offers( array &$appData ): array {
+
+		$offers = array_filter( Documents::list( $appData, [ 'category' => 'offer' ], false ), static fn( array $offer ): bool => $offer['state'] !== 'draft' );
+
+		return array_values( array_map( static fn( array $offer ): array => [ 'id' => $offer['id'], 'number' => $offer['number'], 'date' => $offer['date'], 'client_id' => $offer['client_id'], 'client_title' => $offer['client_title'] ], $offers ) );
+	}
+
+	/**
+	 *	The accounts of a client with their state in Members: the ones a signature can be asked of are the active ones
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$clientId
+	 *
+	 *	@return 	array											id, email, name and active of each; none while Members is off
+	 */
+	private static function _accounts( array &$appData, int $clientId ): array {
+
+		if( \Crm\Crm::featureOn( $appData, 'members' ) === false )
+			return [];
+
+		$accounts = [];
+
+		foreach( \Crm\Clients::accounts( $appData, $clientId ) as $id ) {
+
+			$account = \Nino\Modules\Members::account( $appData, $id );
+
+			if( $account !== null )
+				$accounts[] = [ 'id' => $account['id'], 'email' => $account['email'], 'name' => $account['name'], 'active' => $account['active'] ];
+		}
+
+		return $accounts;
 	}
 
 	/**
@@ -611,6 +802,25 @@ class Admin {
 
 		[ $kind, $rest ] = array_pad( explode( ':', $why, 2 ), 2, '' );
 
+		// What Sign refused the request with; a refusal it does not make is the module's own error
+		if( $kind === 'sign' && $rest !== '' ) {
+
+			if( isset( self::SIGN_REFUSALS[$rest] ) === false ) {
+				\Nino\Http::fail( $request, 500, 'the document module refused with "'. $why. '"' );
+				return;
+			}
+
+			[ $status, $code ] = self::SIGN_REFUSALS[$rest];
+			\Nino\Http::fail( $request, $status, 'Sign refused the request: '. $rest, $code );
+			return;
+		}
+
+		// A document without lines has a title, and it is the title that is missing, too long or wrong
+		if( $kind === 'empty' && $rest === 'title' ) {
+			\Nino\Http::fail( $request, 400, 'the title is missing', 'crm_documents_title', [], 'title' );
+			return;
+		}
+
 		if( isset( self::REFUSALS[$kind] ) === true ) {
 			[ $status, $code, $field ] = self::REFUSALS[$kind];
 			\Nino\Http::fail( $request, $status, 'the document does not allow it: '. $kind, $code, $kind === 'lines' ? [ \Crm\Documents::MAX_LINES ] : [], $field );
@@ -619,7 +829,7 @@ class Admin {
 
 		match( $kind ) {
 			'date'   => \Nino\Http::fail( $request, 400, 'the date is none', 'crm_documents_date', [], $rest ),
-			'long'   => \Nino\Http::fail( $request, 400, 'the value is too long', 'crm_documents_long', [ \Crm\Documents::MAX_NOTES ], $rest ),
+			'long'   => \Nino\Http::fail( $request, 400, 'the value is too long', 'crm_documents_long', [ $rest === 'title' ? \Crm\Documents::MAX_TITLE : \Crm\Documents::MAX_NOTES ], $rest ),
 			'format' => str_starts_with( $rest, 'number_' ) === true
 				? \Nino\Http::fail( $request, 400, 'the number format is none', 'crm_documents_numberformat', [], $rest )
 				: \Nino\Http::fail( $request, 400, 'the value has a wrong format', 'crm_documents_format', [], $rest ),

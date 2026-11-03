@@ -40,10 +40,11 @@ const NBSP = '\u00a0';
  *	and the script of the panel, over a Nino that keeps the requests and the words of the text files
  *
  *	@param		{string}	locale		en_US or de_DE
+ *	@param		{boolean}	[modal]		Whether a <dialog> opens and closes the way a browser's does (showModal(), close()), so that a question with controls in it can be answered; else it is asked with confirm()
  *
  *	@return		{Object}
  */
-function world( locale ) {
+function world( locale, modal ) {
 
 	const words = Object.assign( fills( '_admin/text/'+ locale+ '.php' ), fills( OWN+ 'text/'+ locale+ '.php' ) );
 	const missing = [];
@@ -53,17 +54,30 @@ function world( locale ) {
 	const asked = [];
 	const answers = { confirm : true };
 
+	const address = { panel : '', parts : [] };
 	const mount = element('div');
 	mount.id = 'crm-documents-app';
 
 	const page = documentOf( mount );
 	const make = page.createElement;
 
+	const dialogs = [];
+
 	page.createElement = function( tag ) {
 		const el = make( tag );
 		Object.defineProperty( el, 'name', { get : function() { return el.attributes.name ?? '' }, set : function( value ) { el.setAttribute( 'name', value ) } } );
+
+		if( tag === 'dialog' && modal === true ) {
+			el.open = false;
+			el.showModal = function() { el.open = true; dialogs.push( el ) };
+			el.close = function() { el.open = false; fire( el, 'close' ) };
+		}
+
 		return el;
 	};
+
+	if( modal === true )
+		page.body = element('body');
 
 	const Nino = {
 		content : { getText : function( key ) {
@@ -77,7 +91,7 @@ function world( locale ) {
 				refresh : function() {},
 				guard : function( names, proceed ) { guarded.push( names ); proceed() },
 			},
-			router : { href : function( panel ) { return '#'+ panel } },
+			router : { href : function( panel ) { return '#'+ panel }, current : function() { return address } },
 		},
 	};
 
@@ -102,6 +116,8 @@ function world( locale ) {
 		registered : registered,
 		guarded : guarded,
 		asked : asked,
+		dialogs : dialogs,
+		address : address,
 		answers : answers,
 		missing : missing,
 		find : find,
@@ -138,13 +154,17 @@ const ITEMS = [
 	{ id : 2, title : 'Hosting', description : '', unit : 'Monat', price_net : 1200, vat_rate : 0, active : true, sort : 2 },
 ];
 const TEMPLATES = [ { key : 'rechnung', name : 'Rechnung', inputs : [ { name : 'intro', label : 'Intro', multiline : true, required : true }, { name : 'footnote', label : 'Fußnote', multiline : false, required : false } ] } ];
+const OFFERS = [
+	{ id : 9, number : 'A-2026-0003', date : '2026-10-20', client_id : 2, client_title : 'Ben Süd' },
+	{ id : 7, number : 'A-2020-0001', date : '2020-01-01', client_id : 2, client_title : 'Ben Süd' },
+];
 const CLIENT = { id : 1, number : 'K-0001', company : 'Studio Nord', name : 'Anna Nord', street : 'Hafenstr. 1', zip : '20095', city : 'Hamburg', country : 'DE', email : 'anna@example.org', vat_id : '' };
 
 const LISTED = [
-	{ id : 5, category : 'invoice', number : '', state : 'draft', expired : false, date : '2026-11-03', gross : 23700, client_id : 1, client_title : 'Studio Nord', parent_id : null },
-	{ id : 6, category : 'invoice', number : 'R-2026-0001', state : 'sent', expired : false, date : '2026-10-01', gross : 11900, client_id : 1, client_title : '<img src=x onerror=alert(1)>', parent_id : null },
-	{ id : 7, category : 'offer', number : 'A-2020-0001', state : 'open', expired : true, date : '2020-01-01', gross : 500, client_id : 2, client_title : 'Ben Süd', parent_id : null },
-	{ id : 8, category : 'credit', number : 'G-2026-0001', state : 'paid', expired : false, date : '2026-10-05', gross : -1200, client_id : 1, client_title : 'Studio Nord', parent_id : 6 },
+	{ id : 5, category : 'invoice', number : '', state : 'draft', expired : false, title : '', released : false, sign_state : '', date : '2026-11-03', gross : 23700, client_id : 1, client_title : 'Studio Nord', parent_id : null },
+	{ id : 6, category : 'invoice', number : 'R-2026-0001', state : 'sent', expired : false, title : '', released : false, sign_state : '', date : '2026-10-01', gross : 11900, client_id : 1, client_title : '<img src=x onerror=alert(1)>', parent_id : null },
+	{ id : 7, category : 'offer', number : 'A-2020-0001', state : 'open', expired : true, title : '', released : false, sign_state : '', date : '2020-01-01', gross : 500, client_id : 2, client_title : 'Ben Süd', parent_id : null },
+	{ id : 8, category : 'credit', number : 'G-2026-0001', state : 'paid', expired : false, title : '', released : false, sign_state : '', date : '2026-10-05', gross : -1200, client_id : 1, client_title : 'Studio Nord', parent_id : 6 },
 ];
 const ALL = [ 'module', 'data', 'pdf', 'templates-offer', 'templates-invoice', 'pdf-dir' ];
 const OK = ALL.map( function( key ) { return { key : key, state : 'ok' } } );
@@ -154,6 +174,7 @@ function doc( over ) {
 	return Object.assign( {
 		id : 5, category : 'invoice', client_id : 1, parent_id : null, number : '', state : 'draft', date : '2026-11-03', due_date : '2026-11-17', valid_until : null, period_from : null, period_to : null,
 		vat_mode : 'small_business', reverse_charge : false, net : 23700, vat : 0, gross : 23700, template_key : 'rechnung', inputs : { intro : 'Hallo' }, notes : 'intern', pdf_path : '', pdf_sha256 : '', pdf_url : '',
+		title : '', released : false, released_at : null, sign_id : '', sign_state : '', signed_at : null, sign_shown_url : '', sign_signed_url : '',
 		finalised : null, sent_at : null, paid_at : null, created : '2026-11-03T10:00:00Z', updated : '2026-11-03T10:00:00Z', expired : false,
 		lines : [
 			{ id : 1, document_id : 5, sort : 1, title : 'Webdesign', description : 'Pro Stunde', qty : 2500, unit : 'Std.', price_net : 9000, vat_rate : 0, amount_net : 22500 },
@@ -165,7 +186,7 @@ function doc( over ) {
 
 /** The answer of get() */
 function view( document, settings ) {
-	return { document : document, templates : TEMPLATES, clients : CLIENTS, settings : settings ?? SMALL, items : ITEMS };
+	return { document : document, templates : TEMPLATES, clients : CLIENTS, settings : settings ?? SMALL, items : ITEMS, offers : OFFERS, accounts : [], sign_days : 14 };
 }
 
 /** A finalised invoice of the given state */
@@ -177,7 +198,7 @@ function sealed( state, over ) {
 function drawn( locale, documents, settings ) {
 	const w = world( locale );
 	w.panel.showCurrent();
-	w.answer( 200, { documents : documents ?? LISTED, years : [ 2026, 2020 ], clients : CLIENTS, settings : settings ?? SMALL, items : ITEMS } );
+	w.answer( 200, { documents : documents ?? LISTED, years : [ 2026, 2020 ], clients : CLIENTS, settings : settings ?? SMALL, items : ITEMS, offers : OFFERS } );
 	w.answer( 200, { items : OK } );
 	return w;
 }
@@ -194,7 +215,7 @@ function opened( locale, document, settings ) {
 function created( locale, category, settings, templates ) {
 	const w = drawn( locale, undefined, settings );
 	w.button( w.mount, w.word( K+ 'label/new-'+ category ) ).click();
-	w.answer( 200, { templates : templates ?? TEMPLATES } );
+	w.answer( 200, { templates : templates ?? TEMPLATES, offers : OFFERS } );
 	return w;
 }
 
@@ -296,9 +317,9 @@ console.log( '\nThe filters\n' );
 	const form = w.find( w.mount, function( el ) { return el.tagName === 'FORM' && String( el.className ).indexOf('crm-filters') !== -1 } );
 	const options = function( name ) { return w.all( w.select( form, name ), function( el ) { return el.tagName === 'OPTION' } ).map( function( el ) { return el.value } ) };
 
-	check( 'the form has a select for the kind, the state, the year and the client, and a search', options('category').join() === ',offer,invoice,credit' && options('state').join() === ',draft,open,sent,paid,cancelled,accepted,declined,expired' && options('year').join() === ',2026,2020'
+	check( 'the form has a select for the kind, the state, the year and the client, and a search', options('category').join() === ',offer,invoice,credit,contract,privacy,information' && options('state').join() === ',draft,open,sent,paid,cancelled,accepted,declined,signed,expired' && options('year').join() === ',2026,2020'
 		&& options('client').join() === ',1,2,3' && w.input( form, 'search' ) !== null );
-	check( '...the options are the words of the kinds and the states', w.all( w.select( form, 'state' ), function( el ) { return el.tagName === 'OPTION' } ).map( function( el ) { return el.textContent } ).slice( 1 ).join() === [ 'draft', 'open', 'sent', 'paid', 'cancelled', 'accepted', 'declined', 'expired' ].map( function( s ) { return w.word( K+ 'state/'+ s ) } ).join() );
+	check( '...the options are the words of the kinds and the states', w.all( w.select( form, 'state' ), function( el ) { return el.tagName === 'OPTION' } ).map( function( el ) { return el.textContent } ).slice( 1 ).join() === [ 'draft', 'open', 'sent', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ].map( function( s ) { return w.word( K+ 'state/'+ s ) } ).join() );
 
 	w.select( form, 'category' ).value = 'invoice';
 	w.select( form, 'year' ).value = '2026';
@@ -336,9 +357,10 @@ console.log( '\nA new draft\n' );
 {
 	const w = drawn('en_US');
 	w.button( w.mount, w.word( K+ 'label/new-invoice' ) ).click();
-	check( 'a button for each kind; the one for an invoice asks for the templates of the kind, with nothing else', w.last().action === 'crm-documents/templates' && JSON.stringify( w.last().payload ) === '{"category":"invoice"}' && w.button( w.mount, w.word( K+ 'label/new-offer' ) ) !== null && w.button( w.mount, w.word( K+ 'label/new-credit' ) ) !== null );
+	check( 'a button for each kind; the one for an invoice asks for the templates of the kind, with nothing else', w.last().action === 'crm-documents/templates' && JSON.stringify( w.last().payload ) === '{"category":"invoice"}' && [ 'offer', 'contract', 'privacy', 'information' ].every( function( kind ) { return w.button( w.mount, w.word( K+ 'label/new-'+ kind ) ) !== null } )
+		&& w.word( K+ 'label/new-credit' ) === undefined );
 
-	w.answer( 200, { templates : TEMPLATES } );
+	w.answer( 200, { templates : TEMPLATES, offers : OFFERS } );
 	const day = today();
 	const clients = w.all( w.select( w.mount, 'client_id' ), function( el ) { return el.tagName === 'OPTION' } ).map( function( el ) { return el.value } );
 
@@ -553,7 +575,7 @@ console.log( '\nFinalising and deleting\n' );
 	w.button( w.mount, w.word( K+ 'label/finalise' ) ).click();
 	check( 'the answer yes posts crm-documents/finalise with the id', w.last().action === 'crm-documents/finalise' && JSON.stringify( w.last().payload ) === '{"id":"5"}' );
 
-	w.answer( 200, { document : sealed( 'open', { id : 5 } ) } );
+	w.answer( 200, view( sealed( 'open', { id : 5 } ) ) );
 	check( '...and the page of the finalised document is drawn with its number', w.texts().some( function( text ) { return text.indexOf('R-2026-0001') === 0 } ) && w.button( w.mount, w.word( K+ 'label/finalise' ) ) === null && w.input( w.mount, 'lines.0.title' ) === null );
 
 	const dirty = opened( 'en_US', doc() );
@@ -781,19 +803,369 @@ console.log( '\nFrom the review\n' );
 	lined.entry().save( function() {} );
 	check( '...and one typed with several breaks is posted with them', lined.last().payload.lines[0].description === 'Erste\nZweite\nDritte' );
 
-	const credit = created( 'en_US', 'credit' );
+	// A credit note is made from an invoice and never from the list: its draft is opened from there
+	const credit = opened( 'en_US', doc( { id : 5, category : 'credit', due_date : null } ) );
 	check( 'a credit note has neither a due date nor a validity date in its editor', credit.input( credit.mount, 'due_date' ) === null && credit.input( credit.mount, 'valid_until' ) === null && credit.input( credit.mount, 'date' ) !== null );
 	credit.entry().save( function() {} );
-	check( '...and posts neither', credit.last().payload.category === 'credit' && credit.last().payload.due_date === undefined && credit.last().payload.valid_until === undefined );
+	check( '...and posts neither', credit.last().payload.id === '5' && credit.last().payload.due_date === undefined && credit.last().payload.valid_until === undefined );
 
 	const sent = opened( 'en_US', sealed( 'open', { id : 5, finalised : '2026-10-01T09:00:00Z' } ) );
 	check( 'the state badge in the title of a finalised document has a class of its own, which gives it its space', sent.all( sent.mount, function( el ) { return String( el.className ).indexOf('crm-state') !== -1 } ).length === 1 );
 
 	const fin = opened( 'en_US', doc() );
 	fin.button( fin.mount, fin.word( K+ 'label/finalise' ) ).click();
-	fin.answer( 200, { document : sealed( 'open', { id : 5, finalised : '2026-10-01T09:00:00Z' } ) } );
+	fin.answer( 200, view( sealed( 'open', { id : 5, finalised : '2026-10-01T09:00:00Z' } ) ) );
 	const lines = fin.all( fin.mount, function( el ) { return String( el.className ).indexOf('nino-admin-status') !== -1 } ).map( function( el ) { return el.textContent } );
 	check( 'a document finalised just now says when, and not that it was saved', lines.indexOf( fin.said( K+ 'label/finalised-on', '01.10.2026' ) ) !== -1 && lines.every( function( text ) { return text.indexOf( fin.word('/_admin/common/msg/saved').slice( 0, 8 ) ) === -1 || fin.word('/_admin/common/msg/saved') === undefined } ) );
+}
+
+console.log( '\nThe documents without lines - the rows\n' );
+
+const TEMPLATES_PLAIN = [
+	{ key : 'vertrag', name : 'Dienstleistungsvertrag', inputs : [] },
+	{ key : 'nda', name : 'Geheimhaltung', inputs : [ { name : 'fall', label : 'Fall', multiline : false, required : false } ] },
+];
+const ACCOUNTS = [
+	{ id : 'aaaaaaaaaaaa', email : 'anna@example.org', name : 'Anna Nord', active : true },
+	{ id : 'bbbbbbbbbbbb', email : 'off@example.org', name : '', active : false },
+	{ id : 'cccccccccccc', email : 'carl@example.org', name : '', active : true },
+];
+const PLAIN_LISTED = [
+	{ id : 20, category : 'contract', number : '', title : 'Dienstleistungsvertrag', state : 'open', expired : false, date : '2026-10-21', gross : 0, client_id : 2, client_title : 'Ben Süd', parent_id : 9, released : true, sign_state : 'requested' },
+	{ id : 21, category : 'privacy', number : '', title : 'Datenschutz <b>', state : 'signed', expired : false, date : '2026-10-22', gross : 0, client_id : 1, client_title : 'Studio Nord', parent_id : null, released : false, sign_state : 'signed' },
+	{ id : 22, category : 'information', number : '', title : '', state : 'draft', expired : false, date : '2026-10-23', gross : 0, client_id : 1, client_title : 'Studio Nord', parent_id : null, released : false, sign_state : '' },
+];
+
+/** A document without lines as the server's get() has it */
+function plain( category, state, over ) {
+	const final = state !== 'draft';
+
+	return doc( Object.assign( {
+		id : 20, category : category, client_id : 2, parent_id : category === 'contract' ? 9 : null, number : '', title : 'Dienstleistungsvertrag', state : state, date : '2026-10-21', due_date : null, valid_until : null,
+		template_key : 'vertrag', inputs : {}, notes : 'intern', net : 0, vat : 0, gross : 0, lines : [], reverse_charge : false,
+		finalised : final ? '2026-10-21T09:00:00Z' : null, pdf_path : final ? '/data/crm/pdf/2026/'+ category+ '-20.pdf' : '', pdf_sha256 : final ? 'x'.repeat( 64 ) : '', pdf_url : final ? '/.crm/pdf/20' : '',
+		client : { id : 2, number : 'K-0002', company : '', name : 'Ben Süd', street : '', zip : '', city : '', country : 'DE', email : '', vat_id : '' },
+		parent : category === 'contract' ? { id : 9, number : 'A-2026-0003', title : '', category : 'offer', state : 'accepted' } : null, parent_number : category === 'contract' ? 'A-2026-0003' : '',
+	}, over ?? {} ) );
+}
+
+/** The panel with the plain documents in its list, one of them opened */
+function openedPlain( locale, document, extras, modal ) {
+	const w = world( locale, modal );
+
+	w.panel.showCurrent();
+	w.answer( 200, { documents : PLAIN_LISTED.concat( LISTED ), years : [ 2026 ], clients : CLIENTS, settings : SMALL, items : ITEMS, offers : OFFERS } );
+	w.answer( 200, { items : OK } );
+	w.find( w.mount, function( el ) { return el.tagName === 'BUTTON' && el.dataset.id === String( document.id ) } ).click();
+	w.answer( 200, Object.assign( view( document ), { templates : TEMPLATES_PLAIN }, extras ?? {} ) );
+
+	return w;
+}
+
+{
+	const w = world('en_US');
+
+	w.panel.showCurrent();
+	w.answer( 200, { documents : PLAIN_LISTED, years : [ 2026 ], clients : CLIENTS, settings : SMALL, items : ITEMS, offers : OFFERS } );
+	w.answer( 200, { items : OK } );
+
+	const rows = w.all( w.mount, function( el ) { return el.tagName === 'LI' && el.children.length === 1 && el.children[0].tagName === 'BUTTON' } );
+	const copy = function( row ) { return w.all( row, function( el ) { return el.tagName === 'STRONG' || el.tagName === 'SMALL' } ).map( function( el ) { return el.textContent } ) };
+	const badges = function( row ) { return w.all( row, function( el ) { return String( el.className ).indexOf('nino-admin-badge') !== -1 } ).map( function( el ) { return el.textContent } ) };
+
+	check( 'a document without lines is named by its title, with the kind, the client and the day and no amount', copy( rows[0] ).join('|') === 'Dienstleistungsvertrag|'+ [ w.word( K+ 'category/contract' ), 'Ben Süd', '21.10.2026' ].join(' · ')
+		&& copy( rows[1] )[0] === 'Datenschutz <b>' && copy( rows[2] )[0] === w.word( K+ 'label/draft' ) );
+	check( '...a document that is released wears the mark of it, and one that asked for a signature the state of the request', badges( rows[0] ).join() === [ w.word( K+ 'state/open' ), w.word( K+ 'label/released' ), w.word( K+ 'sign/state-requested' ) ].join()
+		&& badges( rows[1] ).join() === w.word( K+ 'state/signed' ) && badges( rows[2] ).join() === w.word( K+ 'state/draft' ) );
+	check( '...a document that is signed says it once: the badge of the request is for a request under way', w.all( rows[1], function( el ) { return String( el.className ).indexOf('crm-sign-state') !== -1 } ).length === 0 );
+	check( '...the colours say it too: released and signed are ok, the request that waits has the badge as it is', w.all( rows[0], function( el ) { return String( el.className ).indexOf('crm-released') !== -1 } )[0].dataset.state === 'ok'
+		&& w.all( rows[0], function( el ) { return String( el.className ).indexOf('crm-sign-state') !== -1 } )[0].dataset.state === undefined
+		&& w.all( rows[1], function( el ) { return String( el.className ).indexOf('nino-admin-badge') !== -1 } )[0].dataset.state === 'ok' );
+	check( '...and no word is missing', w.missing.length === 0 && w.all( w.mount, function( el ) { return el.tagName === 'B' } ).length === 0 );
+}
+
+console.log( '\nThe documents without lines - the editor\n' );
+
+{
+	const w = created( 'en_US', 'contract', SMALL, TEMPLATES_PLAIN );
+	const field = function( name ) { return w.input( w.mount, name ) };
+
+	check( 'a new contract asks the templates of its kind and the offers, and nothing else', w.requests.filter( function( request ) { return request.action === 'crm-documents/templates' } ).pop().payload.category === 'contract' );
+	check( '...it asks first for the offer: a choice of the finalised offers, the newest first, with their client; the client is not chosen but follows', w.all( w.select( w.mount, 'parent_id' ), function( el ) { return el.tagName === 'OPTION' } ).map( function( el ) { return el.value+ '=' +el.textContent } ).join('|')
+		=== '='+ w.word( K+ 'field/offer-choose' )+ '|9=A-2026-0003 Ben Süd 20.10.2026|7=A-2020-0001 Ben Süd 01.01.2020' && w.select( w.mount, 'client_id' ) === null );
+	check( '...a title, the date and the template; no lines, no totals, no reverse charge, no due date, validity or period', field('title') !== null && field('title').value === '' && field('date') !== null && w.select( w.mount, 'template_key' ) !== null
+		&& w.find( w.mount, function( el ) { return String( el.className ).indexOf('crm-lines') !== -1 } ) === null && w.find( w.mount, function( el ) { return el.id === 'crm-add-line' } ) === null
+		&& [ 'due_date', 'valid_until', 'period_from', 'period_to', 'reverse_charge' ].every( function( name ) { return field( name ) === null } ) );
+	check( '...it says whose client it will be until an offer is chosen, and who after', w.texts().indexOf( w.word( K+ 'field/offer-follow' ) ) !== -1 );
+
+	w.select( w.mount, 'parent_id' ).value = '9';
+	fire( w.select( w.mount, 'parent_id' ), 'change' );
+	check( '...the offer chosen names the client', w.texts().indexOf( w.word( K+ 'field/client' )+ ': Ben Süd' ) !== -1 && w.texts().indexOf( w.word( K+ 'field/offer-follow' ) ) === -1 );
+
+	w.select( w.mount, 'template_key' ).value = 'vertrag';
+	fire( w.select( w.mount, 'template_key' ), 'change' );
+	check( 'the name of the template is proposed as the title while the title is empty', field('title').value === 'Dienstleistungsvertrag' );
+
+	w.select( w.mount, 'template_key' ).value = 'nda';
+	fire( w.select( w.mount, 'template_key' ), 'change' );
+	check( '...and follows the template while the person has not changed it, with its inputs', field('title').value === 'Geheimhaltung' && w.input( w.mount, 'inputs.fall' ) !== null );
+
+	field('title').value = 'Mein Titel';
+	fire( field('title'), 'input' );
+	w.select( w.mount, 'template_key' ).value = 'vertrag';
+	fire( w.select( w.mount, 'template_key' ), 'change' );
+	check( '...but a title the person wrote is theirs', field('title').value === 'Mein Titel' );
+
+	w.entry().save( function() {} );
+	check( 'a save posts the title, the date, the template, the inputs, the notes and the offer, with the category - and neither client nor lines', w.last().action === 'crm-documents/save'
+		&& Object.keys( w.last().payload ).sort().join() === 'category,date,inputs,notes,parent_id,template_key,title' && w.last().payload.category === 'contract' && w.last().payload.parent_id === '9' && w.last().payload.title === 'Mein Titel' && w.last().payload.template_key === 'vertrag' );
+
+	w.answer( 400, { error : 'x', code : 'crm_documents_title', params : [], field : 'title' } );
+	check( 'a refusal says its sentence', w.has('/_admin/error/crm_documents_title') && w.texts().indexOf( w.word('/_admin/error/crm_documents_title') ) !== -1 && w.missing.length === 0 );
+
+	const privacy = created( 'en_US', 'privacy', SMALL, TEMPLATES_PLAIN );
+	check( 'a privacy document asks for the client and not for an offer', privacy.select( privacy.mount, 'client_id' ) !== null && privacy.select( privacy.mount, 'parent_id' ) === null && privacy.input( privacy.mount, 'title' ) !== null );
+	privacy.select( privacy.mount, 'client_id' ).value = '1';
+	fire( privacy.select( privacy.mount, 'client_id' ), 'change' );
+	privacy.input( privacy.mount, 'title' ).value = 'Datenschutz';
+	fire( privacy.input( privacy.mount, 'title' ), 'input' );
+	privacy.entry().save( function() {} );
+	check( '...and posts the client', Object.keys( privacy.last().payload ).sort().join() === 'category,client_id,date,inputs,notes,template_key,title' && privacy.last().payload.client_id === '1' && privacy.last().payload.category === 'privacy' );
+
+	const info = created( 'de_DE', 'information', SMALL, TEMPLATES_PLAIN );
+	check( 'an information document is the same, in German too', info.select( info.mount, 'client_id' ) !== null && info.missing.length === 0 && info.find( info.mount, function( el ) { return String( el.className ).indexOf('crm-lines') !== -1 } ) === null && info.input( info.mount, 'title' ) !== null );
+	info.entry().save( function() {} );
+	check( '...and posts no lines either', info.last().payload.lines === undefined && info.last().payload.category === 'information' );
+
+	const offerPage = opened( 'en_US', sealed( 'accepted', { id : 7, category : 'offer', number : 'A-2020-0001', children : [ { id : 20, number : '', title : 'Dienstleistungsvertrag', category : 'contract', state : 'open', gross : 0 } ] } ) );
+	check( 'an offer names the contract that hangs on it by its title, and opens it', offerPage.button( offerPage.mount, 'Contract Dienstleistungsvertrag' ) !== null );
+
+	const draft = openedPlain( 'en_US', plain( 'contract', 'draft', { title : 'Entwurf V', template_key : 'vertrag' } ) );
+	draft.entry().save( function() {} );
+	check( 'a draft that exists is posted with its id, its offer and its title, and carries the delete and the finalise buttons', draft.last().payload.id === '20' && draft.last().payload.parent_id === '9' && draft.last().payload.title === 'Entwurf V' && draft.last().payload.category === undefined
+		&& draft.button( draft.mount, draft.word( K+ 'label/finalise' ) ) !== null && draft.button( draft.mount, draft.word( K+ 'label/delete' ) ) !== null );
+	check( '...and links the offer it hangs on', draft.button( draft.mount, 'Offer A-2026-0003' ) !== null );
+}
+
+console.log( '\nThe documents without lines - the page, the release\n' );
+
+{
+	const w = openedPlain( 'en_US', plain( 'privacy', 'open' ), { accounts : ACCOUNTS } );
+	const releaseBox = w.find( w.mount, function( el ) { return String( el.className ).indexOf('crm-release') !== -1 } );
+
+	check( 'a finalised document without lines is its title and its kind, with the facts and neither lines nor totals', w.all( w.mount, function( el ) { return el.tagName === 'H3' } )[0].textContent.indexOf( 'Dienstleistungsvertrag - '+ w.word( K+ 'category/privacy' ) ) === 0
+		&& w.find( w.mount, function( el ) { return String( el.className ).indexOf('crm-lines') !== -1 || String( el.className ).indexOf('crm-totals') !== -1 } ) === null && w.texts().indexOf( 'Ben Süd' ) !== -1 );
+	check( '...the PDF to see and to save, and one step: sent', w.find( w.mount, function( el ) { return el.tagName === 'A' && el.href === '/.crm/pdf/20' } ) !== null && w.button( w.mount, w.word( K+ 'label/set-sent' ) ) !== null && w.button( w.mount, w.word( K+ 'label/set-paid' ) ) === null );
+	check( 'it is not released: the page says so, with the tick for the mail on and the button that releases; no Versenden, as it is no offer or invoice', releaseBox !== null && w.texts( releaseBox ).indexOf( w.word( K+ 'release/not' ) ) !== -1
+		&& w.input( releaseBox, 'release_mail' ).checked === true && w.button( releaseBox, w.word( K+ 'label/release' ) ) !== null && w.button( releaseBox, w.word( K+ 'label/send' ) ) === null );
+
+	w.button( releaseBox, w.word( K+ 'label/release' ) ).click();
+	check( 'releasing posts crm-documents/release with the id and the tick', w.last().action === 'crm-documents/release' && JSON.stringify( w.last().payload ) === '{"id":"20","mail":true}' );
+	w.answer( 200, { document : plain( 'privacy', 'open', { released : true, released_at : '2026-10-24T08:00:00Z' } ), mailed : 2, mail : true } );
+	check( '...the page is drawn again with the day of the release and the count of the mails, and the button that takes it back', w.texts().indexOf( 'Released on 24.10.2026' ) !== -1 && w.texts().indexOf( 'Released. Mails sent: 2' ) !== -1
+		&& w.button( w.mount, w.word( K+ 'label/unrelease' ) ) !== null && w.button( w.mount, w.word( K+ 'label/release' ) ) === null );
+
+	w.button( w.mount, w.word( K+ 'label/unrelease' ) ).click();
+	check( 'taking it back posts crm-documents/unrelease with the id alone', w.last().action === 'crm-documents/unrelease' && JSON.stringify( w.last().payload ) === '{"id":"20"}' );
+	w.answer( 200, { document : plain( 'privacy', 'open' ) } );
+	check( '...and says so; the document is not released again', w.texts().indexOf( w.word( K+ 'release/undone' ) ) !== -1 && w.button( w.mount, w.word( K+ 'label/release' ) ) !== null );
+
+	w.input( w.mount, 'release_mail' ).checked = false;
+	w.button( w.mount, w.word( K+ 'label/release' ) ).click();
+	check( 'without the tick the post says mail false', JSON.stringify( w.last().payload ) === '{"id":"20","mail":false}' );
+	w.answer( 200, { document : plain( 'privacy', 'open', { released : true, released_at : '2026-10-24T08:00:00Z' } ), mailed : 0, mail : false } );
+	check( '...and the page says it was released without a mail', w.texts().indexOf( w.word( K+ 'release/silent' ) ) !== -1 );
+
+	const none = openedPlain( 'en_US', plain( 'information', 'open' ) );
+	none.button( none.mount, none.word( K+ 'label/release' ) ).click();
+	none.answer( 200, { document : plain( 'information', 'open', { released : true, released_at : '2026-10-24T08:00:00Z' } ), mailed : 0, mail : true } );
+	check( 'a release with the tick that mailed nobody says that', none.texts().indexOf( none.word( K+ 'release/mailed-none' ) ) !== -1 );
+	none.find( none.mount, function( el ) { return el.tagName === 'A' && el.className === 'nino-admin-back-link' } ).click();
+	none.answer( 200, { documents : PLAIN_LISTED, years : [ 2026 ], clients : CLIENTS, settings : SMALL, items : ITEMS, offers : OFFERS } );
+	none.answer( 200, { items : OK } );
+	none.find( none.mount, function( el ) { return el.tagName === 'BUTTON' && el.dataset.id === '20' } ).click();
+	none.answer( 200, Object.assign( view( plain( 'information', 'open', { released : true, released_at : '2026-10-24T08:00:00Z' } ) ), { templates : TEMPLATES_PLAIN } ) );
+	check( '...what a release said is said once: the page opened again does not say it', none.texts().indexOf( none.word( K+ 'release/mailed-none' ) ) === -1 && none.button( none.mount, none.word( K+ 'label/unrelease' ) ) !== null );
+
+	const failing = openedPlain( 'en_US', plain( 'information', 'open' ) );
+	failing.button( failing.mount, failing.word( K+ 'label/release' ) ).click();
+	failing.answer( 500, { code : 'surprise', params : [] } );
+	check( 'a refusal the panel has no sentence for says the sentence of the action: release', failing.texts().some( function( text ) { return text === '(500) '+ failing.word( K+ 'error/release' ) } ) );
+	const failingBack = openedPlain( 'en_US', plain( 'information', 'open', { released : true, released_at : '2026-10-24T08:00:00Z' } ) );
+	failingBack.button( failingBack.mount, failingBack.word( K+ 'label/unrelease' ) ).click();
+	failingBack.answer( 500, { code : 'surprise', params : [] } );
+	check( '...and unrelease', failingBack.texts().some( function( text ) { return text === '(500) '+ failingBack.word( K+ 'error/unrelease' ) } ) );
+
+	const capped = openedPlain( 'en_US', plain( 'information', 'open' ) );
+	capped.button( capped.mount, capped.word( K+ 'label/release' ) ).click();
+	capped.answer( 429, { error : 'x', code : 'crm_documents_limit', params : [] } );
+	check( 'the cap on mails is answered in its sentence, on the page that was open', capped.has('/_admin/error/crm_documents_limit') && capped.texts().indexOf( capped.word('/_admin/error/crm_documents_limit') ) !== -1 && capped.button( capped.mount, capped.word( K+ 'label/release' ) ) !== null );
+
+	const invoice = opened( 'en_US', sealed( 'open' ) );
+	check( 'an invoice that is open has Versenden, which is the release with the mail', invoice.button( invoice.mount, invoice.word( K+ 'label/send' ) ) !== null && invoice.button( invoice.mount, invoice.word( K+ 'label/release' ) ) !== null );
+	invoice.button( invoice.mount, invoice.word( K+ 'label/send' ) ).click();
+	check( '...it posts release with mail true whatever the tick says', invoice.last().action === 'crm-documents/release' && JSON.stringify( invoice.last().payload ) === '{"id":"6","mail":true}' );
+	invoice.answer( 200, { document : sealed( 'sent', { released : true, released_at : '2026-10-24T08:00:00Z' } ), mailed : 1, mail : true } );
+	check( '...and once it is sent the button is gone', invoice.button( invoice.mount, invoice.word( K+ 'label/send' ) ) === null && invoice.texts().indexOf( 'Released. Mails sent: 1' ) !== -1 );
+	const sentInvoice = opened( 'en_US', sealed( 'sent' ) );
+	check( 'an invoice that is sent has no Versenden', sentInvoice.button( sentInvoice.mount, sentInvoice.word( K+ 'label/send' ) ) === null );
+	const credit = opened( 'en_US', sealed( 'open', { id : 8, category : 'credit', number : 'G-2026-0001' } ) );
+	check( '...a credit note that is open has it', credit.button( credit.mount, credit.word( K+ 'label/send' ) ) !== null );
+	check( 'no word is missing', w.missing.length === 0 && none.missing.length === 0 && capped.missing.length === 0 && invoice.missing.length === 0 );
+}
+
+console.log( '\nFixes of the review\n' );
+
+{
+	// B1: a contract just finalised offers the signature at once: the answer is the view, with the accounts of the client
+	const draft = openedPlain( 'en_US', plain( 'contract', 'draft' ), { accounts : [] } );
+	draft.button( draft.mount, draft.word( K+ 'label/finalise' ) ).click();
+	check( 'finalising a document without lines asks in the words of it: no number is given', draft.asked.length === 1 && draft.asked[0] === draft.word( K+ 'confirm/finalise-plain' ) && draft.has( K+ 'confirm/finalise-plain' ) );
+	draft.answer( 200, Object.assign( view( plain( 'contract', 'open' ) ), { templates : TEMPLATES_PLAIN, accounts : ACCOUNTS } ) );
+	check( 'a contract just finalised has the button that asks for a signature, with the accounts of the client that come with the answer', draft.button( draft.mount, draft.word( K+ 'label/ask-sign' ) ) !== null && draft.texts().indexOf( draft.word( K+ 'sign/no-account' ) ) === -1 );
+	check( '...an invoice finalised is asked in the old words', ( function() { const i = opened( 'en_US', doc() ); i.button( i.mount, i.word( K+ 'label/finalise' ) ).click(); return i.asked[0] === i.word( K+ 'confirm/finalise' ) } )() );
+
+	// NB3: the address #crm-documents/client/<id> is the filter Kunde, once
+	const linked = world('en_US');
+	linked.address.panel = 'crm-documents';
+	linked.address.parts = [ 'client', '2' ];
+	linked.panel.showCurrent();
+	check( 'the address of a client is the filter Kunde of the first list', linked.last().action === 'crm-documents/list' && linked.last().payload.client === '2' );
+	linked.answer( 200, { documents : LISTED, years : [ 2026 ], clients : CLIENTS, settings : SMALL, items : ITEMS, offers : OFFERS } );
+	linked.answer( 200, { items : OK } );
+	check( '...and the select shows it', linked.select( linked.mount, 'client' ).value === '2' );
+	const form = linked.find( linked.mount, function( el ) { return el.tagName === 'FORM' && String( el.className ).indexOf('crm-filters') !== -1 } );
+	linked.select( form, 'client' ).value = '';
+	fire( form, 'submit' );
+	check( '...a filter that is cleared afterwards stays cleared', linked.last().payload.client === '' );
+	const bad = world('en_US');
+	bad.address.panel = 'crm-documents';
+	bad.address.parts = [ 'client', '2; DROP' ];
+	bad.panel.showCurrent();
+	const other = world('en_US');
+	other.address.panel = 'members';
+	other.address.parts = [ 'client', '2' ];
+	other.panel.showCurrent();
+	check( '...an address that is not a client id, or is another panel\'s, sets nothing', bad.last().payload.client === '' && other.last().payload.client === '' );
+
+	// The link on the card is followed while Belege is loaded: every switch to the tab asks for the list of the client of the address
+	const loaded = drawn('en_US');
+	loaded.address.panel = 'crm-documents';
+	loaded.address.parts = [ 'client', '2' ];
+	const before = loaded.requests.length;
+	loaded.panel.showCurrent();
+	check( 'with Belege loaded, an address of a client asks for the list again with that client', loaded.requests.length === before + 1 && loaded.last().action === 'crm-documents/list' && loaded.last().payload.client === '2' );
+	loaded.answer( 200, { documents : [], years : [ 2026 ], clients : CLIENTS, settings : SMALL, items : ITEMS, offers : OFFERS } );
+	loaded.answer( 200, { items : OK } );
+	loaded.address.parts = [ 'client', '1' ];
+	loaded.panel.showCurrent();
+	check( '...and another client the next time: the filter follows the address, it does not keep the first client', loaded.last().action === 'crm-documents/list' && loaded.last().payload.client === '1' && loaded.select( loaded.find( loaded.mount, function( el ) { return el.tagName === 'FORM' } ), 'client' ) !== null );
+	loaded.answer( 200, { documents : LISTED, years : [ 2026 ], clients : CLIENTS, settings : SMALL, items : ITEMS, offers : OFFERS } );
+	loaded.answer( 200, { items : OK } );
+	const count = loaded.requests.length;
+	loaded.panel.showCurrent();
+	check( '...a switch to the tab with the same address asks for nothing', loaded.requests.length === count );
+
+	const editing = opened( 'en_US', doc() );
+	editing.address.panel = 'crm-documents';
+	editing.address.parts = [ 'client', '2' ];
+	editing.input( editing.mount, 'notes' ).value = 'noch nicht gespeichert';
+	fire( editing.input( editing.mount, 'notes' ), 'input' );
+	const asked = editing.requests.length;
+	editing.panel.showCurrent();
+	check( 'an editor that holds what is not saved stays as it is: no list is asked for', editing.requests.length === asked && editing.input( editing.mount, 'notes' ).value === 'noch nicht gespeichert' );
+
+	// NB8: the PDF Sign shows the member is linked while the request waits, and no longer
+	const waiting = openedPlain( 'en_US', plain( 'contract', 'open', { sign_id : 'abcdefabcdef', sign_state : 'requested', sign_shown_url : '/.sign/pdf?r=abcdefabcdef&kind=shown' } ), { accounts : ACCOUNTS } );
+	const shown = waiting.find( waiting.mount, function( el ) { return el.tagName === 'A' && el.textContent === waiting.word( K+ 'label/sign-shown' ) } );
+	check( 'while a request waits the panel links the PDF Sign shows the member', shown !== null && shown.href === '/.sign/pdf?r=abcdefabcdef&kind=shown' && shown.target === '_blank' );
+	const done = openedPlain( 'en_US', plain( 'contract', 'signed', { sign_id : 'abcdefabcdef', sign_state : 'signed', signed_at : '2026-10-25T10:00:00Z', sign_shown_url : '/.sign/pdf?r=abcdefabcdef&kind=shown', sign_signed_url : '/.sign/pdf?r=abcdefabcdef&kind=signed' } ), { accounts : ACCOUNTS } );
+	check( '...a signed document links the signed file and not the shown one', done.find( done.mount, function( el ) { return el.tagName === 'A' && el.textContent === done.word( K+ 'label/sign-shown' ) } ) === null && done.find( done.mount, function( el ) { return el.tagName === 'A' && el.textContent === done.word( K+ 'label/sign-pdf' ) } ) !== null );
+	check( '...and no word is missing', draft.missing.length === 0 && linked.missing.length === 0 && waiting.missing.length === 0 && done.missing.length === 0 );
+}
+
+console.log( '\nThe documents without lines - the signature\n' );
+
+{
+	const w = openedPlain( 'en_US', plain( 'contract', 'open' ), { accounts : ACCOUNTS }, true );
+	const box = function() { return w.find( w.mount, function( el ) { return String( el.className ).split(' ').indexOf('crm-sign') !== -1 } ) };
+
+	check( 'a contract has a block for the signature: it says none was asked for and offers the button', box() !== null && w.texts( box() ).indexOf( w.word( K+ 'sign/none' ) ) !== -1 && w.button( box(), w.word( K+ 'label/ask-sign' ) ) !== null );
+	check( '...with no link to the panel of Sign and none to a signed file while nothing was asked', w.find( box(), function( el ) { return el.tagName === 'A' } ) === null );
+	check( '...a contract that is open has its step, sent', w.button( w.mount, w.word( K+ 'label/set-sent' ) ) !== null );
+	const info = openedPlain( 'en_US', plain( 'information', 'open' ), { accounts : ACCOUNTS } );
+	check( '...an information document has none', info.find( info.mount, function( el ) { return String( el.className ).split(' ').indexOf('crm-sign') !== -1 } ) === null && info.button( info.mount, info.word( K+ 'label/ask-sign' ) ) === null );
+
+	w.button( box(), w.word( K+ 'label/ask-sign' ) ).click();
+	const dialog = w.dialogs[0];
+	const control = function( name ) { return w.find( dialog, function( el ) { return ( el.tagName === 'SELECT' || el.tagName === 'INPUT' ) && el.name === name } ) };
+
+	check( 'the button opens a dialog with the active accounts of the client to choose from, and the days with the setting of Sign in them', w.dialogs.length === 1 && dialog.open === true && w.requests.filter( function( request ) { return request.action === 'crm-documents/sign' } ).length === 0
+		&& w.all( control('sign_account'), function( el ) { return el.tagName === 'OPTION' } ).map( function( el ) { return el.value+ '='+ el.textContent } ).join('|') === 'aaaaaaaaaaaa=Anna Nord · anna@example.org|cccccccccccc=carl@example.org'
+		&& control('sign_days').value === '14' && control('sign_days').min === '1' && control('sign_days').max === '90' );
+	check( '...with its words', w.texts( dialog ).indexOf( w.word( K+ 'sign/title' ) ) !== -1 && w.button( dialog, w.word( K+ 'label/ask-sign' ) ) !== null && w.button( dialog, w.word( K+ 'label/cancel' ) ) !== null );
+
+	w.button( dialog, w.word( K+ 'label/cancel' ) ).click();
+	check( 'cancelling asks nothing of the server', w.requests.filter( function( request ) { return request.action === 'crm-documents/sign' } ).length === 0 && dialog.open === false );
+
+	w.button( box(), w.word( K+ 'label/ask-sign' ) ).click();
+	const second = w.dialogs[1];
+	const pick = function( name ) { return w.find( second, function( el ) { return ( el.tagName === 'SELECT' || el.tagName === 'INPUT' ) && el.name === name } ) };
+
+	pick('sign_account').value = 'cccccccccccc';
+	pick('sign_days').value = '7';
+	w.button( second, w.word( K+ 'label/ask-sign' ) ).click();
+	check( 'asking posts crm-documents/sign with the id, the account and the days', w.last().action === 'crm-documents/sign' && JSON.stringify( w.last().payload ) === '{"id":"20","account":"cccccccccccc","days":"7"}' );
+
+	w.answer( 200, { document : plain( 'contract', 'open', { sign_id : 'abcdefabcdef', sign_state : 'requested', sign_shown_url : '/.sign/pdf?r=abcdefabcdef&kind=shown' } ), mailed : true } );
+	check( '...the page is drawn again: the state of the request, the sentence that the account was mailed, a link into the panel of Sign and no button to ask again', w.texts( box() ).indexOf( w.word( K+ 'sign/state-requested' ) ) !== -1 && w.texts( box() ).indexOf( w.word( K+ 'sign/asked' ) ) !== -1
+		&& w.find( box(), function( el ) { return el.tagName === 'A' && el.href === '#sign' && el.textContent === w.word( K+ 'label/sign-panel' ) } ) !== null && w.button( box(), w.word( K+ 'label/ask-sign' ) ) === null );
+
+	const unmailed = openedPlain( 'en_US', plain( 'privacy', 'sent' ), { accounts : ACCOUNTS }, true );
+	unmailed.button( unmailed.mount, unmailed.word( K+ 'label/ask-sign' ) ).click();
+	unmailed.button( unmailed.dialogs[0], unmailed.word( K+ 'label/ask-sign' ) ).click();
+	check( 'the first account and the days of the setting are what is posted when nothing is changed', JSON.stringify( unmailed.last().payload ) === '{"id":"20","account":"aaaaaaaaaaaa","days":"14"}' );
+	unmailed.answer( 200, { document : plain( 'privacy', 'sent', { sign_id : 'abcdefabcdef', sign_state : 'requested' } ), mailed : false } );
+	check( '...a request whose mail did not go out says that', unmailed.texts().indexOf( unmailed.word( K+ 'sign/asked-unmailed' ) ) !== -1 );
+
+	const generic = openedPlain( 'en_US', plain( 'contract', 'open' ), { accounts : ACCOUNTS }, true );
+	generic.button( generic.mount, generic.word( K+ 'label/ask-sign' ) ).click();
+	generic.button( generic.dialogs[0], generic.word( K+ 'label/ask-sign' ) ).click();
+	generic.answer( 500, { code : 'surprise', params : [] } );
+	check( 'a refusal the panel has no sentence for says the sentence of the action: sign', generic.texts().some( function( text ) { return text === '(500) '+ generic.word( K+ 'error/sign' ) } ) );
+
+	const refused = openedPlain( 'en_US', plain( 'contract', 'open' ), { accounts : ACCOUNTS }, true );
+	refused.button( refused.mount, refused.word( K+ 'label/ask-sign' ) ).click();
+	refused.button( refused.dialogs[0], refused.word( K+ 'label/ask-sign' ) ).click();
+	refused.answer( 409, { error : 'x', code : 'crm_documents_field', params : [], field : 'template_key' } );
+	check( 'a refusal of the request says its sentence on the page, which stays', refused.has('/_admin/error/crm_documents_field') && refused.texts().indexOf( refused.word('/_admin/error/crm_documents_field') ) !== -1 && refused.button( refused.mount, refused.word( K+ 'label/ask-sign' ) ) !== null );
+
+	const states = { viewed : 'Viewed, not signed yet', declined : 'Declined', cancelled : 'Cancelled', expired : 'Expired', changed : 'The document changed, nothing was signed' };
+	const lines = Object.keys( states ).map( function( state ) {
+		const s = openedPlain( 'en_US', plain( 'contract', state === 'declined' ? 'declined' : 'open', { sign_id : 'abcdefabcdef', sign_state : state } ), { accounts : ACCOUNTS } );
+		const sign = s.find( s.mount, function( el ) { return String( el.className ).split(' ').indexOf('crm-sign') !== -1 } );
+		return s.texts( sign ).indexOf( states[state] ) !== -1 ? s.button( sign, s.word( K+ 'label/ask-sign' ) ) !== null : 'wrong '+ state;
+	} );
+	check( 'a request is told in the word of its state; one that ended without a signature (cancelled, expired, changed) may be asked again, one that waits (viewed) or was declined may not', lines.join() === 'false,false,true,true,true' );
+
+	const signed = openedPlain( 'en_US', plain( 'contract', 'signed', { sign_id : 'abcdefabcdef', sign_state : 'signed', signed_at : '2026-10-25T10:00:00Z', sign_signed_url : '/.sign/pdf?r=abcdefabcdef&kind=signed' } ), { accounts : ACCOUNTS } );
+	const signBox = signed.find( signed.mount, function( el ) { return String( el.className ).split(' ').indexOf('crm-sign') !== -1 } );
+	const link = signed.find( signBox, function( el ) { return el.tagName === 'A' && el.textContent === signed.word( K+ 'label/sign-pdf' ) } );
+	check( 'a document that is signed says when, links the signed PDF of Sign and cannot be asked again', signed.texts( signBox ).indexOf( 'Signed on 25.10.2026' ) !== -1 && link !== null && link.href === '/.sign/pdf?r=abcdefabcdef&kind=signed' && link.target === '_blank'
+		&& signed.button( signBox, signed.word( K+ 'label/ask-sign' ) ) === null && signed.button( signed.mount, signed.word( K+ 'label/set-sent' ) ) === null );
+
+	const longer = openedPlain( 'en_US', plain( 'contract', 'open' ), { accounts : ACCOUNTS, sign_days : 21 }, true );
+	longer.button( longer.mount, longer.word( K+ 'label/ask-sign' ) ).click();
+	check( 'the days offered are the setting of Sign as the server says it', longer.find( longer.dialogs[0], function( el ) { return el.tagName === 'INPUT' && el.name === 'sign_days' } ).value === '21' );
+
+	const lonely = openedPlain( 'en_US', plain( 'contract', 'open' ), { accounts : [ ACCOUNTS[1] ] } );
+	const lonelyBox = lonely.find( lonely.mount, function( el ) { return String( el.className ).split(' ').indexOf('crm-sign') !== -1 } );
+	check( 'a client with no active account is told to invite one, and there is no button', lonely.texts( lonelyBox ).indexOf( lonely.word( K+ 'sign/no-account' ) ) !== -1 && lonely.button( lonelyBox, lonely.word( K+ 'label/ask-sign' ) ) === null );
+
+	const german = openedPlain( 'de_DE', plain( 'contract', 'open' ), { accounts : ACCOUNTS }, true );
+	german.button( german.mount, german.word( K+ 'label/ask-sign' ) ).click();
+	check( 'the German page and dialog have every word they ask for', german.missing.length === 0 && german.texts( german.dialogs[0] ).indexOf( german.word( K+ 'sign/title' ) ) !== -1 );
+	check( 'no word is missing in English either', w.missing.length === 0 && unmailed.missing.length === 0 && refused.missing.length === 0 && signed.missing.length === 0 && lonely.missing.length === 0 );
 }
 
 console.log( '\nThe script itself\n' );

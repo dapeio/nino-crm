@@ -3,7 +3,8 @@
 /**
  *	Crm\Documents\Admin		What the panel Belege needs beyond the design system in _admin/assets/style.css. Joins the
  *												workbench's style bundle while the module is active (see the panel's assets()); every rule is
- *												scoped to #crm-documents-app, the root of templates/panel.tpl, and nothing shared is restated.
+ *												scoped to #crm-documents-app, the root of templates/panel.tpl, and nothing shared is restated -
+ *												but the form of the dialog that asks for a signature, which the workbench draws in its own root.
  */
 
 @layer nino.tool {
@@ -112,9 +113,32 @@
 	resize: vertical;
 }
 #crm-documents-app .crm-pdf,
-#crm-documents-app .crm-download {
+#crm-documents-app .crm-download,
+#crm-documents-app .crm-sign-pdf,
+#crm-documents-app .crm-sign-panel {
 	display: inline-block;
 	text-decoration: none;
+}
+#crm-documents-app .crm-release,
+#crm-documents-app .crm-sign {
+	margin-top: 1rem;
+}
+#crm-documents-app .crm-release h4,
+#crm-documents-app .crm-sign h4 {
+	margin: 0 0 .5rem;
+}
+#crm-documents-app .crm-follow,
+#crm-documents-app .crm-released-on,
+#crm-documents-app .crm-sign-line {
+	margin: 0 0 .5rem;
+}
+#crm-documents-app .crm-released,
+#crm-documents-app .crm-sign-state {
+	margin-left: .5rem;
+}
+.nino-admin-dialog .crm-sign-form {
+	display: grid;
+	gap: .75rem;
 }
 
 /* What the script hides with the attribute stays hidden: a display of the shell or of a rule above is an author's

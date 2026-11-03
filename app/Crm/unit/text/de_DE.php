@@ -18,6 +18,9 @@ return [
 	'[[/_nino/webpage/portal/unterschriften/name]]' => 'Unterschriften',
 	'[[/_nino/webpage/portal/unterschriften/title]]' => 'Unterschriften',
 	'[[/_nino/webpage/portal/unterschriften/description]]' => 'Die Dokumente, die auf Deine Unterschrift warten.',
+	'[[/_nino/webpage/portal/dokumente/name]]' => 'Dokumente',
+	'[[/_nino/webpage/portal/dokumente/title]]' => 'Deine Dokumente',
+	'[[/_nino/webpage/portal/dokumente/description]]' => 'Die Dokumente, die für Dich freigegeben sind: Angebote, Rechnungen, Verträge und mehr.',
 	'[[/_nino/webpage/portal/konto/name]]' => 'Mein Konto',
 	'[[/_nino/webpage/portal/konto/title]]' => 'Mein Konto',
 	'[[/_nino/webpage/portal/konto/description]]' => 'Dein Konto im Kundenportal.',
@@ -32,6 +35,8 @@ return [
 	'[[/template/page-portal/link-files/href]]'          => '/portal/dateien',
 	'[[/template/page-portal/link-review/label]]'        => 'Aufnahmen anhören',
 	'[[/template/page-portal/link-review/href]]'         => '/portal/review',
+	'[[/template/page-portal/link-documents/label]]'      => 'Dokumente',
+	'[[/template/page-portal/link-documents/href]]'       => '/portal/dokumente',
 	'[[/template/page-portal/link-sign/label]]'          => 'Unterschriften',
 	'[[/template/page-portal/link-sign/href]]'           => '/portal/unterschriften',
 	'[[/template/page-portal/link-account/label]]'       => 'Mein Konto',
@@ -54,6 +59,12 @@ return [
 	'[[/template/page-portal-sign/intro/text]]'          => 'Die Dokumente, die auf Deine Unterschrift warten.',
 	'[[/template/page-portal-sign/back/label]]'          => 'Zurück zum Portal',
 	'[[/template/page-portal-sign/back/href]]'           => '/portal',
+
+	// Dokumente, page-portal-documents.tpl
+	'[[/template/page-portal-documents/intro/title]]' => 'Deine Dokumente',
+	'[[/template/page-portal-documents/intro/text]]' => 'Alles, was für Dich freigegeben ist, mit seinem Stand: Angebote, Rechnungen, Verträge und Datenschutzdokumente. Verträge und Datenschutzdokumente, die Deine Unterschrift brauchen, unterschreibst Du hier.',
+	'[[/template/page-portal-documents/back/label]]' => 'Zurück zum Portal',
+	'[[/template/page-portal-documents/back/href]]' => '/portal',
 
 	// Konto, page-portal-account.tpl
 	'[[/template/page-portal-account/intro/title]]'      => 'Mein Konto',

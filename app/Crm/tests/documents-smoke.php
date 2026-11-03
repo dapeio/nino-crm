@@ -38,7 +38,13 @@ function docBoot( string $sandbox ): array {
 	$appData['./nino/filesystem/configpath']	= $sandbox. '/private';
 	$appData['./nino/filesystem/contentpath']	= $sandbox. '/private';
 	$appData['./nino/filesystem/publicpath']	= $sandbox. '/public';
-	$appData['/nino/modules'] = array_values( (array) ( \Nino\Filesystem::getFileContent( $appData, '/config.php', [] )['/nino/modules'] ?? [] ) );
+	$config = (array) \Nino\Filesystem::getFileContent( $appData, '/config.php', [] );
+	$appData['/nino/modules'] = array_values( (array) ( $config['/nino/modules'] ?? [] ) );
+
+	// The languages of the site, which a PDF reads the address of the website in (Render::data() asks for site.portal)
+	$appData['/nino/locales/available'] = $config['/nino/locales/available'];
+	$appData['/nino/locales/native'] = $config['/nino/locales/native'];
+	$appData['./nino/locales/current'] = $config['/nino/locales/native'];
 
 	return $appData;
 }
@@ -68,7 +74,7 @@ echo "Migration 0002\n";
 $pdo = Db::pdo( $appData );
 $tables = array_column( Db::rows( $appData, 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' ORDER BY name' ), 'name' );
 check( 'the tables of C01 and of C02 are there', $tables === [ 'client_accounts', 'clients', 'document_lines', 'documents', 'items', 'sequences', 'settings' ] );
-check( 'user_version is 2 and the first boot ran both migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 2 && Db::migrated() === 2 );
+check( 'user_version is 3 and the first boot ran the three migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 3 && Db::migrated() === 3 );
 
 Db::close();
 Db::pdo( $appData );
@@ -78,7 +84,8 @@ $settings = Settings::all( $appData );
 check( 'the settings are written where they were missing: the defaults of the plan', $settings === [ 'vat_mode' => 'small_business', 'vat_rates' => '1900,700,0', 'payment_days' => '14', 'offer_days' => '30', 'currency' => '€',
 	'number_offer' => 'A-{YYYY}-{NNNN}', 'number_invoice' => 'R-{YYYY}-{NNNN}', 'number_credit' => 'G-{YYYY}-{NNNN}' ]);
 check( 'the columns of documents are the ones of the plan', array_column( Db::rows( $appData, 'PRAGMA table_info( documents )' ), 'name' ) === [ 'id', 'category', 'client_id', 'parent_id', 'number', 'state', 'date', 'due_date', 'valid_until', 'period_from', 'period_to',
-	'vat_mode', 'reverse_charge', 'net', 'vat', 'gross', 'template_key', 'inputs_json', 'client_json', 'notes', 'pdf_path', 'pdf_sha256', 'finalised', 'sent_at', 'paid_at', 'created', 'updated' ] );
+	'vat_mode', 'reverse_charge', 'net', 'vat', 'gross', 'template_key', 'inputs_json', 'client_json', 'notes', 'pdf_path', 'pdf_sha256', 'finalised', 'sent_at', 'paid_at', 'created', 'updated',
+	'title', 'released', 'released_at', 'sign_id', 'sign_state', 'signed_at' ] );
 
 check( 'the table has no CHECK on category and state: the model lists them, a later patch adds to them', str_contains( (string) Db::row( $appData, 'SELECT sql FROM sqlite_master WHERE name = \'documents\'' )['sql'], 'CHECK' ) === false );
 
@@ -401,7 +408,7 @@ $bad = [
 	'notes that are no text'         => [ [ 'notes' => [ 'x' ] ], 'format:notes' ],
 	'a template that is not there'   => [ [ 'template_key' => 'weg' ], 'template' ],
 	'a template of another tag'      => [ [ 'template_key' => 'angebot' ], 'template' ],
-	'a template of a tag nobody uses' => [ [ 'template_key' => 'vertrag' ], 'template' ],
+	'a template of the tag of another category' => [ [ 'template_key' => 'vertrag' ], 'template' ],
 	'inputs that are no map'         => [ [ 'inputs' => 'x' ], 'format:inputs' ],
 	'an input with a name that is none' => [ [ 'inputs' => [ 'Bad Name' => 'x' ] ], 'format:inputs' ],
 	'an input that is no text'       => [ [ 'inputs' => [ 'intro' => [ 'x' ] ] ], 'format:inputs' ],
@@ -1038,28 +1045,30 @@ $jsDocs = (string) file_get_contents( $root. '/app/Crm/Documents/Admin/assets/ad
 preg_match_all( "~K\s*\+\s*'([a-z/-]+)'~", $jsDocs, $keys );
 check( 'every fill key the script of crm-documents asks for in pieces has its text, the ones it builds from a state, a category or a setting included', array_filter( array_unique( $keys[1] ), static fn( string $key ): bool => str_ends_with( $key, '/' ) === false && str_ends_with( $key, '-' ) === false && isset( $words['documents']['de_DE']['[[/_admin/crm-documents/'. $key. ']]'] ) === false ) === []
 	&& array_filter( array_merge(
-		array_map( static fn( string $s ): string => 'state/'. $s, [ 'draft', 'open', 'sent', 'paid', 'cancelled', 'accepted', 'declined', 'expired' ] ),
-		array_map( static fn( string $s ): string => 'category/'. $s, [ 'offer', 'invoice', 'credit' ] ),
-		array_map( static fn( string $s ): string => 'label/new-'. $s, [ 'offer', 'invoice', 'credit' ] ),
+		array_map( static fn( string $s ): string => 'state/'. $s, [ 'draft', 'open', 'sent', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ),
+		array_map( static fn( string $s ): string => 'category/'. $s, [ 'offer', 'invoice', 'credit', 'contract', 'privacy', 'information' ] ),
+		array_map( static fn( string $s ): string => 'label/new-'. $s, [ 'offer', 'invoice', 'contract', 'privacy', 'information' ] ),
+		array_map( static fn( string $s ): string => 'sign/state-'. $s, [ 'requested', 'viewed', 'signed', 'declined', 'cancelled', 'expired', 'changed' ] ),
 		array_map( static fn( string $s ): string => 'label/set-'. $s, [ 'sent', 'paid', 'accepted', 'declined' ] ),
 		array_map( static fn( string $s ): string => 'label/from-'. $s, [ 'offer', 'invoice' ] ),
-		array_map( static fn( string $s ): string => 'label/to-'. $s, [ 'invoice', 'credit' ] ),
+		array_map( static fn( string $s ): string => 'label/to-'. $s, [ 'invoice', 'credit', 'contract' ] ),
+		[ 'confirm/finalise-plain', 'label/sign-shown' ],
 		array_map( static fn( string $s ): string => 'filter/'. $s, [ 'category', 'state', 'year', 'client', 'all' ] ),
 		array_map( static fn( string $s ): string => 'column/'. $s, [ 'title', 'description', 'qty', 'unit', 'price', 'rate', 'amount', 'actions' ] ),
 		array_map( static fn( string $s ): string => 'setting/'. $s, [ 'vat-mode', 'vat-rates', 'payment-days', 'offer-days', 'currency', 'number-offer', 'number-invoice', 'number-credit', 'mode-small-business', 'mode-regular' ] ),
 		array_map( static fn( string $s ): string => 'setting-hint/'. $s, [ 'vat-mode', 'vat-rates', 'payment-days', 'offer-days', 'currency', 'number-offer', 'number-invoice', 'number-credit' ] ),
 		array_map( static fn( string $s ): string => 'status/'. $s, [ 'module-off', 'data-unwritable', 'pdf-missing', 'pdf-off', 'pdf-problem', 'templates-offer-none', 'templates-invoice-none', 'pdf-dir-unwritable' ] ),
-		array_map( static fn( string $s ): string => 'field/'. $s, [ 'client', 'date', 'due-date', 'valid-until', 'period-from', 'period-to', 'sent-at', 'paid-at', 'reverse-charge' ] ),
-		array_map( static fn( string $s ): string => 'error/'. $s, [ 'from-offer', 'credit' ] )
+		array_map( static fn( string $s ): string => 'field/'. $s, [ 'client', 'date', 'due-date', 'valid-until', 'period-from', 'period-to', 'sent-at', 'paid-at', 'reverse-charge', 'title', 'offer', 'offer-choose', 'offer-follow', 'release-mail', 'sign-account', 'sign-days' ] ),
+		array_map( static fn( string $s ): string => 'error/'. $s, [ 'from-offer', 'credit', 'release', 'unrelease', 'sign' ] )
 	), static fn( string $key ): bool => isset( $words['documents']['de_DE']['[[/_admin/crm-documents/'. $key. ']]'], $words['documents']['en_US']['[[/_admin/crm-documents/'. $key. ']]'] ) === false ) === [] );
 
-$mine = [ 'crm-documents/list', 'crm-documents/get', 'crm-documents/save', 'crm-documents/remove', 'crm-documents/finalise', 'crm-documents/state', 'crm-documents/from-offer', 'crm-documents/credit', 'crm-documents/settings-get', 'crm-documents/settings-save', 'crm-documents/templates', 'crm-documents/status' ];
-check( 'its actions are the twelve of the plan', array_keys( \Crm\Documents\Admin::actions() ) === $mine );
+$mine = [ 'crm-documents/list', 'crm-documents/get', 'crm-documents/save', 'crm-documents/remove', 'crm-documents/finalise', 'crm-documents/state', 'crm-documents/from-offer', 'crm-documents/credit', 'crm-documents/release', 'crm-documents/unrelease', 'crm-documents/sign', 'crm-documents/settings-get', 'crm-documents/settings-save', 'crm-documents/templates', 'crm-documents/status' ];
+check( 'its actions are the fifteen of the plan', array_keys( \Crm\Documents\Admin::actions() ) === $mine );
 check( 'the actions of Positionen are the five of the plan', array_keys( \Crm\Items\Admin::actions() ) === [ 'crm-items/list', 'crm-items/get', 'crm-items/save', 'crm-items/active', 'crm-items/order' ] );
 
 $posts = [
 	'crm-documents/list' => [], 'crm-documents/get' => [ 'id' => '1' ], 'crm-documents/save' => [ 'category' => 'invoice', 'client_id' => '1' ], 'crm-documents/remove' => [ 'id' => '1' ], 'crm-documents/finalise' => [ 'id' => '1' ],
-	'crm-documents/state' => [ 'id' => '1', 'state' => 'sent' ], 'crm-documents/from-offer' => [ 'id' => '1' ], 'crm-documents/credit' => [ 'id' => '1' ], 'crm-documents/settings-get' => [], 'crm-documents/settings-save' => [ 'payment_days' => '99' ],
+	'crm-documents/state' => [ 'id' => '1', 'state' => 'sent' ], 'crm-documents/from-offer' => [ 'id' => '1' ], 'crm-documents/credit' => [ 'id' => '1' ], 'crm-documents/release' => [ 'id' => '1' ], 'crm-documents/unrelease' => [ 'id' => '1' ], 'crm-documents/sign' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-documents/settings-get' => [], 'crm-documents/settings-save' => [ 'payment_days' => '99' ],
 	'crm-documents/templates' => [ 'category' => 'invoice' ], 'crm-documents/status' => [],
 	'crm-items/list' => [], 'crm-items/get' => [ 'id' => '1' ], 'crm-items/save' => [ 'title' => 'Nobody' ], 'crm-items/active' => [ 'id' => '1' ], 'crm-items/order' => [ 'ids' => [ 1 ] ],
 ];
@@ -1234,7 +1243,7 @@ check( '...and the settings are the defaults again', Settings::all( $appData ) =
 [ $status, $body ] = $post( 'crm-documents/templates', [ 'category' => 'credit' ] );
 check( 'templates answers the templates of the tag of a category with their inputs', $status === 200 && array_column( $body['templates'], 'key' ) === [ 'rechnung' ] && $body['templates'][0]['name'] === 'Rechnung' && array_column( $body['templates'][0]['inputs'], 'multiline', 'name' ) === [ 'intro' => true, 'footnote' => false ]
 	&& array_column( $post( 'crm-documents/templates', [ 'category' => 'offer' ] )[1]['templates'], 'key' ) === [ 'angebot' ] );
-check( '...a category nobody has is 400 crm_documents_category', ( $r = $post( 'crm-documents/templates', [ 'category' => 'contract' ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_category' );
+check( '...a category nobody has is 400 crm_documents_category', ( $r = $post( 'crm-documents/templates', [ 'category' => 'letter' ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_category' );
 
 $stateOf = static function( array $body, string $key ): string {
 	foreach( $body['items'] as $item )
@@ -1275,7 +1284,7 @@ check( 'the log line of an action names the number or the id and no address and 
 
 $logs = [];
 
-foreach( [ 'crm-documents/save', 'crm-documents/remove', 'crm-documents/finalise', 'crm-documents/state', 'crm-documents/from-offer', 'crm-documents/credit', 'crm-documents/settings-save' ] as $action )
+foreach( [ 'crm-documents/save', 'crm-documents/remove', 'crm-documents/finalise', 'crm-documents/state', 'crm-documents/from-offer', 'crm-documents/credit', 'crm-documents/release', 'crm-documents/unrelease', 'crm-documents/sign', 'crm-documents/settings-save' ] as $action )
 	$logs[$action] = \Crm\Documents\Admin::log( $action, [ 'id' => '1', 'email' => 'a@example.org', 'street' => 'Hafenstr.', 'price' => '99,99', 'lines' => [ [ 'price' => '12,00' ] ] ] );
 
 check( '...every writing action has a line, which holds no address, no amount and no name', array_filter( $logs, static fn( string $line ): bool => $line === '' ) === [] && array_filter( $logs, static fn( string $line ): bool => preg_match( '/[@€]|Hafen|\d,\d\d|Nord/', $line ) === 1 ) === [] );
@@ -1293,7 +1302,8 @@ $refuse = new \ReflectionMethod( \Crm\Documents\Admin::class, '_refused' );
 $answers = [];
 
 foreach( [ 'unknown', 'fixed', 'state', 'category', 'client', 'inactive', 'period', 'reverse', 'lines', 'total', 'pdf', 'template', 'empty', 'number', 'exists:/data/crm/pdf/2026/R-2026-0001.pdf', 'render', 'write',
-	'date:due_date', 'long:notes', 'format:inputs', 'format:number_offer', 'inputs:intro', 'line:2:amount:qty', 'line:0:empty:title', 'line:0:format:', 'value:currency', 'surprise' ] as $why ) {
+	'date:due_date', 'long:notes', 'format:inputs', 'format:number_offer', 'inputs:intro', 'line:2:amount:qty', 'line:0:empty:title', 'line:0:format:', 'value:currency', 'surprise',
+	'offer', 'empty:title', 'long:title', 'format:title', 'address', 'limit', 'pending', 'days', 'field', 'account', 'sign', 'sign:template', 'sign:input', 'sign:render', 'sign:write', 'sign:surprise' ] as $why ) {
 	$request = ninoVisit( $appData, '/refused' );
 	$refuse->invokeArgs( null, [ &$request, $why ] );
 	$answers[$why] = $request['/nino/http/response']['statusCode']. ' '. ( $request['/nino/http/response']['body']['code'] ?? '' ). ' '. ( $request['/nino/http/response']['body']['field'] ?? '' ). ' '. implode( ',', $request['/nino/http/response']['body']['params'] ?? [] );
@@ -1305,7 +1315,10 @@ check( 'the kinds of refusal are answered with their status, code, field and par
 	'pdf' => '409 crm_documents_pdf  ', 'template' => '409 crm_documents_template template_key ', 'empty' => '409 crm_documents_empty lines ', 'number' => '409 crm_documents_number  ', 'exists:/data/crm/pdf/2026/R-2026-0001.pdf' => '409 crm_documents_exists  R-2026-0001,data/crm/pdf/2026/R-2026-0001.pdf',
 	'render' => '500 crm_documents_render  ', 'write' => '500 crm_documents_write  ', 'date:due_date' => '400 crm_documents_date due_date ', 'long:notes' => '400 crm_documents_long notes 5000', 'format:inputs' => '400 crm_documents_format inputs ',
 	'format:number_offer' => '400 crm_documents_numberformat number_offer ', 'inputs:intro' => '409 crm_documents_inputs inputs.intro ', 'line:2:amount:qty' => '400 crm_documents_line_amount lines.2.qty 3', 'line:0:empty:title' => '400 crm_documents_line_empty lines.0.title 1',
-	'line:0:format:' => '400 crm_documents_line_format lines.0 1', 'value:currency' => '400 crm_documents_setting currency ', 'surprise' => '500   ' ] );
+	'line:0:format:' => '400 crm_documents_line_format lines.0 1', 'value:currency' => '400 crm_documents_setting currency ', 'surprise' => '500   ',
+	'offer' => '400 crm_documents_offer parent_id ', 'empty:title' => '400 crm_documents_title title ', 'long:title' => '400 crm_documents_long title 120', 'format:title' => '400 crm_documents_format title ', 'address' => '409 crm_documents_address  ', 'limit' => '429 crm_documents_limit  ',
+	'pending' => '409 crm_documents_pending  ', 'days' => '400 crm_documents_days days ', 'field' => '409 crm_documents_field template_key ', 'account' => '400 crm_documents_account account ', 'sign' => '409 crm_documents_sign  ',
+	'sign:template' => '409 crm_documents_sign_template  ', 'sign:input' => '409 crm_documents_sign_input  ', 'sign:render' => '500 crm_documents_sign_render  ', 'sign:write' => '500 crm_documents_sign_write  ', 'sign:surprise' => '500   ' ] );
 
 echo "\nThe database refuses\n";
 
@@ -1320,7 +1333,7 @@ check( 'an id with a leading zero, or none, is 400 with the code of the panel on
 
 echo "\nThe schema\n";
 
-check( 'the indexes of the plan are there: category and state, client, date, and the lines by document', array_column( Db::rows( $appData, 'SELECT name FROM sqlite_master WHERE type = \'index\' AND name NOT LIKE \'sqlite_%\' AND tbl_name IN ( \'documents\', \'document_lines\' ) ORDER BY name' ), 'name' ) === [ 'document_lines_document', 'documents_category_state', 'documents_client', 'documents_date' ]
+check( 'the indexes of the plan are there: category and state, client, date, and the lines by document', array_column( Db::rows( $appData, 'SELECT name FROM sqlite_master WHERE type = \'index\' AND name NOT LIKE \'sqlite_%\' AND tbl_name IN ( \'documents\', \'document_lines\' ) ORDER BY name' ), 'name' ) === [ 'document_lines_document', 'documents_category_state', 'documents_client', 'documents_client_released', 'documents_date' ]
 	&& array_column( Db::rows( $appData, 'PRAGMA index_info( documents_category_state )' ), 'name' ) === [ 'category', 'state' ] && array_column( Db::rows( $appData, 'PRAGMA index_info( documents_date )' ), 'name' ) === [ 'date' ] && array_column( Db::rows( $appData, 'PRAGMA index_info( documents_client )' ), 'name' ) === [ 'client_id' ] );
 $restricted = '';
 
@@ -1357,7 +1370,7 @@ foreach( (array) include \Crm\Db::migrations()[1] as $statement )
 $file->exec( 'PRAGMA user_version = 1' );
 $file->exec( 'UPDATE settings SET value = \'regular\' WHERE key = \'vat_mode\'' );
 $file = null;
-check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 1 );
+check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 2 );
 Db::close();
 \Nino\Filesystem::removeDir( ninoSandboxDir( $old ) );
 
@@ -1405,6 +1418,313 @@ Settings::set( $appData, 'vat_mode', 'regular' );
 [ $status, $body ] = $post( 'crm-items/save', [ 'title' => 'Buch', 'price' => '20', 'vat_rate' => 700 ] );
 check( 'in regular an item is saved with a rate of the list, and the list says the mode', $status === 200 && $body['item']['vat_rate'] === 700 && $post( 'crm-items/list' )[1]['settings']['vat_mode'] === 'regular' );
 Settings::set( $appData, 'vat_mode', 'small_business' );
+
+// --- Migration 0003 on a database that has documents -----------------------------------------------------------------
+
+echo "\nMigration 0003\n";
+
+$upgraded = ninoSandbox( 'crm-documents-upgraded' );
+\Nino\Filesystem::forceDir( $upgraded, '/data' );
+$file = new \PDO( 'sqlite:'. \Nino\Filesystem::path( $upgraded, \Crm\Db::FILE ) );
+
+foreach( [ 1, 2 ] as $number )
+	foreach( (array) include \Crm\Db::migrations()[$number] as $statement )
+		$file->exec( (string) $statement );
+
+$file->exec( 'PRAGMA user_version = 2' );
+$file->exec( 'INSERT INTO clients ( id, number, company, created, updated ) VALUES ( 1, \'K-0001\', \'Alt GmbH\', \'x\', \'x\' )' );
+$file->exec( 'INSERT INTO documents ( category, client_id, number, state, date, vat_mode, template_key, created, updated ) VALUES ( \'invoice\', 1, \'R-2025-0001\', \'paid\', \'2025-05-05\', \'small_business\', \'rechnung\', \'x\', \'x\' )' );
+$file = null;
+$old = Documents::get( $upgraded, 1 );
+check( 'a database of the second schema with a document is migrated once: version 3, one migration', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 3 && Db::migrated() === 1 );
+check( '...the document is as it was, with the new columns at their defaults: no title, not released, no request, no signing day', is_array( $old ) === false ? false : $old['number'] === 'R-2025-0001' && $old['state'] === 'paid' && $old['title'] === '' && $old['released'] === false && $old['released_at'] === null
+	&& $old['sign_id'] === '' && $old['sign_state'] === '' && $old['signed_at'] === null );
+Db::close();
+Db::pdo( $upgraded );
+check( '...and the next boot runs nothing and leaves it so', Db::migrated() === 0 && Documents::get( $upgraded, 1 ) === $old );
+check( 'migration 0003 adds the six columns and the index of the client and the release, and nothing else', preg_match_all( '/ALTER TABLE documents ADD COLUMN (\w+)/', (string) file_get_contents( $root. '/app/Crm/Db/migrations/0003-release.php' ), $columns ) === 6 && $columns[1] === [ 'title', 'released', 'released_at', 'sign_id', 'sign_state', 'signed_at' ]
+	&& substr_count( (string) file_get_contents( $root. '/app/Crm/Db/migrations/0003-release.php' ), 'CREATE ' ) === 1 && array_column( Db::rows( $upgraded, 'PRAGMA index_info( documents_client_released )' ), 'name' ) === [ 'client_id', 'released' ] );
+Db::close();
+\Nino\Filesystem::removeDir( ninoSandboxDir( $upgraded ) );
+Db::close();
+
+// --- Contract, privacy and information: no lines, no number ------------------------------------------------------------
+
+echo "\nThree documents without lines\n";
+
+$post( 'pdf/templates/save', [ 'key' => 'dienstleistung', 'isNew' => true, 'name' => 'Dienstleistungsvertrag', 'tag' => 'contract', 'blocks' => [
+	[ 'type' => 'html', 'html' => '<h1>[[document.title]]</h1><p>Vom [[document.date]] zu [[document.parent]] ([[offer.number]] vom [[offer.date]], gueltig bis [[offer.valid]]): netto [[offer.net]], USt [[offer.vat]], brutto [[offer.gross]]. Portal [[site.portal]] Login [[site.login]]</p>' ],
+	[ 'type' => 'slot', 'name' => 'address' ],
+	[ 'type' => 'slot', 'name' => 'lines' ],
+	[ 'type' => 'slot', 'name' => 'totals' ],
+	[ 'type' => 'input', 'name' => 'zusatz', 'label' => 'Zusatz', 'multiline' => true, 'required' => true ],
+] ] );
+$post( 'pdf/templates/save', [ 'key' => 'datenschutz', 'isNew' => true, 'name' => 'Datenschutzerklaerung', 'tag' => 'privacy', 'blocks' => [
+	[ 'type' => 'html', 'html' => '<h1>[[document.title]]</h1><p>Kunde [[client.company]], Stand [[document.date]], Offer [[offer.number]]/[[document.number]]</p>' ],
+	[ 'type' => 'slot', 'name' => 'address' ],
+	[ 'type' => 'slot', 'name' => 'lines' ],
+] ] );
+$post( 'pdf/templates/save', [ 'key' => 'zugang', 'isNew' => true, 'name' => 'Zugangsdaten', 'tag' => 'information', 'blocks' => [
+	[ 'type' => 'html', 'html' => '<h1>[[document.title]]</h1><p>Hallo [[client.name]]: [[site.portal]] und [[site.login]]</p>' ],
+] ] );
+
+check( 'the tag of a contract, a privacy and an information document is the name of the category', array_map( [ Render::class, 'tag' ], Documents::PLAIN ) === [ 'contract', 'privacy', 'information' ] );
+$constants = ( new \ReflectionClass( Documents::class ) )->getConstants();
+check( 'the categories are the six, three of them without lines, two that can be signed', $constants['CATEGORIES'] === [ 'offer', 'invoice', 'credit', 'contract', 'privacy', 'information' ] && $constants['PLAIN'] === [ 'contract', 'privacy', 'information' ] && $constants['SIGNABLE'] === [ 'contract', 'privacy' ] );
+
+$offerNow = (array) Documents::get( $appData, $offerFinal['id'] );
+$contract = Documents::add( $appData, 'contract', 0, [ 'parent_id' => $offerFinal['id'], 'title' => '  Dienstleistungsvertrag ', 'template_key' => 'dienstleistung', 'inputs' => [ 'zusatz' => 'Laufzeit ein Jahr' ] ] );
+check( 'a contract hangs on an offer and its client is the offer\'s: a draft with the title trimmed, no number, no line, the date today, no due date, validity or period', is_array( $contract ) && $contract['category'] === 'contract' && $contract['state'] === 'draft' && $contract['parent_id'] === $offerFinal['id']
+	&& $contract['client_id'] === $offerFinal['client_id'] && $contract['title'] === 'Dienstleistungsvertrag' && $contract['number'] === '' && $contract['lines'] === [] && $contract['date'] === $today && $contract['due_date'] === null && $contract['valid_until'] === null
+	&& $contract['period_from'] === null && $contract['released'] === false && $contract['sign_state'] === '' && $contract['parent'] === [ 'id' => $offerFinal['id'], 'number' => $offerFinal['number'], 'title' => '', 'category' => 'offer', 'state' => $offerNow['state'] ] );
+check( '...the client may be named when it is the offer\'s', is_array( Documents::add( $appData, 'contract', $offerFinal['client_id'], [ 'parent_id' => $offerFinal['id'], 'title' => 'Zwei' ] ) ) );
+Documents::remove( $appData, (int) Db::row( $appData, 'SELECT MAX( id ) AS id FROM documents' )['id'] );
+
+$offerDraft2 = Documents::add( $appData, 'offer', $first['id'], [ 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
+$refusedContract = [
+	'no offer'                                   => [ [ 'title' => 'T' ], 0, 'offer' ],
+	'an offer that is none'                      => [ [ 'title' => 'T', 'parent_id' => 99999 ], 0, 'offer' ],
+	'an offer id that is text'                   => [ [ 'title' => 'T', 'parent_id' => (string) $offerFinal['id'] ], 0, 'offer' ],
+	'an invoice instead of an offer'             => [ [ 'title' => 'T', 'parent_id' => $secondInvoice['id'] ], 0, 'offer' ],
+	'an offer that is still a draft'             => [ [ 'title' => 'T', 'parent_id' => $offerDraft2['id'] ], 0, 'offer' ],
+	'the client of another client than the offer' => [ [ 'title' => 'T', 'parent_id' => $offerFinal['id'] ], $second['id'], 'client' ],
+	'no title'                                   => [ [ 'parent_id' => $offerFinal['id'] ], 0, 'empty:title' ],
+	'a title of blanks'                          => [ [ 'parent_id' => $offerFinal['id'], 'title' => " \t " ], 0, 'empty:title' ],
+	'a title of 121 characters'                  => [ [ 'parent_id' => $offerFinal['id'], 'title' => str_repeat( 'ä', 121 ) ], 0, 'long:title' ],
+	'a title with a line break'                  => [ [ 'parent_id' => $offerFinal['id'], 'title' => "Zwei\nZeilen" ], 0, 'format:title' ],
+	'a title that is no text'                    => [ [ 'parent_id' => $offerFinal['id'], 'title' => [ 'x' ] ], 0, 'format:title' ],
+	'a title that is no UTF-8'                   => [ [ 'parent_id' => $offerFinal['id'], 'title' => "\xC3\x28" ], 0, 'format:title' ],
+	'a line'                                     => [ [ 'parent_id' => $offerFinal['id'], 'title' => 'T', 'lines' => [ $line() ] ], 0, 'format:lines' ],
+	'a reverse charge'                           => [ [ 'parent_id' => $offerFinal['id'], 'title' => 'T', 'reverse_charge' => true ], 0, 'format:reverse_charge' ],
+	'a template of the tag of an invoice'        => [ [ 'parent_id' => $offerFinal['id'], 'title' => 'T', 'template_key' => 'rechnung' ], 0, 'template' ],
+];
+
+foreach( $refusedContract as $why => [ $input, $clientId, $code ] )
+	check( 'a contract is refused - '. $why. ' ('. $code. ')', Documents::add( $appData, 'contract', $clientId, $input ) === $code );
+
+check( '...a title of 120 characters passes, 120 letters with umlauts too', is_array( $long = Documents::add( $appData, 'contract', 0, [ 'parent_id' => $offerFinal['id'], 'title' => str_repeat( 'ä', 120 ) ] ) ) && mb_strlen( $long['title'], 'UTF-8' ) === 120 );
+Documents::remove( $appData, $long['id'] );
+Documents::remove( $appData, $offerDraft2['id'] );
+check( '...and nothing of the refused was stored', count( Db::rows( $appData, 'SELECT id FROM documents WHERE category = \'contract\'' ) ) === 1 );
+
+$privacy = Documents::add( $appData, 'privacy', $first['id'], [ 'title' => 'Datenschutz', 'template_key' => 'datenschutz', 'parent_id' => $offerFinal['id'], 'period_from' => '2026-01-01', 'period_to' => '2026-01-31', 'due_date' => '2026-12-01' ] );
+check( 'a privacy document is of a client; an offer named for it, a period and a due date are not kept', is_array( $privacy ) && $privacy['client_id'] === $first['id'] && $privacy['parent_id'] === null && $privacy['period_from'] === null && $privacy['due_date'] === null && $privacy['title'] === 'Datenschutz' );
+check( '...it needs a client that is there and active, and a title', Documents::add( $appData, 'privacy', 0, [ 'title' => 'T' ] ) === 'client' && Documents::add( $appData, 'information', $third['id'], [ 'title' => 'T' ] ) === 'inactive' && Documents::add( $appData, 'information', $first['id'] ) === 'empty:title' );
+$info = Documents::add( $appData, 'information', $second['id'], [ 'title' => 'Zugang', 'template_key' => 'zugang' ] );
+check( 'an information document is the same', is_array( $info ) && $info['category'] === 'information' && $info['client_id'] === $second['id'] && $info['lines'] === [] );
+
+$invoiceWithTitle = Documents::add( $appData, 'invoice', $first['id'], [ 'title' => 'Nicht meins', 'parent_id' => $offerFinal['id'], 'lines' => $lines ] );
+check( 'a title or an offer named for an invoice is not kept: the title is of the documents without lines, the parent of the contract', $invoiceWithTitle['title'] === '' && $invoiceWithTitle['parent_id'] === null );
+Documents::remove( $appData, $invoiceWithTitle['id'] );
+
+// change(): the title, the template, the offer - and the client follows it
+$changedTitle = Documents::change( $appData, $contract['id'], [ 'title' => 'Vertrag neu', 'notes' => 'n' ] );
+check( 'a draft without lines changes its title, and keeps the rest', is_array( $changedTitle ) && $changedTitle['title'] === 'Vertrag neu' && $changedTitle['parent_id'] === $offerFinal['id'] && $changedTitle['template_key'] === 'dienstleistung' && $changedTitle['inputs'] === [ 'zusatz' => 'Laufzeit ein Jahr' ] );
+check( '...a title that is wrong is refused as it is in add(), and the draft stays', Documents::change( $appData, $contract['id'], [ 'title' => '' ] ) === 'empty:title' && Documents::change( $appData, $contract['id'], [ 'title' => str_repeat( 'x', 121 ) ] ) === 'long:title' && Documents::get( $appData, $contract['id'] )['title'] === 'Vertrag neu' );
+check( '...a line is refused', Documents::change( $appData, $contract['id'], [ 'lines' => [ $line() ] ] ) === 'format:lines' && Documents::change( $appData, $contract['id'], [ 'lines' => [] ] ) !== 'format:lines' );
+
+$otherOffer = Documents::add( $appData, 'offer', $second['id'], [ 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
+check( 'a contract cannot hang on an offer that is a draft', Documents::change( $appData, $contract['id'], [ 'parent_id' => $otherOffer['id'] ] ) === 'offer' );
+$otherFinal = Documents::finalise( $appData, $otherOffer['id'] );
+$moved = Documents::change( $appData, $contract['id'], [ 'parent_id' => $otherFinal['id'] ] );
+$movedBack = is_array( $moved ) ? Documents::change( $appData, $contract['id'], [ 'parent_id' => $offerFinal['id'] ] ) : [];
+check( '...but on another offer: its client follows the offer, there and back', is_array( $moved ) && $moved['parent_id'] === $otherFinal['id'] && $moved['client_id'] === $second['id'] && is_array( $movedBack ) && $movedBack['client_id'] === $first['id'] );
+Documents::change( $appData, $contract['id'], [ 'parent_id' => $otherFinal['id'] ] );
+check( '...a client named for it that is not the offer\'s is refused', Documents::change( $appData, $contract['id'], [ 'client_id' => $first['id'] ] ) === 'client' && Documents::get( $appData, $contract['id'] )['client_id'] === $second['id'] );
+Documents::change( $appData, $contract['id'], [ 'parent_id' => $offerFinal['id'] ] );
+
+$movedPrivacy = Documents::change( $appData, $privacy['id'], [ 'client_id' => $second['id'], 'parent_id' => $offerFinal['id'] ] );
+check( 'a privacy document changes its client; an offer named for it is not kept', is_array( $movedPrivacy ) && $movedPrivacy['client_id'] === $second['id'] && $movedPrivacy['parent_id'] === null );
+Documents::change( $appData, $privacy['id'], [ 'client_id' => $first['id'] ] );
+$invoiceDraft = Documents::add( $appData, 'invoice', $first['id'], [ 'lines' => $lines ] );
+check( '...nor is an invoice\'s parent changed by it', Documents::change( $appData, $invoiceDraft['id'], [ 'parent_id' => $offerFinal['id'], 'title' => 'T' ] )['parent_id'] === null );
+Documents::remove( $appData, $invoiceDraft['id'] );
+
+// finalising
+$sequencesBefore = $sequences();
+$filesBefore = $files();
+$plainStops = static function( int $id, string $code, string $why ) use ( &$appData ): void {
+	check( 'finalising is refused - '. $why. ' ('. $code. '): the draft as it was, no file', Documents::finalise( $appData, $id ) === $code && Documents::get( $appData, $id )['state'] === 'draft' );
+};
+$noInput = Documents::add( $appData, 'contract', 0, [ 'parent_id' => $offerFinal['id'], 'title' => 'Ohne' ] );
+$plainStops( $noInput['id'], 'template', 'no template chosen' );
+Documents::change( $appData, $noInput['id'], [ 'template_key' => 'dienstleistung' ] );
+$plainStops( $noInput['id'], 'inputs:zusatz', 'a required input is empty' );
+Documents::change( $appData, $noInput['id'], [ 'inputs' => [ 'zusatz' => 'x' ] ] );
+$loose = Documents::add( $appData, 'offer', $first['id'] );
+Db::exec( $appData, 'UPDATE documents SET parent_id = :offer WHERE id = :id', [ 'offer' => $loose['id'], 'id' => $noInput['id'] ] );
+$plainStops( $noInput['id'], 'offer', 'its offer is a draft (made so behind the back of the model)' );
+Documents::remove( $appData, $noInput['id'] );
+Documents::remove( $appData, $loose['id'] );
+check( '...and nothing was spent: the sequences and the files are as they were', $sequences() === $sequencesBefore && $files() === $filesBefore );
+
+$sealed = Documents::finalise( $appData, $contract['id'] );
+check( 'a contract is finalised without a number: the state is open, the number stays empty and is NULL in the table, the totals stay 0', is_array( $sealed ) && $sealed['state'] === 'open' && $sealed['number'] === '' && Db::row( $appData, 'SELECT number FROM documents WHERE id = :id', [ 'id' => $contract['id'] ] )['number'] === null
+	&& $sealed['net'] === 0 && $sealed['gross'] === 0 && $sealed['finalised'] !== null );
+check( '...no sequence moved', $sequences() === $sequencesBefore );
+check( '...its PDF is /data/crm/pdf/<year>/contract-<id>.pdf, written once, with the hash the table holds', $sealed['pdf_path'] === '/data/crm/pdf/'. substr( $today, 0, 4 ). '/contract-'. $contract['id']. '.pdf' && is_file( \Nino\Filesystem::path( $appData, $sealed['pdf_path'] ) )
+	&& hash_file( 'sha256', \Nino\Filesystem::path( $appData, $sealed['pdf_path'] ) ) === $sealed['pdf_sha256'] && count( $files() ) === count( $filesBefore ) + 1 );
+check( '...the client is frozen in it: a change of the client does not reach the document', ( \Crm\Clients::change( $appData, $first['id'], [ 'city' => 'Kiel' ] ) && Documents::get( $appData, $contract['id'] )['client']['city'] === 'Hamburg' ) && ( \Crm\Clients::change( $appData, $first['id'], [ 'city' => 'Hamburg' ] ) !== '' ) );
+check( '...it is fixed: nothing but the notes changes, a finalised document is not deleted, and finalising again is refused', Documents::change( $appData, $contract['id'], [ 'title' => 'x' ] ) === 'fixed' && Documents::remove( $appData, $contract['id'] ) === 'fixed' && Documents::finalise( $appData, $contract['id'] ) === 'fixed'
+	&& is_array( Documents::setNotes( $appData, $contract['id'], 'neu' ) ) );
+check( '...and appears in the list under its title, with no amount worth a line', ( array_values( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['id'] === $contract['id'] ) )[0] ?? [] ) === [
+	'id' => $contract['id'], 'category' => 'contract', 'number' => '', 'title' => 'Vertrag neu', 'state' => 'open', 'released' => false, 'sign_state' => '', 'expired' => false, 'date' => $today, 'gross' => 0, 'client_id' => $first['id'], 'client_title' => 'Studio Nord GmbH', 'parent_id' => $offerFinal['id'] ] );
+\Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Neu GmbH' ] );
+check( '...the client it shows is the one frozen into it, not the one the client is now', array_column( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['id'] === $contract['id'] ), 'client_title' ) === [ 'Studio Nord GmbH' ] );
+\Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Nord GmbH' ] );
+check( '...a search finds it by its title, and the filter by its kind', array_column( Documents::list( $appData, [ 'search' => 'Vertrag neu' ] ), 'id' ) === [ $contract['id'] ] && array_column( Documents::list( $appData, [ 'category' => 'contract' ] ), 'id' ) === [ $contract['id'] ] );
+check( '...and appears under its offer, which names it as a child with the title', in_array( [ 'id' => $contract['id'], 'number' => '', 'title' => 'Vertrag neu', 'category' => 'contract', 'state' => 'open', 'gross' => 0 ], Documents::get( $appData, $offerFinal['id'] )['children'], true ) );
+
+$privacyFinal = Documents::finalise( $appData, Documents::add( $appData, 'privacy', $first['id'], [ 'title' => 'Datenschutz', 'template_key' => 'datenschutz' ] )['id'] );
+$infoFinal = Documents::finalise( $appData, $info['id'] );
+check( 'a privacy and an information document are finalised the same: their files are privacy-<id>.pdf and information-<id>.pdf', is_array( $privacyFinal ) && is_array( $infoFinal ) && basename( $privacyFinal['pdf_path'] ) === 'privacy-'. $privacyFinal['id']. '.pdf' && basename( $infoFinal['pdf_path'] ) === 'information-'. $infoFinal['id']. '.pdf'
+	&& $privacyFinal['number'] === '' && $infoFinal['state'] === 'open' && $sequences() === $sequencesBefore );
+
+check( 'a document without a number moves one step: sent; paid, accepted and declined are none of its steps', is_array( Documents::setState( $appData, $infoFinal['id'], 'sent' ) ) && Documents::setState( $appData, $infoFinal['id'], 'paid' ) === 'state' && Documents::setState( $appData, $privacyFinal['id'], 'accepted' ) === 'state'
+	&& Documents::setState( $appData, $privacyFinal['id'], 'signed' ) === 'state' && Documents::setState( $appData, $contract['id'], 'paid' ) === 'state' && Documents::setState( $appData, $privacyFinal['id'], 'declined' ) === 'state' && Documents::get( $appData, $infoFinal['id'] )['state'] === 'sent' );
+
+// the tokens, the slots and the words of the PDF
+$contractFull = (array) Documents::get( $appData, $contract['id'] );
+$contractData = Documents::dataOf( $appData, $contractFull );
+check( 'the tokens of a contract: its own title, date and the number of its offer; the client as it was frozen', $contractData['tokens']['document'] === [ 'title' => 'Vertrag neu', 'date' => Render::day( $today ), 'parent' => $offerFinal['number'] ] && $contractData['tokens']['client']['company'] === 'Studio Nord GmbH' );
+check( '...and the offer\'s number, day, validity and totals with the currency', $contractData['tokens']['offer'] === [ 'number' => $offerNow['number'], 'date' => Render::day( $offerNow['date'] ), 'valid' => Render::day( (string) $offerNow['valid_until'] ),
+	'net' => Money::format( $offerNow['net'], '€' ), 'vat' => Money::format( $offerNow['vat'], '€' ), 'gross' => Money::format( $offerNow['gross'], '€' ) ] && $offerNow['gross'] > 0 );
+check( '...the slots address, lines (the offer\'s lines) and totals (the offer\'s) so that a contract can quote them', array_keys( $contractData['slots'] ) === [ 'address', 'lines', 'totals' ] && $contractData['slots']['lines'] === Render::lines( $offerNow['lines'], Money::totals( $offerNow['lines'], $offerNow['vat_mode'], $offerNow['reverse_charge'] ), $offerNow['vat_mode'] === 'regular', '€' )
+	&& str_contains( $contractData['slots']['lines'], 'Webdesign' ) === true && str_contains( $contractData['slots']['totals'], 'Gesamtbetrag' ) === true && $contractData['inputs'] === [ 'zusatz' => 'Laufzeit ein Jahr' ] );
+check( '...site.portal and site.login are the absolute addresses of the site\'s pages', $contractData['tokens']['site'] === [ 'portal' => 'https://example.org/portal', 'login' => 'https://example.org/login' ] );
+$privacyData = Documents::dataOf( $appData, (array) Documents::get( $appData, $privacyFinal['id'] ) );
+check( 'a privacy document has no offer: the tokens document.title, .date and .parent (empty), client and site, and the slot address alone', $privacyData['tokens']['document'] === [ 'title' => 'Datenschutz', 'date' => Render::day( $today ), 'parent' => '' ] && isset( $privacyData['tokens']['offer'] ) === false
+	&& array_keys( $privacyData['slots'] ) === [ 'address' ] && $privacyData['tokens']['site']['portal'] === 'https://example.org/portal' );
+Db::exec( $appData, 'UPDATE documents SET parent_id = :offer WHERE id = :id', [ 'offer' => $offerFinal['id'], 'id' => $privacyFinal['id'] ] );
+check( 'only a contract quotes an offer: a privacy document that hangs on one by accident has no offer tokens', isset( Documents::dataOf( $appData, (array) Documents::get( $appData, $privacyFinal['id'] ) )['tokens']['offer'] ) === false );
+Db::exec( $appData, 'UPDATE documents SET parent_id = NULL WHERE id = :id', [ 'id' => $privacyFinal['id'] ] );
+check( 'an invoice has the site tokens too, for a letter that quotes the portal', Render::data( $appData, $secondInvoice, $secondInvoice['lines'], $secondInvoice['client_frozen'] )['tokens']['site'] === [ 'portal' => 'https://example.org/portal', 'login' => 'https://example.org/login' ] );
+$addressless = $appData;
+\Nino\Html::addFills( $addressless, [ '[[/project/website/general/url]]' => '' ], '*' );
+check( 'a site with no address has empty site tokens', Render::data( $addressless, $secondInvoice, [], [] )['tokens']['site'] === [ 'portal' => '', 'login' => '' ] );
+
+$pdfText = static fn( string $file ): string => (string) shell_exec( 'pdftotext -layout '. escapeshellarg( $file ). ' - 2>/dev/null' );
+
+if( trim( (string) @shell_exec( 'command -v pdftotext 2>/dev/null' ) ) !== '' ) {
+
+	$contractText = $pdfText( \Nino\Filesystem::path( $appData, $sealed['pdf_path'] ) );
+	check( 'the PDF of the contract says its title, the offer\'s number and totals, the lines of the offer, the free field and the addresses of the site', str_contains( $contractText, 'Vertrag neu' ) === true && str_contains( $contractText, $offerNow['number'] ) === true && str_contains( $contractText, '237,00' ) === true
+		&& str_contains( $contractText, 'Webdesign' ) === true && str_contains( $contractText, 'Gesamtbetrag' ) === true && str_contains( $contractText, 'Laufzeit ein Jahr' ) === true && str_contains( $contractText, 'https://example.org/portal' ) === true && str_contains( $contractText, 'Studio Nord GmbH' ) === true );
+	check( '...the PDF of an information document says the addresses to the portal and the login, for the name of the client', str_contains( $pdfText( \Nino\Filesystem::path( $appData, $infoFinal['pdf_path'] ) ), 'Ben Süd: https://example.org/portal und https://example.org/login' ) === true );
+}
+
+// the route for the workbench: the name of the file is the one of the file
+$as( 'admin@example.com' );
+$served = docServe( $appData, '/.crm/pdf/'. $contract['id'] );
+check( 'the workbench is served the PDF of a document without a number under the name of its file', ( $served['file'] ?? '' ) === \Nino\Filesystem::path( $appData, $sealed['pdf_path'] ) && $served['header']['Content-Disposition'] === 'inline; filename="contract-'. $contract['id']. '.pdf"'
+	&& docServe( $appData, '/.crm/pdf/'. $contract['id']. '?download=1' )['header']['Content-Type'] === 'application/pdf' );
+unlink( \Nino\Filesystem::path( $appData, $infoFinal['pdf_path'] ) );
+$ignored = ninoWarnings();
+$goneResponse = docServe( $appData, '/.crm/pdf/'. $infoFinal['id'] );
+check( '...a file that is gone is a 404 and the log names the document by its category and id', $nothing( $goneResponse ) === true && str_contains( implode( ' ', ninoWarnings() ), 'information-'. $infoFinal['id'] ) === true );
+file_put_contents( \Nino\Filesystem::path( $appData, $infoFinal['pdf_path'] ), 'bytes' );
+check( '...and a file that is not the one that was written is a 409', docServe( $appData, '/.crm/pdf/'. $infoFinal['id'] )['statusCode'] === 409 );
+
+// release and take back, without a mail
+echo "\nRelease\n";
+
+check( 'a draft is not released, nobody is', Documents::release( $appData, $noInput['id'], false ) === 'unknown' && Documents::release( $appData, 99999, false ) === 'unknown' && Documents::release( $appData, (int) Documents::add( $appData, 'information', $first['id'], [ 'title' => 'E' ] )['id'], false ) === 'state' );
+Documents::remove( $appData, (int) Db::row( $appData, 'SELECT MAX( id ) AS id FROM documents' )['id'] );
+$released = Documents::release( $appData, $contract['id'], false );
+check( 'releasing a finalised document sets the flag and the day, mails nobody, and changes no state', is_array( $released ) && $released['document']['released'] === true && preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', (string) $released['document']['released_at'] ) === 1 && $released['mailed'] === 0 && $released['document']['state'] === 'open' );
+Db::exec( $appData, 'UPDATE documents SET released_at = \'2026-01-01T00:00:00Z\' WHERE id = :id', [ 'id' => $contract['id'] ] );
+check( '...releasing again keeps the day of the first release', Documents::release( $appData, $contract['id'], false )['document']['released_at'] === '2026-01-01T00:00:00Z' );
+$taken = Documents::unrelease( $appData, $contract['id'] );
+check( 'taking it back clears the flag and the day; the file stays', is_array( $taken ) && $taken['released'] === false && $taken['released_at'] === null && is_file( \Nino\Filesystem::path( $appData, $taken['pdf_path'] ) ) === true && $taken['pdf_sha256'] === $sealed['pdf_sha256'] );
+check( '...a document nobody has is unknown, a draft is not taken back', Documents::unrelease( $appData, 99999 ) === 'unknown' && Documents::unrelease( $appData, $privacy['id'] ) === 'state' );
+$sentOffer = Documents::release( $appData, $otherFinal['id'], false );
+check( 'an offer that is open and released without a mail stays open: the mail is the sending', $otherFinal['state'] === 'open' && is_array( $sentOffer ) && $sentOffer['document']['state'] === 'open' && $sentOffer['document']['released'] === true );
+Documents::unrelease( $appData, $otherFinal['id'] );
+$counts = Documents::counts( $appData, $first['id'] );
+check( 'a client has its documents counted: all, and the ones released', $counts === [ 'total' => (int) Db::row( $appData, 'SELECT COUNT(*) AS n FROM documents WHERE client_id = :c', [ 'c' => $first['id'] ] )['n'], 'released' => 0 ] && $counts['total'] > 5 );
+Documents::release( $appData, $privacyFinal['id'], false );
+check( '...released and listed for the portal: the newest first, with the title, and only the released ones', array_column( Documents::released( $appData, $first['id'] ), 'id' ) === [ $privacyFinal['id'] ] && Documents::released( $appData, $first['id'] )[0]['title'] === 'Datenschutz' && Documents::released( $appData, $second['id'] ) === [] );
+Documents::unrelease( $appData, $privacyFinal['id'] );
+
+// the panel
+echo "\nThe panel: the three documents, the release, the signature\n";
+
+[ $status, $body ] = $post( 'crm-documents/save', [ 'category' => 'contract', 'parent_id' => (string) $offerFinal['id'], 'title' => 'Per Panel', 'template_key' => 'dienstleistung', 'inputs' => [ 'zusatz' => 'x' ], 'date' => '2026-06-01' ] );
+check( 'save adds a contract from the offer: the client follows, the title is kept, no client is needed', $status === 200 && $body['document']['category'] === 'contract' && $body['document']['client_id'] === $first['id'] && $body['document']['title'] === 'Per Panel' && $body['document']['parent_id'] === $offerFinal['id'] );
+$panelContract = $body['document'];
+[ $status, $body ] = $post( 'crm-documents/save', [ 'id' => (string) $panelContract['id'], 'title' => 'Per Panel 2', 'parent_id' => (string) $otherFinal['id'] ] );
+check( '...and changes it, the client following the offer', $status === 200 && $body['document']['title'] === 'Per Panel 2' && $body['document']['client_id'] === $second['id'] );
+$panelRefusals = [
+	'a contract without an offer'  => [ [ 'category' => 'contract', 'title' => 'T' ], 400, 'crm_documents_offer', 'parent_id' ],
+	'an offer that is a draft'     => [ [ 'category' => 'contract', 'title' => 'T', 'parent_id' => (string) Documents::add( $appData, 'offer', $first['id'] )['id'] ], 400, 'crm_documents_offer', 'parent_id' ],
+	'no title'                     => [ [ 'category' => 'privacy', 'client_id' => (string) $first['id'] ], 400, 'crm_documents_title', 'title' ],
+	'a title that is too long'     => [ [ 'category' => 'privacy', 'client_id' => (string) $first['id'], 'title' => str_repeat( 'x', 121 ) ], 400, 'crm_documents_long', 'title' ],
+	'a title with a line break'    => [ [ 'category' => 'privacy', 'client_id' => (string) $first['id'], 'title' => "a\nb" ], 400, 'crm_documents_format', 'title' ],
+	'no client for a privacy one'  => [ [ 'category' => 'information', 'title' => 'T' ], 400, 'crm_documents_client', 'client_id' ],
+];
+
+foreach( $panelRefusals as $why => [ $input, $expectedStatus, $code, $field ] ) {
+	[ $status, $body ] = $post( 'crm-documents/save', $input );
+	check( 'save is refused - '. $why. ': '. $expectedStatus. ' '. $code. ' on '. $field, $status === $expectedStatus && $body['code'] === $code && $body['field'] === $field );
+}
+
+check( '...the limit of a title is told in the sentence: 120', $post( 'crm-documents/save', [ 'category' => 'privacy', 'client_id' => (string) $first['id'], 'title' => str_repeat( 'x', 121 ) ] )[1]['params'] === [ 120 ] );
+Documents::remove( $appData, (int) Db::row( $appData, 'SELECT id FROM documents WHERE category = \'offer\' AND state = \'draft\'' )['id'] );
+
+[ $status, $body ] = $post( 'crm-documents/templates', [ 'category' => 'contract' ] );
+check( 'templates answers the templates of the tag contract with their inputs, and the offers a contract can hang on: finalised ones, the newest first, with their client', $status === 200 && array_column( $body['templates'], 'key' ) === [ 'dienstleistung', 'vertrag' ] && $body['templates'][0]['inputs'][0]['name'] === 'zusatz'
+	&& array_column( $body['offers'], 'number' ) === array_column( array_filter( Documents::list( $appData, [ 'category' => 'offer' ] ), static fn( array $row ): bool => $row['state'] !== 'draft' ), 'number' ) && array_keys( $body['offers'][0] ) === [ 'id', 'number', 'date', 'client_id', 'client_title' ] && count( $body['offers'] ) >= 2 );
+check( '...list answers the offers as well, and the rows with the title, the mark of the release and the state of the request', array_keys( $post( 'crm-documents/list' )[1] ) === [ 'documents', 'years', 'clients', 'settings', 'items', 'offers' ] && array_diff( [ 'title', 'released', 'sign_state' ], array_keys( $post( 'crm-documents/list' )[1]['documents'][0] ) ) === [] );
+
+[ $status, $body ] = $post( 'crm-documents/get', [ 'id' => (string) $contract['id'] ] );
+check( 'get answers a contract with the accounts of its client (none yet), the days of Sign\'s setting and the offers', $status === 200 && $body['document']['title'] === 'Vertrag neu' && $body['accounts'] === [] && $body['sign_days'] === 14 && is_array( $body['offers'] ) && $body['document']['sign_shown_url'] === '' && $body['document']['sign_signed_url'] === '' );
+check( '...a draft or an invoice has no accounts to ask', $post( 'crm-documents/get', [ 'id' => (string) $panelContract['id'] ] )[1]['accounts'] === [] && $post( 'crm-documents/get', [ 'id' => (string) $secondInvoice['id'] ] )[1]['accounts'] === [] );
+
+[ $status, $body ] = $post( 'crm-documents/finalise', [ 'id' => (string) $panelContract['id'] ] );
+check( 'finalise makes the PDF of the contract; the document the screen gets has the address of it', $status === 200 && $body['document']['state'] === 'open' && $body['document']['number'] === '' && $body['document']['pdf_url'] === '/.crm/pdf/'. $panelContract['id'] );
+check( '...and answers the view of the document, as get does: the accounts of its client and the days of Sign come with it, so that the page can offer the signature at once', array_diff( [ 'document', 'templates', 'clients', 'settings', 'items', 'offers', 'accounts', 'sign_days' ], array_keys( $body ) ) === [] && $body['sign_days'] === 14 );
+check( '...the log line names a document without a number by its category and id', \Crm\Documents\Admin::log( 'crm-documents/finalise', [] ) === 'Finalised document contract-'. $panelContract['id'] );
+$post( 'crm-documents/state', [ 'id' => (string) $privacyFinal['id'], 'state' => 'sent' ] );
+check( '...so does the one of a step', \Crm\Documents\Admin::log( 'crm-documents/state', [] ) === 'Moved document privacy-'. $privacyFinal['id']. ' to sent' );
+
+[ $status, $body ] = $post( 'crm-documents/release', [ 'id' => (string) $contract['id'] ] );
+check( 'release without the tick posts no mail: the document is released, mailed is 0 and mail false', $status === 200 && $body['mailed'] === 0 && $body['mail'] === false && $body['document']['released'] === true );
+check( '...the log names the document by its category and id', \Crm\Documents\Admin::log( 'crm-documents/release', [ 'id' => (string) $contract['id'] ] ) === 'Released document contract-'. $contract['id'] );
+$textMails = [];
+
+foreach( [ '1', 'yes', 'true', 1 ] as $text )
+	$textMails[] = $post( 'crm-documents/release', [ 'id' => (string) $contract['id'], 'mail' => $text ] )[1]['mail'];
+
+check( 'only a true mail is a mail: "1", "yes", "true" and 1 are none (the screen posts a boolean)', $textMails === [ false, false, false, false ] );
+[ $status, $body ] = $post( 'crm-documents/release', [ 'id' => (string) $contract['id'], 'mail' => true ] );
+check( '...a true one is: nobody is mailed here, the client has no account, and the answer says the mail was asked for', $status === 200 && $body['mail'] === true && $body['mailed'] === 0 );
+[ $status, $body ] = $post( 'crm-documents/unrelease', [ 'id' => (string) $contract['id'] ] );
+check( 'unrelease takes it back', $status === 200 && $body['document']['released'] === false && \Crm\Documents\Admin::log( 'crm-documents/unrelease', [] ) === 'Took back document contract-'. $contract['id'] );
+
+$bad = [
+	'release of nothing'         => [ 'crm-documents/release', [ 'id' => '99999' ], 404, 'crm_documents_unknown' ],
+	'release with an id that is none' => [ 'crm-documents/release', [ 'id' => '0x1' ], 400, 'crm_documents_id' ],
+	'release of a draft'         => [ 'crm-documents/release', [ 'id' => (string) $privacy['id'] ], 409, 'crm_documents_state' ],
+	'unrelease of nothing'       => [ 'crm-documents/unrelease', [ 'id' => '99999' ], 404, 'crm_documents_unknown' ],
+	'unrelease of a draft'       => [ 'crm-documents/unrelease', [ 'id' => (string) $privacy['id'] ], 409, 'crm_documents_state' ],
+	'sign of nothing'            => [ 'crm-documents/sign', [ 'id' => '99999', 'account' => 'aaaaaaaaaaaa' ], 404, 'crm_documents_unknown' ],
+	'sign with an account that is none' => [ 'crm-documents/sign', [ 'id' => (string) $contract['id'], 'account' => 'nobody' ], 400, 'crm_documents_account' ],
+	'sign with days that are none' => [ 'crm-documents/sign', [ 'id' => (string) $contract['id'], 'account' => 'aaaaaaaaaaaa', 'days' => 'x' ], 400, 'crm_documents_days' ],
+	'sign with days that are a number and a word' => [ 'crm-documents/sign', [ 'id' => (string) $contract['id'], 'account' => 'aaaaaaaaaaaa', 'days' => '7d' ], 400, 'crm_documents_days' ],
+	'sign with an account that is a number and a word' => [ 'crm-documents/sign', [ 'id' => (string) $contract['id'], 'account' => 'aaaaaaaaaaaa!', 'days' => '7' ], 400, 'crm_documents_account' ],
+	'sign of an invoice'         => [ 'crm-documents/sign', [ 'id' => (string) $secondInvoice['id'], 'account' => 'aaaaaaaaaaaa' ], 400, 'crm_documents_category' ],
+	'sign of an information document' => [ 'crm-documents/sign', [ 'id' => (string) $infoFinal['id'], 'account' => 'aaaaaaaaaaaa' ], 400, 'crm_documents_category' ],
+	'sign of a draft'            => [ 'crm-documents/sign', [ 'id' => (string) $privacy['id'], 'account' => 'aaaaaaaaaaaa' ], 409, 'crm_documents_state' ],
+	'sign for days past 90'      => [ 'crm-documents/sign', [ 'id' => (string) $contract['id'], 'account' => 'aaaaaaaaaaaa', 'days' => '91' ], 400, 'crm_documents_days' ],
+	'sign with Sign off'         => [ 'crm-documents/sign', [ 'id' => (string) $contract['id'], 'account' => 'aaaaaaaaaaaa' ], 409, 'crm_documents_sign' ],
+];
+
+foreach( $bad as $why => [ $action, $input, $expectedStatus, $code ] ) {
+	[ $status, $body ] = $post( $action, $input );
+	check( $why. ' is '. $expectedStatus. ' '. $code, $status === $expectedStatus && ( $body['code'] ?? '' ) === $code );
+}
+
+check( '...none of them wrote anything: the contract is open, not released, and has no request', ( $row = Documents::get( $appData, $contract['id'] ) ) !== null && $row['released'] === false && $row['sign_id'] === '' && $row['sign_state'] === '' );
 
 // --- Eight processes finalising at once -------------------------------------------------------------------------------
 

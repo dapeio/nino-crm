@@ -11,10 +11,18 @@ declare(strict_types=1);
  *													Tokens a template of the tags offer and invoice may use:
  *													  document.title, .number, .date, .due, .valid, .period, .parent, .vatnote, .net, .vat, .gross
  *													  client.number, .company, .name, .street, .zip, .city, .country, .vat_id, .email
+ *													  site.portal, site.login (the absolute addresses of /portal and /login; empty where the site has none)
  *													Slots: address, lines, totals. Inputs: the ones the template declares.
+ *
+ *													A template of the tags contract, privacy and information (a document without lines and without a
+ *													number) has document.title (the title of the document itself), document.date, document.parent
+ *													(a contract: the number of its offer), client.*, site.* and the slot address. A contract also has
+ *													offer.number, .date, .valid, .net, .vat, .gross and the slots lines and totals of its offer, so
+ *													that it can quote what it is about.
  */
 namespace Crm\Documents;
 
+use Crm\Documents;
 use Crm\Settings;
 
 class Render {
@@ -29,7 +37,8 @@ class Render {
 	private static array $_texts = [];
 
 	/**
-	 *	The tag of the Pdf feature a category's templates carry: offer for an offer, invoice for an invoice and a credit note
+	 *	The tag of the Pdf feature a category's templates carry: offer for an offer, invoice for an invoice and a credit note, and the
+	 *	name of the category for a contract, a privacy document and an information document
 	 *
 	 *	@param		string		$category
 	 *
@@ -37,7 +46,23 @@ class Render {
 	 */
 	public static function tag( string $category ): string {
 
-		return $category === 'offer' ? 'offer' : 'invoice';
+		return match( true ) {
+			in_array( $category, Documents::PLAIN, true ) => $category,
+			$category === 'offer'                         => 'offer',
+			default                                       => 'invoice',
+		};
+	}
+
+	/**
+	 *	What a document is called in a file name and in a log line: its number, a document without one its category and id
+	 *
+	 *	@param		array 		$document			category, id, number
+	 *
+	 *	@return 	string
+	 */
+	public static function name( array $document ): string {
+
+		return (string) $document['number'] !== '' ? (string) $document['number'] : $document['category']. '-'. $document['id'];
 	}
 
 	/**
@@ -95,8 +120,8 @@ class Render {
 	 *	What Pdf::render() is handed for a document
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$document			As Documents::get() has it: category, number, dates, vat_mode, reverse_charge, totals, parent_number, inputs
-	 *	@param		array 		$lines				The lines of the document, in their order
+	 *	@param		array 		$document			As Documents::get() has it: category, number, dates, vat_mode, reverse_charge, totals, parent_number, inputs; a document without lines: title, and for a contract its offer (as get() has it) under offer
+	 *	@param		array 		$lines				The lines of the document, in their order; none for a document without lines
 	 *	@param		array 		$client				The client as it was frozen: company, name, street, zip, city, country, number, vat_id, email
 	 *
 	 *	@return 	array											tokens, slots, inputs
@@ -105,6 +130,48 @@ class Render {
 
 		$currency = Settings::get( $appData, 'currency' );
 		$category = (string) $document['category'];
+		$plain = in_array( $category, Documents::PLAIN, true );
+
+		$tokens = [
+			'document' => [],
+			'client'   => [],
+			'site'     => [ 'portal' => \Nino\Html::absoluteUrl( $appData, '/portal' ), 'login' => \Nino\Html::absoluteUrl( $appData, '/login' ) ],
+		];
+
+		foreach( [ 'number', 'company', 'name', 'street', 'zip', 'city', 'country', 'vat_id', 'email' ] as $field )
+			$tokens['client'][$field] = (string) ( $client[$field] ?? '' );
+
+		$data = [
+			'tokens' => $tokens,
+			'slots'  => [ 'address' => self::address( $client ) ],
+			'inputs' => array_map( 'strval', array_filter( (array) ( $document['inputs'] ?? [] ), 'is_string' ) ),
+		];
+
+		if( $plain === true ) {
+
+			$offer = is_array( $document['offer'] ?? null ) === true ? $document['offer'] : null;
+			$data['tokens']['document'] = [ 'title' => (string) $document['title'], 'date' => self::day( (string) $document['date'] ), 'parent' => $offer === null ? '' : (string) $offer['number'] ];
+
+			if( $offer !== null ) {
+
+				$regular = $offer['vat_mode'] === 'regular';
+				$totals = Money::totals( $offer['lines'], (string) $offer['vat_mode'], (bool) $offer['reverse_charge'] );
+
+				$data['tokens']['offer'] = [
+					'number' => (string) $offer['number'],
+					'date'   => self::day( (string) $offer['date'] ),
+					'valid'  => self::day( (string) ( $offer['valid_until'] ?? '' ) ),
+					'net'    => Money::format( $totals['net'], $currency ),
+					'vat'    => Money::format( $totals['vat'], $currency ),
+					'gross'  => Money::format( $totals['gross'], $currency ),
+				];
+				$data['slots']['lines'] = self::lines( $offer['lines'], $totals, $regular, $currency );
+				$data['slots']['totals'] = self::totals( $totals, $regular, $currency );
+			}
+
+			return $data;
+		}
+
 		$regular = $document['vat_mode'] === 'regular';
 		$totals = Money::totals( $lines, (string) $document['vat_mode'], (bool) $document['reverse_charge'] );
 
@@ -120,35 +187,23 @@ class Render {
 		if( $period === '' && $category !== 'offer' )
 			$period = self::text( 'period.none' );
 
-		$tokens = [
-			'document' => [
-				'title'   => self::text( 'title.'. $category ),
-				'number'  => (string) $document['number'],
-				'date'    => self::day( (string) $document['date'] ),
-				'due'     => self::day( (string) ( $document['due_date'] ?? '' ) ),
-				'valid'   => self::day( (string) ( $document['valid_until'] ?? '' ) ),
-				'period'  => $period,
-				'parent'  => (string) ( $document['parent_number'] ?? '' ),
-				'vatnote' => $vatnote,
-				'net'     => Money::format( $totals['net'], $currency ),
-				'vat'     => Money::format( $totals['vat'], $currency ),
-				'gross'   => Money::format( $totals['gross'], $currency ),
-			],
-			'client' => [],
+		$data['tokens']['document'] = [
+			'title'   => self::text( 'title.'. $category ),
+			'number'  => (string) $document['number'],
+			'date'    => self::day( (string) $document['date'] ),
+			'due'     => self::day( (string) ( $document['due_date'] ?? '' ) ),
+			'valid'   => self::day( (string) ( $document['valid_until'] ?? '' ) ),
+			'period'  => $period,
+			'parent'  => (string) ( $document['parent_number'] ?? '' ),
+			'vatnote' => $vatnote,
+			'net'     => Money::format( $totals['net'], $currency ),
+			'vat'     => Money::format( $totals['vat'], $currency ),
+			'gross'   => Money::format( $totals['gross'], $currency ),
 		];
+		$data['slots']['lines'] = self::lines( $lines, $totals, $regular, $currency );
+		$data['slots']['totals'] = self::totals( $totals, $regular, $currency );
 
-		foreach( [ 'number', 'company', 'name', 'street', 'zip', 'city', 'country', 'vat_id', 'email' ] as $field )
-			$tokens['client'][$field] = (string) ( $client[$field] ?? '' );
-
-		return [
-			'tokens' => $tokens,
-			'slots'  => [
-				'address' => self::address( $client ),
-				'lines'   => self::lines( $lines, $totals, $regular, $currency ),
-				'totals'  => self::totals( $totals, $regular, $currency ),
-			],
-			'inputs' => array_map( 'strval', array_filter( (array) ( $document['inputs'] ?? [] ), 'is_string' ) ),
-		];
+		return $data;
 	}
 
 	/**
@@ -275,7 +330,7 @@ class Render {
 	 *	Render the PDF of a document with the template it names and keep it, once, below /data/crm/pdf
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$document			With its number; see data()
+	 *	@param		array 		$document			With its number (none for a document without lines); see data()
 	 *	@param		array 		$lines
 	 *	@param		array 		$client
 	 *
@@ -284,7 +339,7 @@ class Render {
 	public static function make( array &$appData, array $document, array $lines, array $client ): array|string {
 
 		$year = (int) substr( (string) $document['date'], 0, 4 );
-		$path = self::DIR. '/'. sprintf( '%04d', $year ). '/'. $document['number']. '.pdf';
+		$path = self::DIR. '/'. sprintf( '%04d', $year ). '/'. self::name( $document ). '.pdf';
 
 		if( preg_match( self::PATH, $path ) !== 1 )
 			return 'write';
@@ -296,7 +351,7 @@ class Render {
 
 		$data = self::data( $appData, $document, $lines, $client );
 		$bytes = \Nino\Modules\Pdf::render( $appData, (string) $document['template_key'], $data, [
-			'title' => self::text( 'title.'. $document['category'] ). ' '. $document['number'],
+			'title' => in_array( $document['category'], Documents::PLAIN, true ) === true ? (string) $document['title'] : self::text( 'title.'. $document['category'] ). ' '. $document['number'],
 			'date'  => (string) $document['date'],
 		] );
 
@@ -309,7 +364,7 @@ class Render {
 
 		if( @file_put_contents( $temporary, $bytes ) !== strlen( $bytes ) || @rename( $temporary, $file ) === false ) {
 			@unlink( $temporary );
-			trigger_error( 'Crm: the PDF of document '. $document['number']. ' could not be written', E_USER_WARNING );
+			trigger_error( 'Crm: the PDF of document '. self::name( $document ). ' could not be written', E_USER_WARNING );
 
 			return 'write';
 		}
@@ -337,9 +392,10 @@ class Render {
 
 	/**
 	 *	GET /.crm/pdf/<id>: the PDF of a finalised document, to a workbench session that holds the permission of the panel
-	 *	Belege. The id is a number or the answer is the 404; so are a draft, a document nobody has, a file that is gone and a
-	 *	visitor. A file whose hash is not the one stored is a 409 with a line in the log that names the number. ?download=1 is
-	 *	saved under <number>.pdf, else it is shown
+	 *	Belege, and - once it is released - to the signed-in member whose client it belongs to. The id is a number or the
+	 *	answer is the 404; so are a draft, a document nobody has, a file that is gone, a visitor, a document of another client
+	 *	and one that is not released. A file whose hash is not the one stored is a 409 with a line in the log that names the number
+	 *	(a document without one: its category and id). ?download=1 is saved under the name of the file, else it is shown
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$request
@@ -352,10 +408,18 @@ class Render {
 		$id = str_starts_with( $uri, self::ROUTE ) === true ? substr( $uri, strlen( self::ROUTE ) ) : '';
 		$row = null;
 
-		if( preg_match( '/^[1-9][0-9]{0,9}$/D', $id ) === 1 && \Nino\Auth::checkPermission( $appData, Admin::MANAGE_PERM ) === true ) {
+		if( preg_match( '/^[1-9][0-9]{0,9}$/D', $id ) === 1 ) {
 
 			try {
-				$row = \Crm\Db::row( $appData, 'SELECT number, pdf_path, pdf_sha256 FROM documents WHERE id = :id AND pdf_path != \'\'', [ 'id' => (int) $id ] );
+				if( \Nino\Auth::checkPermission( $appData, Admin::MANAGE_PERM ) === true ) {
+					$row = \Crm\Db::row( $appData, 'SELECT pdf_path, pdf_sha256 FROM documents WHERE id = :id AND pdf_path != \'\'', [ 'id' => (int) $id ] );
+				}
+				else {
+					$client = \Crm\Portal::client( $appData );
+
+					if( $client !== null )
+						$row = \Crm\Db::row( $appData, 'SELECT pdf_path, pdf_sha256 FROM documents WHERE id = :id AND client_id = :client AND released = 1 AND pdf_path != \'\'', [ 'id' => (int) $id, 'client' => $client['id'] ] );
+				}
 			}
 			catch( \PDOException $e ) {
 				$row = null;
@@ -363,18 +427,19 @@ class Render {
 		}
 
 		$file = $row === null ? null : self::file( $appData, (string) $row['pdf_path'] );
+		$name = $row === null ? '' : basename( (string) $row['pdf_path'], '.pdf' );
 
 		if( $row === null || $file === null ) {
 			self::answer( $request, 404, 'Not Found' );
 
 			if( $row !== null )
-				trigger_error( 'Crm: the PDF of document '. $row['number']. ' is gone', E_USER_WARNING );
+				trigger_error( 'Crm: the PDF of document '. $name. ' is gone', E_USER_WARNING );
 
 			return;
 		}
 
 		if( hash_equals( (string) $row['pdf_sha256'], (string) hash_file( 'sha256', $file ) ) === false ) {
-			trigger_error( 'Crm: the PDF of document '. $row['number']. ' does not match its hash', E_USER_WARNING );
+			trigger_error( 'Crm: the PDF of document '. $name. ' does not match its hash', E_USER_WARNING );
 			self::answer( $request, 409, 'Conflict' );
 
 			return;
@@ -385,7 +450,7 @@ class Render {
 
 		$request['/nino/http/response']['file'] = $file;
 		$request['/nino/http/response']['header']['Content-Type'] = 'application/pdf';
-		$request['/nino/http/response']['header']['Content-Disposition'] = ( $saved === true ? 'attachment' : 'inline' ). '; filename="'. $row['number']. '.pdf"';
+		$request['/nino/http/response']['header']['Content-Disposition'] = ( $saved === true ? 'attachment' : 'inline' ). '; filename="'. $name. '.pdf"';
 		$request['/nino/http/response']['header']['Cache-Control'] = 'private, no-store';
 	}
 

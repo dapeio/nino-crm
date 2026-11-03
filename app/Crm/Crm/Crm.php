@@ -3,8 +3,10 @@ declare(strict_types=1);
 /**
  *	Crm\Crm		The project module of the CRM. Listed in /nino/modules by the owner (one line in private/config.php);
  *						init() registers behaviour and writes nothing: the panels Kunden, Belege and Positionen (adminPanels()), the
- *						component [crm-client], the callbacks that keep the portal's lookup true when a member signs in or out, and the route /.crm/pdf/<id> that answers the PDF of a finalised document. The database
- *						is opened on first use, the portal pages come with the install unit the panel applies.
+ *						components [crm-client] and [crm-documents], the callbacks that keep the portal's lookup true when a member signs in or
+ *						out and the ones that let a document follow its request in Sign, the style sheet of the portal's list, and the route
+ *						/.crm/pdf/<id> that answers the PDF of a finalised document. The database is opened on first use, the portal pages come with
+ *						the install unit the panel applies.
  */
 namespace Crm;
 
@@ -27,10 +29,35 @@ class Crm {
 			'group'      => 'global',
 		] );
 
+		\Nino\Modules\Components::addComponent( $appData, 'crm-documents', [ Portal::class, 'componentCrmDocuments' ], [
+			'label'      => [ 'en_US' => 'Documents of the member', 'de_DE' => 'Dokumente des Mitglieds' ],
+			'source'     => 'none',
+			'loop'       => false,
+			'attributes' => [],
+			'preview'    => 'block',
+			'draws'      => 'div .crm-documents',
+			'in'         => [ 'section', 'card' ],
+			'icon'       => [
+				[ 'path', [ 'd' => 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z' ] ],
+				[ 'path', [ 'd' => 'M14 2v5a1 1 0 0 0 1 1h5' ] ],
+				[ 'path', [ 'd' => 'M10 9H8' ] ],
+				[ 'path', [ 'd' => 'M16 13H8' ] ],
+				[ 'path', [ 'd' => 'M16 17H8' ] ],
+			],
+			'group'      => 'global',
+		] );
+
+		// The list of the portal is drawn by a style sheet of the module, in the bundle of the site
+		\Nino\Html::addAsset( $appData, '/.cache/style.css', Portal::STYLE );
+
 		\Nino\Callbacks::registerCallback( $appData, '/members/login', [ Portal::class, 'callbackSession' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/members/logout', [ Portal::class, 'callbackSession' ] );
 
-		// The PDF of a document is answered to the workbench session that may manage the documents (see Render::callbackDownload())
+		// A document follows the request for its signature: signed or declined by the member in Sign
+		\Nino\Callbacks::registerCallback( $appData, '/sign/signed', [ Documents::class, 'callbackSigned' ] );
+		\Nino\Callbacks::registerCallback( $appData, '/sign/declined', [ Documents::class, 'callbackDeclined' ] );
+
+		// The PDF of a document is answered to the workbench session that may manage the documents and, once it is released, to the member of its client (see Render::callbackDownload())
 		$appData['/nino/http/routes']['GET://.crm/pdf/*'] = [ 'uri' => '/.crm/pdf/*' ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.crm/pdf/*', [ \Crm\Documents\Render::class, 'callbackDownload' ] );
 	}

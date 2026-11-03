@@ -1,0 +1,82 @@
+/**
+ *	Crm - Portal
+ *	portal.css		What [crm-documents] needs on the site itself: the list of the released documents of a member's client. Bundled
+ *								into the project's own /.cache/style.css by \Crm\Crm::init() (the module adds it with \Nino\Html::addAsset()) -
+ *								never rendered through the fill/shortcode engine, so nothing in here is a textfill.
+ *
+ *								The list is drawn from three properties, --crm-documents-space, --crm-documents-corners and
+ *								--crm-documents-border, whose defaults are the page's own roles (--space-*, --radius, --color-*), which
+ *								every site has, so they look at home whatever the site's theme says. The defaults stand in :where(), which
+ *								has no specificity: a rule of the project that moves a property wins over them by order.
+ */
+
+:where(:root) {
+	--crm-documents-space: calc( var(--space-2) * 1.5 );
+	--crm-documents-corners: var(--radius);
+	--crm-documents-border: var(--color-border);
+}
+
+.crm-documents {
+	box-sizing: border-box;
+	max-width: 48rem;
+	margin: 0 0 var(--space-2);
+}
+
+.crm-documents__list {
+	display: grid;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.crm-documents__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-2);
+	padding: var(--crm-documents-space);
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+}
+
+.crm-documents__kind {
+	font-size: .875em;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+}
+
+.crm-documents__title {
+	flex: 1 1 12rem;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.crm-documents__state {
+	padding: 0 .5em;
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+	font-size: .875em;
+}
+
+.crm-documents__row[data-state="signed"] .crm-documents__state,
+.crm-documents__row[data-state="paid"] .crm-documents__state,
+.crm-documents__row[data-state="accepted"] .crm-documents__state {
+	border-color: var(--color-success);
+}
+
+.crm-documents__row[data-state="declined"] .crm-documents__state,
+.crm-documents__row[data-state="cancelled"] .crm-documents__state,
+.crm-documents__row[data-state="expired"] .crm-documents__state {
+	border-color: var(--color-warning);
+}
+
+.crm-documents__download,
+.crm-documents__sign,
+.crm-documents__signed {
+	color: var(--color-accent);
+}
+
+.crm-documents__empty {
+	margin: 0;
+}

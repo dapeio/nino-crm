@@ -133,7 +133,7 @@ class Admin {
 			$client = self::_client( $appData, $request, \Nino\Admin\Admin::postData() );
 
 			if( $client !== null )
-				\Nino\Http::ok( $request, [ 'client' => $client, 'accounts' => self::_accounts( $appData, $client['id'] ) ] );
+				\Nino\Http::ok( $request, [ 'client' => self::_withDocuments( $appData, $client ), 'accounts' => self::_accounts( $appData, $client['id'] ) ] );
 		} );
 	}
 
@@ -181,7 +181,7 @@ class Admin {
 
 			self::$_made['crm-clients/save'] = $client['number'];
 
-			\Nino\Http::ok( $request, [ 'client' => $client ] );
+			\Nino\Http::ok( $request, [ 'client' => self::_withDocuments( $appData, $client ) ] );
 		} );
 	}
 
@@ -211,7 +211,7 @@ class Admin {
 
 			self::$_made['crm-clients/active'] = $changed['number'];
 
-			\Nino\Http::ok( $request, [ 'client' => $changed ] );
+			\Nino\Http::ok( $request, [ 'client' => self::_withDocuments( $appData, $changed ) ] );
 		} );
 	}
 
@@ -521,6 +521,19 @@ class Admin {
 			'format'  => \Nino\Http::fail( $request, 400, 'the value has a wrong format', 'crm_clients_format', [], $field ),
 			default   => \Nino\Http::fail( $request, 404, 'there is no such client', 'crm_clients_unknown', [], 'id' ),
 		};
+	}
+
+	/**
+	 *	A client with the count of its documents: total and released to the portal
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client
+	 *
+	 *	@return 	array
+	 */
+	private static function _withDocuments( array &$appData, array $client ): array {
+
+		return $client + [ 'documents' => \Crm\Documents::counts( $appData, $client['id'] ) ];
 	}
 
 	/**

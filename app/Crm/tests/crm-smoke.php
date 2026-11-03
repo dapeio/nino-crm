@@ -418,9 +418,15 @@ check( 'nothing of the portal exists before the button: no route, no template, n
 
 [ $status, $body ] = ninoCall( $appData, $panel, [], 'crm-clients/setup' );
 $manifest = \Nino\Features::readUnitManifest( $root. '/app/Crm/unit' );
-check( 'setup applies the unit and says what it added', $status === 200 && count( $body['added']['routes'] ) === 6 && count( $body['added']['templates'] ) === 6 && $body['added']['texts'] > 20 && $body['added']['paths'] === true
+check( 'setup applies the unit and says what it added', $status === 200 && count( $body['added']['routes'] ) === 7 && count( $body['added']['templates'] ) === 7 && $body['added']['texts'] > 20 && $body['added']['paths'] === true
 	&& $body['existed']['routes'] === [] && $body['existed']['templates'] === [] );
 check( 'the routes are in the persisted routes and in the live ones', array_diff( array_keys( $manifest['routes'] ), array_keys( \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) ) ) === [] && array_diff( array_keys( $manifest['routes'] ), array_keys( $appData['/nino/http/routes'] ) ) === [] );
+check( 'the unit has the page /portal/dokumente: its route, its template and its words in both languages', ( $manifest['routes']['GET://portal/dokumente']['body'] ?? '' ) === '[template /templates/page-portal-documents]' && in_array( 'page-portal-documents.tpl', $manifest['templates'], true ) === true
+	&& isset( \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://portal/dokumente'] ) === true
+	&& array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => trim( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/_nino/webpage/portal/dokumente/title]]'] ?? '' ) ) === '' || trim( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/template/page-portal-documents/intro/title]]'] ?? '' ) ) === '' ) === [] );
+$introWords = [ 'de_DE' => 'Verträge', 'en_US' => 'contracts' ];
+check( 'the intro of the page names the contracts and the privacy documents that are signed there, in both languages', array_filter( $introWords, static fn( string $word, string $locale ): bool => str_contains( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/template/page-portal-documents/intro/text]]'] ?? '' ), $word ) === false
+	|| stripos( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/template/page-portal-documents/intro/text]]'] ?? '' ), 'privacy' ) === false && stripos( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/template/page-portal-documents/intro/text]]'] ?? '' ), 'Datenschutz' ) === false, ARRAY_FILTER_USE_BOTH ) === [] );
 check( 'the templates are copied byte for byte', array_filter( $manifest['templates'], static fn( string $file ): bool => file_get_contents( \Nino\Filesystem::path( $appData, '/templates/'. $file ) ) !== file_get_contents( $root. '/app/Crm/unit/templates/'. $file ) ) === [] );
 check( 'the words are in both languages', array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => trim( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/template/page-portal/intro/title]]'] ?? '' ) ) === '' ) === [] );
 check( 'Members sends a member who signs in to /portal', $body['added']['start'] === true && \Nino\Features::setting( $appData, 'members', 'start', '' ) === '/portal' );
@@ -437,7 +443,7 @@ foreach( $manifest['templates'] as $file ) {
 		$unread[] = $file;
 }
 
-check( 'the Builder reads every page of the unit as sections: '. implode( ', ', $unread ), $unread === [] && count( $manifest['templates'] ) === 6 );
+check( 'the Builder reads every page of the unit as sections: '. implode( ', ', $unread ), $unread === [] && count( $manifest['templates'] ) === 7 );
 $styles = (string) file_get_contents( $root. '/_nino/Nino.css' );
 $classes = [];
 
@@ -465,7 +471,7 @@ $textFile['[[/template/page-portal/intro/title]]'] = 'Mein eigener Titel';
 $routesAfter = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 [ $status, $body ] = ninoCall( $appData, $panel, [], 'crm-clients/setup' );
 check( 'a second setup adds nothing and says what was there', $status === 200 && $body['added']['routes'] === [] && $body['added']['templates'] === [] && $body['added']['texts'] === 0 && $body['added']['paths'] === false && $body['added']['start'] === false
-	&& count( $body['existed']['routes'] ) === 6 && count( $body['existed']['templates'] ) === 6 );
+	&& count( $body['existed']['routes'] ) === 7 && count( $body['existed']['templates'] ) === 7 );
 check( '...a template the project changed survives it', (string) file_get_contents( $pageFile ) === $changed );
 check( '...so does a word the project changed', \Nino\Filesystem::getFileContent( $appData, '/text/de_DE.php', [] )['[[/template/page-portal/intro/title]]'] === 'Mein eigener Titel' );
 check( '...and the routes are the same, a route the project changed is not written again', \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) === $routesAfter && \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://portal']['body'] === '[template /templates/page-own]' );
@@ -531,7 +537,7 @@ unset( $appData['./nino/auth/current'] );
 $_SESSION = [];
 
 check( 'a visitor asking for the portal is shown the login page of Members: 401', crmServe( $appData, '/portal' )[0] === 401 && crmServe( $appData, '/portal' )[2] === '[template /templates/page-members-login]' );
-check( '...and so on every page below it', array_unique( array_map( static fn( string $path ): int => crmServe( $appData, $path )[0], [ '/portal/dateien', '/portal/review', '/portal/unterschriften', '/portal/konto' ] ) ) === [ 401 ] );
+check( '...and so on every page below it', array_unique( array_map( static fn( string $path ): int => crmServe( $appData, $path )[0], [ '/portal/dateien', '/portal/review', '/portal/unterschriften', '/portal/dokumente', '/portal/konto' ] ) ) === [ 401 ] );
 check( 'the login page has its own address', crmServe( $appData, '/login' )[0] === 200 && crmServe( $appData, '/login' )[2] === '[template /templates/page-login]' );
 $loginHtml = \Nino\Html::renderHtml( $appData, crmServe( $appData, '/login' )[2] );
 check( '...and carries the login form', str_contains( $loginHtml, '[members-login]' ) === false && str_contains( $loginHtml, '<form class="members-login' ) === true && str_contains( $loginHtml, 'Anmelden' ) === true );
@@ -551,15 +557,20 @@ $page = crmServe( $appData, '/portal' );
 check( 'the member is served the portal: 200', $page[0] === 200 && $page[2] === '[template /templates/page-portal]' );
 $html = \Nino\Html::renderHtml( $appData, $page[2] );
 check( '...with the name of the member, the company and the links to the pages', str_contains( $html, 'Anna Nord' ) === true && str_contains( $html, 'Studio Nord AG' ) === true
-	&& substr_count( $html, 'href="/portal/' ) === 4 && str_contains( $html, 'Mein eigener Titel' ) === true );
+	&& substr_count( $html, 'href="/portal/' ) === 5 && str_contains( $html, 'Mein eigener Titel' ) === true );
 $portalPage = crmPage( $appData, '/portal' );
 check( 'the head of /portal holds its title and its description and no key of the page details', str_contains( $portalPage, '[[/_nino/' ) === false && str_contains( $portalPage, '<title>Kundenportal | ' ) === true );
-check( 'no page of the portal shows a key of its details', array_filter( [ '/portal/dateien', '/portal/review', '/portal/unterschriften', '/portal/konto' ], static fn( string $path ): bool => str_contains( crmPage( $appData, $path ), '[[/_nino/' ) === true ) === [] );
-check( 'every page of the portal is served to the member', array_unique( array_map( static fn( string $path ): int => crmServe( $appData, $path )[0], [ '/portal/dateien', '/portal/review', '/portal/unterschriften', '/portal/konto' ] ) ) === [ 200 ] );
+check( 'no page of the portal shows a key of its details', array_filter( [ '/portal/dateien', '/portal/review', '/portal/unterschriften', '/portal/dokumente', '/portal/konto' ], static fn( string $path ): bool => str_contains( crmPage( $appData, $path ), '[[/_nino/' ) === true ) === [] );
+check( 'every page of the portal is served to the member', array_unique( array_map( static fn( string $path ): int => crmServe( $appData, $path )[0], [ '/portal/dateien', '/portal/review', '/portal/unterschriften', '/portal/dokumente', '/portal/konto' ] ) ) === [ 200 ] );
 check( 'the files page draws the browser of Files, the review page the player, the signatures page the list', str_contains( \Nino\Html::renderHtml( $appData, crmServe( $appData, '/portal/dateien' )[2] ), '[files-browser]' ) === false && str_contains( \Nino\Html::renderHtml( $appData, crmServe( $appData, '/portal/dateien' )[2] ), '<div class="files-browser' ) === true
 	&& str_contains( \Nino\Html::renderHtml( $appData, crmServe( $appData, '/portal/review' )[2] ), '[review-player]' ) === false
 	&& str_contains( \Nino\Html::renderHtml( $appData, crmServe( $appData, '/portal/unterschriften' )[2] ), '[sign-list]' ) === false );
 check( 'the account page shows the name and the sign-out link', str_contains( \Nino\Html::renderHtml( $appData, crmServe( $appData, '/portal/konto' )[2] ), '[members-logout]' ) === false && str_contains( \Nino\Html::renderHtml( $appData, crmServe( $appData, '/portal/konto' )[2] ), '<a href="/.members/logout" class="members-logout' ) === true );
+
+$documentsPage = \Nino\Html::renderHtml( $appData, crmServe( $appData, '/portal/dokumente' )[2] );
+check( 'the documents page draws the list of Documents, which says there are none while nothing is released', str_contains( $documentsPage, '[crm-documents]' ) === false && str_contains( $documentsPage, 'class="crm-documents crm-documents--empty"' ) === true && str_contains( $documentsPage, 'Für Dich liegen noch keine Dokumente bereit.' ) === true );
+check( '/portal links to it', str_contains( $html, 'href="/portal/dokumente"' ) === true );
+check( 'the module puts the style sheet of the list into the bundle of the site, once', count( array_keys( $appData['/nino/html/assets']['/.cache/style.css'] ?? [], \Crm\Portal::STYLE, true ) ) === 1 && is_file( $root. \Crm\Portal::STYLE ) === true );
 
 // A member whose account no client owns, and a client that is switched off
 $stray = \Nino\Modules\Members::add( $appData, 'stray@example.org', 'Stray', 'nogroup' );

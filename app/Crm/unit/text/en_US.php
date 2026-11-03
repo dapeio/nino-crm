@@ -18,6 +18,9 @@ return [
 	'[[/_nino/webpage/portal/unterschriften/name]]' => 'Signatures',
 	'[[/_nino/webpage/portal/unterschriften/title]]' => 'Signatures',
 	'[[/_nino/webpage/portal/unterschriften/description]]' => 'The documents that wait for your signature.',
+	'[[/_nino/webpage/portal/dokumente/name]]' => 'Documents',
+	'[[/_nino/webpage/portal/dokumente/title]]' => 'Your documents',
+	'[[/_nino/webpage/portal/dokumente/description]]' => 'The documents shared with you: offers, invoices, contracts and more.',
 	'[[/_nino/webpage/portal/konto/name]]' => 'My account',
 	'[[/_nino/webpage/portal/konto/title]]' => 'My account',
 	'[[/_nino/webpage/portal/konto/description]]' => 'Your account in the client portal.',
@@ -32,6 +35,8 @@ return [
 	'[[/template/page-portal/link-files/href]]'          => '/portal/dateien',
 	'[[/template/page-portal/link-review/label]]'        => 'Listen to recordings',
 	'[[/template/page-portal/link-review/href]]'         => '/portal/review',
+	'[[/template/page-portal/link-documents/label]]'      => 'Documents',
+	'[[/template/page-portal/link-documents/href]]'       => '/portal/dokumente',
 	'[[/template/page-portal/link-sign/label]]'          => 'Signatures',
 	'[[/template/page-portal/link-sign/href]]'           => '/portal/unterschriften',
 	'[[/template/page-portal/link-account/label]]'       => 'My account',
@@ -54,6 +59,12 @@ return [
 	'[[/template/page-portal-sign/intro/text]]'          => 'The documents that wait for your signature.',
 	'[[/template/page-portal-sign/back/label]]'          => 'Back to the portal',
 	'[[/template/page-portal-sign/back/href]]'           => '/portal',
+
+	// Documents, page-portal-documents.tpl
+	'[[/template/page-portal-documents/intro/title]]' => 'Your documents',
+	'[[/template/page-portal-documents/intro/text]]' => 'Everything shared with you, with where it stands: offers, invoices, contracts and privacy documents. You sign the contracts and privacy documents that need your signature here.',
+	'[[/template/page-portal-documents/back/label]]' => 'Back to the portal',
+	'[[/template/page-portal-documents/back/href]]' => '/portal',
 
 	// Account, page-portal-account.tpl
 	'[[/template/page-portal-account/intro/title]]'      => 'My account',
