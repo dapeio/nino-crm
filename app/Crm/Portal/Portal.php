@@ -15,7 +15,7 @@ class Portal {
 
 	// The markup of the component, declared once
 	public static $html = [
-		'client' => '<span class="crm-client[[classes]]">[[company]]</span>',
+		'client' => '<div class="crm-client[[classes]]">[[company]]</div>',
 	];
 
 	private const string CACHE = './crm/portal/client';
@@ -66,7 +66,8 @@ class Portal {
 	}
 
 	/**
-	 *	[crm-client] - the company of the member's client, its name where it has no company; nothing for a visitor
+	 *	[crm-client] - the company of the member's client; nothing for a visitor, nothing where the client has no company, and nothing where the
+	 *	company is the name the member is greeted with (the greeting says it once)
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$args
@@ -77,12 +78,17 @@ class Portal {
 
 		$client = self::client( $appData );
 
-		if( $client === null )
+		if( $client === null || $client['company'] === '' )
+			return '';
+
+		$member = \Nino\Modules\Members::current( $appData );
+
+		if( $member !== null && $client['company'] === ( (string) $member['name'] !== '' ? $member['name'] : $member['email'] ) )
 			return '';
 
 		return str_replace(
 			[ '[[classes]]', '[[company]]' ],
-			[ \Nino\Feature::classes( $args ), \Nino\Modules\Components::escape( $client['company'] !== '' ? $client['company'] : $client['name'] ) ],
+			[ \Nino\Feature::classes( $args ), \Nino\Modules\Components::escape( $client['company'] ) ],
 			self::$html['client']
 		);
 	}

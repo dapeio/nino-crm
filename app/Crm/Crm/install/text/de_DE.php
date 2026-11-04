@@ -35,17 +35,7 @@ return [
 
 	// Start, page-portal.tpl
 	'[[/template/page-portal/intro/title]]' => 'Willkommen im Kundenportal',
-	'[[/template/page-portal/intro/text]]' => 'Hier findest Du Deine Projekte, Belege und Termine und kannst Dateien hochladen.',
-	'[[/template/page-portal/link-projekte/label]]' => 'Projekte',
-	'[[/template/page-portal/link-projekte/href]]' => '/portal/projekte',
-	'[[/template/page-portal/link-upload/label]]' => 'Upload',
-	'[[/template/page-portal/link-upload/href]]' => '/portal/upload',
-	'[[/template/page-portal/link-belege/label]]' => 'Belege',
-	'[[/template/page-portal/link-belege/href]]' => '/portal/belege',
-	'[[/template/page-portal/link-termine/label]]' => 'Termine',
-	'[[/template/page-portal/link-termine/href]]' => '/portal/termine',
-	'[[/template/page-portal/link-meine-daten/label]]' => 'Meine Daten',
-	'[[/template/page-portal/link-meine-daten/href]]' => '/portal/meine-daten',
+	'[[/template/page-portal/intro/text]]' => 'Hier findest Du Deine Projekte, Dateien, Belege und Termine.',
 
 	// Meine Daten, page-portal-meine-daten.tpl
 	'[[/template/page-portal-meine-daten/intro/title]]' => 'Meine Daten',

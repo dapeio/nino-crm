@@ -31,8 +31,8 @@ class Crm {
 			'source'     => 'none',
 			'loop'       => false,
 			'attributes' => [],
-			'preview'    => 'text',
-			'draws'      => 'span .crm-client',
+			'preview'    => 'block',
+			'draws'      => 'div .crm-client',
 			'group'      => 'global',
 		] );
 

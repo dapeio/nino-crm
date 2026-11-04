@@ -5,7 +5,6 @@
 <section id="intro" class="nino-section">
 	<div class="nino-grid-row">
 		<div class="nino-grid-100">
-			[crm-portal-nav]
 			[title /template/page-portal-meine-daten/intro/title tag="h2"]
 			[text /template/page-portal-meine-daten/intro/text]
 			[members-name] [members-logout]

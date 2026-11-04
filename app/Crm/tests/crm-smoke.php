@@ -659,7 +659,15 @@ $answer = crmConfirm( $appData, $inviteToken );
 check( 'the invited member signs in with the link of the invitation', $answer[0] === 303 && ( \Nino\Modules\Members::current( $appData )['email'] ?? '' ) === 'anna@example.org' );
 
 $rendered = \Nino\Html::renderHtml( $appData, '[crm-client]' );
-check( '[crm-client] answers the company of the client of the member', trim( $rendered ) === '<span class="crm-client">Studio Nord AG</span>' );
+check( '[crm-client] answers the company of the client of the member', trim( $rendered ) === '<div class="crm-client">Studio Nord AG</div>' );
+foreach( [ 'a client without a company' => [ '', '' ], 'a company that is the name of the member' => [ 'Anna Nord', '' ], 'another company' => [ 'Nord & Söhne', '<div class="crm-client">Nord &amp; Söhne</div>' ] ] as $case => [ $company, $expected ] ) {
+	\Crm\Clients::change( $appData, $first['id'], [ 'company' => $company, 'name' => 'Nord Büro' ] );
+	\Crm\Portal::forget( $appData );
+	check( '[crm-client] for '. $case. ' says '. ( $expected === '' ? 'nothing' : 'the company' ), trim( \Nino\Html::renderHtml( $appData, '[crm-client]' ) ) === $expected );
+}
+
+\Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Nord AG', 'name' => 'Anna Nord' ] );
+\Crm\Portal::forget( $appData );
 check( '...with a class of its own where the shortcode gives one', str_contains( \Nino\Html::renderHtml( $appData, '[crm-client class="big"]' ), 'class="crm-client big"' ) === true );
 
 $door = crmServe( $appData, '/' );
@@ -672,16 +680,24 @@ $page = crmServe( $appData, '/portal' );
 check( 'the member is served the portal: 200', $page[0] === 200 && $page[2] === '[template /templates/page-portal]' );
 $html = \Nino\Html::renderHtml( $appData, $page[2] );
 check( '...with the name of the member, the company and the links to the pages', str_contains( $html, 'Anna Nord' ) === true && str_contains( $html, 'Studio Nord AG' ) === true
-	&& substr_count( $html, 'href="/portal/' ) === 10 && str_contains( $html, 'Mein eigener Titel' ) === true );
+	&& str_contains( $html, 'Mein eigener Titel' ) === true );
 $portalPage = crmPage( $appData, '/portal' );
 check( 'the head of /portal holds its title and its description and no key of the page details', str_contains( $portalPage, '[[/_nino/' ) === false && str_contains( $portalPage, '<title>Kundenportal | ' ) === true );
 check( 'no page of the portal shows a key of its details', array_filter( [ '/portal/meine-daten', '/portal/projekte', '/portal/upload', '/portal/belege', '/portal/termine' ], static fn( string $path ): bool => str_contains( crmPage( $appData, $path ), '[[/_nino/' ) === true ) === [] );
 check( 'every page of the portal is served to the member', array_unique( array_map( static fn( string $path ): int => crmServe( $appData, $path )[0], [ '/portal/meine-daten', '/portal/projekte', '/portal/upload', '/portal/belege', '/portal/termine' ] ) ) === [ 200 ] );
 $pages = array_map( static fn( string $area ): string => \Nino\Html::renderHtml( $appData, crmServe( $appData, '/portal/'. $area )[2] ), [ 'meine-daten', 'projekte', 'upload', 'belege', 'termine' ] );
-check( 'each page of the areas holds the navigation and no component of the module is left unrendered in it', array_filter( $pages, static fn( string $page ): bool => substr_count( $page, 'class="crm-nav__link"' ) !== 5 || str_contains( $page, '[crm-' ) === true ) === [] );
+check( 'no page of the areas holds the navigation, and no component of the module is left unrendered in it', array_filter( $pages, static fn( string $page ): bool => str_contains( $page, 'crm-nav' ) === true || str_contains( $page, '[crm-' ) === true ) === [] );
 check( 'Meine Daten draws the name, the sign-out link and the form of the data; Projekte the list; Belege the list of Documents, which says there are none while nothing is released', str_contains( $pages[0], '<a href="/.members/logout" class="members-logout' ) === true && str_contains( $pages[0], '<form class="crm-data' ) === true
 	&& str_contains( $pages[1], 'class="crm-projects crm-projects--empty"' ) === true && str_contains( $pages[3], 'class="crm-documents crm-documents--empty"' ) === true && str_contains( $pages[3], 'Für Dich liegen noch keine Dokumente bereit.' ) === true );
-check( '/portal links to the four areas it offers as buttons, and to Meine Daten', substr_count( $html, 'class="crm-nav__link"' ) === 5 && array_filter( [ 'projekte', 'upload', 'belege', 'termine', 'meine-daten' ], static fn( string $area ): bool => substr_count( $html, 'href="/portal/'. $area. '"' ) !== 2 ) === [] );
+check( '/portal is the intro, the greeting and the components: no navigation, no link to an area, no button', str_contains( $html, 'crm-nav' ) === false && str_contains( (string) strstr( (string) strstr( $html, 'id="intro"' ), '</section>', true ), 'nino-btn' ) === false && str_contains( $html, 'href="/portal/' ) === false );
+// The templates of the unit: the main menu is the way to the areas, so none holds the navigation or a row of buttons
+$tplWords = array_filter( $manifest['templates'], static fn( string $file ): bool => str_starts_with( $file, 'page-portal' ) );
+check( 'the seven templates of the portal hold neither [crm-portal-nav] nor a [button', count( $tplWords ) === 7 && array_filter( $tplWords, static fn( string $file ): bool => preg_match( '~\[(crm-portal-nav|button)[\s\]]~', (string) file_get_contents( $root. '/app/Crm/Crm/install/templates/'. $file ) ) === 1 ) === [] );
+$startTpl = (string) file_get_contents( $root. '/app/Crm/Crm/install/templates/page-portal.tpl' );
+check( 'the start page greets with [members-name] and, after it, [crm-client]', strpos( $startTpl, '[members-name]' ) !== false && strpos( $startTpl, '[crm-client]' ) > strpos( $startTpl, '[members-name]' ) && substr_count( $startTpl, '[crm-client]' ) === 1 );
+$unitFiles = array_map( static fn( string $locale ): string => (string) file_get_contents( $root. '/app/Crm/Crm/install/text/'. $locale. '.php' ), [ 'de_DE', 'en_US' ] );
+check( 'the unit has no words for the buttons of the start page, and has the intro of the start page in both languages', array_filter( $unitFiles, static fn( string $file ): bool => str_contains( $file, 'page-portal/link-' ) === true || str_contains( $file, '[[/template/page-portal/intro/title]]' ) === false || str_contains( $file, '[[/template/page-portal/intro/text]]' ) === false ) === [] );
+check( '...the intro of the start page in German is the sentence of the portal', str_contains( $unitFiles[0], "'Hier findest Du Deine Projekte, Dateien, Belege und Termine.'" ) === true && str_contains( $unitFiles[0], "'Willkommen im Kundenportal'" ) === true );
 check( 'the module puts the style sheet of the list into the bundle of the site, once', count( array_keys( $appData['/nino/html/assets']['/.cache/style.css'] ?? [], \Crm\Portal::STYLE, true ) ) === 1 && is_file( $root. \Crm\Portal::STYLE ) === true );
 
 // A member whose account no client owns, and a client that is switched off
@@ -706,7 +722,7 @@ check( 'after another member signs in, [crm-client] is nothing for the member wi
 
 // Registered one way, with the schema the plan names
 $schema = \Nino\Modules\Components::components( $appData )['crm-client'] ?? [];
-check( 'the component is registered once: global, no source, drawn as a span', ( $schema['group'] ?? '' ) === 'global' && ( $schema['source'] ?? '' ) === 'none' && ( $schema['preview'] ?? '' ) === 'text' && ( $schema['draws'] ?? '' ) === 'span .crm-client'
+check( 'the component is registered once: global, no source, drawn as a div', ( $schema['group'] ?? '' ) === 'global' && ( $schema['source'] ?? '' ) === 'none' && ( $schema['preview'] ?? '' ) === 'block' && ( $schema['draws'] ?? '' ) === 'div .crm-client'
 	&& count( \Nino\Callbacks::registered( $appData, '/nino/html/shortcode/crm-client' ) ) === 1 );
 
 // The injection of a company name

@@ -35,17 +35,7 @@ return [
 
 	// Start, page-portal.tpl
 	'[[/template/page-portal/intro/title]]' => 'Welcome to the client portal',
-	'[[/template/page-portal/intro/text]]' => 'Here you find your projects, documents and dates, and you can upload files.',
-	'[[/template/page-portal/link-projekte/label]]' => 'Projects',
-	'[[/template/page-portal/link-projekte/href]]' => '/portal/projekte',
-	'[[/template/page-portal/link-upload/label]]' => 'Upload',
-	'[[/template/page-portal/link-upload/href]]' => '/portal/upload',
-	'[[/template/page-portal/link-belege/label]]' => 'Documents',
-	'[[/template/page-portal/link-belege/href]]' => '/portal/belege',
-	'[[/template/page-portal/link-termine/label]]' => 'Dates',
-	'[[/template/page-portal/link-termine/href]]' => '/portal/termine',
-	'[[/template/page-portal/link-meine-daten/label]]' => 'My data',
-	'[[/template/page-portal/link-meine-daten/href]]' => '/portal/meine-daten',
+	'[[/template/page-portal/intro/text]]' => 'Here you find your projects, files, documents and dates.',
 
 	// My data, page-portal-meine-daten.tpl
 	'[[/template/page-portal-meine-daten/intro/title]]' => 'My data',
