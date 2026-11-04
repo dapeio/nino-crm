@@ -8,6 +8,7 @@ declare(strict_types=1);
  */
 namespace Crm\Documents;
 
+use Crm\Db;
 use Crm\Settings;
 
 class Numbers {
@@ -43,6 +44,27 @@ class Numbers {
 		$statement->execute( [ 'number' => $number ] );
 
 		return (int) $statement->fetchColumn() === 0 ? $number : null;
+	}
+
+	/**
+	 *	The number a category would get next in a year, as it is now: read, never taken - the counter does not move, which is what the settings
+	 *	screen shows beside the format. A year with no document yet starts at 1
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$category			offer, invoice or credit
+	 *	@param		int				$year
+	 *	@param		string		$format				A number format, see Settings::validFormat()
+	 *
+	 *	@return 	string										'' for a format that is none
+	 */
+	public static function upcoming( array &$appData, string $category, int $year, string $format ): string {
+
+		if( Settings::validFormat( $format ) === false )
+			return '';
+
+		$row = Db::row( $appData, 'SELECT next FROM sequences WHERE category = :category AND year = :year', [ 'category' => $category, 'year' => $year ] );
+
+		return self::render( $format, $year, (int) ( $row['next'] ?? 1 ) );
 	}
 
 	/**

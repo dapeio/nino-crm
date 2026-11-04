@@ -163,7 +163,20 @@ $baseConfig = [];
 \Nino\Features::applyUnit( $appData, $root. '/_admin/install/library/base', [ 'de_DE', 'en_US' ], $baseRoutes, $baseBlacklist, $baseConfig, true );
 $ignored = ninoWarnings();
 
-$panel = [ \Nino\Admin\Admin::class, 'handlePost' ];
+$panel = static function( array &$appData, array &$request ): void {
+
+	// The API of the clients and the documents is reached the way the surface's endpoint reaches it, by the table; the actions of the features' panels (pdf/...) go through the workbench
+	$table = \Crm\Surface::actions();
+	$action = (string) ( $_POST['action'] ?? '' );
+
+	if( isset( $table[$action] ) === true ) {
+		[ $class, $method ] = $table[$action];
+		$class::{$method}( $appData, $request );
+		return;
+	}
+
+	\Nino\Admin\Admin::handlePost( $appData, $request );
+};
 ninoUser( $appData, 'admin@example.com' );
 $asAdmin = static function() use ( &$appData ): void {
 	$_SESSION = [];
@@ -181,7 +194,7 @@ $reset = static function() use ( &$appData ): void {
 	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
 };
 
-[ $status, $body ] = $post( 'crm-clients/setup' );
+[ $status, $body ] = $post( 'crm/setup' );
 check( 'the portal pages are set up, the page Dokumente among them', $status === 200 && in_array( 'GET://portal/dokumente', $body['added']['routes'], true ) === true && in_array( 'page-portal-documents.tpl', $body['added']['templates'], true ) === true );
 
 // --- Clients, accounts, templates, documents -----------------------------------------------------------------------------

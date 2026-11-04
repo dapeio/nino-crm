@@ -2,7 +2,7 @@
 declare(strict_types=1);
 /**
  *	Crm\Crm		The project module of the CRM. Listed in /nino/modules by the owner (one line in private/config.php);
- *						init() registers behaviour and writes nothing: the panels Kunden and Belege (adminPanels()), the
+ *						init() registers behaviour and writes nothing: the panel CRM (adminPanels()), the
  *						components [crm-client] and [crm-documents], the callbacks that keep the portal's lookup true when a member signs in or
  *						out and the ones that let a document follow its request in Sign, the style sheet of the portal's list, and the route
  *						/.crm/pdf/<id> that answers the PDF of a finalised document; and the surface at /crm, one page of the project with its
@@ -13,7 +13,7 @@ namespace Crm;
 
 class Crm {
 
-	// The one permission of the CRM: the surface at /crm, and the panels that remain in the workbench
+	// The one permission of the CRM: the surface at /crm, the panel CRM of the workbench and the API behind both
 	public const string MANAGE_PERM = '/_admin/crm/manage';
 
 	/**
@@ -91,6 +91,6 @@ class Crm {
 	 */
 	public static function adminPanels( array &$appData ): array {
 
-		return [ \Crm\Clients\Admin::class, \Crm\Documents\Admin::class ];
+		return [ \Crm\Crm\Admin::class ];
 	}
 }

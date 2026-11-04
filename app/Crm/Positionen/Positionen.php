@@ -8,7 +8,7 @@ declare(strict_types=1);
  *								adds it and never follows the element afterwards.
  *
  *								The type itself is brought by the install unit of the module (unit/positionen.php, applied by the button
- *								Portal einrichten in Kunden): missing() says whether it is there, and while it is not, list() has nothing.
+ *								Portal einrichten in the panel CRM and in the settings of the surface): missing() says whether it is there, and while it is not, list() has nothing.
  *								Reading a type that is not there is an error of the kernel, which is why the type is asked for first.
  */
 namespace Crm;
@@ -64,6 +64,48 @@ class Positionen {
 
 			if( $search === '' || mb_stripos( $item['title'], $search, 0, 'UTF-8' ) !== false )
 				$items[] = $item;
+		}
+
+		return $items;
+	}
+
+	/**
+	 *	Every item, hidden ones too, in the order of their field sort, with its words in each language of the site - exactly what the
+	 *	element holds in that language, without the fallback to another (a language that has no text shows empty, which is what the
+	 *	Elements panel shows as well). The numbers are global
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											id, sort, price (cents), vat (hundredths), active and words ( locale => title, description, unit ) of each
+	 */
+	public static function all( array &$appData ): array {
+
+		if( self::missing( $appData ) === true )
+			return [];
+
+		$locales = \Nino\Locales::getAvailableLocales( $appData );
+		$hits = \Nino\Elements::queryElements( $appData, self::TYPE, [], '*', [], [ 'sort' => 'sort' ] );
+		$items = [];
+
+		foreach( is_array( $hits ) === true ? $hits : [] as $hit ) {
+
+			$uri = (string) $hit['.uri'];
+			$first = \Nino\Elements::getElement( $appData, $uri, '*' );
+
+			if( is_array( $first ) === false )
+				continue;
+
+			$item = self::shape( $first + [ '.uri' => $uri ] );
+			$words = [];
+
+			foreach( $locales as $locale ) {
+
+				$element = \Nino\Elements::getElement( $appData, $uri, (string) $locale );
+				$words[$locale] = self::shape( is_array( $element ) === true ? $element + [ '.uri' => $uri ] : [ '.uri' => $uri ] );
+				$words[$locale] = array_intersect_key( $words[$locale], [ 'title' => 1, 'description' => 1, 'unit' => 1 ] );
+			}
+
+			$items[] = [ 'id' => $item['id'], 'sort' => $item['sort'], 'price' => $item['price'], 'vat' => $item['vat'], 'active' => $item['active'], 'words' => $words ];
 		}
 
 		return $items;

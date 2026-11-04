@@ -1,14 +1,15 @@
 <?php
 declare(strict_types=1);
 /**
- *	Crm\Documents\Admin		The panel Belege of the CRM module: the documents (list with filters, the editor of a draft with its
- *												lines, finalising, the steps of a finalised document, the offer that becomes an invoice and the
- *												invoice that is taken back by a credit note; the contract, the privacy and the information document
- *												without lines; the release of a document to the portal with its mail and the request for a signature
- *												through Sign) and the settings of the documents. The panel
- *												validates what it is posted and answers the failures a person can cause with codes; the rules of
- *												the data are Crm\Documents', the storage Crm\Db's. A database failure is answered 500 with the
- *												code crm_documents_database.
+ *	Crm\Documents\Admin		The API of the documents behind the surface's endpoint (Surface::actions()): the documents (list with filters,
+ *												the draft with its lines, finalising, the steps of a finalised document, the offer that becomes an
+ *												invoice and the invoice that is taken back by a credit note; the contract, the privacy and the
+ *												information document without lines; the release of a document to the portal with its mail and the
+ *												request for a signature through Sign), the settings of the documents with what stands beside them
+ *												(the next numbers, the templates of Pdf, the portal) and the items of the catalogue. It is no panel of
+ *												the workbench any more. It validates what it is posted and answers the failures a person can cause with
+ *												codes (their sentences are in text/); the rules of the data are Crm\Documents', the storage Crm\Db's.
+ *												A database failure is answered 500 with the code crm_documents_database.
  */
 namespace Crm\Documents;
 
@@ -63,10 +64,6 @@ class Admin {
 	// What an action made or touched, by action: written by the action, read by log() in the same request
 	private static array $_made = [];
 
-	public static function perm(): string {
-		return self::MANAGE_PERM;
-	}
-
 	public static function actions(): array {
 		return [
 			'crm-documents/list'          => [ self::class, 'apiList' ],
@@ -83,6 +80,7 @@ class Admin {
 			'crm-documents/settings-get'  => [ self::class, 'apiSettingsGet' ],
 			'crm-documents/settings-save' => [ self::class, 'apiSettingsSave' ],
 			'crm-documents/templates'     => [ self::class, 'apiTemplates' ],
+			'crm-documents/positionen'    => [ self::class, 'apiPositionen' ],
 			'crm-documents/status'        => [ self::class, 'apiStatus' ],
 			'crm-documents/overview'      => [ self::class, 'apiOverview' ],
 			'crm-documents/copy'          => [ self::class, 'apiCopy' ],
@@ -90,47 +88,6 @@ class Admin {
 			'crm-documents/sign-remind'   => [ self::class, 'apiSignRemind' ],
 			'crm-documents/sign-cancel'   => [ self::class, 'apiSignCancel' ],
 		];
-	}
-
-	public static function nav(): array {
-		return [ 'crm-documents', '/_admin/crm-documents/nav', 40, 'content' ];
-	}
-
-	public static function icon(): string {
-		return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>';
-	}
-
-	// The panel draws into the one region of templates/panel.tpl
-	public static function template(): string {
-		return \Nino\Admin\Panels::relative( __DIR__. '/templates/panel' );
-	}
-
-	public static function assets(): array {
-		return [ \Nino\Admin\Panels::relative( dirname( __DIR__ ). '/Money/assets/money.js' ), \Nino\Admin\Panels::relative( __DIR__. '/assets/admin.js' ), \Nino\Admin\Panels::relative( __DIR__. '/assets/admin.css' ) ];
-	}
-
-	public static function text(): string {
-		return \Nino\Admin\Panels::relative( __DIR__. '/text' );
-	}
-
-	/**
-	 *	The Dashboard's tile: the open invoices, how many and what they come to. A database that cannot be opened leaves the
-	 *	tile out rather than the Dashboard: the panel itself says the failure when it is opened
-	 *
-	 *	@param		array 		&$appData
-	 *
-	 *	@return 	array|null
-	 */
-	public static function summary( array &$appData ): ?array {
-
-		try {
-			$open = Documents::summary( $appData );
-
-			return [ 'value' => $open['count']. ' · '. Money::format( $open['gross'], Settings::get( $appData, 'currency' ) ), 'label' => '/_admin/crm-documents/label/open' ];
-		}
-		catch( \PDOException $e ) {
-			return null;
-		}
 	}
 
 	/**
@@ -205,7 +162,7 @@ class Admin {
 	}
 
 	/**
-	 *	What the first screen of the surface shows: the books at a glance, what needs the owner and the documents of the latest dates, with the settings the amounts are written by
+	 *	What the first screen of the surface shows: the books at a glance - and the count of the active clients, which the rail shows - what needs the owner and the documents of the latest dates, with the settings the amounts are written by
 	 */
 	public static function apiOverview( array &$appData, array &$request ): void {
 
@@ -215,7 +172,7 @@ class Admin {
 		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
 
 			\Nino\Http::ok( $request, [
-				'summary'  => Documents::summary( $appData ),
+				'summary'  => Documents::summary( $appData ) + [ 'clients' => \Crm\Clients::countActive( $appData ) ],
 				'needs'    => Documents::needs( $appData ),
 				'recent'   => Documents::recent( $appData, 8 ),
 				'settings' => self::_settings( $appData ),
@@ -550,7 +507,8 @@ class Admin {
 	}
 
 	/**
-	 *	The settings of the documents
+	 *	The settings of the documents, and what the screen of the settings shows beside them: the number each sequence gives next, the templates
+	 *	of Pdf by tag, whether Pdf is on, and the portal as the owner is told of it
 	 */
 	public static function apiSettingsGet( array &$appData, array &$request ): void {
 
@@ -558,7 +516,13 @@ class Admin {
 			return;
 
 		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
-			\Nino\Http::ok( $request, [ 'settings' => Settings::all( $appData ) ] );
+			\Nino\Http::ok( $request, [
+				'settings'  => Settings::all( $appData ),
+				'next'      => self::_next( $appData ),
+				'templates' => self::_tags( $appData ),
+				'pdf'       => \Crm\Crm::featureOn( $appData, 'pdf' ),
+				'portal'    => \Crm\Portal::overview( $appData ),
+			] );
 		} );
 	}
 
@@ -631,13 +595,35 @@ class Admin {
 	}
 
 	/**
+	 *	The items of the catalogue as the Elements panel keeps them, for the screen that looks at them: every item, hidden ones too, in the order of
+	 *	their sort, with its words in each language of the site (what the element holds in that language, nothing taken from another), the price
+	 *	and the rate. missing says the element type is not there, which the button Portal einrichten brings
+	 */
+	public static function apiPositionen( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
+
+			\Nino\Http::ok( $request, [
+				'missing'  => \Crm\Positionen::missing( $appData ),
+				'locales'  => array_values( \Nino\Locales::getAvailableLocales( $appData ) ),
+				'native'   => \Nino\Locales::getNativeLocale( $appData ),
+				'items'    => \Crm\Positionen::all( $appData ),
+				'settings' => self::_settings( $appData ),
+			] );
+		} );
+	}
+
+	/**
 	 *	What the module misses: each item has a key and a state
 	 *	  module           ok, off (the class is not in /nino/modules)
 	 *	  data             ok, unwritable (the data directory)
 	 *	  pdf              ok, off (installed, not active), missing (not installed), problem
 	 *	  templates-offer, templates-invoice     ok, none (Pdf has no template of the tag) - only while Pdf is active
 	 *	  pdf-dir          ok, unwritable (the directory the PDF files are kept in, or the one above it where it is not made yet)
-	 *	  positionen       ok, missing (the element type /positionen, which the button Portal einrichten in Kunden brings)
+	 *	  positionen       ok, missing (the element type /positionen, which the button Portal einrichten brings, in the panel CRM and in the settings of the surface)
 	 */
 	public static function apiStatus( array &$appData, array &$request ): void {
 
@@ -873,6 +859,41 @@ class Admin {
 	private static function _clients( array &$appData ): array {
 
 		return array_map( static fn( array $client ): array => [ 'id' => $client['id'], 'number' => $client['number'], 'title' => $client['company'] !== '' ? $client['company'] : $client['name'], 'active' => $client['active'] ], \Crm\Clients::list( $appData ) );
+	}
+
+	/**
+	 *	The number each sequence gives next in the year now
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											category => number (offer, invoice, credit)
+	 */
+	private static function _next( array &$appData ): array {
+
+		$year = (int) date( 'Y' );
+		$next = [];
+
+		foreach( Settings::FORMATS as $category => $key )
+			$next[$category] = Numbers::upcoming( $appData, $category, $year, Settings::get( $appData, $key ) );
+
+		return $next;
+	}
+
+	/**
+	 *	The templates of Pdf by the tags a document has - none while Pdf is off
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											tag => names of its templates
+	 */
+	private static function _tags( array &$appData ): array {
+
+		$tags = [];
+
+		foreach( [ 'offer', 'invoice', 'contract', 'privacy', 'information' ] as $tag )
+			$tags[$tag] = array_column( self::_templates( $appData, $tag ), 'name' );
+
+		return $tags;
 	}
 
 	/**

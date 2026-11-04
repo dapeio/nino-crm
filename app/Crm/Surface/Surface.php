@@ -10,7 +10,7 @@ declare(strict_types=1);
  *																					signs in at the kernel and comes back to /crm. A session without the permission
  *																					\Crm\Crm::MANAGE_PERM: the page that says so, 403. Never cached, never framed, its policy its
  *																					own: no inline script
- *								POST /crm/api							{ "action": "crm-documents/list", "data": { ... } } in, the answer of the method of the panel out,
+ *								POST /crm/api							{ "action": "crm-documents/list", "data": { ... } } in, the answer of the method of the API class (or of the panel CRM) out,
  *																					status, body, code, params and field exactly as the workbench gives them. The kernel checks the
  *																					token (the route says csrf, the page sends it in X-CSRF-Token); a refused token is the 403 with
  *																					the code csrf, no session the 401 with the code session, an action the table does not hold the
@@ -20,7 +20,7 @@ declare(strict_types=1);
  *
  *								The methods an action reaches read their input as the workbench posts it, from $_POST['data']: the endpoint puts the
  *								JSON it was given there, for the length of the request. They keep their own guardPerm(), and the activity log gets the
- *								line the panel's log() phrases, as it does for the workbench.
+ *								line the class's log() phrases, as it does for the workbench.
  */
 namespace Crm;
 
@@ -36,8 +36,9 @@ class Surface {
 		'login.js' => [ 'Surface/assets/login.js', 'text/javascript; charset=utf-8' ],
 	];
 
-	// The pages of the workbench the rail leads to until the surface has screens of its own: path of the workbench, panel
-	private const array PANELS = [ 'clients' => 'crm-clients', 'items' => 'elements/positionen', 'settings' => 'crm-documents' ];
+	// The pages of the workbench the surface links: name => the hash behind /_admin/#. The element type of the items is edited in the Elements panel, the
+	// templates in the panel of Pdf, the accounts of the portal in Members, the permission of the CRM in Users
+	private const array PANELS = [ 'items' => 'elements/positionen', 'pdf' => 'pdf', 'members' => 'members', 'users' => 'users' ];
 
 	// The policy of the page: its own files and nothing inline; data: for an image of the markup's own
 	private const string POLICY = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
@@ -68,17 +69,18 @@ class Surface {
 	}
 
 	/**
-	 *	The actions the endpoint answers: the ones of the panels Kunden and Belege, by their names
+	 *	The actions the endpoint answers: the API of the clients and of the documents and the two actions of the panel CRM, by their names
 	 *
 	 *	@return 	array											action => [ class, method ]
 	 */
 	public static function actions(): array {
 
-		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions() );
+		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions() );
 	}
 
 	/**
-	 *	The words of the surface: its own file and the sentences of the codes the panels answer with, as error.<code>
+	 *	The words of the surface: its own file, the sentences of the codes the API answers a refusal with, as error.<code>, and the sentences of the
+	 *	status of the module and of the setup, which the panel CRM of the workbench has as well, as status.<key> and setup.<key>
 	 *
 	 *	@return 	array											key => text
 	 */
@@ -88,10 +90,10 @@ class Surface {
 
 			self::$_texts = (array) require __DIR__. '/text/de_DE.php';
 
-			foreach( [ 'Clients', 'Documents' ] as $panel )
+			foreach( [ 'Clients', 'Documents', 'Crm' ] as $panel )
 				foreach( (array) require dirname( __DIR__ ). '/'. $panel. '/Admin/text/de_DE.php' as $key => $text )
-					if( preg_match( '~^\[\[/_admin/error/([a-z][a-z0-9_]*)\]\]$~D', (string) $key, $found ) === 1 )
-						self::$_texts['error.'. $found[1]] = (string) $text;
+					if( preg_match( '~^\[\[/_admin/(?:(error)/([a-z][a-z0-9_]*)|crm/(status|setup)/([a-z][a-z0-9-]*))\]\]$~D', (string) $key, $found ) === 1 )
+						self::$_texts[( $found[1] !== '' ? 'error.'. $found[2] : $found[3]. '.'. $found[4] )] = (string) $text;
 		}
 
 		return self::$_texts;
@@ -162,6 +164,7 @@ class Surface {
 			'base'  => $dir,
 			'csrf'  => \Nino\Csrf::getToken( $appData ),
 			'user'  => [ 'name' => (string) $user['mail'] ],
+			'perm'  => \Crm\Crm::MANAGE_PERM,
 			'texts' => self::texts(),
 			'links' => $links + array_map( static fn( string $panel ): string => $dir. '/_admin/#'. $panel, self::PANELS ),
 		];
@@ -172,9 +175,6 @@ class Surface {
 			'[[money]]'     => $dir. '/crm/assets/'. self::assetName( 'money.js' ),
 			'[[site]]'      => $links['site'],
 			'[[workbench]]' => $links['workbench'],
-			'[[clients]]'   => $data['links']['clients'],
-			'[[items]]'     => $data['links']['items'],
-			'[[settings]]'  => $data['links']['settings'],
 			'[[user]]'      => (string) $user['mail'],
 		];
 
@@ -193,7 +193,7 @@ class Surface {
 	}
 
 	/**
-	 *	POST /crm/api: one action of a panel, answered as the workbench answers it
+	 *	POST /crm/api: one action of the table, answered as the workbench answers it
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$request
@@ -204,7 +204,7 @@ class Surface {
 
 		$request['/nino/http/response']['header']['Cache-Control'] = 'no-store';
 
-		// The methods of the panels are written against the workbench's shell, which only its own entry point loads
+		// The methods of the API classes are written against the workbench's shell, which only its own entry point loads
 		if( self::workbench( $appData ) === false ) {
 			\Nino\Http::fail( $request, 500, 'the workbench is not there', 'workbench' );
 			return;
@@ -246,7 +246,7 @@ class Surface {
 	}
 
 	/**
-	 *	Run the method of an action and, where it went through, write the line of the activity log: the panel phrases it and leaves a read out
+	 *	Run the method of an action and, where it went through, write the line of the activity log: the class phrases it and leaves a read out
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$request

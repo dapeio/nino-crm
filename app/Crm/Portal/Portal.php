@@ -129,6 +129,43 @@ class Portal {
 	}
 
 	/**
+	 *	What the owner is told of the portal, none of it a setting of the CRM: the address of its start page, its pages and whether the project has
+	 *	a route for each, the settings of Members that shape it and the cap of mails the kernel keeps. All of it is read, none is written
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array										address ('' where the site has none), pages ( uri, present ), members ( key, label, value, unit ) and mail_cap (calls an hour; null where the kernel has no such key)
+	 */
+	public static function overview( array &$appData ): array {
+
+		$manifest = \Nino\Features::readUnitManifest( dirname( __DIR__ ). '/unit' ) ?? [];
+		$routes = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
+		$routes = is_array( $routes ) === true ? $routes : [];
+		$pages = [];
+
+		foreach( (array) ( $manifest['routes'] ?? [] ) as $key => $route )
+			if( str_starts_with( (string) ( $route['uri'] ?? '' ), '/portal' ) === true )
+				$pages[] = [ 'uri' => (string) $route['uri'], 'present' => isset( $routes[$key] ) === true ];
+
+		$members = [];
+		$feature = \Nino\Features::get( $appData, 'members' );
+
+		if( $feature !== null )
+			foreach( \Nino\Features::settings( $appData, 'members' ) as $name => $value ) {
+
+				$label = \Nino\Features::localized( (array) ( $feature['settings'][$name]['label'] ?? [] ), 'de_DE' );
+				$members[] = [ 'key' => (string) $name, 'label' => $label !== '' ? $label : (string) $name, 'value' => is_array( $value ) === true ? implode( ', ', array_map( 'strval', $value ) ) : (string) $value, 'unit' => (string) ( $feature['settings'][$name]['unit'] ?? '' ) ];
+			}
+
+		return [
+			'address'  => \Nino\Html::absoluteUrl( $appData, '/portal' ),
+			'pages'    => $pages,
+			'members'  => $members,
+			'mail_cap' => isset( $appData['/nino/mail/cap'] ) === true ? (int) $appData['/nino/mail/cap'] : null,
+		];
+	}
+
+	/**
 	 *	'/members/login' and '/members/logout': who is here changed - the lookup of this request is dropped, so a page
 	 *	rendered after it does not answer for whoever was here before
 	 *

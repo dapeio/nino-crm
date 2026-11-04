@@ -8,8 +8,9 @@
  *								what it posts, the totals it shows
  *				  the shell		the element helper (every element is made from data, no markup is written), the toast, the menus, the dialogs
  *								(<dialog>), the keys (/ finds the search, Esc closes), the router (#uebersicht, #belege, #beleg-12,
- *								#entwurf-16, #neu-invoice) and the answers of the endpoint (the session that ended, the token that is stale)
- *				  the screens	Übersicht, Belege, Beleg and Entwurf
+ *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #positionen, #einstellungen) and the
+ *								answers of the endpoint (the session that ended, the token that is stale)
+ *				  the screens	Übersicht, Belege, Beleg and Entwurf, then Kunden, Kundenkarte, Neuer Kunde, Positionen and Einstellungen
  *
  *				Every string that comes from the server or from a person enters the page as textContent or as a property of an
  *				element; nothing here builds HTML.
@@ -26,6 +27,8 @@
 	const SIGNABLE = [ 'contract', 'privacy' ];
 	const PAGE_SIZE = 50;
 	const NEW_KINDS = [ 'invoice', 'offer', 'contract', 'privacy', 'information' ];
+	const CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id' ];
+	const CLIENT_TABS = [ 'belege', 'portal', 'notizen' ];
 	const RELOAD_KEY = 'crm-reloaded';
 	const AUTOSAVE_MS = 800;
 
@@ -45,11 +48,12 @@
 		Object.keys( state ).forEach( function( key ) { delete state[key] } );
 
 		Object.assign( state, {
-			base : '', csrf : '', user : '', texts : {}, links : {},
+			base : '', csrf : '', perm : '', user : '', texts : {}, links : {},
 			settings : { currency : '', vat_mode : 'small_business', rates : [], payment_days : '14', offer_days : '30' },
-			clients : [], items : [], offers : [], years : [], docs : [], summary : null,
+			clients : [], items : [], offers : [], years : [], docs : [], summary : null, people : [], owed : {},
 			filter : { chip : 'all', q : '', sort : 'date', dir : -1, year : 0, page : 1 },
-			view : 0, tab : '', draft : null, saving : false, queued : false, pending : null, timer : null, main : null, toast : null, dialogs : null, count : null,
+			cfilter : { q : '', sort : 'number', dir : 1, page : 1 },
+			view : 0, tab : '', draft : null, saving : false, queued : false, pending : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
 		} );
 	};
 
@@ -690,14 +694,14 @@
 	/**
 	 *	A menu: a button and the list under it
 	 *
-	 *	@param		{Object}	spec						label, button (the class of the button), align, items ([ { label, run, href, saved, danger } | 'sep' ])
+	 *	@param		{Object}	spec						label, aria (what a screen reader calls the button), button (the class of the button), align, items ([ { label, run, href, saved, danger } | 'sep' ])
 	 *
 	 *	@return		{Object}
 	 */
 	const menu = function( spec ) {
 
 		const root = el( 'div', { class: 'menu' } );
-		const button = el( 'button', { type: 'button', class: 'btn '+ ( spec.button || '' ), 'aria-haspopup': 'true', 'aria-expanded': 'false', text: spec.label, on: { click: function() {
+		const button = el( 'button', { type: 'button', class: 'btn '+ ( spec.button || '' ), 'aria-haspopup': 'true', 'aria-expanded': 'false', 'aria-label': spec.aria, text: spec.label, on: { click: function() {
 			const open = root.classList.contains( 'open' ) === false;
 			closeMenus( root );
 			root.classList.toggle( 'open', open );
@@ -723,19 +727,23 @@
 	 *	The menu that makes a new document
 	 *
 	 *	@param		{string}	label
+	 *	@param		{number}	[client]				The client the document is for: it is chosen in the editor, and a contract - which follows its offer - is not offered
 	 *
 	 *	@return		{Object}
 	 */
-	const newMenu = function( label ) {
+	const newMenu = function( label, client ) {
 
 		const items = [];
 
 		NEW_KINDS.forEach( function( kind ) {
 
-			if( kind === 'contract' )
+			if( client !== undefined && kind === 'contract' )
+				return;
+
+			if( client === undefined && kind === 'contract' )
 				items.push( 'sep' );
 
-			items.push( { label : t( 'new.'+ kind ), run : function() { wn.location.hash = '#neu-'+ kind } } );
+			items.push( { label : t( 'new.'+ kind ), run : function() { wn.location.hash = '#neu-'+ kind+ ( client === undefined ? '' : '-k'+ client ) } } );
 		} );
 
 		return menu( { label : label, button : 'primary', items : items } );
@@ -907,7 +915,7 @@
 	};
 
 	/**
-	 *	The count of the open invoices in the rail
+	 *	The counts in the rail: the open invoices at Belege, the active clients at Kunden
 	 *
 	 *	@param		{Object}	summary
 	 *
@@ -917,6 +925,9 @@
 
 		state.summary = summary;
 		state.count.textContent = summary.count > 0 ? String( summary.count ) : '';
+
+		if( state.clientCount !== null )
+			state.clientCount.textContent = summary.clients > 0 ? String( summary.clients ) : '';
 	};
 
 	/**
@@ -987,7 +998,7 @@
 		if( need.kind === 'expiring' )
 			return el( 'li', {}, el( 'span', {}, dot( 'warn' ), link( '#beleg-'+ need.id, need.number ), ' · '+ need.client_title+ ' · '+ t( 'needs.expiring', dmy( need.date ) ) ), el( 'span', { class: 'r', text: cash( need.gross ) } ) );
 
-		return el( 'li', {}, el( 'span', {}, dot( 'muted' ), link( state.links.clients, need.client_title ), ' '+ t( 'needs.account' ) ), el( 'span', { class: 'r' }, link( state.links.clients, t( 'needs.invite' ) ) ) );
+		return el( 'li', {}, el( 'span', {}, dot( 'muted' ), link( '#kunde-'+ need.client_id, need.client_title ), ' '+ t( 'needs.account' ) ), el( 'span', { class: 'r' }, link( '#kunde-'+ need.client_id+ '-einladen', t( 'needs.invite' ) ) ) );
 	};
 
 	const uebersicht = function( where, mine ) {
@@ -1047,6 +1058,54 @@
 
 	// --- Belege ------------------------------------------------------------------------------------------------------
 
+	/**
+	 *	The head of a sortable column: a button that sorts by it, and again to turn the order
+	 *
+	 *	@param		{Object}	filter					sort and dir of the table
+	 *	@param		{string}	key
+	 *	@param		{string}	label
+	 *	@param		{boolean}	right					A column of numbers
+	 *	@param		{Function}	again				Draws the table again
+	 *	@param		{number}	first					The order a column is sorted in the first time: 1 up, -1 down
+	 *
+	 *	@return		{Object}
+	 */
+	const sortHead = function( filter, key, label, right, again, first ) {
+
+		const on = filter.sort === key;
+
+		return el( 'th', { class: ( right === true ? 'r ' : '' )+ 'sortable', scope: 'col', 'aria-sort': on ? ( filter.dir > 0 ? 'ascending' : 'descending' ) : 'none' },
+			el( 'button', { type: 'button', class: 'th', dataset: { sort: key }, text: label+ ( on ? ( filter.dir > 0 ? ' ↑' : ' ↓' ) : '' ), on: { click: function() {
+				if( filter.sort === key )
+					filter.dir = -filter.dir;
+				else {
+					filter.sort = key;
+					filter.dir = first;
+				}
+				again();
+			} } } ) );
+	};
+
+	/**
+	 *	The pages of a table: Zurück, where it is, Weiter; nothing for a single page
+	 *
+	 *	@param		{Object}	filter					page of the table
+	 *	@param		{number}	pages
+	 *	@param		{Function}	again				Draws the table again
+	 *
+	 *	@return		{Object|null}
+	 */
+	const pagerOf = function( filter, pages, again ) {
+
+		if( pages === 1 )
+			return null;
+
+		return el( 'div', { class: 'pager' },
+			el( 'button', { type: 'button', class: 'btn sm', id: 'prev', text: t( 'list.prev' ), disabled: filter.page === 1, on: { click: function() { filter.page--; again() } } } ),
+			el( 'span', { class: 'state-note', text: t( 'list.page', filter.page, pages ) } ),
+			el( 'button', { type: 'button', class: 'btn sm', id: 'next', text: t( 'list.next' ), disabled: filter.page === pages, on: { click: function() { filter.page++; again() } } } ) );
+	};
+
 	const belege = function( where, mine ) {
 
 		const filter = state.filter;
@@ -1089,21 +1148,7 @@
 
 		years.sort( function( a, b ) { return b - a } );
 
-		const heading = function( key, label, right ) {
-
-			const on = filter.sort === key;
-
-			return el( 'th', { class: ( right === true ? 'r ' : '' )+ 'sortable', scope: 'col', 'aria-sort': on ? ( filter.dir > 0 ? 'ascending' : 'descending' ) : 'none' },
-				el( 'button', { type: 'button', class: 'th', dataset: { sort: key }, text: label+ ( on ? ( filter.dir > 0 ? ' ↑' : ' ↓' ) : '' ), on: { click: function() {
-					if( filter.sort === key )
-						filter.dir = -filter.dir;
-					else {
-						filter.sort = key;
-						filter.dir = key === 'date' ? -1 : 1;
-					}
-					redraw();
-				} } } ) );
-		};
+		const heading = function( key, label, right ) { return sortHead( filter, key, label, right, redraw, key === 'date' ? -1 : 1 ) };
 
 		const body = el( 'tbody', {}, shown.length === 0
 			? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '8', class: 'muted', text: state.docs.length === 0 ? t( 'list.empty' ) : t( 'list.none' ) } ) )
@@ -1127,10 +1172,7 @@
 			body,
 			el( 'tfoot', {}, el( 'tr', {}, el( 'td', { colspan: '5', text: t( 'list.sum' ) } ), el( 'td', { class: 'r num', id: 'sum', text: cash( sum ) } ), el( 'td', { colspan: '2' } ) ) ) ) );
 
-		const pager = pages === 1 ? null : el( 'div', { class: 'pager' },
-			el( 'button', { type: 'button', class: 'btn sm', id: 'prev', text: t( 'list.prev' ), disabled: filter.page === 1, on: { click: function() { filter.page--; redraw() } } } ),
-			el( 'span', { class: 'state-note', text: t( 'list.page', filter.page, pages ) } ),
-			el( 'button', { type: 'button', class: 'btn sm', id: 'next', text: t( 'list.next' ), disabled: filter.page === pages, on: { click: function() { filter.page++; redraw() } } } ) );
+		const pager = pagerOf( filter, pages, redraw );
 
 		const tabs = el( 'div', { class: 'tabs top', role: 'tablist' }, chips.map( function( chip ) {
 			return el( 'button', { type: 'button', role: 'tab', 'aria-selected': filter.chip === chip.key ? 'true' : 'false', class: filter.chip === chip.key ? 'on' : '', dataset: { chip: chip.key }, on: { click: function() {
@@ -1159,18 +1201,19 @@
 	};
 
 	/**
-	 *	Draw the list again with the search field kept as it is, the cursor in it
+	 *	Draw a list again with the search field kept as it is, the cursor in it
 	 *
+	 *	@param		{Function}	draw						Draws the list
 	 *	@param		{boolean}	[typing]				The search is what changed
 	 *
 	 *	@return		{void}
 	 */
-	const redraw = function( typing ) {
+	const keepSearch = function( draw, typing ) {
 
 		const field = typing === true ? dc.getElementById( 'q' ) : null;
 		const at = field === null ? 0 : field.selectionStart;
 
-		drawBelege();
+		draw();
 
 		if( field !== null ) {
 			const next = dc.getElementById( 'q' );
@@ -1178,6 +1221,8 @@
 			next.setSelectionRange( at, at );
 		}
 	};
+
+	const redraw = function( typing ) { keepSearch( drawBelege, typing ) };
 
 
 	// --- Beleg -------------------------------------------------------------------------------------------------------
@@ -1646,7 +1691,7 @@
 
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#belege', t( 'list.title' ) ), ' › '+ t( 'category.'+ doc.category ) ) );
 		state.main.appendChild( head( docName( doc ), stateBadge( doc ), marks( doc ),
-			el( 'span', { class: 'sub' }, link( state.links.clients, client.company || client.name ), ' · '+ dmy( doc.date )+ ( doc.due_date ? ' · '+ t( 'head.due', dmy( doc.due_date ) ) : doc.valid_until ? ' · '+ t( 'head.valid', dmy( doc.valid_until ) ) : '' ) ),
+			el( 'span', { class: 'sub' }, link( '#kunde-'+ doc.client_id, client.company || client.name ), ' · '+ dmy( doc.date )+ ( doc.due_date ? ' · '+ t( 'head.due', dmy( doc.due_date ) ) : doc.valid_until ? ' · '+ t( 'head.valid', dmy( doc.valid_until ) ) : '' ) ),
 			el( 'span', { class: 'grow' } ), isPlain( doc ) ? null : el( 'span', { class: 'big num', id: 'gross', text: cash( doc.gross ) } ), primaryButton, menuOf( view ) ) );
 
 		if( doc.overdue === true )
@@ -1749,6 +1794,9 @@
 			adopt( answers[0].body );
 
 			const draft = draftNew( where.category, state.settings, where.offer );
+
+			if( where.client !== '' && state.clients.some( function( one ) { return String( one.id ) === where.client && one.active === true } ) === true )
+				draft.client_id = where.client;
 
 			draft.templates = answers[1].body.templates;
 			state.offers = answers[1].body.offers;
@@ -2075,8 +2123,8 @@
 				append( where, lines.length === 0 ? [ '–' ] : lines.map( function( part, index ) { return [ index === 0 ? null : el( 'br' ), part ] } ) );
 				clear( who );
 				append( who, accounts.length === 0
-					? [ t( 'client.no-account' ), ' ', link( state.links.clients, t( 'client.invite' ) ) ]
-					: [ accounts.map( function( account ) { return account.name !== '' ? account.name : account.email } ).join( ', ' ), ' ', link( state.links.clients, t( 'client.accounts-link' ) ) ] );
+					? [ t( 'client.no-account' ), ' ', link( '#kunde-'+ id+ '-einladen', t( 'client.invite' ) ) ]
+					: [ accounts.map( function( account ) { return account.name !== '' ? account.name : account.email } ).join( ', ' ), ' ', link( '#kunde-'+ id, t( 'client.accounts-link' ) ) ] );
 			} );
 
 			api( 'crm-documents/list', { client : id } ).then( function( answer ) {
@@ -2316,6 +2364,1127 @@
 	};
 
 
+	// --- forms -------------------------------------------------------------------------------------------------------
+
+	/**
+	 *	Post an action, and say the refusal in a toast: the shape of a step that changes nothing the rail counts
+	 *
+	 *	@param		{string}	action
+	 *	@param		{Object}	data
+	 *	@param		{string}	fallback				The word for what failed
+	 *
+	 *	@return		{Promise}									The answer; its ok says whether to go on
+	 */
+	const call = function( action, data, fallback ) {
+
+		return api( action, data ).then( function( answer ) {
+
+			if( answer.ok !== true )
+				failed( answer, fallback );
+
+			return answer;
+		} );
+	};
+
+	/**
+	 *	A form of a screen: rows of a label, a control and the place where a refusal is said beside the control. What is typed marks the
+	 *	form as changed, which the guard of the page asks before it lets go of the screen
+	 *
+	 *	@param		{Array}		rows						[ { name, label, control, hint } ]
+	 *	@param		{Object}	form						Gets controls (name => control) and notes (name => the element of the refusal)
+	 *
+	 *	@return		{Object}									The definition list
+	 */
+	const formList = function( rows, form ) {
+
+		return el( 'dl', { class: 'kv' }, rows.map( function( row ) {
+
+			const note = el( 'span', { class: 'state-note bad', role: 'alert' } );
+			const clear = function() {
+				row.control.classList.remove( 'err' );
+				row.control.removeAttribute( 'aria-invalid' );
+				note.textContent = '';
+				form.dirty = true;
+			};
+
+			form.controls[row.name] = row.control;
+			form.notes[row.name] = note;
+			row.control.addEventListener( 'input', clear );
+			row.control.addEventListener( 'change', clear );
+
+			return [ el( 'dt', {}, el( 'label', { for : row.control.id, text : row.label } ) ), el( 'dd', {}, row.control, row.hint === undefined ? null : el( 'span', { class: 'state-note', text: row.hint } ), note ) ];
+		} ) );
+	};
+
+	/**
+	 *	A form that the guard of the page knows: a fresh one holds nothing unsaved
+	 *
+	 *	@return		{Object}
+	 */
+	const formOf = function() {
+
+		const form = { controls : {}, notes : {}, dirty : false, form : true };
+
+		state.draft = form;
+
+		return form;
+	};
+
+	/**
+	 *	@param		{Object}	form
+	 *
+	 *	@return		{Object}									name => the text of each control
+	 */
+	const valuesOfForm = function( form ) {
+
+		const values = {};
+
+		Object.keys( form.controls ).forEach( function( name ) { values[name] = form.controls[name].value } );
+
+		return values;
+	};
+
+	/**
+	 *	A refusal of the server beside the field it names: the sentence in the toast and under the control, the control marked and focused
+	 *
+	 *	@param		{Object}	form
+	 *	@param		{Object}	answer
+	 *	@param		{string}	fallback
+	 *
+	 *	@return		{string}									The sentence
+	 */
+	const refuseAt = function( form, answer, fallback ) {
+
+		const sentence = failed( answer, fallback );
+		const field = answer.body !== null && typeof answer.body === 'object' && typeof answer.body.field === 'string' ? answer.body.field : '';
+
+		if( field !== '' && form.controls[field] !== undefined ) {
+			form.controls[field].classList.add( 'err' );
+			form.controls[field].setAttribute( 'aria-invalid', 'true' );
+			form.notes[field].textContent = sentence;
+			form.controls[field].focus();
+		}
+
+		return sentence;
+	};
+
+	/**
+	 *	@param		{string}	name
+	 *	@param		{string}	value
+	 *
+	 *	@return		{Object}									The text field of a client's property
+	 */
+	const clientControl = function( name, value, id ) {
+
+		const limit = name === 'country' ? '2' : '160';
+
+		return el( 'input', { id : id || 'f-'+ name, type : name === 'email' ? 'email' : 'text', value : value, maxlength : limit, autocomplete : 'off', inputmode : name === 'phone' ? 'tel' : null, list : name === 'country' ? 'countries' : null } );
+	};
+
+	/**
+	 *	@param		{Object}	client
+	 *
+	 *	@return		{Array}										The lines of its address: street, zip and city, the country where it is not Germany
+	 */
+	const addressOf = function( client ) {
+		return [ client.street, ( client.zip+ ' '+ client.city ).trim(), client.country !== '' && client.country !== 'DE' ? client.country : '' ].filter( function( part ) { return part !== '' } );
+	};
+
+	/**
+	 *	@param		{Array}		lines
+	 *
+	 *	@return		{Object|string}						The lines one under the other; '' for none, which a definition list leaves out
+	 */
+	const stacked = function( lines ) {
+		return lines.length === 0 ? '' : el( 'span', {}, lines.map( function( part, index ) { return [ index === 0 ? null : el( 'br' ), part ] } ) );
+	};
+
+
+	// --- Kunden ------------------------------------------------------------------------------------------------------
+
+	/**
+	 *	@param		{Object}	client
+	 *
+	 *	@return		{string}									Its company, its name where it has none
+	 */
+	const clientTitle = function( client ) {
+		return client.company !== '' ? client.company : client.name;
+	};
+
+	const clientKeys = {
+		number : function( client ) { return client.number },
+		company : function( client ) { return client.company.toLowerCase() },
+		person : function( client ) { return client.name.toLowerCase() },
+		city : function( client ) { return client.city.toLowerCase() },
+		accounts : function( client ) { return client.active_accounts },
+		open : function( client ) { return client.open },
+		active : function( client ) { return client.active === true ? 1 : 0 },
+	};
+
+	/**
+	 *	The rows the list of the clients shows: the search over number, company, name, mail and city, then the order (a tie goes by the id)
+	 *
+	 *	@param		{Array}		clients					With open, the cents an invoice of each still asks
+	 *	@param		{Object}	filter					q, sort, dir
+	 *
+	 *	@return		{Array}
+	 */
+	const visibleClients = function( clients, filter ) {
+
+		const query = filter.q.trim().toLowerCase();
+		const key = clientKeys[filter.sort] || clientKeys.number;
+
+		const rows = clients.filter( function( client ) {
+			return query === '' || ( client.number+ ' '+ client.company+ ' '+ client.name+ ' '+ client.email+ ' '+ client.city ).toLowerCase().includes( query );
+		} );
+
+		rows.sort( function( a, b ) {
+
+			const left = key( a );
+			const right = key( b );
+			const order = typeof left === 'string' ? left.localeCompare( right, 'de' ) : left - right;
+
+			return order !== 0 ? order * filter.dir : a.id - b.id;
+		} );
+
+		return rows;
+	};
+
+	const clientBadge = function( client ) {
+		return client.active === true ? badge( 'paid', t( 'clients.active' ) ) : badge( 'draft', t( 'clients.inactive' ) );
+	};
+
+	const kunden = function( where, mine ) {
+
+		loading();
+
+		Promise.all( [ api( 'crm-clients/list' ), api( 'crm-documents/list', { category : 'invoice' } ) ] ).then( function( answers ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answers[0].ok !== true ) {
+				loadFailed( answers[0], 'error.load', function() { route() } );
+				return;
+			}
+
+			// What an invoice still asks of each client is the books' answer: where they do not come, the column says nothing instead of nought
+			const owed = {};
+
+			if( answers[1].ok === true ) {
+				adopt( answers[1].body );
+				answers[1].body.documents.forEach( function( doc ) {
+					if( doc.category === 'invoice' && [ 'open', 'sent' ].includes( doc.state ) === true )
+						owed[doc.client_id] = ( owed[doc.client_id] || 0 ) + doc.gross;
+				} );
+			}
+
+			state.people = answers[0].body.clients.map( function( client ) { return Object.assign( {}, client, { open : owed[client.id] || 0 } ) } );
+			state.owed = answers[1].ok === true ? owed : null;
+			drawKunden();
+		} );
+	};
+
+	const drawKunden = function() {
+
+		const filter = state.cfilter;
+		const rows = visibleClients( state.people, filter );
+		const pages = Math.max( 1, Math.ceil( rows.length / PAGE_SIZE ) );
+
+		filter.page = Math.min( Math.max( 1, filter.page ), pages );
+
+		const shown = rows.slice( ( filter.page - 1 ) * PAGE_SIZE, filter.page * PAGE_SIZE );
+		const again = function() { drawKunden() };
+		const heading = function( key, label, right ) { return sortHead( filter, key, label, right, again, key === 'open' ? -1 : 1 ) };
+
+		const body = el( 'tbody', {}, shown.length === 0
+			? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '7', class: 'muted', text: state.people.length === 0 ? t( 'clients.empty' ) : t( 'clients.none' ) } ) )
+			: shown.map( function( client ) {
+				return el( 'tr', { dataset: { id: client.id }, on: { click: function() { wn.location.hash = '#kunde-'+ client.id } } },
+					el( 'td', { class: 'num' }, link( '#kunde-'+ client.id, client.number ) ),
+					el( 'td', {}, client.company === '' ? el( 'span', { class: 'muted', text: '–' } ) : client.company ),
+					el( 'td', { text: client.name } ),
+					el( 'td', {}, client.city, client.country !== 'DE' ? el( 'span', { class: 'muted', text: ' ('+ client.country+ ')' } ) : null ),
+					el( 'td', {}, client.accounts === 0 ? el( 'span', { class: 'muted', text: t( 'clients.accounts-none' ) } ) : client.active_accounts+ ' / '+ client.accounts ),
+					el( 'td', { class: 'r num' }, state.owed !== null && client.open > 0 ? cash( client.open ) : el( 'span', { class: 'muted', text: '–' } ) ),
+					el( 'td', {}, clientBadge( client ) ) );
+			} ) );
+
+		const table = el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl' },
+			el( 'thead', {}, el( 'tr', {}, heading( 'number', t( 'column.number' ) ), heading( 'company', t( 'column.company' ) ), heading( 'person', t( 'column.person' ) ), heading( 'city', t( 'column.city' ) ), heading( 'accounts', t( 'column.accounts' ) ), heading( 'open', t( 'column.open' ), true ), heading( 'active', t( 'column.state' ) ) ) ),
+			body ) );
+
+		reveal();
+
+		state.main.appendChild( head( t( 'clients.title' ), el( 'span', { class: 'sub', text: t( 'clients.count', rows.length, state.people.length ) } ), el( 'span', { class: 'grow' } ),
+			search( t( 'clients.search' ), filter.q, { input: function( event ) {
+				filter.q = event.target.value;
+				filter.page = 1;
+				keepSearch( drawKunden, true );
+			} } ), link( '#kunde-neu', t( 'clients.new' ), { class: 'btn primary', id: 'new-client' } ) ) );
+		append( state.main, [ table, pagerOf( filter, pages, again ) ] );
+	};
+
+
+	// --- Kundenkarte -------------------------------------------------------------------------------------------------
+
+	const kunde = function( where, mine ) {
+
+		loading();
+
+		Promise.all( [ api( 'crm-clients/get', { id : String( where.id ) } ), api( 'crm-documents/list', { client : String( where.id ) } ) ] ).then( function( answers ) {
+
+			if( state.view !== mine )
+				return;
+
+			const failure = answers.find( function( answer ) { return answer.ok !== true } );
+
+			if( failure !== undefined ) {
+				loadFailed( failure, 'error.load', function() { route() } );
+				return;
+			}
+
+			adopt( answers[1].body );
+
+			// The link "einladen" of the Übersicht leads to the invitation: the tab Portal, the form open
+			state.tab = where.tab === 'einladen' ? 'portal' : where.tab;
+
+			drawKunde( { client : answers[0].body.client, accounts : answers[0].body.accounts, documents : answers[1].body.documents, portal : null, editing : false, inviting : where.tab === 'einladen', invite : null, box : null, master : null } );
+		} );
+	};
+
+	/**
+	 *	The card's Stammdaten: the facts of the client, or - after Stammdaten bearbeiten - the form that changes them
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const masterCard = function( view ) {
+
+		const client = view.client;
+
+		if( view.editing === false )
+			return el( 'div', { class: 'card pad', id: 'master' }, el( 'h3', { text: t( 'card.master' ) } ), kv( [
+				[ t( 'client.company' ), client.company ],
+				[ t( 'client.name' ), client.name ],
+				[ t( 'client.email' ), client.email ],
+				[ t( 'card.phone' ), client.phone ],
+				[ t( 'client.address' ), stacked( addressOf( client ) ) ],
+				[ t( 'client.vat' ), client.vat_id ],
+				[ t( 'card.since' ), dmy( client.created ) ],
+			] ) );
+
+		const form = formOf();
+		const rows = CLIENT_FIELDS.map( function( name ) { return { name : name, label : t( 'clientfield.'+ name ), control : clientControl( name, client[name] ) } } );
+		const save = el( 'button', { type: 'submit', class: 'btn sm primary', id: 'client-save', text: t( 'form.save' ) } );
+
+		return el( 'form', { class: 'card pad', id: 'master', novalidate: 'novalidate', on: { submit: function( event ) {
+
+			event.preventDefault();
+			save.disabled = true;
+
+			api( 'crm-clients/save', clientPayload( client, valuesOfForm( form ) ) ).then( function( answer ) {
+
+				save.disabled = false;
+
+				if( state.view !== view.mine )
+					return;
+
+				if( answer.ok !== true ) {
+					refuseAt( form, answer, 'error.client-save' );
+					return;
+				}
+
+				view.client = answer.body.client;
+				view.editing = false;
+				toast( t( 'card.saved' ) );
+				drawKunde( view );
+			} );
+		} } },
+		el( 'h3', { text: t( 'card.master' ) } ), formList( rows, form ),
+		el( 'div', { class: 'actions top' }, save, el( 'button', { type: 'button', class: 'btn sm', id: 'client-cancel', text: t( 'form.cancel' ), on: { click: function() {
+			view.editing = false;
+			state.draft = null;
+			view.master.replaceWith( view.master = masterCard( view ) );
+		} } } ) ),
+		el( 'datalist', { id: 'countries' }, [ 'DE', 'AT', 'CH' ].map( function( code ) { return el( 'option', { value: code } ) } ) ) );
+	};
+
+	/**
+	 *	What a save of a client posts: every field of it, since the model takes a field that is not posted for empty - the notes among them
+	 *
+	 *	@param		{Object}	client
+	 *	@param		{Object}	[over]					Fields that take the place of the client's
+	 *
+	 *	@return		{Object}
+	 */
+	const clientPayload = function( client, over ) {
+
+		const data = { id : String( client.id ) };
+
+		CLIENT_FIELDS.concat( [ 'notes' ] ).forEach( function( name ) { data[name] = client[name] } );
+
+		return Object.assign( data, over || {} );
+	};
+
+	/**
+	 *	The accounts of the client: each a row with its state and the menu of what can be done with it, the buttons that invite and link, and
+	 *	the sentence that stands in place of all of it where Members is off or the client is
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const accountsCard = function( view ) {
+
+		const client = view.client;
+		const box = el( 'div', { class: 'card pad accounts', id: 'accounts' }, el( 'h3', { text: t( 'card.accounts' ) } ) );
+		const members = link( state.links.members, t( 'acc.members-link' ), { target : '_blank', rel : 'noopener' } );
+
+		// Without the feature Members nothing is known of the accounts: one sentence instead of rows that would all read "deleted"
+		if( view.accounts.some( function( account ) { return account.state === 'members-off' } ) === true ) {
+			box.appendChild( el( 'p', { class: 'state-note', text: t( 'acc.members-off' ) } ) );
+			return box;
+		}
+
+		if( view.accounts.length === 0 )
+			box.appendChild( el( 'p', { class: 'state-note', text: t( 'acc.none' ) } ) );
+		else
+			view.accounts.forEach( function( account ) { box.appendChild( accountRow( view, account ) ) } );
+
+		// A client that is off takes no account, no link and no switch-on: the card says so once and does not offer them
+		if( client.active === false ) {
+			box.appendChild( el( 'p', { class: 'state-note', text: t( 'acc.inactive' ) } ) );
+			box.appendChild( el( 'p', { class: 'state-note' }, members ) );
+			return box;
+		}
+
+		box.appendChild( el( 'div', { class: 'actions top' },
+			el( 'button', { type: 'button', class: 'btn sm primary', id: 'invite-open', text: t( 'acc.invite' ), on: { click: function() { view.inviting = true; view.invite = null; replaceAccounts( view ) } } } ),
+			el( 'button', { type: 'button', class: 'btn sm', id: 'link-open', text: t( 'acc.link' ), on: { click: function() { askLink( view ) } } } ) ) );
+
+		// The form stays the one that was opened while it is open, so that what was typed in it survives a step on another account
+		if( view.inviting === true )
+			box.appendChild( view.invite = view.invite ?? inviteForm( view ) );
+
+		box.appendChild( el( 'p', { class: 'state-note' }, members ) );
+
+		return box;
+	};
+
+	const replaceAccounts = function( view ) {
+
+		if( view.box !== null && view.box.parentNode !== null && view.mine === state.view )
+			view.box.replaceWith( view.box = accountsCard( view ) );
+	};
+
+	/**
+	 *	@param		{Object}	account
+	 *
+	 *	@return		{string}									The name it goes by: its name, its address where it has no name; a row that is gone the last four characters of its id
+	 */
+	const whoIs = function( account ) {
+
+		if( account.gone === true )
+			return t( 'acc.gone', account.id.slice( -4 ) );
+
+		return account.name !== '' ? account.name : account.email;
+	};
+
+	const accountRow = function( view, account ) {
+
+		const client = view.client;
+		const gone = account.gone === true;
+		const post = function() { return { id : String( client.id ), account : account.id } };
+		const swap = function( change ) {
+			view.accounts = change( view.accounts );
+			replaceAccounts( view );
+		};
+		const items = [];
+
+		if( gone === false ) {
+
+			if( account.active === true && client.active === true )
+				items.push( { label : t( account.login === null ? 'acc.resend-invite' : 'acc.resend-login' ), run : function() {
+					call( 'crm-clients/account-resend', post(), 'error.account-resend' ).then( function( answer ) {
+						if( answer.ok === true )
+							toast( t( answer.body.kind === 'invite' ? 'acc.resent-invite' : 'acc.resent-login' ) );
+					} );
+				} } );
+
+			items.push( { label : t( 'acc.rename' ), run : function() {
+				dialog( { title : t( 'acc.rename' ), text : t( 'acc.rename-text' ), yes : t( 'acc.rename-yes' ), fields : [ { name : 'name', label : t( 'acc.rename-field' ), value : account.name } ] } ).then( function( values ) {
+
+					if( values === null )
+						return;
+
+					call( 'crm-clients/account-name', Object.assign( post(), { name : values.name } ), 'error.account-name' ).then( function( answer ) {
+						if( answer.ok === true ) {
+							swap( function( list ) { return list.map( function( each ) { return each.id === account.id ? answer.body.account : each } ) } );
+							toast( t( 'acc.renamed' ) );
+						}
+					} );
+				} );
+			} } );
+
+			if( account.active === true || client.active === true )
+				items.push( { label : t( account.active === true ? 'acc.switch-off' : 'acc.switch-on' ), run : function() {
+					call( 'crm-clients/account-active', Object.assign( post(), { active : account.active === false } ), 'error.account-active' ).then( function( answer ) {
+						if( answer.ok === true ) {
+							swap( function( list ) { return list.map( function( each ) { return each.id === account.id ? answer.body.account : each } ) } );
+							toast( t( account.active === true ? 'acc.switched-off' : 'acc.switched-on' ) );
+						}
+					} );
+				} } );
+
+			items.push( 'sep' );
+		}
+
+		// A row whose account is gone from Members is only a row: it says so, and only the row goes
+		items.push( { label : t( gone === true ? 'acc.remove-row' : 'acc.delete' ), danger : true, run : function() {
+			ask( { title : t( gone === true ? 'acc.remove-row' : 'acc.delete-title' ), text : gone === true ? t( 'acc.remove-row-text' ) : t( 'acc.delete-text', whoIs( account ) ), yes : t( gone === true ? 'acc.remove-row' : 'acc.delete' ), danger : true } ).then( function( yes ) {
+
+				if( yes !== true )
+					return;
+
+				call( 'crm-clients/account-remove', post(), 'error.account-remove' ).then( function( answer ) {
+					if( answer.ok === true ) {
+						swap( function( list ) { return list.filter( function( each ) { return each.id !== account.id } ) } );
+						toast( t( gone === true ? 'acc.row-removed' : 'acc.deleted' ) );
+					}
+				} );
+			} );
+		} } );
+
+		const login = gone === true ? '' : dmy( account.login );
+		const kind = { signed : 'paid', invited : 'open', off : 'draft', gone : 'draft' }[account.state];
+
+		return el( 'div', { class: 'acc', dataset: { id: account.id } },
+			el( 'div', { class: 'who' }, el( 'b', { text: whoIs( account ) } ), ' ', badge( kind, t( 'acc.state-'+ account.state ) ),
+				gone === true ? null : el( 'div', { text: ( account.name !== '' ? account.email+ ' · ' : '' )+ ( login === '' ? t( 'acc.never' ) : t( 'acc.last', login ) ) } ) ),
+			menu( { label : '⋯', button : 'sm', aria : t( 'acc.menu' ), items : items } ) );
+	};
+
+	/**
+	 *	A form that is sent or closed holds nothing unsaved any more: it stops being the page's guard
+	 *
+	 *	@param		{Object}	form
+	 *
+	 *	@return		void
+	 */
+	const dropGuard = function( form ) {
+
+		if( state.draft === form )
+			state.draft = null;
+	};
+
+	/**
+	 *	The form that invites an account: an address and a name, in the card of the accounts
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const inviteForm = function( view ) {
+
+		const form = { controls : {}, notes : {}, dirty : false };
+		const rows = [
+			{ name : 'email', label : t( 'invite.email' ), control : el( 'input', { id : 'f-invite-email', type : 'email', maxlength : '160', autocomplete : 'off' } ) },
+			{ name : 'name', label : t( 'invite.name' ), control : el( 'input', { id : 'f-invite-name', type : 'text', maxlength : '120', autocomplete : 'off' } ) },
+		];
+		const send = el( 'button', { type: 'submit', class: 'btn sm primary', id: 'invite-send', text: t( 'invite.send' ) } );
+
+		const box = el( 'form', { id : 'invite', novalidate : 'novalidate', on : { submit : function( event ) {
+
+			event.preventDefault();
+			send.disabled = true;
+
+			api( 'crm-clients/invite', { id : String( view.client.id ), email : form.controls.email.value, name : form.controls.name.value } ).then( function( answer ) {
+
+				send.disabled = false;
+
+				if( state.view !== view.mine )
+					return;
+
+				if( answer.ok !== true ) {
+					refuseAt( form, answer, 'error.account-invite' );
+					return;
+				}
+
+				view.inviting = false;
+				view.invite = null;
+				dropGuard( form );
+				view.accounts = view.accounts.concat( [ answer.body.account ] );
+				replaceAccounts( view );
+				toast( t( answer.body.mailed === true ? 'invite.sent' : 'invite.not-mailed' ), answer.body.mailed !== true );
+			} );
+		} } }, formList( rows, form ), el( 'div', { class: 'actions top' }, send,
+			el( 'button', { type: 'button', class: 'btn sm', id: 'invite-cancel', text: t( 'form.cancel' ), on: { click: function() { view.inviting = false; view.invite = null; dropGuard( form ); replaceAccounts( view ) } } } ) ) );
+
+		// What is typed in it is unsaved input like that of any form: the guard of the page asks before the screen is left - unless a form that holds changes is the guard's already
+		form.form = true;
+		Object.keys( form.controls ).forEach( function( name ) {
+			form.controls[name].addEventListener( 'input', function() {
+				if( state.draft === null || state.draft.dirty !== true )
+					state.draft = form;
+			} );
+		} );
+
+		// Opened from the Übersicht the cursor is in the form already
+		wn.setTimeout( function() { if( form.controls.email.parentNode !== null && state.view === view.mine ) form.controls.email.focus() }, 0 );
+
+		return box;
+	};
+
+	/**
+	 *	Ask which account of Members that no client holds is linked to the client, then link it
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{void}
+	 */
+	const askLink = function( view ) {
+
+		call( 'crm-clients/unlinked', {}, 'error.unlinked' ).then( function( answer ) {
+
+			if( answer.ok !== true )
+				return;
+
+			if( answer.body.accounts.length === 0 ) {
+				toast( t( 'link.none' ) );
+				return;
+			}
+
+			dialog( { title : t( 'link.title' ), text : t( 'link.text' ), yes : t( 'link.yes' ), fields : [
+				{ name : 'account', label : t( 'link.field' ), options : answer.body.accounts.map( function( account ) { return { value : account.id, label : account.name !== '' ? account.name+ ' · '+ account.email : account.email } } ), value : answer.body.accounts[0].id },
+			] } ).then( function( values ) {
+
+				if( values === null )
+					return;
+
+				call( 'crm-clients/account-link', { id : String( view.client.id ), account : values.account }, 'error.account-link' ).then( function( linked ) {
+					if( linked.ok === true && state.view === view.mine ) {
+						view.accounts = view.accounts.concat( [ linked.body.account ] );
+						replaceAccounts( view );
+						toast( t( 'link.done' ) );
+					}
+				} );
+			} );
+		} );
+	};
+
+	/**
+	 *	The tabs of the card: the documents of the client, what it sees in the portal and the notes
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const tabClientDocuments = function( view ) {
+
+		return el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl' },
+			el( 'thead', {}, el( 'tr', {}, el( 'th', { text: t( 'column.number' ) } ), el( 'th', { text: t( 'column.category' ) } ), el( 'th', { text: t( 'column.date' ) } ), el( 'th', { class: 'r', text: t( 'column.gross' ) } ), el( 'th', { text: t( 'column.state' ) } ) ) ),
+			el( 'tbody', {}, view.documents.length === 0
+				? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '5', class: 'muted', text: t( 'cdocs.empty' ) } ) )
+				: view.documents.map( function( doc ) {
+					return el( 'tr', { dataset: { id: doc.id }, on: { click: function() { wn.location.hash = hashOf( doc ) } } },
+						el( 'td', { class: 'num' }, link( hashOf( doc ), docName( doc ) ) ),
+						el( 'td', { text: t( 'category.'+ doc.category ) } ),
+						el( 'td', { text: dmy( doc.date ) } ),
+						el( 'td', { class: 'r num' }, isPlain( doc ) ? el( 'span', { class: 'muted', text: '–' } ) : cash( doc.gross ) ),
+						el( 'td', {}, badges( doc ) ) );
+				} ) ) ) );
+	};
+
+	const tabClientPortal = function( view ) {
+
+		const holder = el( 'div' );
+		const body = el( 'div', { class: 'card pad', id: 'client-portal' }, el( 'h3', { text: t( 'cportal.title' ) } ), holder );
+		const mine = state.view;
+		const draw = function( portal ) {
+
+			const plural = function( count ) { return count === 1 ? t( 'cportal.file-one', count ) : t( 'cportal.file-many', count ) };
+
+			append( holder, [
+				el( 'h4', { text: t( 'cportal.documents' ) } ),
+				el( 'ul', { class: 'list-mini' }, portal.documents.length === 0 ? el( 'li', { class: 'muted', text: t( 'cportal.documents-none' ) } ) : portal.documents.map( function( doc ) {
+					return el( 'li', {}, el( 'span', {}, link( '#beleg-'+ doc.id, doc.title !== '' ? doc.title : doc.number ), ' ', el( 'span', { class: 'muted', text: t( 'category.'+ doc.category ) } ) ), el( 'span', { class: 'r', text: dmy( doc.date ) } ) );
+				} ) ),
+				el( 'h4', { text: t( 'cportal.files' ) } ),
+				portal.features.files === false
+					? el( 'p', { class: 'state-note', text: t( 'cportal.files-off' ) } )
+					: el( 'ul', { class: 'list-mini' }, portal.folders.length === 0 ? el( 'li', { class: 'muted', text: t( 'cportal.files-none' ) } ) : portal.folders.map( function( folder ) {
+						return el( 'li', {}, el( 'span', { text: t( 'cportal.folder', folder.name, plural( folder.files ), t( folder.upload === true ? 'cportal.upload-yes' : 'cportal.upload-no' ) ) } ) );
+					} ) ),
+				portal.features.review === true ? el( 'p', { class: 'state-note', text: portal.review.media === 0 ? t( 'cportal.review-none' ) : t( 'cportal.review', portal.review.media, portal.review.comments ) } ) : null,
+				el( 'p', { class: 'state-note', text: t( 'cportal.rest' ) } ),
+			] );
+		};
+
+		if( view.portal !== null )
+			draw( view.portal );
+		else {
+			holder.appendChild( el( 'p', { class: 'state-note', role: 'status', text: t( 'loading' ) } ) );
+
+			call( 'crm-clients/portal', { id : String( view.client.id ) }, 'error.client-portal' ).then( function( answer ) {
+
+				if( state.view !== mine || answer.ok !== true )
+					return;
+
+				view.portal = answer.body;
+				clear( holder );
+				draw( view.portal );
+			} );
+		}
+
+		return body;
+	};
+
+	const tabClientNotes = function( view ) {
+
+		const area = el( 'textarea', { id: 'notes', rows: 5, maxlength: '2000', class: 'area', 'aria-label': t( 'cnotes.title' ), value: view.client.notes } );
+
+		return card( t( 'cnotes.title' ), area, el( 'div', { class: 'actions top' }, el( 'button', { type: 'button', class: 'btn sm', id: 'notes-save', text: t( 'notes.save' ), on: { click: function() {
+			call( 'crm-clients/save', clientPayload( view.client, { notes : area.value } ), 'error.client-save' ).then( function( answer ) {
+				if( answer.ok === true ) {
+					view.client = answer.body.client;
+					toast( t( 'notes.done' ) );
+				}
+			} );
+		} } } ) ) );
+	};
+
+	/**
+	 *	Switch the client on or off: the accounts of a client that goes off go off with it, and the answer says how many
+	 *
+	 *	@param		{Object}	view
+	 *	@param		{boolean}	active
+	 *
+	 *	@return		{Promise}
+	 */
+	const switchClient = function( view, active ) {
+
+		return step( 'crm-clients/active', { id : String( view.client.id ), active : active }, 'error.client-active' ).then( function( answer ) {
+
+			if( answer.ok !== true || state.view !== view.mine )
+				return answer;
+
+			view.client = answer.body.client;
+			view.accounts = answer.body.accounts;
+			view.inviting = false;
+			view.invite = null;
+			view.editing = false;
+			toast( active === true ? t( 'card.activated' ) : t( 'card.deactivated', answer.body.switched ) );
+			drawKunde( view );
+
+			return answer;
+		} );
+	};
+
+	const drawKunde = function( view ) {
+
+		const client = view.client;
+		const tabs = CLIENT_TABS;
+		const start = tabs.includes( state.tab ) === true ? state.tab : tabs[0];
+
+		view.mine = state.view;
+		state.tab = start;
+		state.draft = null;
+		reveal();
+
+		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#kunden', t( 'clients.title' ) ), ' › '+ client.number ) );
+		state.main.appendChild( head( el( 'h1', { text: clientTitle( client ) } ), clientBadge( client ), el( 'span', { class: 'sub num', text: client.number } ), el( 'span', { class: 'grow' } ),
+			client.active === true ? newMenu( t( 'card.document-new' ), client.id ) : null,
+			menu( { label : '⋯', items : [
+				{ label : t( 'card.edit' ), run : function() {
+					if( view.editing === true )
+						return;
+					view.editing = true;
+					view.master.replaceWith( view.master = masterCard( view ) );
+				} },
+				'sep',
+				client.active === true ? { label : t( 'card.deactivate' ), danger : true, run : function() { switchClient( view, false ) } } : { label : t( 'card.activate' ), run : function() { switchClient( view, true ) } },
+			] } ) ) );
+
+		if( client.active === false )
+			state.main.appendChild( note( '', t( 'card.inactive-note' ) ) );
+
+		view.master = masterCard( view );
+		view.box = accountsCard( view );
+		state.main.appendChild( el( 'div', { class: 'cols-3 gap' }, view.master, view.box ) );
+
+		const body = el( 'div', { id: 'tab' } );
+		const buttons = [];
+
+		// A tab is the body under the strip: the card above it - a form that is open in it, an invitation half typed - is not drawn again
+		const show = function( key ) {
+
+			state.tab = key;
+			buttons.forEach( function( button ) {
+				button.setAttribute( 'aria-selected', button.dataset.tab === key ? 'true' : 'false' );
+				button.classList.toggle( 'on', button.dataset.tab === key );
+			} );
+			clear( body );
+			body.appendChild( { belege : tabClientDocuments, portal : tabClientPortal, notizen : tabClientNotes }[key]( view ) );
+		};
+
+		const strip = el( 'div', { class: 'tabs', role: 'tablist' }, tabs.map( function( key ) {
+
+			const button = el( 'button', { type: 'button', role: 'tab', 'aria-selected': key === start ? 'true' : 'false', class: key === start ? 'on' : '', dataset: { tab: key }, on: { click: function() {
+				if( state.view === view.mine )
+					show( key );
+			} } }, t( 'ctab.'+ key ), key === 'belege' ? el( 'span', { class: 'n', text: String( view.documents.length ) } ) : null );
+
+			buttons.push( button );
+
+			return button;
+		} ) );
+
+		state.main.appendChild( strip );
+		state.main.appendChild( body );
+		show( start );
+	};
+
+
+	// --- Neuer Kunde -------------------------------------------------------------------------------------------------
+
+	const kundeNeu = function( where, mine ) {
+
+		const form = formOf();
+		const rows = CLIENT_FIELDS.map( function( name ) { return { name : name, label : t( 'clientfield.'+ name ), control : clientControl( name, name === 'country' ? 'DE' : '' ), hint : [ 'company', 'phone', 'vat_id' ].includes( name ) ? t( 'form.optional' ) : undefined } } );
+		const first = [
+			{ name : 'account_email', label : t( 'clientfield.account_email' ), control : el( 'input', { id : 'f-account_email', type : 'email', maxlength : '160', autocomplete : 'off' } ) },
+			{ name : 'account_name', label : t( 'clientfield.account_name' ), control : el( 'input', { id : 'f-account_name', type : 'text', maxlength : '120', autocomplete : 'off', placeholder : t( 'form.optional' ) } ) },
+		];
+		const create = el( 'button', { type: 'submit', class: 'btn primary', id: 'client-create', text: t( 'newclient.create' ) } );
+		const master = formList( rows, form );
+		const account = formList( first, form );
+
+		// With an address the account is made with the client and invited: the button says so
+		form.controls.account_email.addEventListener( 'input', function() {
+			create.textContent = form.controls.account_email.value.trim() === '' ? t( 'newclient.create' ) : t( 'newclient.create-invite' );
+		} );
+
+		const submit = function( event ) {
+
+			event.preventDefault();
+			create.disabled = true;
+
+			api( 'crm-clients/save', valuesOfForm( form ) ).then( function( answer ) {
+
+				create.disabled = false;
+
+				if( state.view !== mine )
+					return;
+
+				if( answer.ok !== true ) {
+					refuseAt( form, answer, 'error.client-save' );
+					return;
+				}
+
+				const made = answer.body.client;
+				const asked = answer.body.first;
+
+				form.dirty = false;
+				state.draft = null;
+
+				if( asked === undefined )
+					toast( t( 'newclient.done', made.number ) );
+				else if( asked.refused !== null )
+					toast( t( 'newclient.refused', made.number, errorText( { status : 400, body : asked.refused }, 'error.account-invite' ) ), true );
+				else
+					toast( t( asked.mailed === true ? 'newclient.done-invited' : 'newclient.done-unmailed', made.number ), asked.mailed !== true );
+
+				refresh();
+				wn.location.hash = '#kunde-'+ made.id;
+			} );
+		};
+
+		reveal();
+
+		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#kunden', t( 'clients.title' ) ), ' › '+ t( 'newclient.title' ).toLowerCase() ) );
+		state.main.appendChild( el( 'form', { id: 'new-client-form', novalidate: 'novalidate', on: { submit: submit } },
+			head( t( 'newclient.title' ), el( 'span', { class: 'grow' } ), link( '#kunden', t( 'form.cancel' ), { class: 'btn', id: 'client-abort' } ), create ),
+			el( 'div', { class: 'cols' },
+				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'newclient.master' ) } ), master ),
+				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'newclient.first' ) } ), el( 'p', { class: 'state-note', text: t( 'newclient.first-text' ) } ), account ) ),
+			el( 'datalist', { id: 'countries' }, [ 'DE', 'AT', 'CH' ].map( function( code ) { return el( 'option', { value: code } ) } ) ) ) );
+
+		form.controls.company.focus();
+	};
+
+
+	// --- Positionen --------------------------------------------------------------------------------------------------
+
+	/**
+	 *	@param		{string}	locale					de_DE
+	 *
+	 *	@return		{string}									de
+	 */
+	const languageOf = function( locale ) {
+		return String( locale ).split( '_' )[0];
+	};
+
+	/**
+	 *	@param		{Object}	item						An item with its words per language
+	 *	@param		{Array}		locales					The languages of the site
+	 *
+	 *	@return		{string}									The unit in each language that has one, once each: Std. / h
+	 */
+	const units = function( item, locales ) {
+
+		const seen = [];
+
+		locales.forEach( function( locale ) {
+
+			const unit = ( item.words[locale] || { unit : '' } ).unit;
+
+			if( unit !== '' && seen.includes( unit ) === false )
+				seen.push( unit );
+		} );
+
+		return seen.join( ' / ' );
+	};
+
+	const positionen = function( where, mine ) {
+
+		loading();
+
+		api( 'crm-documents/positionen' ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answer.ok !== true ) {
+				loadFailed( answer, 'error.load', function() { route() } );
+				return;
+			}
+
+			adopt( answer.body );
+
+			const body = answer.body;
+			const small = state.settings.vat_mode === 'small_business';
+			reveal();
+
+			state.main.appendChild( head( t( 'items.title' ), el( 'span', { class: 'sub', text: t( 'items.sub' ) } ), el( 'span', { class: 'grow' } ), link( state.links.items, t( 'items.edit' ), { class: 'btn primary', id: 'items-edit', target : '_blank', rel : 'noopener' } ) ) );
+
+			if( body.missing === true ) {
+				state.main.appendChild( note( '', t( 'items.missing' ), ' ', link( '#einstellungen', t( 'items.missing-link' ) ) ) );
+				return;
+			}
+
+			const words = function( item, locale ) {
+				const one = item.words[locale] || { title : '', description : '', unit : '' };
+				return [ one.title, one.description !== '' ? el( 'div', { class: 'muted small' }, one.description.split( '\n' ).join( ' · ' ) ) : null ];
+			};
+
+			state.main.appendChild( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static', id: 'items' },
+				el( 'thead', {}, el( 'tr', {}, body.locales.map( function( locale ) { return el( 'th', { text: t( 'items.title-in', languageOf( locale ) ) } ) } ),
+					el( 'th', { text: t( 'items.unit' ) } ), el( 'th', { class: 'r', text: t( 'items.net' ) } ), el( 'th', { class: 'r', text: t( 'items.vat' ) } ), el( 'th', { text: t( 'items.active' ) } ) ) ),
+				el( 'tbody', {}, body.items.length === 0
+					? el( 'tr', { class: 'plain' }, el( 'td', { colspan: String( body.locales.length + 4 ), class: 'muted', text: t( 'items.empty' ) } ) )
+					: body.items.map( function( item ) {
+						return el( 'tr', { dataset: { id: item.id } },
+							body.locales.map( function( locale ) { return el( 'td', { class: 'wrap' }, words( item, locale ) ) } ),
+							el( 'td', { text: units( item, body.locales ) } ),
+							el( 'td', { class: 'r num', text: cash( item.price ) } ),
+							el( 'td', { class: 'r num', text: small ? '–' : money().formatRate( item.vat ) } ),
+							el( 'td', { text: t( item.active === true ? 'items.yes' : 'items.no' ) } ) );
+					} ) ) ) ) );
+			state.main.appendChild( el( 'p', { class: 'state-note top', text: t( 'items.note' ) } ) );
+		} );
+	};
+
+
+	// --- Einstellungen -----------------------------------------------------------------------------------------------
+
+	/**
+	 *	@param		{string}	stored					1900,700,550,0 - hundredths of a percent
+	 *
+	 *	@return		{string}									19; 7; 5,5; 0
+	 */
+	const ratesText = function( stored ) {
+		return stored.split( ',' ).map( function( rate ) { return money().formatRate( Number( rate ) ).replace( ' %', '' ) } ).join( '; ' );
+	};
+
+	const einstellungen = function( where, mine ) {
+
+		loading();
+
+		Promise.all( [ api( 'crm-documents/settings-get' ), api( 'crm/status' ) ] ).then( function( answers ) {
+
+			if( state.view !== mine )
+				return;
+
+			const failure = answers.find( function( answer ) { return answer.ok !== true } );
+
+			if( failure !== undefined ) {
+				loadFailed( failure, 'error.load', function() { route() } );
+				return;
+			}
+
+			drawEinstellungen( answers[0].body, answers[1].body.items, '' );
+		} );
+	};
+
+	/**
+	 *	The sentence for an item of the status that is not in order
+	 *
+	 *	@param		{Object}	item						key, state and - for the portal - lacks
+	 *
+	 *	@return		{string}
+	 */
+	const statusLine = function( item ) {
+
+		const key = 'status.'+ item.key+ '-'+ item.state;
+
+		if( item.state === 'partial' && Array.isArray( item.lacks ) === true )
+			return t( key, item.lacks.map( function( kind ) { return t( 'status.lacks-'+ kind ) } ).join( ', ' ) );
+
+		return t( key );
+	};
+
+	/**
+	 *	What the setup says it did, in one sentence
+	 *
+	 *	@param		{Object}	answer
+	 *
+	 *	@return		{string}
+	 */
+	const setupSentence = function( answer ) {
+
+		const added = answer.added || { routes : [], templates : [], types : [], texts : 0 };
+		const existed = answer.existed || { routes : [], templates : [], types : [] };
+
+		return t( 'setup.done', added.routes.length, added.templates.length, added.types.length, added.texts, existed.routes.length+ existed.templates.length+ existed.types.length );
+	};
+
+	/**
+	 *	The card Portal of the settings: what the portal is, read only, and the state of the module with the button that sets it up. The button
+	 *	draws the card again with the state it brought about, and says what it did
+	 *
+	 *	@param		{Object}	portal					The portal as settings-get has it
+	 *	@param		{Array}		items					The items of the status
+	 *	@param		{string}	said						What the setup said, kept over the card that is drawn again
+	 *	@param		{number}	mine
+	 *
+	 *	@return		{Object}
+	 */
+	const portalCard = function( portal, items, said, mine ) {
+
+		const missing = items.filter( function( item ) { return item.state !== 'ok' } );
+		const ready = items.some( function( item ) { return item.key === 'portal' && item.state === 'ok' } );
+		const pages = portal.pages.map( function( page ) { return page.present === true ? page.uri : t( 'settings.portal-page-missing', page.uri ) } ).join( ' · ' );
+		const setup = el( 'button', { type: 'button', class: 'btn sm', id: 'portal-setup', hidden: ready, text: t( 'settings.portal-setup' ), on: { click: function() {
+
+			setup.disabled = true;
+
+			call( 'crm/setup', {}, 'error.setup' ).then( function( answer ) {
+
+				setup.disabled = false;
+
+				if( answer.ok !== true || state.view !== mine )
+					return;
+
+				// The setup changed the routes and the settings of Members the card shows as well as the status: both are read again
+				Promise.all( [ call( 'crm/status', {}, 'error.load' ), call( 'crm-documents/settings-get', {}, 'error.load' ) ] ).then( function( again ) {
+					if( again[0].ok === true && again[1].ok === true && state.view === mine )
+						card.replaceWith( card = portalCard( again[1].body.portal, again[0].body.items, setupSentence( answer.body ), mine ) );
+				} );
+			} );
+		} } } );
+
+		let card = el( 'div', { class: 'card pad', id: 'portal' }, el( 'h3', { text: t( 'settings.portal' ) } ), kv( [
+			[ t( 'settings.portal-address' ), portal.address === '' ? el( 'span', { class: 'bad', text: t( 'settings.portal-no-address' ) } ) : portal.address ],
+			[ t( 'settings.portal-pages' ), pages ],
+			[ t( 'settings.portal-members' ), portal.members.length === 0 ? '' : el( 'span', {}, portal.members.map( function( one, index ) { return [ index === 0 ? null : el( 'br' ), one.label+ ': '+ one.value+ ( typeof state.texts['unit.'+ one.unit] === 'string' ? ' '+ t( 'unit.'+ one.unit ) : '' ) ] } ) ) ],
+			[ t( 'settings.portal-cap' ), portal.mail_cap === null ? '' : ( portal.mail_cap === 0 ? t( 'settings.portal-cap-none' ) : t( 'settings.portal-cap-value', portal.mail_cap ) ) ],
+		] ),
+		el( 'p', { class: 'state-note', text: t( 'settings.portal-members-note' ) } ),
+		el( 'h4', { text: t( 'settings.portal-status' ) } ),
+		missing.length === 0 ? el( 'p', { class: 'state-note', id: 'status-ok', text: t( 'status.allok' ) } ) : el( 'ul', { class: 'list-mini', id: 'status-missing' }, missing.map( function( item ) { return el( 'li', { text: statusLine( item ) } ) } ) ),
+		el( 'div', { class: 'actions' }, setup ), el( 'p', { class: 'state-note', id: 'setup-said', role: 'status', text: said } ) );
+
+		return card;
+	};
+
+	const drawEinstellungen = function( view, items, said ) {
+
+		const settings = view.settings;
+		const form = formOf();
+		const mine = state.view;
+		const select = el( 'select', { id: 'f-vat_mode', value: settings.vat_mode }, [ 'small_business', 'regular' ].map( function( mode ) { return el( 'option', { value: mode, text: t( 'vat.'+ mode ) } ) } ) );
+		const day = function( id, value ) { return el( 'input', { id: id, type: 'text', value: value, maxlength: '3', autocomplete: 'off', class: 'short' } ) };
+
+		const taxes = formList( [
+			{ name : 'vat_mode', label : t( 'settings.vat-mode' ), control : select, hint : t( 'settings.vat-mode-hint' ) },
+			{ name : 'vat_rates_percent', label : t( 'settings.vat-rates' ), control : el( 'input', { id: 'f-vat_rates_percent', type: 'text', value: ratesText( settings.vat_rates ), maxlength: '40', autocomplete: 'off' } ), hint : t( 'settings.vat-rates-hint' ) },
+			{ name : 'payment_days', label : t( 'settings.payment-days' ), control : day( 'f-payment_days', settings.payment_days ) },
+			{ name : 'offer_days', label : t( 'settings.offer-days' ), control : day( 'f-offer_days', settings.offer_days ) },
+			{ name : 'currency', label : t( 'settings.currency' ), control : el( 'input', { id: 'f-currency', type: 'text', value: settings.currency, maxlength: '5', autocomplete: 'off', class: 'short' } ) },
+		], form );
+
+		const numbers = formList( [ 'offer', 'invoice', 'credit' ].map( function( category ) {
+			return { name : 'number_'+ category, label : t( 'settings.number-'+ category ), control : el( 'input', { id: 'f-number_'+ category, type: 'text', value: settings['number_'+ category], maxlength: '40', autocomplete: 'off' } ) };
+		} ), form );
+
+		const next = el( 'p', { class: 'state-note' }, el( 'b', { text: t( 'settings.next' )+ ': ' } ), el( 'span', { class: 'num', id: 'next-numbers', text: [ 'offer', 'invoice', 'credit' ].map( function( category ) { return view.next[category] } ).filter( function( number ) { return number !== '' } ).join( ' · ' ) } ) );
+
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'settings-save', text: t( 'settings.save' ) } );
+
+		const submit = function( event ) {
+
+			event.preventDefault();
+			save.disabled = true;
+
+			api( 'crm-documents/settings-save', valuesOfForm( form ) ).then( function( answer ) {
+
+				save.disabled = false;
+
+				if( state.view !== mine )
+					return;
+
+				if( answer.ok !== true ) {
+					refuseAt( form, answer, 'error.settings' );
+					return;
+				}
+
+				// What the other screens compute with, and the next numbers the new formats give
+				state.settings = Object.assign( {}, state.settings, answer.body.settings, { rates : answer.body.settings.vat_rates.split( ',' ).map( Number ) } );
+				form.dirty = false;
+				state.draft = null;
+				toast( t( 'settings.saved' ) );
+
+				call( 'crm-documents/settings-get', {}, 'error.load' ).then( function( again ) {
+					if( again.ok === true && state.view === mine )
+						drawEinstellungen( again.body, items, said );
+				} );
+			} );
+		};
+
+		reveal();
+		state.main.appendChild( el( 'form', { id: 'settings-form', novalidate: 'novalidate', on: { submit: submit } },
+			head( t( 'settings.title' ), el( 'span', { class: 'grow' } ), save ),
+			el( 'div', { class: 'cols' },
+				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'settings.vat' ) } ), taxes ),
+				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'settings.numbers' ) } ), numbers, next, el( 'p', { class: 'state-note', text: t( 'settings.numbers-note' ) } ) ) ) ) );
+
+		// Vorlagen of the feature PDF: the assignment, read only
+		const templates = el( 'div', { class: 'card pad', id: 'templates' }, el( 'h3', { text: t( 'settings.templates' ) } ),
+			view.pdf === false ? el( 'p', { class: 'state-note', text: t( 'settings.templates-off' ) } ) : kv( [ 'offer', 'invoice', 'contract', 'privacy', 'information' ].map( function( tag ) {
+				return [ t( 'tag.'+ tag ), view.templates[tag].length === 0 ? t( 'settings.templates-none' ) : view.templates[tag].join( ' · ' ) ];
+			} ) ),
+			el( 'p', { class: 'state-note' }, t( 'settings.templates-note' ), ' ', link( state.links.pdf, t( 'settings.templates-link' ), { target : '_blank', rel : 'noopener' } ) ) );
+
+		state.main.appendChild( el( 'div', { class: 'cols gap' }, templates, portalCard( view.portal, items, said, mine ) ) );
+
+		state.main.appendChild( el( 'div', { class: 'card pad gap', id: 'access' }, el( 'h3', { text: t( 'settings.access' ) } ),
+			el( 'p', { class: 'state-note', text: t( 'settings.access-text', state.perm ) } ),
+			el( 'p', { class: 'state-note' }, link( state.links.users, t( 'settings.access-link' ), { target : '_blank', rel : 'noopener' } ) ) ) );
+	};
+
+
 	// --- the router --------------------------------------------------------------------------------------------------
 
 	/**
@@ -2343,16 +3512,33 @@
 		if( found !== null )
 			return { screen : 'entwurf', id : Number( found[1] ) };
 
-		found = /^neu-(invoice|offer|contract|privacy|information)(?:-([1-9][0-9]{0,9}))?$/.exec( text );
+		found = /^neu-(invoice|offer|contract|privacy|information)(?:-([1-9][0-9]{0,9}))?(?:-k([1-9][0-9]{0,9}))?$/.exec( text );
 
 		if( found !== null )
-			return { screen : 'entwurf', category : found[1], offer : found[2] === undefined ? '' : found[2] };
+			return { screen : 'entwurf', category : found[1], offer : found[2] === undefined ? '' : found[2], client : found[3] === undefined ? '' : found[3] };
+
+		if( text === 'kunden' )
+			return { screen : 'kunden' };
+
+		if( text === 'kunde-neu' )
+			return { screen : 'kundeneu' };
+
+		found = /^kunde-([1-9][0-9]{0,9})(?:-(belege|portal|notizen|einladen))?$/.exec( text );
+
+		if( found !== null )
+			return { screen : 'kunde', id : Number( found[1] ), tab : found[2] === undefined ? '' : found[2] };
+
+		if( text === 'positionen' )
+			return { screen : 'positionen' };
+
+		if( text === 'einstellungen' )
+			return { screen : 'einstellungen' };
 
 		return { screen : 'uebersicht' };
 	};
 
-	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf };
-	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege' };
+	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, positionen : positionen, einstellungen : einstellungen };
+	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', positionen : 'positionen', einstellungen : 'einstellungen' };
 
 	const route = function() {
 
@@ -2392,6 +3578,7 @@
 
 		state.base = data.base;
 		state.csrf = data.csrf;
+		state.perm = data.perm;
 		state.user = data.user.name;
 		state.texts = data.texts;
 		state.links = data.links;
@@ -2399,6 +3586,7 @@
 		state.toast = dc.getElementById( 'toast' );
 		state.dialogs = dc.getElementById( 'dialogs' );
 		state.count = dc.getElementById( 'n-belege' );
+		state.clientCount = dc.getElementById( 'n-kunden' ) ?? null;
 
 		wn.addEventListener( 'hashchange', route );
 
@@ -2414,7 +3602,7 @@
 
 			if( state.draft !== null && state.draft.dirty === true && typeof href === 'string' && href.charAt( 0 ) === '#' ) {
 				event.preventDefault();
-				ask( { title : t( 'leave.title' ), text : t( 'leave.text' ), yes : t( 'leave.yes' ), danger : true } ).then( function( yes ) {
+				ask( { title : t( 'leave.title' ), text : t( state.draft.form === true ? 'leave.text-form' : 'leave.text' ), yes : t( 'leave.yes' ), danger : true } ).then( function( yes ) {
 					if( yes === true && state.draft !== null ) {
 						state.draft.dirty = false;
 						wn.location.hash = href;
@@ -2463,7 +3651,7 @@
 		state : state,
 		el : el,
 		t : t,
-		model : { docName : docName, visible : visible, chips : chips, draftOf : draftOf, draftNew : draftNew, payloadOf : payloadOf, totalsOf : totalsOf, ready : ready, lineOf : lineOf, primaryOf : primaryOf, tabsOf : tabsOf, errorText : errorText },
+		model : { docName : docName, visible : visible, visibleClients : visibleClients, clientTitle : clientTitle, ratesText : ratesText, chips : chips, draftOf : draftOf, draftNew : draftNew, payloadOf : payloadOf, totalsOf : totalsOf, ready : ready, lineOf : lineOf, primaryOf : primaryOf, tabsOf : tabsOf, errorText : errorText },
 	};
 
 	if( dc.readyState === 'loading' )

@@ -4,7 +4,7 @@ declare(strict_types=1);
  *	Crm\Documents\Money		Cents, thousandths and hundredths of a percent: the arithmetic of a document, pure and in integers.
  *												A price and an amount are cents, a quantity is thousandths (1500 = 1,5), a rate is hundredths
  *												of a percent (1900 = 19 %). Every rounding is half away from zero, in integer arithmetic. The
- *												script of the panel Belege mirrors these functions; both suites run the cases of
+ *												script of the surface (money.js) mirrors these functions; both suites run the cases of
  *												tests/money-cases.json.
  */
 namespace Crm\Documents;

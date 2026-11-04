@@ -1,8 +1,8 @@
 <?php
 declare(strict_types=1);
 
-// The install unit of the CRM module: the pages of the customer portal and the login page. The panel Kunden applies it
-// with the button Portal einrichten (Clients\Admin::apiSetup(), through \Nino\Features::applyUnit(), add-only: a
+// The install unit of the CRM module: the pages of the customer portal and the login page. The panel CRM and the settings of the surface apply it
+// with the button Portal einrichten (Crm\Crm\Admin::apiSetup(), through \Nino\Features::applyUnit(), add-only: a
 // route, a template or a text the project has stays as it is). It lies in unit/ and not in install/ on purpose: the
 // kernel's wizard offers every install/manifest.php below app/ and expects the module it names to be a \Nino\Modules
 // class, which a project module is not (tests/install-smoke.php holds the kernel to that). The element type of the items is

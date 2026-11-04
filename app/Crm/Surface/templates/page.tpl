@@ -19,9 +19,9 @@
 			<nav class="nav" id="nav" aria-label="[[t.nav.label]]">
 				<a href="#uebersicht" data-r="uebersicht">[[t.nav.overview]]</a>
 				<a href="#belege" data-r="belege">[[t.nav.documents]] <span class="n" id="n-belege"></span></a>
-				<a href="[[clients]]">[[t.nav.clients]]</a>
-				<a href="[[items]]">[[t.nav.items]]</a>
-				<a href="[[settings]]">[[t.nav.settings]]</a>
+				<a href="#kunden" data-r="kunden">[[t.nav.clients]] <span class="n" id="n-kunden"></span></a>
+				<a href="#positionen" data-r="positionen">[[t.nav.items]]</a>
+				<a href="#einstellungen" data-r="einstellungen">[[t.nav.settings]]</a>
 			</nav>
 			<div class="foot">
 				<span class="who">[[user]]</span>

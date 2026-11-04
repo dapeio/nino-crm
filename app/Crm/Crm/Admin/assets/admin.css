@@ -1,0 +1,20 @@
+@layer nino.system, nino.tool, nino.local;
+
+/**
+ *	Crm\Crm\Admin		What the panel CRM needs beyond the design system in _admin/assets/style.css. Joins the workbench's style bundle
+ *									while the module is active (see the panel's assets()); every rule is scoped to #crm-app, the root of
+ *									templates/panel.tpl, and nothing shared is restated.
+ */
+
+@layer nino.tool {
+
+#crm-app .crm-open,
+#crm-app .crm-status {
+	margin-top: 1rem;
+}
+#crm-app .crm-missing {
+	margin: 0 0 .75rem;
+	padding-left: 1.25rem;
+}
+
+}
