@@ -10,18 +10,17 @@ declare(strict_types=1);
  */
 namespace Nino\Modules\Pdf\Layout {
 
-	use Nino\Modules\Pdf\Document\Document;
-
 	/**
 	 *	Nino							A compact filesystembased php framework
 	 *	Table							What the engine does with a table block (see Html).
 	 *
 	 *										The columns take the widths the cells of the first row ask for
 	 *										in percent - width="30%" - and share the rest equally; a cell has
-	 *										1.5 mm of padding all round and holds blocks of its own, set in the
-	 *										width that is left. A row is as high as its highest cell, a th is
-	 *										bold, a row with a th has a rule under it and every other row a
-	 *										hairline, unless the table says border="0".
+	 *										the padding of its rule (see Sheet), a background where the rule has
+	 *										one, and holds blocks of its own, set in the width that is left. A
+	 *										row is as high as its highest cell. The rule under a row, and over it,
+	 *										are the row's own (see Html): a row with a th has the th's, every
+	 *										other row the td's, unless the table says border="0".
 	 *
 	 *										On the page a row is not split. A row that does not fit goes to
 	 *										the next page, and the rows of the thead are drawn again there
@@ -35,9 +34,6 @@ namespace Nino\Modules\Pdf\Layout {
 	 *	@link							https://github.com/dapeio/nino
 	 */
 	class Table {
-
-		// The padding of a cell in millimetres
-		public const float PAD = 1.5;
 
 		/**
 		 *	Set a table on the pages
@@ -130,7 +126,6 @@ namespace Nino\Modules\Pdf\Layout {
 		private static function _rows( Engine $engine, array $block, float $width ): array {
 
 			$widths = self::_columns( $block, $width );
-			$pad = self::PAD * Document::MM;
 			$rows = [];
 
 			foreach( $block['rows'] as $row ) {
@@ -138,23 +133,32 @@ namespace Nino\Modules\Pdf\Layout {
 				$x = 0.0;
 				$height = 0.0;
 				$items = [];
-				$heading = false;
+				$put = [];
 
 				foreach( $row['cells'] as $at => $cell ) {
 
-					$stack = $engine->stack( $cell['blocks'], max( $widths[$at] - 2 * $pad, 1.0 ) );
-					$height = max( $height, $stack['h'] );
-					$heading = $heading || $cell['th'] === true;
-					array_push( $items, ...Engine::shift( $stack['items'], $x + $pad, $pad ) );
+					[ $top, $right, $bottom, $left ] = $cell['pad'];
+					$stack = $engine->stack( $cell['blocks'], max( $widths[$at] - ( $left + $right ), 1.0 ) );
+					$height = max( $height, $stack['h'] + ( $top + $bottom ) );
+					array_push( $items, ...Engine::shift( $stack['items'], $x + $left, $top ) );
+
+					if( $cell['bg'] !== null )
+						$put[] = [ 'f', $x, 0.0, $widths[$at], 0.0, $cell['bg'] ];
+
 					$x += $widths[$at];
 				}
 
-				$height += 2 * $pad;
+				// The backgrounds are drawn first, as high as the row
+				foreach( $put as $at => $fill )
+					$put[$at][4] = $height;
 
-				if( $heading === true )
-					$items[] = [ 'l', 0.0, $height, $x, 0.8, 0.0 ];
-				else if( $block['border'] === true )
-					$items[] = [ 'l', 0.0, $height, $x, 0.4, 0.5 ];
+				$items = array_merge( $put, $items );
+
+				if( $row['top'] !== false )
+					$items[] = [ 'l', 0.0, 0.0, $x, $row['top'][0], $row['top'][1] ];
+
+				if( $row['rule'] !== false )
+					$items[] = [ 'l', 0.0, $height, $x, $row['rule'][0], $row['rule'][1] ];
 
 				$rows[] = [ 'h' => $height, 'items' => $items, 'head' => $row['head'] ];
 			}

@@ -344,7 +344,7 @@ check( '...a long value or a wide field of a card does not widen the page: the v
 
 echo "\nThe documents\n";
 
-$blocksOf = static fn( array $extra ): array => array_merge( [ [ 'type' => 'html', 'html' => '<h1>[[document.title]] [[document.number]]</h1><p>[[client.company]]</p>' ], [ 'type' => 'slot', 'name' => 'lines' ] ], $extra );
+$blocksOf = static fn( array $extra ): array => array_merge( [ [ 'type' => 'html', 'html' => '<h1>[[/document/title]] [[/document/number]]</h1><p>[[/customer/company]]</p>' ], [ 'type' => 'slot', 'name' => 'lines' ] ], $extra );
 $member = [ 'type' => 'signature', 'name' => 'kunde', 'party' => 'member', 'label' => 'Kunde', 'page' => 'last', 'x' => 20, 'y' => 230, 'w' => 60, 'h' => 20, 'line' => true ];
 $asAdmin();
 

@@ -29,6 +29,8 @@ namespace Nino\Modules\Pdf\Layout {
 	 *										  width    a th or td: a percentage (the column); an img: a number of mm
 	 *										  align    a p, div, h1, h2, h3, th or td: left, right or center
 	 *										  style    the same elements, reduced to its text-align declaration
+	 *										  class    a p or div: address, and no other class (the rules of
+	 *										           the sheet's .address)
 	 *										  border   a table: a whole number, 0 for none
 	 *										  src      an img, and only pdf:logo - any other img goes
 	 *
@@ -40,7 +42,7 @@ namespace Nino\Modules\Pdf\Layout {
 	 *										as it was; a script, a style, a head, a title and a template go with
 	 *										their content, which is no text of a document; a comment and a
 	 *										processing instruction go; every attribute not named above is removed
-	 *										(onclick, class, id, a style without a text-align).
+	 *										(onclick, a class that is not address, id, a style without a text-align).
 	 *
 	 *										body() is the entry for the engine: the text parsed and cleaned, as a
 	 *										DOM. html() is the entry for a save: the same body written out as a
@@ -65,8 +67,8 @@ namespace Nino\Modules\Pdf\Layout {
 			'h1'			=> [ 'align', 'style' ],
 			'h2'			=> [ 'align', 'style' ],
 			'h3'			=> [ 'align', 'style' ],
-			'p'				=> [ 'align', 'style' ],
-			'div'			=> [ 'align', 'style' ],
+			'p'				=> [ 'align', 'style', 'class' ],
+			'div'			=> [ 'align', 'style', 'class' ],
 			'br'			=> [],
 			'strong'	=> [],
 			'b'				=> [],
@@ -236,6 +238,9 @@ namespace Nino\Modules\Pdf\Layout {
 
 				case 'style':
 					return self::_alignment( $value );
+
+				case 'class':
+					return strtolower( $value ) === 'address' ? 'address' : null;
 
 				case 'border':
 					return preg_match( '/^\d{1,2}$/D', $value ) === 1 ? $value : null;

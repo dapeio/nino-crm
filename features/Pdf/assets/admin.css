@@ -45,6 +45,22 @@
 		font-weight: 600;
 	}
 
+	#admin-content-pdf .pdf-sheet {
+		min-height: 12rem;
+		white-space: pre;
+		overflow: auto;
+	}
+
+	#admin-content-pdf .pdf-design {
+		display: grid;
+		gap: .75rem;
+	}
+
+	#admin-content-pdf .pdf-design > legend {
+		padding: 0 .25rem;
+		font-weight: 600;
+	}
+
 	#admin-content-pdf .pdf-area {
 		width: 100%;
 		min-height: 6rem;

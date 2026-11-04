@@ -14,6 +14,7 @@ namespace Nino\Modules\Pdf {
 	use Nino\Modules\Pdf\Images\Image;
 	use Nino\Modules\Pdf\Layout\Allow;
 	use Nino\Modules\Pdf\Layout\Engine;
+	use Nino\Modules\Pdf\Layout\Sheet;
 
 	/**
 	 *	Nino							A compact filesystembased php framework
@@ -40,6 +41,9 @@ namespace Nino\Modules\Pdf {
 	 *	@link							https://github.com/dapeio/nino
 	 */
 	class Store {
+
+		// The code of the answer for each kind of thing that is wrong with a sheet
+		private const array DESIGN = [ 'brace' => 'pdf_design_brace', 'declaration' => 'pdf_design_declaration', 'selector' => 'pdf_design_selector', 'noselector' => 'pdf_design_noselector', 'semicolon' => 'pdf_design_semicolon', 'comment' => 'pdf_design_comment', 'property' => 'pdf_design_property', 'applies' => 'pdf_design_applies', 'value' => 'pdf_design_value' ];
 
 		/**
 		 *	One block of a template, rebuilt from what a block of its type may hold
@@ -379,11 +383,13 @@ namespace Nino\Modules\Pdf {
 
 		/**
 		 *	Write the layout's own values; the names of its two pictures stay as they are. The header and
-		 *	the footer are held to the list of Allow. A change of the paper is refused, with the names of
+		 *	the footer are held to the list of Allow, the design - the owner's rules in CSS - is read by
+		 *	Sheet::check() and refused with the line, the kind and the word when it is not a sheet, and
+		 *	stays as it is where the data does not name it. A change of the paper is refused, with the names of
 		 *	the templates, while a signature box of a template would lie outside the new page.
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
-		 *	@param		array 		$data					format, margins, font, size, header, footer
+		 *	@param		array 		$data					format, margins, font, size, header, footer, design
 		 *
 		 *	@return 	array											[ ok ] or [ fail ]
 		 */
@@ -415,6 +421,26 @@ namespace Nino\Modules\Pdf {
 			if( count( $margins ) !== 4 )
 				return self::_fail( 400, 'a margin is a whole number of millimetres from '. Feature::MARGIN_MIN. ' to '. Feature::MARGIN_MAX, 'pdf_margin', [ Feature::MARGIN_MIN, Feature::MARGIN_MAX ], 'margins' );
 
+			$design = null;
+
+			if( array_key_exists( 'design', $data ) === true ) {
+
+				if( is_string( $data['design'] ) === false )
+					return self::_fail( 400, 'the design is a text', 'pdf_design_type', [], 'design' );
+
+				// Read as it was typed, so that a line in a refusal is the line the person sees; what is stored is trimmed
+				$typed = str_replace( [ "\r\n", "\r" ], "\n", \Nino\Admin\Admin::postString( $data, 'design' ) );
+				$design = trim( $typed );
+
+				if( mb_strlen( $design ) > Feature::MAX_DESIGN )
+					return self::_fail( 400, 'the design has at most '. Feature::MAX_DESIGN. ' characters', 'pdf_design_long', [ Feature::MAX_DESIGN ], 'design' );
+
+				$read = Sheet::check( $typed );
+
+				if( isset( $read['rules'] ) === false )
+					return self::_fail( 400, Sheet::parse( $typed ), self::refusal( $read )['code'], self::refusal( $read )['params'], 'design' );
+			}
+
 			$bands = [];
 
 			foreach( [ 'header', 'footer' ] as $band ) {
@@ -431,14 +457,171 @@ namespace Nino\Modules\Pdf {
 			if( $unfit !== [] )
 				return self::_fail( 409, 'signature boxes of these templates would lie outside the page: '. implode( ', ', $unfit ), 'pdf_format_boxes', [ implode( ', ', $unfit ) ], 'format' );
 
-			$written = \Nino\Filesystem::mutate( $appData, Feature::LAYOUT, static function( mixed $state ) use ( $format, $font, $size, $margins, $bands ): array {
+			$written = \Nino\Filesystem::mutate( $appData, Feature::LAYOUT, static function( mixed $state ) use ( $format, $font, $size, $margins, $bands, $design ): array {
 
 				$state = is_array( $state ) === true ? $state : [];
 
-				return [ 'format' => $format, 'margins' => $margins, 'font' => $font, 'size' => $size ] + $bands + [ 'logo' => $state['logo'] ?? '', 'signature' => $state['signature'] ?? '' ];
+				return [ 'format' => $format, 'margins' => $margins, 'font' => $font, 'size' => $size ] + $bands + [ 'design' => $design ?? $state['design'] ?? '', 'logo' => $state['logo'] ?? '', 'signature' => $state['signature'] ?? '' ];
 			}, [] );
 
 			return $written === true ? [ 'ok' => true ] : self::_fail( 500, 'the layout could not be written' );
+		}
+
+		/**
+		 *	Add what a caller brings to the project: library blocks, templates and the header, the footer and
+		 *	the design of the layout. Nothing the project has is touched unless $overwrite says so: a key of a
+		 *	block or of a template that exists stays, a field of the layout that holds a text stays. Each piece
+		 *	is checked as the panel's save checks it - a block's HTML is held to the list of Allow, a template is
+		 *	read by template() against the library as it is once the blocks are in, a design by Sheet::check()
+		 *	- and a piece that is refused is left out and named, with the code of what is wrong; the others are
+		 *	written. The pictures of the layout are not part of it.
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		$templates		key => [ name, tag, blocks ]
+		 *	@param		array 		$blocks				key => [ title, html ]
+		 *	@param		array 		$layout				header, footer, design - the text of each
+		 *	@param		bool			$overwrite		Replace what the project has
+		 *
+		 *	@return 	array											added, existing, refused: each blocks, templates, layout - a list of keys, of fields; refused a map key => code
+		 */
+		public static function install( array &$appData, array $templates, array $blocks, array $layout, bool $overwrite = false ): array {
+
+			$answer = [ 'added' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'existing' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'refused' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ] ];
+
+			// The blocks first: a template may name one of them
+			$clean = [];
+
+			foreach( $blocks as $key => $block ) {
+
+				$key = (string) $key;
+				$given = is_array( $block ) === true && is_string( $block['html'] ?? null ) === true;
+				$html = $given === true ? self::_html( $block['html'], Feature::MAX_HTML ) : null;
+				$title = is_array( $block ) === true && is_string( $block['title'] ?? null ) === true ? trim( $block['title'] ) : '';
+
+				if( preg_match( Feature::SLUG, $key ) !== 1 )
+					$answer['refused']['blocks'][$key] = 'pdf_key';
+				else if( $title === '' || mb_strlen( $title ) > Feature::MAX_TITLE )
+					$answer['refused']['blocks'][$key] = 'pdf_title';
+				else if( $given === false )
+					$answer['refused']['blocks'][$key] = 'pdf_html_empty';
+				else if( $html === null )
+					$answer['refused']['blocks'][$key] = 'pdf_html_long';
+				else
+					$clean[$key] = [ 'title' => $title, 'html' => $html ];
+			}
+
+			if( $clean !== [] )
+				\Nino\Filesystem::mutate( $appData, Feature::BLOCKS, static function( mixed $state ) use ( $clean, $overwrite, &$answer ): array {
+
+					$library = is_array( $state ) === true ? $state : [];
+
+					foreach( $clean as $key => $block ) {
+
+						if( isset( $library[$key] ) === true && $overwrite === false ) {
+							$answer['existing']['blocks'][] = $key;
+							continue;
+						}
+
+						$library[$key] = $block;
+						$answer['added']['blocks'][] = $key;
+					}
+
+					return $library;
+				}, [] );
+
+			// The layout: a field that holds a text stays
+			$fields = [];
+
+			foreach( $layout as $field => $text ) {
+
+				$field = (string) $field;
+
+				if( in_array( $field, [ 'header', 'footer', 'design' ], true ) === false || is_string( $text ) === false ) {
+					$answer['refused']['layout'][$field] = 'pdf_layout_field';
+					continue;
+				}
+
+				if( $field !== 'design' ) {
+
+					$html = self::_html( $text, Feature::MAX_BAND );
+
+					if( $html === null )
+						$answer['refused']['layout'][$field] = 'pdf_band_long';
+					else
+						$fields[$field] = $html;
+
+					continue;
+				}
+
+				$design = trim( str_replace( [ "\r\n", "\r" ], "\n", $text ) );
+				$read = mb_strlen( $design ) > Feature::MAX_DESIGN ? [ 'code' => 'long' ] : Sheet::check( $design );
+
+				if( isset( $read['rules'] ) === true )
+					$fields[$field] = $design;
+				else
+					$answer['refused']['layout'][$field] = $read['code'] === 'long' ? 'pdf_design_long' : self::DESIGN[ $read['code'] ];
+			}
+
+			if( $fields !== [] )
+				\Nino\Filesystem::mutate( $appData, Feature::LAYOUT, static function( mixed $state ) use ( $fields, $overwrite, &$answer ): array {
+
+					$state = is_array( $state ) === true ? $state : [];
+
+					foreach( $fields as $field => $text ) {
+
+						if( is_string( $state[$field] ?? null ) === true && $state[$field] !== '' && $overwrite === false ) {
+							$answer['existing']['layout'][] = $field;
+							continue;
+						}
+
+						$state[$field] = $text;
+						$answer['added']['layout'][] = $field;
+					}
+
+					return $state;
+				}, [] );
+
+			foreach( $templates as $key => $template ) {
+
+				$key = (string) $key;
+
+				if( preg_match( Feature::SLUG, $key ) !== 1 ) {
+					$answer['refused']['templates'][$key] = 'pdf_key';
+					continue;
+				}
+
+				if( Feature::template( $appData, $key ) !== null && $overwrite === false ) {
+					$answer['existing']['templates'][] = $key;
+					continue;
+				}
+
+				$checked = self::template( $appData, is_array( $template ) === true ? $template : [] );
+
+				if( isset( $checked['fail'] ) === true ) {
+					$answer['refused']['templates'][$key] = (string) $checked['fail'][2];
+					continue;
+				}
+
+				if( \Nino\Filesystem::mutate( $appData, Feature::TEMPLATES. '/'. $key. '.php', static fn( mixed $state ): array => $checked['template'], null ) === true )
+					$answer['added']['templates'][] = $key;
+				else
+					$answer['refused']['templates'][$key] = 'pdf_write';
+			}
+
+			return $answer;
+		}
+
+		/**
+		 *	What a sheet's refusal is as an answer: the code of its sentence in the panel's texts and the params that sentence takes - the
+		 *	line first, then the word, and for a property that is not read the selector - so that the panel says it in its own language
+		 *
+		 *	@param		array 		$read					A refusal of Sheet::check(): line, code, detail, selector
+		 *
+		 *	@return 	array											[ code, params ]
+		 */
+		public static function refusal( array $read ): array {
+
+			return [ 'code' => self::DESIGN[ $read['code'] ], 'params' => $read['code'] === 'applies' ? [ $read['line'], $read['detail'], $read['selector'] ] : [ $read['line'], $read['detail'] ] ];
 		}
 
 		/**

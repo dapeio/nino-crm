@@ -1,5 +1,7 @@
 <h1>Lorem ipsum dolor sit amet</h1>
-<p>Consectetur adipiscing elit, <strong>sed do eiusmod tempor</strong> incididunt ut labore et dolore <em>magna aliqua</em>. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+<p class="address">Lorem Ipsum GmbH<br>Dolor Strasse 1<br>12345 Sit Amet</p>
+<p>Consectetur adipiscing elit, <strong>sed do eiusmod tempor</strong> incididunt ut labore et dolore <em>magna aliqua</em>. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut <a href="#">aliquip ex ea commodo</a> consequat.</p>
+<hr>
 <h2>Duis aute irure dolor</h2>
 <ul>
 <li>In reprehenderit in voluptate velit esse cillum dolore</li>

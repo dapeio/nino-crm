@@ -163,11 +163,12 @@ function world( locale ) {
 }
 
 const LAYOUT = {
-	layout : { format : 'a4', margins : [ 20, 21, 22, 23 ], font : 'helvetica', size : 10, header : '<p>Head [[page]]</p>', footer : '', logo : 'logo.png', signature : '' },
+	layout : { format : 'a4', margins : [ 20, 21, 22, 23 ], font : 'helvetica', size : 10, header : '<p>Head [[page]]</p>', footer : '', design : 'h1 { color: #112233 }', logo : 'logo.png', signature : '' },
+	sheet : 'h1 { font-size: 1.8em }\np { margin: 0 0 3mm 0 }',
 	images : { logo : 'data:image/png;base64,AAAA', signature : '' },
 	papers : [ 'a4', 'letter' ],
 	fonts : [ 'helvetica', 'times', 'courier' ],
-	ranges : { margin : [ 5, 50 ], size : [ 8, 14 ], band : 4000 },
+	ranges : { margin : [ 5, 50 ], size : [ 8, 14 ], band : 4000, design : 8000 },
 };
 const OFFER = {
 	tags : [ 'offer', 'invoice' ],
@@ -210,7 +211,7 @@ console.log( 'Nino.admin.pdf - the layout\n' );
 	const told = [];
 	w.entry('pdf').save( function( ok ) { told.push( ok ) } );
 	check( 'a save posts pdf/layout/save with what the model holds, numbers as numbers, and the line says it is saving', w.last().action === 'pdf/layout/save'
-		&& JSON.stringify( w.last().payload ) === '{"format":"a4","margins":[60,21,22,23],"font":"helvetica","size":10,"header":"<p>Head [[page]]</p>","footer":""}' && w.line('pdf-layout-form').dataset.state === 'saving' );
+		&& JSON.stringify( w.last().payload ) === '{"format":"a4","margins":[60,21,22,23],"font":"helvetica","size":10,"header":"<p>Head [[page]]</p>","footer":"","design":"h1 { color: #112233 }"}' && w.line('pdf-layout-form').dataset.state === 'saving' );
 
 	w.answer( 400, { error : 'x', code : 'pdf_margin', params : [ 5, 50 ], field : 'margins' } );
 	check( '...a refusal is told in the sentence of its code, with the limits in it, ends in done( false ), and the field the server named is marked', w.line('pdf-layout-form').dataset.state === 'error'
@@ -249,6 +250,69 @@ console.log( 'Nino.admin.pdf - the layout\n' );
 	fire( w.field( 'pdf-layout-form', 'format' ), 'change' );
 	w.field( 'pdf-layout-form', 'header' ).value = '<p>Typed head</p>';
 	fire( w.field( 'pdf-layout-form', 'header' ), 'input', { bubbles : true } );
+
+	// The design: the feature's rules to read, the owner's to write, a preview of the saved design
+	const sheet = w.field( 'pdf-layout-form', 'sheet' );
+	check( 'the Design section shows the feature\'s rules in a textarea that is read-only, the owner\'s rules in one that is not, limited to the length the server takes; the labels are the fills\'', sheet.readOnly === true && sheet.value === LAYOUT.sheet
+		&& w.field( 'pdf-layout-form', 'design' ).readOnly !== true && w.field( 'pdf-layout-form', 'design' ).value === 'h1 { color: #112233 }' && w.field( 'pdf-layout-form', 'design' ).maxLength === 8000
+		&& w.texts( 'pdf-layout-form', 'legend' ).indexOf( w.say('/_admin/pdf/label/design') ) !== -1 && w.texts( 'pdf-layout-form', 'span' ).indexOf( w.say('/_admin/pdf/label/design-sheet') ) !== -1 );
+	w.field( 'pdf-layout-form', 'design' ).value = 'h1 { color: red }\np { float: left }';
+	fire( w.field( 'pdf-layout-form', 'design' ), 'input', { bubbles : true } );
+	check( 'a change of the design turns the entry to unsaved', w.entry('pdf').isDirty() === true );
+	w.entry('pdf').save( function( ok ) { told.push( ok ) } );
+	check( '...and a save posts it with the rest of the form', w.last().action === 'pdf/layout/save' && w.last().payload.design === 'h1 { color: red }\np { float: left }' );
+	w.answer( 400, { error : 'x', code : 'pdf_design_value', params : [ 1, 'color: red' ], field : 'design' } );
+	check( '...a refusal of the sheet is told in the sentence of its code with the line in it, and the textarea it names is marked', w.line('pdf-layout-form').dataset.state === 'error' && w.line('pdf-layout-form').textContent === w.say( '/_admin/error/pdf_design_value', 1, 'color: red' )
+		&& w.line('pdf-layout-form').textContent.indexOf('1') !== -1 && w.field( 'pdf-layout-form', 'design' ).attributes['aria-invalid'] === 'true' );
+	w.field( 'pdf-layout-form', 'design' ).value = '  h1 { color: #445566 }  ';
+	fire( w.field( 'pdf-layout-form', 'design' ), 'input', { bubbles : true } );
+	w.entry('pdf').save( function( ok ) { told.push( ok ) } );
+	w.answer( 200, Object.assign( {}, LAYOUT, { layout : Object.assign( {}, LAYOUT.layout, { design : 'h1 { color: #445566 }' } ) } ) );
+	check( '...a save that goes through shows the design as the server stored it (trimmed), and nothing is unsaved', w.field( 'pdf-layout-form', 'design' ).value === 'h1 { color: #445566 }' && w.entry('pdf').isDirty() === false );
+	w.field( 'pdf-layout-form', 'header' ).value = '<p>Typed head</p>';
+	fire( w.field( 'pdf-layout-form', 'header' ), 'input', { bubbles : true } );
+
+	// The refusal describes the field it names, and a stored design that is no sheet says why
+	w.field( 'pdf-layout-form', 'design' ).value = 'p { float: left }';
+	fire( w.field( 'pdf-layout-form', 'design' ), 'input', { bubbles : true } );
+	w.entry('pdf').save( function() {} );
+	w.answer( 400, { error : 'x', code : 'pdf_design_property', params : [ 1, 'float' ], field : 'design' } );
+	const status = w.line('pdf-layout-form');
+	check( 'a refusal marks the overrides invalid and describes them by the status line that says why', w.field( 'pdf-layout-form', 'design' ).attributes['aria-invalid'] === 'true' && status.id !== '' && w.field( 'pdf-layout-form', 'design' ).attributes['aria-describedby'] === status.id );
+	w.field( 'pdf-layout-form', 'design' ).value = 'h1 { color: #445566 }';
+	fire( w.field( 'pdf-layout-form', 'design' ), 'input', { bubbles : true } );
+	w.entry('pdf').save( function() {} );
+	w.answer( 200, Object.assign( {}, LAYOUT, { layout : Object.assign( {}, LAYOUT.layout, { design : 'h1 { color: #445566 }' } ), refusal : null } ) );
+	check( '...a save that goes through takes the description away', w.field( 'pdf-layout-form', 'design' ).attributes['aria-describedby'] === undefined );
+	const stored = w.find( w.mounts['pdf-layout-form'], function( el ) { return el.id === 'pdf-design-stored' } );
+	check( 'a design in the file that is no sheet is shown with the sentence that says why it is not read - in the fill\'s words, as text - and the sentence is gone for a sheet', stored.hidden === true && stored.textContent === '' );
+	const v = world('en_US');
+	v.layout.showCurrent();
+	v.answer( 200, Object.assign( {}, LAYOUT, { layout : Object.assign( {}, LAYOUT.layout, { design : 'p { float: left }' } ), refusal : { code : 'pdf_design_property', params : [ 1, '<b>float</b>' ] } } ) );
+	const shownStored = v.find( v.mounts['pdf-layout-form'], function( el ) { return el.id === 'pdf-design-stored' } );
+	check( '...drawn from an answer that carries a refusal: the owner\'s text is in the textarea, the sentence beside it', v.field( 'pdf-layout-form', 'design' ).value === 'p { float: left }' && shownStored.hidden === false && shownStored.textContent === v.say( '/_admin/pdf/label/design-stored', v.say( '/_admin/error/pdf_design_property', 1, '<b>float</b>' ) ) );
+	const g = world('de_DE');
+	g.layout.showCurrent();
+	g.answer( 200, Object.assign( {}, LAYOUT, { layout : Object.assign( {}, LAYOUT.layout, { design : 'p { float: left }' } ), refusal : { code : 'pdf_design_property', params : [ 5, 'float' ] } } ) );
+	const germanStored = g.find( g.mounts['pdf-layout-form'], function( el ) { return el.id === 'pdf-design-stored' } );
+	check( '...in the language of the panel: German words round the German sentence of the code, the line in it, and nothing of the parser\'s English', germanStored.textContent === g.say( '/_admin/pdf/label/design-stored', g.say( '/_admin/error/pdf_design_property', 5, 'float' ) ) && germanStored.textContent.indexOf('Zeile 5') !== -1 && germanStored.textContent.indexOf('is not a property') === -1 );
+	w.field( 'pdf-layout-form', 'header' ).value = '<p>Typed head</p>';
+	fire( w.field( 'pdf-layout-form', 'header' ), 'input', { bubbles : true } );
+
+	const shown = w.blobs.length;
+	w.button( 'pdf-layout-form', w.say('/_admin/pdf/label/preview') ).dispatchEvent( { type : 'click' } );
+	check( 'the Preview of the Design asks pdf/layout/preview for the sample text, with nothing posted - it renders what is saved', w.last().action === 'pdf/layout/preview' && JSON.stringify( w.last().payload ) === '{}' );
+	w.answer( 200, { pdf : btoa( '%PDF-1.4 sample' ), file : 'design.pdf' } );
+	const frame = w.find( w.mounts['pdf-layout-form'], function( el ) { return el.tagName === 'IFRAME' } );
+	const box = w.find( w.mounts['pdf-layout-form'], function( el ) { return el.id === 'pdf-design-preview' } );
+	check( '...the PDF is a blob address in the frame and in the link that downloads it, the box is shown, and the entry still says the header is not saved', w.blobs.length === shown + 1 && frame.src === 'blob:test/'+ w.blobs.length && box.hidden === false
+		&& w.find( box, function( el ) { return el.tagName === 'A' } ).href === frame.src && w.entry('pdf').isDirty() === true );
+	w.button( 'pdf-layout-form', w.say('/_admin/pdf/label/preview') ).dispatchEvent( { type : 'click' } );
+	w.answer( 200, { pdf : btoa( '%PDF-1.4 sample' ), file : 'design.pdf' } );
+	check( '...the next preview lets go of the address of the last', w.revoked.indexOf( 'blob:test/'+ ( w.blobs.length - 1 ) ) !== -1 );
+	w.button( 'pdf-layout-form', w.say('/_admin/pdf/label/preview') ).dispatchEvent( { type : 'click' } );
+	w.answer( 500, { error : 'x' } );
+	check( '...a preview that fails is told in the sentence of the panel, not the data of the server', w.line('pdf-layout-form').dataset.state === 'error' );
 
 	const fileInput = w.find( w.mounts['pdf-layout-form'], function( el ) { return el.tagName === 'INPUT' && el.type === 'file' } );
 	const file = { name : 'logo.png', size : 10 };

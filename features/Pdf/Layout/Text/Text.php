@@ -32,7 +32,9 @@ namespace Nino\Modules\Pdf\Layout {
 	 *
 	 *										An atom is a map: t (w word, s space, b break, i image), s (the
 	 *										bytes), w (the width in points), f (the base font), z (the size),
-	 *										u (underlined) and, for a picture, h and i (the Image).
+	 *										u (underlined), c (the colour, six hex digits, or null for black),
+	 *										l (the line height as a factor of the size, or null for 1.35) and,
+	 *										for a picture, h and i (the Image).
 	 *
 	 *	@package					Dape/Nino
 	 *	@author						David Perchermeier <mail@dape.io>
@@ -99,12 +101,14 @@ namespace Nino\Modules\Pdf\Layout {
 			$atoms = [];
 			$space = self::width( ' ', $style['f'], $style['z'] );
 
+			$more = [ 'c' => $style['c'] ?? null, 'l' => $style['l'] ?? null ];
+
 			foreach( preg_split( '/([ \t\r\n\f]+)/', self::encode( $text ), -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY ) ?: [] as $part ) {
 
 				if( trim( $part, " \t\r\n\f" ) === '' )
-					$atoms[] = [ 't' => 's', 's' => ' ', 'w' => $space, 'f' => $style['f'], 'z' => $style['z'], 'u' => $style['u'] ];
+					$atoms[] = [ 't' => 's', 's' => ' ', 'w' => $space, 'f' => $style['f'], 'z' => $style['z'], 'u' => $style['u'] ] + $more;
 				else
-					$atoms[] = [ 't' => 'w', 's' => $part, 'w' => self::width( $part, $style['f'], $style['z'] ), 'f' => $style['f'], 'z' => $style['z'], 'u' => $style['u'] ];
+					$atoms[] = [ 't' => 'w', 's' => $part, 'w' => self::width( $part, $style['f'], $style['z'] ), 'f' => $style['f'], 'z' => $style['z'], 'u' => $style['u'] ] + $more;
 			}
 
 			return $atoms;
@@ -115,7 +119,7 @@ namespace Nino\Modules\Pdf\Layout {
 		 *
 		 *	@param		array 		$atoms
 		 *	@param		float			$width				The room of a line in points
-		 *	@param		array 		$base					[ f, z ] - the type an empty line, or one with only a picture on it, is as high as
+		 *	@param		array 		$base					[ f, z, l ] - the type an empty line, or one with only a picture on it, is as high as; l the line height as a factor, 1.35 where it says nothing
 		 *
 		 *	@return 	array											Lines: a (atoms), w, z, f, ih (the tallest picture), h (the height) and base (the baseline from the top)
 		 */
@@ -279,6 +283,7 @@ namespace Nino\Modules\Pdf\Layout {
 			$size = 0.0;
 			$font = $base['f'];
 			$picture = 0.0;
+			$factor = $base['l'] ?? self::LEADING;
 
 			foreach( $atoms as $atom ) {
 
@@ -287,12 +292,13 @@ namespace Nino\Modules\Pdf\Layout {
 				else if( $atom['z'] > $size ) {
 					$size = $atom['z'];
 					$font = $atom['f'];
+					$factor = $atom['l'] ?? self::LEADING;
 				}
 			}
 
 			$type = $size > 0 ? $size : $base['z'];
 			[ $up, $down ] = Metrics::vertical( $font );
-			$lead = self::LEADING * $type;
+			$lead = $factor * $type;
 			$rise = ( $lead - ( $up - $down ) * $type / 1000 ) / 2 + $up * $type / 1000;
 			$fall = $lead - $rise;
 

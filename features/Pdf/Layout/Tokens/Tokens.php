@@ -14,10 +14,14 @@ namespace Nino\Modules\Pdf\Layout {
 	 *	Nino							A compact filesystembased php framework
 	 *	Tokens						The tokens of a document's HTML, filled in before it is parsed.
 	 *
-	 *										A token with a leading slash is the site's text for that key,
-	 *										as the kernel's fills have it (\Nino\Html::resolveTextfill()); a
-	 *										plain or dotted name is a value the caller handed in, a dotted one
-	 *										walking nested arrays; page and pages, in a header or a footer
+	 *										A token with a leading slash is a key. The caller is asked first:
+	 *										the tokens it handed in may hold the key itself, flat -
+	 *										'/customer/name' => 'Ada' - and nothing else; an array under
+	 *										'customer' is not read for it. What the caller does not have is the
+	 *										site's text for that key, as the kernel's fills have it
+	 *										(\Nino\Html::resolveTextfill()). A plain or dotted name is a value the
+	 *										caller handed in too, a dotted one walking nested arrays - the slash
+	 *										key and the dotted name are two different tokens; page and pages, in a header or a footer
 	 *										only, are left where they stand for the engine to fill in once
 	 *										the pages are counted. What a token stands for is escaped as text
 	 *										before it enters the HTML - a value that holds a tag arrives as
@@ -25,8 +29,9 @@ namespace Nino\Modules\Pdf\Layout {
 	 *										reference, so that a value that holds [[pages]] is the characters
 	 *										of it and not the number of pages - and is not read for tokens
 	 *										again. A token that stands for nothing is removed, or, in a
-	 *										preview, a name of the caller's is written in square brackets, so
-	 *										the person sees where the data will land.
+	 *										preview, a name of the caller's - a key nobody has included - is
+	 *										written in square brackets, so the person sees where the data will
+	 *										land.
 	 *
 	 *	@package					Dape/Nino
 	 *	@author						David Perchermeier <mail@dape.io>
@@ -39,8 +44,8 @@ namespace Nino\Modules\Pdf\Layout {
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$html
-		 *	@param		array 		$tokens				name => string, nested arrays allowed
-		 *	@param		bool			$preview			Unknown names of the caller's become [name]
+		 *	@param		array 		$tokens				'/slash/key' => string flat, name => string, nested arrays allowed for the dotted form
+		 *	@param		bool			$preview			Unknown names and keys become [name] and [/key]
 		 *	@param		bool			$band					A header or a footer: page and pages stay
 		 *
 		 *	@return 	string
@@ -52,8 +57,18 @@ namespace Nino\Modules\Pdf\Layout {
 				$name = $found[1];
 
 				if( $name[0] === '/' ) {
+
+					$given = $tokens[$name] ?? null;
+
+					if( is_string( $given ) === true || is_int( $given ) === true || is_float( $given ) === true )
+						return self::_escape( (string) $given );
+
 					$value = \Nino\Html::resolveTextfill( $appData, $name );
-					return $value === null ? '' : self::_escape( $value );
+
+					if( $value !== null )
+						return self::_escape( $value );
+
+					return $preview === true ? self::_escape( '['. $name. ']' ) : '';
 				}
 
 				if( $band === true && ( $name === 'page' || $name === 'pages' ) )

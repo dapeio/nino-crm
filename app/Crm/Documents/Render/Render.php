@@ -8,16 +8,20 @@ declare(strict_types=1);
  *													enters a slot is escaped. The words of the file are in text/de_DE.php - a document is the
  *													owner's letter to his client and is German.
  *
- *													Tokens a template of the tags offer and invoice may use:
- *													  document.title, .number, .date, .due, .valid, .period, .parent, .vatnote, .net, .vat, .gross
- *													  client.number, .company, .name, .street, .zip, .city, .country, .vat_id, .email
- *													  site.portal, site.login (the absolute addresses of /portal and /login; empty where the site has none)
+ *													Tokens are the slash keys of Nino's fills, handed to the Pdf feature flat ('/customer/name' =>
+ *													'...'), and a template writes them as [[/customer/name]]. A template of the tags offer and invoice
+ *													may use:
+ *													  /document/number, /title, /date, /net, /vat, /gross, /vatnote, /parent
+ *													  /invoice/due, /period (an invoice and a credit note)
+ *													  /offer/number, /date, /valid, /gross, /period (an offer: its own; /period is empty where it has none)
+ *													  /customer/number, /company, /name, /street, /zip, /city, /country, /email, /vat
+ *													  /site/portal, /login (the absolute addresses of /portal and /login; empty where the site has none)
  *													Slots: address, lines, totals. Inputs: the ones the template declares.
  *
  *													A template of the tags contract, privacy and information (a document without lines and without a
- *													number) has document.title (the title of the document itself), document.date, document.parent
- *													(a contract: the number of its offer), client.*, site.* and the slot address. A contract also has
- *													offer.number, .date, .valid, .net, .vat, .gross and the slots lines and totals of its offer, so
+ *													number) has /document/title (the title of the document itself), /document/date, /document/parent
+ *													(a contract: the number of its offer), /customer/*, /site/* and the slot address. A contract also has
+ *													/offer/number, /date, /valid, /gross, /period and the slots lines and totals of its offer, so
  *													that it can quote what it is about.
  */
 namespace Crm\Documents;
@@ -132,14 +136,13 @@ class Render {
 		$category = (string) $document['category'];
 		$plain = in_array( $category, Documents::PLAIN, true );
 
-		$tokens = [
-			'document' => [],
-			'client'   => [],
-			'site'     => [ 'portal' => \Nino\Html::absoluteUrl( $appData, '/portal' ), 'login' => \Nino\Html::absoluteUrl( $appData, '/login' ) ],
-		];
+		$tokens = [ '/site/portal' => \Nino\Html::absoluteUrl( $appData, '/portal' ), '/site/login' => \Nino\Html::absoluteUrl( $appData, '/login' ) ];
 
-		foreach( [ 'number', 'company', 'name', 'street', 'zip', 'city', 'country', 'vat_id', 'email' ] as $field )
-			$tokens['client'][$field] = (string) ( $client[$field] ?? '' );
+		// The client's field vat_id is the token /customer/vat
+		foreach( [ 'number', 'company', 'name', 'street', 'zip', 'city', 'country', 'email' ] as $field )
+			$tokens['/customer/'. $field] = (string) ( $client[$field] ?? '' );
+
+		$tokens['/customer/vat'] = (string) ( $client['vat_id'] ?? '' );
 
 		$data = [
 			'tokens' => $tokens,
@@ -150,21 +153,20 @@ class Render {
 		if( $plain === true ) {
 
 			$offer = is_array( $document['offer'] ?? null ) === true ? $document['offer'] : null;
-			$data['tokens']['document'] = [ 'title' => (string) $document['title'], 'date' => self::day( (string) $document['date'] ), 'parent' => $offer === null ? '' : (string) $offer['number'] ];
+			$data['tokens']['/document/title'] = (string) $document['title'];
+			$data['tokens']['/document/date'] = self::day( (string) $document['date'] );
+			$data['tokens']['/document/parent'] = $offer === null ? '' : (string) $offer['number'];
 
 			if( $offer !== null ) {
 
 				$regular = $offer['vat_mode'] === 'regular';
 				$totals = Money::totals( $offer['lines'], (string) $offer['vat_mode'], (bool) $offer['reverse_charge'] );
 
-				$data['tokens']['offer'] = [
-					'number' => (string) $offer['number'],
-					'date'   => self::day( (string) $offer['date'] ),
-					'valid'  => self::day( (string) ( $offer['valid_until'] ?? '' ) ),
-					'net'    => Money::format( $totals['net'], $currency ),
-					'vat'    => Money::format( $totals['vat'], $currency ),
-					'gross'  => Money::format( $totals['gross'], $currency ),
-				];
+				$data['tokens']['/offer/number'] = (string) $offer['number'];
+				$data['tokens']['/offer/date'] = self::day( (string) $offer['date'] );
+				$data['tokens']['/offer/valid'] = self::day( (string) ( $offer['valid_until'] ?? '' ) );
+				$data['tokens']['/offer/gross'] = Money::format( $totals['gross'], $currency );
+				$data['tokens']['/offer/period'] = self::period( (string) ( $offer['period_from'] ?? '' ), (string) ( $offer['period_to'] ?? '' ) );
 				$data['slots']['lines'] = self::lines( $offer['lines'], $totals, $regular, $currency );
 				$data['slots']['totals'] = self::totals( $totals, $regular, $currency );
 			}
@@ -187,19 +189,27 @@ class Render {
 		if( $period === '' && $category !== 'offer' )
 			$period = self::text( 'period.none' );
 
-		$data['tokens']['document'] = [
-			'title'   => self::text( 'title.'. $category ),
-			'number'  => (string) $document['number'],
-			'date'    => self::day( (string) $document['date'] ),
-			'due'     => self::day( (string) ( $document['due_date'] ?? '' ) ),
-			'valid'   => self::day( (string) ( $document['valid_until'] ?? '' ) ),
-			'period'  => $period,
-			'parent'  => (string) ( $document['parent_number'] ?? '' ),
-			'vatnote' => $vatnote,
-			'net'     => Money::format( $totals['net'], $currency ),
-			'vat'     => Money::format( $totals['vat'], $currency ),
-			'gross'   => Money::format( $totals['gross'], $currency ),
-		];
+		$data['tokens']['/document/title'] = self::text( 'title.'. $category );
+		$data['tokens']['/document/number'] = (string) $document['number'];
+		$data['tokens']['/document/date'] = self::day( (string) $document['date'] );
+		$data['tokens']['/document/parent'] = (string) ( $document['parent_number'] ?? '' );
+		$data['tokens']['/document/vatnote'] = $vatnote;
+		$data['tokens']['/document/net'] = Money::format( $totals['net'], $currency );
+		$data['tokens']['/document/vat'] = Money::format( $totals['vat'], $currency );
+		$data['tokens']['/document/gross'] = Money::format( $totals['gross'], $currency );
+
+		// An offer says what it is good until and what it comes to; an invoice and a credit note say when they are due and what they are for
+		if( $category === 'offer' ) {
+			$data['tokens']['/offer/number'] = (string) $document['number'];
+			$data['tokens']['/offer/date'] = self::day( (string) $document['date'] );
+			$data['tokens']['/offer/valid'] = self::day( (string) ( $document['valid_until'] ?? '' ) );
+			$data['tokens']['/offer/gross'] = Money::format( $totals['gross'], $currency );
+			$data['tokens']['/offer/period'] = $period;
+		}
+		else {
+			$data['tokens']['/invoice/due'] = self::day( (string) ( $document['due_date'] ?? '' ) );
+			$data['tokens']['/invoice/period'] = $period;
+		}
 		$data['slots']['lines'] = self::lines( $lines, $totals, $regular, $currency );
 		$data['slots']['totals'] = self::totals( $totals, $regular, $currency );
 

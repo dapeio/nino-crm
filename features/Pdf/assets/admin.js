@@ -8,8 +8,10 @@
  *												the templates and their editor.
  *
  *												Layout: the paper, the four margins, the font and the base size, the header and the
- *												footer as HTML, and the logo and the owner's signature, which are put in and taken
- *												away when the button is pressed and are no part of the form. Text blocks: a list
+ *												footer as HTML, the design - the feature's own rules as CSS, read-only, the owner's
+ *												rules over them, and a preview of the sample text with the design as it is saved -
+ *												and the logo and the owner's signature, which are put in and taken away when the
+ *												button is pressed and are no part of the form. Text blocks: a list
  *												and, a level below, the title and the HTML of one block. Templates: a list - name,
  *												tag, how many blocks - and, a level below, the editor: a name, a tag, the blocks of
  *												the document in their order, each with the form of its type, and a preview, which
@@ -149,7 +151,7 @@
 		keep : null,
 
 		fields : function( data ) {
-			return { format : data.layout.format, margins : data.layout.margins.slice(), font : data.layout.font, size : data.layout.size, header : data.layout.header, footer : data.layout.footer };
+			return { format : data.layout.format, margins : data.layout.margins.slice(), font : data.layout.font, size : data.layout.size, header : data.layout.header, footer : data.layout.footer, design : data.layout.design ?? '' };
 		},
 
 		isDirty : function() {
@@ -170,18 +172,30 @@
 
 			call( 'layout/save', layout.model, function( status, response ) {
 
+				const form = dc.getElementById('pdf-layout-form');
+
+				// The field a refusal names is described by the status line that says why
+				form.querySelectorAll('[data-field]').forEach( function( field ) { field.removeAttribute('aria-describedby') } );
+
 				if( status !== 200 ) {
 					layout.line.error( status, response, '/_admin/pdf/error/save' );
+
+					const refused = response !== null && typeof response === 'object' && typeof response.field === 'string' ? form.querySelector('[data-field="'+ response.field+ '"]') : null;
+
+					if( refused !== null )
+						refused.setAttribute( 'aria-describedby', 'pdf-layout-status' );
+
 					done( false );
 					return;
 				}
 
+				layout.stored( response.refusal ?? null );
 				const sent = JSON.parse( posted );
 				const unchanged = JSON.stringify( layout.model ) === posted;
 
-				// The two texts are the ones the server stored - the list of what a document may hold has cleaned them - and the form
-				// shows them from now on, unless the person has gone on typing since the post
-				[ 'header', 'footer' ].forEach( function( band ) {
+				// The texts are the ones the server stored - the list of what a document may hold has cleaned the two bands, the design
+				// is trimmed - and the form shows them from now on, unless the person has gone on typing since the post
+				[ 'header', 'footer', 'design' ].forEach( function( band ) {
 
 					sent[band] = response.layout[band];
 
@@ -215,6 +229,7 @@
 			layout.keep = null;
 			mount.innerHTML = '';
 			layout.line = statusLine( form, layout.isDirty );
+			layout.line.element.id = 'pdf-layout-status';
 
 			grid.appendChild( choice( Nino.adminUi.selectField( { key : 'format', label : word('/_admin/pdf/label/paper'), value : layout.model.format, onChange : function( value ) { layout.model.format = value },
 				options : data.papers.map( function( paper ) { return { value : paper, label : word('/_admin/pdf/paper/'+ paper) } } ) } ), 'format' ) );
@@ -237,6 +252,7 @@
 					hint : Nino.adminUi.format( word('/_admin/pdf/hint/band'), TOKENS ), onInput : function( value ) { layout.model[band] = value } } ) );
 			} );
 
+			form.appendChild( layout.design( data ) );
 			form.appendChild( layout.pictures( data ) );
 
 			form.addEventListener( 'submit', function( event ) { event.preventDefault(); layout.save( function() {} ) } );
@@ -247,6 +263,108 @@
 			mount.appendChild( form );
 			mount.appendChild( bar );
 		},
+
+		// The design: the feature's rules as CSS, to read, the owner's rules over them, to write, and a preview of the sample text
+		// with the design as it is saved. A refusal of the sheet names its line in the status line and marks the textarea
+		design : function( data ) {
+
+			const card = el( 'fieldset', 'nino-admin-card pdf-design' );
+			const sheet = el( 'textarea', 'nino-admin-input pdf-area pdf-sheet' );
+			const frame = layout.previewBox();
+
+			card.appendChild( el( 'legend', '', word('/_admin/pdf/label/design') ) );
+			card.appendChild( el( 'p', 'nino-admin-hint', word('/_admin/pdf/hint/design') ) );
+
+			const defaults = el( 'label', 'nino-admin-field nino-admin-field-wide' );
+			sheet.value = data.sheet ?? '';
+			sheet.readOnly = true;
+			sheet.rows = 18;
+			sheet.setAttribute( 'spellcheck', 'false' );
+			sheet.setAttribute( 'data-field', 'sheet' );
+			defaults.appendChild( el( 'span', '', word('/_admin/pdf/label/design-sheet') ) );
+			defaults.appendChild( sheet );
+			card.appendChild( defaults );
+
+			const own = area( { label : word('/_admin/pdf/label/design-own'), field : 'design', value : layout.model.design, max : data.ranges.design, rows : 8,
+				hint : word('/_admin/pdf/hint/design-own'), onInput : function( value ) { layout.model.design = value } } );
+			own.querySelector('textarea').setAttribute( 'spellcheck', 'false' );
+			card.appendChild( own );
+
+			// A stored design that is no sheet is shown with why it is not read; nothing of it is lost
+			const stored = el( 'p', 'nino-admin-error pdf-design-stored' );
+			stored.id = 'pdf-design-stored';
+			card.appendChild( stored );
+			layout.stored( data.refusal ?? null, stored );
+
+			const bar = el( 'div', 'pdf-design-bar' );
+			bar.appendChild( Nino.adminUi.button( word('/_admin/pdf/label/preview'), function() { layout.preview() }, { className : 'nino-admin-btn--small', id : 'pdf-design-preview-button' } ) );
+			card.appendChild( bar );
+			card.appendChild( frame );
+
+			return card;
+		},
+
+		// The sentence about a stored design that is not read, or nothing
+		stored : function( refusal, paragraph ) {
+
+			const target = paragraph ?? dc.getElementById('pdf-design-stored');
+
+			if( target === null )
+				return;
+
+			// The sentence is the panel's own for the code of the refusal, the one a save of the same text says
+			target.textContent = refusal === null ? '' : Nino.adminUi.format( word('/_admin/pdf/label/design-stored'), Nino.adminUi.api.errorText( 400, refusal, '/_admin/pdf/error/save' ) );
+			target.hidden = refusal === null;
+		},
+
+		// The frame of the preview and the link that downloads what it shows
+		previewBox : function() {
+
+			const box = el( 'div', 'pdf-preview' );
+			const frame = el( 'iframe', 'pdf-preview-frame' );
+			const link = el( 'a', 'nino-admin-btn nino-admin-btn--small pdf-preview-link', word('/_admin/pdf/label/download') );
+
+			box.id = 'pdf-design-preview';
+			box.hidden = true;
+			frame.setAttribute( 'title', word('/_admin/pdf/label/preview') );
+			link.setAttribute( 'download', 'design.pdf' );
+			box.appendChild( link );
+			box.appendChild( frame );
+
+			return box;
+		},
+
+		// The sample text with the layout and the design as they are saved
+		preview : function() {
+
+			layout.line.saving();
+
+			call( 'layout/preview', {}, function( status, response ) {
+
+				if( status !== 200 ) {
+					layout.line.error( status, response, '/_admin/pdf/error/preview' );
+					return;
+				}
+
+				const bytes = Uint8Array.from( atob( response.pdf ), function( char ) { return char.charCodeAt( 0 ) } );
+				const box = dc.getElementById('pdf-design-preview');
+
+				if( layout.url !== '' )
+					URL.revokeObjectURL( layout.url );
+
+				layout.url = URL.createObjectURL( new Blob( [ bytes ], { type : 'application/pdf' } ) );
+				box.querySelector('iframe').src = layout.url;
+				box.querySelector('a').href = layout.url;
+				box.hidden = false;
+				if( layout.isDirty() === true )
+					layout.line.dirty();
+				else
+					layout.line.idle( '' );
+			} );
+		},
+
+		// The blob address of the last preview
+		url : '',
 
 		// The logo and the owner's signature: a picture, a file to put in, and a button to take it away. They are written
 		// when they are chosen - the layout the form holds is not part of it

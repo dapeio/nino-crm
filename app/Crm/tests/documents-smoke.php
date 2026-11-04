@@ -296,13 +296,13 @@ $post = static function( string $action, array $data = [] ) use ( &$appData, $pa
 // The templates of Pdf, made the way its panel makes them: one of the tag invoice and one of the tag offer, with the slots
 // address, lines and totals, a required input and an optional one, and the tokens
 $blocks = static fn( string $second ): array => [
-	[ 'type' => 'html', 'html' => '<h1>[[document.title]] [[document.number]]</h1>' ],
+	[ 'type' => 'html', 'html' => '<h1>[[/document/title]] [[/document/number]]</h1>' ],
 	[ 'type' => 'slot', 'name' => 'address' ],
-	[ 'type' => 'html', 'html' => '<p>Datum [[document.date]] Faellig [[document.due]] Gueltig [[document.valid]] Zeitraum [[document.period]] Bezug [[document.parent]] Kunde [[client.number]] [[client.company]]</p>' ],
+	[ 'type' => 'html', 'html' => '<p>Datum [[/document/date]] Faellig [[/invoice/due]] Gueltig [[/offer/valid]] Zeitraum [[/invoice/period]] Bezug [[/document/parent]] Kunde [[/customer/number]] [[/customer/company]]</p>' ],
 	[ 'type' => 'input', 'name' => 'intro', 'label' => 'Intro', 'multiline' => true, 'required' => true ],
 	[ 'type' => 'slot', 'name' => 'lines' ],
 	[ 'type' => 'slot', 'name' => 'totals' ],
-	[ 'type' => 'html', 'html' => '<p>Hinweis [[document.vatnote]] Summe [[document.gross]]</p>' ],
+	[ 'type' => 'html', 'html' => '<p>Hinweis [[/document/vatnote]] Summe [[/document/gross]]</p>' ],
 	[ 'type' => 'input', 'name' => 'footnote', 'label' => 'Footnote', 'multiline' => false, 'required' => false ],
 	[ 'type' => 'html', 'html' => '<p>'. $second. '</p>' ],
 ];
@@ -725,14 +725,18 @@ echo "\nTokens and slots\n";
 $allow = static fn( string $html ): string => \Nino\Modules\Pdf\Layout\Allow::html( $html );
 $data = Render::data( $appData, $secondInvoice, $secondInvoice['lines'], $secondInvoice['client_frozen'] );
 $tokens = $data['tokens'];
-check( 'the tokens of the document: title, number, dates as d.m.Y, the period, no validity on an invoice', $tokens['document']['title'] === 'Rechnung' && $tokens['document']['number'] === $secondInvoice['number'] && $tokens['document']['date'] === Render::day( $secondInvoice['date'] )
-	&& $tokens['document']['due'] === Render::day( $secondInvoice['due_date'] ) && $tokens['document']['valid'] === '' && $tokens['document']['period'] === '01.01.2026 - 31.01.2026' && $tokens['document']['parent'] === '' );
-check( '...the amounts with the currency behind a non-breaking space', $tokens['document']['net'] === "237,00\u{00A0}€" && $tokens['document']['vat'] === "0,00\u{00A0}€" && $tokens['document']['gross'] === "237,00\u{00A0}€" );
-check( '...the client: number, company, name, street, zip, city, country, VAT id, email', $tokens['client'] === [ 'number' => 'K-0001', 'company' => 'Studio Nord GmbH', 'name' => 'Anna Nord', 'street' => 'Hafenstr. 1', 'zip' => '20095', 'city' => 'Hamburg', 'country' => 'DE', 'vat_id' => 'DE123456789', 'email' => 'anna@example.org' ] );
-check( 'in small_business the VAT note is the sentence of § 19 UStG', $tokens['document']['vatnote'] === 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.' );
-check( 'a document with no period says that the service date is the date of the invoice; an offer says nothing of it', Render::data( $appData, $finalised, $finalised['lines'], $finalised['client_frozen'] )['tokens']['document']['period'] === 'Leistungsdatum entspricht dem Rechnungsdatum' && Render::data( $appData, $offerFinal, $offerFinal['lines'], $offerFinal['client_frozen'] )['tokens']['document']['period'] === '' );
-$offerTokens = Render::data( $appData, $offerFinal, $offerFinal['lines'], $offerFinal['client_frozen'] )['tokens']['document'];
-check( 'an offer has the day it is valid until and no due date', $offerTokens['title'] === 'Angebot' && $offerTokens['valid'] === '09.04.2026' && $offerTokens['due'] === '' );
+check( 'the tokens of the document: title, number, dates as d.m.Y, the period, no validity on an invoice', $tokens['/document/title'] === 'Rechnung' && $tokens['/document/number'] === $secondInvoice['number'] && $tokens['/document/date'] === Render::day( $secondInvoice['date'] )
+	&& $tokens['/invoice/due'] === Render::day( $secondInvoice['due_date'] ) && isset( $tokens['/offer/valid'] ) === false && $tokens['/invoice/period'] === '01.01.2026 - 31.01.2026' && $tokens['/document/parent'] === '' );
+check( '...the amounts with the currency behind a non-breaking space', $tokens['/document/net'] === "237,00\u{00A0}€" && $tokens['/document/vat'] === "0,00\u{00A0}€" && $tokens['/document/gross'] === "237,00\u{00A0}€" );
+check( '...the client: number, company, name, street, zip, city, country, VAT id, email', array_intersect_key( $tokens, array_flip( preg_grep( '~^/customer/~', array_keys( $tokens ) ) ) ) === [ '/customer/number' => 'K-0001', '/customer/company' => 'Studio Nord GmbH', '/customer/name' => 'Anna Nord', '/customer/street' => 'Hafenstr. 1', '/customer/zip' => '20095', '/customer/city' => 'Hamburg', '/customer/country' => 'DE', '/customer/email' => 'anna@example.org', '/customer/vat' => 'DE123456789' ] );
+check( 'in small_business the VAT note is the sentence of § 19 UStG', $tokens['/document/vatnote'] === 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.' );
+check( 'a document with no period says that the service date is the date of the invoice; an offer says nothing of it', Render::data( $appData, $finalised, $finalised['lines'], $finalised['client_frozen'] )['tokens']['/invoice/period'] === 'Leistungsdatum entspricht dem Rechnungsdatum' && array_key_exists( '/invoice/period', Render::data( $appData, $offerFinal, $offerFinal['lines'], $offerFinal['client_frozen'] )['tokens'] ) === false );
+$offerTokens = Render::data( $appData, $offerFinal, $offerFinal['lines'], $offerFinal['client_frozen'] )['tokens'];
+check( 'an offer has its own number, day, validity and sum under /offer and no due date: an invoice has no validity', $offerTokens['/document/title'] === 'Angebot' && $offerTokens['/offer/valid'] === '09.04.2026' && $offerTokens['/offer/number'] === $offerTokens['/document/number'] && $offerTokens['/offer/gross'] === $offerTokens['/document/gross']
+	&& $offerTokens['/offer/date'] === $offerTokens['/document/date'] && isset( $offerTokens['/invoice/due'] ) === false && isset( $tokens['/offer/valid'] ) === false );
+check( 'the vocabulary is the slash form and nothing else: an invoice has the document, invoice, customer and site keys - and none of the dotted names of before', array_keys( $tokens ) === [ '/site/portal', '/site/login', '/customer/number', '/customer/company', '/customer/name', '/customer/street', '/customer/zip', '/customer/city', '/customer/country', '/customer/email', '/customer/vat',
+	'/document/title', '/document/number', '/document/date', '/document/parent', '/document/vatnote', '/document/net', '/document/vat', '/document/gross', '/invoice/due', '/invoice/period' ] );
+check( '...and the old dotted names fill nothing any more, while the slash keys fill what they stand for', \Nino\Modules\Pdf\Layout\Tokens::fill( $appData, '[[document.number]]|[[client.company]]|[[site.portal]]|[[/document/number]]|[[/customer/company]]', $tokens ) === '|||'. $secondInvoice['number']. '|Studio Nord GmbH' );
 check( 'the inputs are the document\'s own', $data['inputs'] === $secondInvoice['inputs'] );
 
 check( 'the address block: company, name, street, zip and city - and no country for DE', $data['slots']['address'] === '<p>Studio Nord GmbH<br>Anna Nord<br>Hafenstr. 1<br>20095 Hamburg</p>' );
@@ -748,13 +752,13 @@ $totalsSlot = $data['slots']['totals'];
 check( 'the totals slot of small_business is the gross line alone, which is the net', substr_count( $totalsSlot, '<tr>' ) === 1 && str_contains( $totalsSlot, 'Gesamtbetrag' ) === true && str_contains( $totalsSlot, '237,00&nbsp;€' ) === true && str_contains( $totalsSlot, 'zzgl.' ) === false && $allow( $totalsSlot ) === $totalsSlot );
 check( 'the address slot passes the list of Pdf unchanged', $allow( $data['slots']['address'] ) === $data['slots']['address'] );
 
-$regularFinal = Documents::change( $appData, $regular['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'Regelsteuer' ], 'lines' => [ $line( [ 'vat_rate' => 1900, 'description' => "Zeile eins\nZeile <zwei>" ] ), $line( [ 'title' => '[[document.number]] Buch', 'qty' => '1', 'price' => '20', 'vat_rate' => 700 ] ) ] ] );
+$regularFinal = Documents::change( $appData, $regular['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'Regelsteuer' ], 'lines' => [ $line( [ 'vat_rate' => 1900, 'description' => "Zeile eins\nZeile <zwei>" ] ), $line( [ 'title' => '[[/document/number]] Buch', 'qty' => '1', 'price' => '20', 'vat_rate' => 700 ] ) ] ] );
 $regularFinal = Documents::finalise( $appData, $regular['id'] );
 check( 'a regular document is finalised with its VAT per rate: 19 % of 225,00 and 7 % of 20,00', is_array( $regularFinal ) && $regularFinal['vat_mode'] === 'regular' && $regularFinal['net'] === 24500 && $regularFinal['vat'] === 4275 + 140 && $regularFinal['gross'] === 24500 + 4415 );
 $regularData = Render::data( $appData, $regularFinal, $regularFinal['lines'], $regularFinal['client_frozen'] );
-check( 'in regular the VAT note is empty', $regularData['tokens']['document']['vatnote'] === '' );
+check( 'in regular the VAT note is empty', $regularData['tokens']['/document/vatnote'] === '' );
 check( '...the lines slot has the column of the rate: six columns and the rate of each line', preg_match_all( '/<th[ >]/', $regularData['slots']['lines'] ) === 6 && str_contains( $regularData['slots']['lines'], 'USt.' ) === true && str_contains( $regularData['slots']['lines'], '19 %' ) === true && str_contains( $regularData['slots']['lines'], 'width="40%"' ) === true && str_contains( $regularData['slots']['lines'], 'width="48%"' ) === false && str_contains( $regularData['slots']['lines'], '7 %' ) === true );
-check( '...a description is under its title, a line break in it is a break, a tag in it is text, a token in a title is not filled', str_contains( $regularData['slots']['lines'], 'Webdesign<br>Zeile eins<br>Zeile &lt;zwei&gt;' ) === true && str_contains( $regularData['slots']['lines'], '&#91;&#91;document.number]] Buch' ) === true && str_contains( $regularData['slots']['lines'], '<zwei>' ) === false );
+check( '...a description is under its title, a line break in it is a break, a tag in it is text, a token in a title is not filled', str_contains( $regularData['slots']['lines'], 'Webdesign<br>Zeile eins<br>Zeile &lt;zwei&gt;' ) === true && str_contains( $regularData['slots']['lines'], '&#91;&#91;/document/number]] Buch' ) === true && str_contains( $regularData['slots']['lines'], '<zwei>' ) === false );
 $unitSlot = Render::lines( [ [ 'title' => 'T', 'description' => '', 'qty' => 1000, 'unit' => '<b>[[x]]', 'price_net' => 100, 'vat_rate' => 0 ] ], Money::totals( [ [ 'qty' => 1000, 'price_net' => 100, 'vat_rate' => 0 ] ], 'small_business' ), false, '€' );
 check( '...a unit is escaped as the rest of a line is: markup and brackets in it are characters', str_contains( $unitSlot, '1 &lt;b&gt;&#91;&#91;x]]' ) === true && str_contains( $unitSlot, '<b>' ) === false );
 $regularLines = str_replace( '&#91;', '[', $regularData['slots']['lines'] );
@@ -768,7 +772,7 @@ Settings::set( $appData, 'vat_mode', 'small_business' );
 $reverseFinal = Documents::finalise( $appData, $reverseDraft['id'] );
 $reverseData = Render::data( $appData, $reverseFinal, $reverseFinal['lines'], $reverseFinal['client_frozen'] );
 check( 'a reverse charge: the rates are 0, the VAT is 0, and the note is the sentence of the reverse charge', is_array( $reverseFinal ) && $reverseFinal['vat'] === 0 && $reverseFinal['gross'] === 22500 && array_unique( array_column( $reverseFinal['lines'], 'vat_rate' ) ) === [ 0 ]
-	&& $reverseData['tokens']['document']['vatnote'] === 'Steuerschuldnerschaft des Leistungsempfängers.' && str_contains( $reverseData['slots']['lines'], '0 %' ) === true && substr_count( $reverseData['slots']['totals'], '<tr>' ) === 3 );
+	&& $reverseData['tokens']['/document/vatnote'] === 'Steuerschuldnerschaft des Leistungsempfängers.' && str_contains( $reverseData['slots']['lines'], '0 %' ) === true && substr_count( $reverseData['slots']['totals'], '<tr>' ) === 3 );
 
 $words = static function( string $file ): string {
 	return (string) shell_exec( 'pdftotext -layout '. escapeshellarg( $file ). ' - 2>/dev/null' );
@@ -781,7 +785,7 @@ if( trim( (string) @shell_exec( 'command -v pdftotext 2>/dev/null' ) ) !== '' ) 
 		&& str_contains( $text, 'Webdesign' ) === true && str_contains( $text, '225,00' ) === true && str_contains( $text, 'Gesamtbetrag' ) === true && str_contains( $text, '237,00' ) === true && str_contains( $text, '§ 19 UStG' ) === true );
 	check( '...and the required input, the optional one and the date', str_contains( $text, 'Hallo' ) === true && str_contains( $text, 'Danke' ) === true && str_contains( $text, 'Ende der Rechnung' ) === true && str_contains( $text, Render::day( $secondInvoice['date'] ) ) === true );
 	$regularText = $words( \Nino\Filesystem::path( $appData, $regularFinal['pdf_path'] ) );
-	check( 'the PDF of a regular invoice has the rate column and the VAT per rate; a token in a title stays the characters it is', str_contains( $regularText, 'zzgl. 19 % USt.' ) === true && str_contains( $regularText, 'USt.' ) === true && str_contains( $regularText, '[[document.number]] Buch' ) === true && str_contains( $regularText, '§ 19' ) === false );
+	check( 'the PDF of a regular invoice has the rate column and the VAT per rate; a token in a title stays the characters it is', str_contains( $regularText, 'zzgl. 19 % USt.' ) === true && str_contains( $regularText, 'USt.' ) === true && str_contains( $regularText, '[[/document/number]] Buch' ) === true && str_contains( $regularText, '§ 19' ) === false );
 	check( 'the PDF of a reverse charge says so', str_contains( $words( \Nino\Filesystem::path( $appData, $reverseFinal['pdf_path'] ) ), 'Steuerschuldnerschaft' ) === true );
 }
 else
@@ -882,8 +886,8 @@ check( '...a document nobody has gives none', Documents::creditOf( $appData, 999
 $partial = Documents::change( $appData, $credit['id'], [ 'lines' => [ [ 'title' => 'Webdesign', 'unit' => 'Std.', 'qty' => '-1', 'price' => '90', 'vat_rate' => 0 ] ], 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'Teilgutschrift' ] ] );
 $partialFinal = Documents::finalise( $appData, $credit['id'] );
 check( 'a credit note that takes a part back leaves the state of the invoice, and has its own number G-<year>-...', is_array( $partialFinal ) && $partialFinal['gross'] === -9000 && str_starts_with( $partialFinal['number'], 'G-' ) && $state( $secondInvoice['id'] ) === 'sent' );
-$creditTokens = Render::data( $appData, $partialFinal, $partialFinal['lines'], $partialFinal['client_frozen'] )['tokens']['document'];
-check( 'the tokens of a credit note: its title, the number of the invoice it refers to, no due date, the period of that invoice', $creditTokens['title'] === 'Stornorechnung' && $creditTokens['parent'] === $secondInvoice['number'] && $creditTokens['due'] === '' && $creditTokens['valid'] === '' && $creditTokens['period'] === '01.01.2026 - 31.01.2026' );
+$creditTokens = Render::data( $appData, $partialFinal, $partialFinal['lines'], $partialFinal['client_frozen'] )['tokens'];
+check( 'the tokens of a credit note: its title, the number of the invoice it refers to, no due date, the period of that invoice', $creditTokens['/document/title'] === 'Stornorechnung' && $creditTokens['/document/parent'] === $secondInvoice['number'] && $creditTokens['/invoice/due'] === '' && isset( $creditTokens['/offer/valid'] ) === false && $creditTokens['/invoice/period'] === '01.01.2026 - 31.01.2026' );
 $over = Documents::creditOf( $appData, $secondInvoice['id'] );
 Documents::change( $appData, $over['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ], 'lines' => [ [ 'title' => 'Mehr', 'qty' => '-3', 'price' => '200', 'vat_rate' => 0 ] ] ] );
 Documents::finalise( $appData, $over['id'] );
@@ -912,6 +916,15 @@ $derived = Documents::fromOffer( $appData, $smallOffer['id'] );
 Settings::set( $appData, 'vat_mode', 'small_business' );
 check( 'an invoice made from an offer takes the VAT mode of the setting now, with every rate held to it: a small business offer gives a regular invoice with rates of the list', is_array( $derived ) && $derived['vat_mode'] === 'regular' && array_unique( array_column( $derived['lines'], 'vat_rate' ) ) === [ 0 ] && $derived['vat'] === 0 );
 check( '...and the period of the offer', $derived['period_from'] === '2026-02-01' && $derived['period_to'] === '2026-02-28' && $derived['due_date'] === Documents::addDays( $today, 14 ) );
+$periodOffer = Documents::dataOf( $appData, (array) Documents::get( $appData, $smallOffer['id'] ) )['tokens'];
+$periodContract = Documents::add( $appData, 'contract', 0, [ 'parent_id' => $smallOffer['id'], 'title' => 'Vertrag zum Angebot', 'template_key' => 'vertrag' ] );
+$periodInvoice = Documents::dataOf( $appData, (array) Documents::get( $appData, $derived['id'] ) )['tokens'];
+$periodContractPeriod = Documents::dataOf( $appData, (array) Documents::get( $appData, $periodContract['id'] ) )['tokens']['/offer/period'] ?? null;
+Documents::remove( $appData, $periodContract['id'] );
+check( 'an offer with a period carries it as /offer/period, formatted as the invoice\'s is, and no /invoice/period; a contract on that offer carries the offer\'s; an invoice carries no /offer/period, and an offer with none has an empty one',
+	$periodOffer['/offer/period'] === '01.02.2026 - 28.02.2026' && array_key_exists( '/invoice/period', $periodOffer ) === false && is_array( $periodContract )
+	&& $periodContractPeriod === '01.02.2026 - 28.02.2026' && array_key_exists( '/offer/period', $periodInvoice ) === false && $periodInvoice['/invoice/period'] === '01.02.2026 - 28.02.2026'
+	&& Render::data( $appData, $offerFinal, $offerFinal['lines'], $offerFinal['client_frozen'] )['tokens']['/offer/period'] === '' );
 check( '...making it accepts the offer that was open', $state( $smallOffer['id'] ) === 'accepted' && $derived['parent_id'] === $smallOffer['id'] );
 Documents::fromOffer( $appData, $smallOffer['id'] );
 check( '...an offer that is accepted stays accepted', $state( $smallOffer['id'] ) === 'accepted' );
@@ -1549,19 +1562,19 @@ Db::close();
 echo "\nThree documents without lines\n";
 
 $post( 'pdf/templates/save', [ 'key' => 'dienstleistung', 'isNew' => true, 'name' => 'Dienstleistungsvertrag', 'tag' => 'contract', 'blocks' => [
-	[ 'type' => 'html', 'html' => '<h1>[[document.title]]</h1><p>Vom [[document.date]] zu [[document.parent]] ([[offer.number]] vom [[offer.date]], gueltig bis [[offer.valid]]): netto [[offer.net]], USt [[offer.vat]], brutto [[offer.gross]]. Portal [[site.portal]] Login [[site.login]]</p>' ],
+	[ 'type' => 'html', 'html' => '<h1>[[/document/title]]</h1><p>Vom [[/document/date]] zu [[/document/parent]] ([[/offer/number]] vom [[/offer/date]], gueltig bis [[/offer/valid]]): netto [[/offer/net]], USt [[/offer/vat]], brutto [[/offer/gross]]. Portal [[/site/portal]] Login [[/site/login]]</p>' ],
 	[ 'type' => 'slot', 'name' => 'address' ],
 	[ 'type' => 'slot', 'name' => 'lines' ],
 	[ 'type' => 'slot', 'name' => 'totals' ],
 	[ 'type' => 'input', 'name' => 'zusatz', 'label' => 'Zusatz', 'multiline' => true, 'required' => true ],
 ] ] );
 $post( 'pdf/templates/save', [ 'key' => 'datenschutz', 'isNew' => true, 'name' => 'Datenschutzerklaerung', 'tag' => 'privacy', 'blocks' => [
-	[ 'type' => 'html', 'html' => '<h1>[[document.title]]</h1><p>Kunde [[client.company]], Stand [[document.date]], Offer [[offer.number]]/[[document.number]]</p>' ],
+	[ 'type' => 'html', 'html' => '<h1>[[/document/title]]</h1><p>Kunde [[/customer/company]], Stand [[/document/date]], Offer [[/offer/number]]/[[/document/number]]</p>' ],
 	[ 'type' => 'slot', 'name' => 'address' ],
 	[ 'type' => 'slot', 'name' => 'lines' ],
 ] ] );
 $post( 'pdf/templates/save', [ 'key' => 'zugang', 'isNew' => true, 'name' => 'Zugangsdaten', 'tag' => 'information', 'blocks' => [
-	[ 'type' => 'html', 'html' => '<h1>[[document.title]]</h1><p>Hallo [[client.name]]: [[site.portal]] und [[site.login]]</p>' ],
+	[ 'type' => 'html', 'html' => '<h1>[[/document/title]]</h1><p>Hallo [[/customer/name]]: [[/site/portal]] und [[/site/login]]</p>' ],
 ] ] );
 
 check( 'the tag of a contract, a privacy and an information document is the name of the category', array_map( [ Render::class, 'tag' ], Documents::PLAIN ) === [ 'contract', 'privacy', 'information' ] );
@@ -1682,22 +1695,22 @@ check( 'a document without a number moves one step: sent; paid, accepted and dec
 // the tokens, the slots and the words of the PDF
 $contractFull = (array) Documents::get( $appData, $contract['id'] );
 $contractData = Documents::dataOf( $appData, $contractFull );
-check( 'the tokens of a contract: its own title, date and the number of its offer; the client as it was frozen', $contractData['tokens']['document'] === [ 'title' => 'Vertrag neu', 'date' => Render::day( $today ), 'parent' => $offerFinal['number'] ] && $contractData['tokens']['client']['company'] === 'Studio Nord GmbH' );
-check( '...and the offer\'s number, day, validity and totals with the currency', $contractData['tokens']['offer'] === [ 'number' => $offerNow['number'], 'date' => Render::day( $offerNow['date'] ), 'valid' => Render::day( (string) $offerNow['valid_until'] ),
-	'net' => Money::format( $offerNow['net'], '€' ), 'vat' => Money::format( $offerNow['vat'], '€' ), 'gross' => Money::format( $offerNow['gross'], '€' ) ] && $offerNow['gross'] > 0 );
+check( 'the tokens of a contract: its own title, date and the number of its offer; the client as it was frozen', array_intersect_key( $contractData['tokens'], array_flip( preg_grep( '~^/document/~', array_keys( $contractData['tokens'] ) ) ) ) === [ '/document/title' => 'Vertrag neu', '/document/date' => Render::day( $today ), '/document/parent' => $offerFinal['number'] ] && $contractData['tokens']['/customer/company'] === 'Studio Nord GmbH' );
+check( '...and the offer\'s number, day, validity and totals with the currency', array_intersect_key( $contractData['tokens'], array_flip( preg_grep( '~^/offer/~', array_keys( $contractData['tokens'] ) ) ) ) === [ '/offer/number' => $offerNow['number'], '/offer/date' => Render::day( $offerNow['date'] ), '/offer/valid' => Render::day( (string) $offerNow['valid_until'] ),
+	'/offer/gross' => Money::format( $offerNow['gross'], '€' ), '/offer/period' => '' ] && $offerNow['gross'] > 0 );
 check( '...the slots address, lines (the offer\'s lines) and totals (the offer\'s) so that a contract can quote them', array_keys( $contractData['slots'] ) === [ 'address', 'lines', 'totals' ] && $contractData['slots']['lines'] === Render::lines( $offerNow['lines'], Money::totals( $offerNow['lines'], $offerNow['vat_mode'], $offerNow['reverse_charge'] ), $offerNow['vat_mode'] === 'regular', '€' )
 	&& str_contains( $contractData['slots']['lines'], 'Webdesign' ) === true && str_contains( $contractData['slots']['totals'], 'Gesamtbetrag' ) === true && $contractData['inputs'] === [ 'zusatz' => 'Laufzeit ein Jahr' ] );
-check( '...site.portal and site.login are the absolute addresses of the site\'s pages', $contractData['tokens']['site'] === [ 'portal' => 'https://example.org/portal', 'login' => 'https://example.org/login' ] );
+check( '.../site/portal and /site/login are the absolute addresses of the site\'s pages', array_intersect_key( $contractData['tokens'], [ '/site/portal' => 0, '/site/login' => 0 ] ) === [ '/site/portal' => 'https://example.org/portal', '/site/login' => 'https://example.org/login' ] );
 $privacyData = Documents::dataOf( $appData, (array) Documents::get( $appData, $privacyFinal['id'] ) );
-check( 'a privacy document has no offer: the tokens document.title, .date and .parent (empty), client and site, and the slot address alone', $privacyData['tokens']['document'] === [ 'title' => 'Datenschutz', 'date' => Render::day( $today ), 'parent' => '' ] && isset( $privacyData['tokens']['offer'] ) === false
-	&& array_keys( $privacyData['slots'] ) === [ 'address' ] && $privacyData['tokens']['site']['portal'] === 'https://example.org/portal' );
+check( 'a privacy document has no offer: the tokens /document/title, /date and /parent (empty), /customer/* and /site/*, and the slot address alone', array_intersect_key( $privacyData['tokens'], array_flip( preg_grep( '~^/document/~', array_keys( $privacyData['tokens'] ) ) ) ) === [ '/document/title' => 'Datenschutz', '/document/date' => Render::day( $today ), '/document/parent' => '' ] && preg_grep( '~^/offer/~', array_keys( $privacyData['tokens'] ) ) === []
+	&& array_keys( $privacyData['slots'] ) === [ 'address' ] && $privacyData['tokens']['/site/portal'] === 'https://example.org/portal' );
 Db::exec( $appData, 'UPDATE documents SET parent_id = :offer WHERE id = :id', [ 'offer' => $offerFinal['id'], 'id' => $privacyFinal['id'] ] );
-check( 'only a contract quotes an offer: a privacy document that hangs on one by accident has no offer tokens', isset( Documents::dataOf( $appData, (array) Documents::get( $appData, $privacyFinal['id'] ) )['tokens']['offer'] ) === false );
+check( 'only a contract quotes an offer: a privacy document that hangs on one by accident has no offer tokens', preg_grep( '~^/offer/~', array_keys( Documents::dataOf( $appData, (array) Documents::get( $appData, $privacyFinal['id'] ) )['tokens'] ) ) === [] );
 Db::exec( $appData, 'UPDATE documents SET parent_id = NULL WHERE id = :id', [ 'id' => $privacyFinal['id'] ] );
-check( 'an invoice has the site tokens too, for a letter that quotes the portal', Render::data( $appData, $secondInvoice, $secondInvoice['lines'], $secondInvoice['client_frozen'] )['tokens']['site'] === [ 'portal' => 'https://example.org/portal', 'login' => 'https://example.org/login' ] );
+check( 'an invoice has the site tokens too, for a letter that quotes the portal', array_intersect_key( Render::data( $appData, $secondInvoice, $secondInvoice['lines'], $secondInvoice['client_frozen'] )['tokens'], [ '/site/portal' => 0, '/site/login' => 0 ] ) === [ '/site/portal' => 'https://example.org/portal', '/site/login' => 'https://example.org/login' ] );
 $addressless = $appData;
 \Nino\Html::addFills( $addressless, [ '[[/project/website/general/url]]' => '' ], '*' );
-check( 'a site with no address has empty site tokens', Render::data( $addressless, $secondInvoice, [], [] )['tokens']['site'] === [ 'portal' => '', 'login' => '' ] );
+check( 'a site with no address has empty site tokens', array_intersect_key( Render::data( $addressless, $secondInvoice, [], [] )['tokens'], [ '/site/portal' => 0, '/site/login' => 0 ] ) === [ '/site/portal' => '', '/site/login' => '' ] );
 
 $pdfText = static fn( string $file ): string => (string) shell_exec( 'pdftotext -layout '. escapeshellarg( $file ). ' - 2>/dev/null' );
 

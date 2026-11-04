@@ -199,7 +199,7 @@ check( 'the portal pages are set up, the page Dokumente among them', $status ===
 
 // --- Clients, accounts, templates, documents -----------------------------------------------------------------------------
 
-$blocksOf = static fn( array $extra ): array => array_merge( [ [ 'type' => 'html', 'html' => '<h1>[[document.title]] [[document.number]]</h1><p>[[client.company]] [[site.portal]]</p>' ], [ 'type' => 'slot', 'name' => 'lines' ] ], $extra );
+$blocksOf = static fn( array $extra ): array => array_merge( [ [ 'type' => 'html', 'html' => '<h1>[[/document/title]] [[/document/number]]</h1><p>[[/customer/company]] [[/site/portal]]</p>' ], [ 'type' => 'slot', 'name' => 'lines' ] ], $extra );
 $member = [ 'type' => 'signature', 'name' => 'kunde', 'party' => 'member', 'label' => 'Kunde', 'page' => 'last', 'x' => 20, 'y' => 230, 'w' => 60, 'h' => 20, 'line' => true ];
 $input = [ 'type' => 'input', 'name' => 'zusatz', 'label' => 'Zusatz', 'multiline' => false, 'required' => true ];
 
@@ -406,7 +406,7 @@ $frozenRow = (array) Db::row( $appData, 'SELECT client_json FROM documents WHERE
 $frozenDocument = (array) Documents::get( $appData, $contractF['id'] );
 $frozenDocument['offer'] = Documents::get( $appData, $offerA['id'] );
 $madeWith = \Nino\Modules\Sign\Store::data( \Crm\Documents\Render::data( $appData, $frozenDocument, [], (array) json_decode( (string) $frozenRow['client_json'], true ) ) );
-check( 'Sign is handed the client as it was frozen into the contract - Hamburg and Hafenstr. 1 - and not the client as it is now', is_array( $frozenAsk ) && $frozenData['tokens']['client']['city'] === 'Hamburg' && $frozenData['tokens']['client']['street'] === 'Hafenstr. 1'
+check( 'Sign is handed the client as it was frozen into the contract - Hamburg and Hafenstr. 1 - and not the client as it is now', is_array( $frozenAsk ) && $frozenData['tokens']['/customer/city'] === 'Hamburg' && $frozenData['tokens']['/customer/street'] === 'Hafenstr. 1'
 	&& str_contains( $frozenData['slots']['address'], 'Hamburg' ) === true && str_contains( $frozenData['slots']['address'], 'Kiel' ) === false && str_contains( $frozenData['slots']['address'], 'Neuer Weg' ) === false );
 check( '...all of it is what the finalising rendered with: the tokens, the slots and the inputs made again from the frozen client and the offer', $frozenData === $madeWith && \Crm\Clients::get( $appData, $a['id'] )['city'] === 'Kiel' );
 \Crm\Clients::change( $appData, $a['id'], [ 'city' => 'Hamburg', 'street' => 'Hafenstr. 1' ] );

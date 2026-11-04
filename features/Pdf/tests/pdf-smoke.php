@@ -9,6 +9,8 @@ require $root. '/tests/harness.php';
 
 use Nino\Modules\Pdf as Pdf;
 use Nino\Modules\Pdf\Layout\Allow;
+use Nino\Modules\Pdf\Layout\Sheet;
+use Nino\Modules\Pdf\Layout\Tokens;
 
 $appData = ninoSandbox( 'pdf' );
 $appData['/nino/modules'] = [ '\\Nino\\Modules\\Components' ];
@@ -79,18 +81,21 @@ check( '...it names the data it owns, the extensions it needs, the kernel it is 
 	&& $manifest['requires'] === [] && $manifest['components'] === [] && $manifest['assets'] === [] && $manifest['settings']['tags']['type'] === 'lines' && count( $manifest['settings'] ) === 1
 	&& count( array_filter( $manifest['settings']['tags']['default'], static fn( string $tag ): bool => preg_match( '/^[a-z][a-z0-9-]{1,39}$/D', $tag ) === 1 ) ) === 5 );
 check( '...and the six sections of its manual, in both languages', array_keys( $manifest['manual'] ) === [ 'shortcodes', 'markup', 'routes', 'panel', 'callbacks', 'install' ] && \Nino\Features::manualSections( $manifest['manual'], 'de_DE' ) !== null
-	&& count( array_filter( $manifest['manual']['panel'], static fn( array $line ): bool => isset( $line['en_US'], $line['de_DE'] ) ) ) === 5 );
+	&& count( array_filter( $manifest['manual']['panel'], static fn( array $line ): bool => isset( $line['en_US'], $line['de_DE'] ) ) ) === 11 );
+
+check( '...the manual has the sections Design and Placeholders, in both languages, and the version is the one of this feature', isset( $manifest['manual']['panel']['Design']['en_US'], $manifest['manual']['panel']['Design']['de_DE'], $manifest['manual']['panel']['Placeholders']['en_US'], $manifest['manual']['panel']['Placeholders']['de_DE'] )
+	&& $manifest['version'] === '1.2.0' && str_contains( $manifest['manual']['panel']['Placeholders']['en_US'], '/customer/name' ) === true );
 
 if( is_file( dirname( __DIR__, 3 ). '/bin/catalogue.php' ) === true ) {
 	$listed = json_decode( (string) shell_exec( escapeshellarg( PHP_BINARY ). ' '. escapeshellarg( dirname( __DIR__, 3 ). '/bin/catalogue.php' ). ' '. escapeshellarg( $root ). ' 2>/dev/null' ), true );
 	check( 'bin/catalogue.php lists the feature with its version, its category and the data it owns', is_array( $listed ) === true
-		&& count( array_filter( $listed['features'] ?? [], static fn( array $feature ): bool => $feature['key'] === 'pdf' && $feature['version'] === '1.1.0' && $feature['category'] === 'content' ) ) === 1 );
+		&& count( array_filter( $listed['features'] ?? [], static fn( array $feature ): bool => $feature['key'] === 'pdf' && $feature['version'] === '1.2.0' && $feature['category'] === 'content' ) ) === 1 );
 }
 else
 	echo "note - bin/catalogue.php is not beside this feature: the catalogue's listing of it was NOT checked\n";
 
-check( 'activation lists the class and records 1.1.0', \Nino\Features::activate( $appData, 'pdf' ) === true
-	&& in_array( '\\Nino\\Modules\\Pdf', $appData['/nino/modules'], true ) === true && \Nino\Features::get( $appData, 'pdf' )['installed'] === '1.1.0' );
+check( 'activation lists the class and records 1.2.0', \Nino\Features::activate( $appData, 'pdf' ) === true
+	&& in_array( '\\Nino\\Modules\\Pdf', $appData['/nino/modules'], true ) === true && \Nino\Features::get( $appData, 'pdf' )['installed'] === '1.2.0' );
 check( '...and copies nothing: the feature has no unit', glob( \Nino\Filesystem::path( $appData, '/templates' ). '/*' ) === [] || is_dir( \Nino\Filesystem::path( $appData, '/templates' ) ) === false );
 
 \Nino\Html::init( $appData );
@@ -117,7 +122,7 @@ $denied = [];
 foreach( array_keys( \Nino\Modules\Pdf\Admin::actions() ) as $action )
 	if( $post( $action )[0] !== 403 )
 		$denied[] = $action;
-check( 'every panel action is 403 for an account without the permission'. ( $denied === [] ? '' : ' - '. implode( ', ', $denied ) ), $denied === [] && count( \Nino\Modules\Pdf\Admin::actions() ) === 13 );
+check( 'every panel action is 403 for an account without the permission'. ( $denied === [] ? '' : ' - '. implode( ', ', $denied ) ), $denied === [] && count( \Nino\Modules\Pdf\Admin::actions() ) === 14 );
 \Nino\Auth::loginUser( $appData, 'dev@example.com', 'correct horse battery staple' );
 
 // --- the layout -----------------------------------------------------------------
@@ -127,8 +132,8 @@ check( 'layout() answers the defaults before anything is saved, and layout/get t
 
 $layout = [ 'format' => 'letter', 'margins' => [ 15, 16, 17, 18 ], 'font' => 'times', 'size' => 11, 'header' => '<p align="right">Head [[page]]</p>', 'footer' => '<p>Page [[page]] / [[pages]]</p>' ];
 [ $status, $body ] = $post( 'pdf/layout/save', $layout );
-check( 'layout/save persists what it is given, answers the layout, and a fresh read has it', $status === 200 && $body['layout'] === $layout + [ 'logo' => '', 'signature' => '' ]
-	&& Pdf::layout( $appData ) === $layout + [ 'logo' => '', 'signature' => '' ] && is_file( \Nino\Filesystem::path( $appData, Pdf::LAYOUT ) ) === true );
+check( 'layout/save persists what it is given, answers the layout, and a fresh read has it', $status === 200 && $body['layout'] === $layout + [ 'design' => '', 'logo' => '', 'signature' => '' ]
+	&& Pdf::layout( $appData ) === $layout + [ 'design' => '', 'logo' => '', 'signature' => '' ] && is_file( \Nino\Filesystem::path( $appData, Pdf::LAYOUT ) ) === true );
 
 [ $status, $body ] = $post( 'pdf/layout/save', [ 'header' => '<p align="right" onclick="x()">Head [[page]]</p><script>alert(1)</script>', 'footer' => '<div class="f" style="color:red"><p>Page [[page]] / [[pages]]</p></div><style>p{}</style>' ] + $layout );
 check( 'layout/save holds the header and the footer to the list of what a document may hold: the stored texts - and the answer - have no script, no style, no attribute the layout does not read', $status === 200
@@ -137,7 +142,7 @@ check( 'layout/save holds the header and the footer to the list of what a docume
 $post( 'pdf/layout/save', $layout );
 [ $status, $body ] = $post( 'pdf/layout/save', [ 'header' => str_repeat( '&', 3000 ) ] + $layout );
 check( '...a header of 3000 characters that is 15000 once its ampersands are written is refused as too long, as the layout would not read it back: nothing is written', $status === 400 && $body['code'] === 'pdf_band_long' && $body['field'] === 'header'
-	&& Pdf::layout( $appData ) === $layout + [ 'logo' => '', 'signature' => '' ] );
+	&& Pdf::layout( $appData ) === $layout + [ 'design' => '', 'logo' => '', 'signature' => '' ] );
 
 foreach( [
 	'a margin of 60'			=> [ [ 'margins' => [ 60, 20, 20, 20 ] ], 'pdf_margin', 'margins', [ 5, 50 ] ],
@@ -150,7 +155,7 @@ foreach( [
 ] as $label => [ $change, $code, $field, $params ] ) {
 	[ $status, $body ] = $post( 'pdf/layout/save', $change + $layout );
 	check( "layout/save refuses $label with 400, the code, the field and the params", $status === 400 && $body['code'] === $code && $body['field'] === $field && ( $body['params'] ?? [] ) === $params
-		&& Pdf::layout( $appData ) === $layout + [ 'logo' => '', 'signature' => '' ] );
+		&& Pdf::layout( $appData ) === $layout + [ 'design' => '', 'logo' => '', 'signature' => '' ] );
 }
 
 $logo = $picture( 'png' );
@@ -721,6 +726,515 @@ if( $pdftotext === true )
 
 foreach( [ 'append-seal', 'append-empty', 'append-end' ] as $key )
 	$post( 'pdf/templates/delete', [ 'key' => $key ] );
+
+// --- the design sheet ------------------------------------------------------------------------------------------------------
+
+// A project of its own for what must not touch the one above: it boots the feature the way the first lines of this file do
+$bootProject = static function( string $name ): array {
+
+	$project = ninoSandbox( $name );
+	$project['/nino/modules'] = [ '\\Nino\\Modules\\Components' ];
+	\Nino\AppData::writeContentData( $project, [ '/nino/modules', '/nino/locales/available', '/nino/locales/native' ] );
+	\Nino\Features::activate( $project, 'pdf' );
+
+	return $project;
+};
+
+// The byte-identity pin. The fixture is rendered by the tree before this change (1.1.0); the hashes below are what it made, and a project with
+// no overrides must still make them: the sheet's defaults are the numbers the engine used to hold as constants
+$fixture = $bootProject( 'pdf-fixture' );
+$fixtureLayout = static fn( array $change ): array => $change + [ 'format' => 'a4', 'margins' => [ 20, 22, 18, 24 ], 'font' => 'helvetica', 'size' => 10, 'header' => '', 'footer' => '' ];
+Pdf\Store::saveLayout( $fixture, $fixtureLayout( [ 'header' => '<table border="0"><tr><td><h3>Fixture AG</h3></td><td align="right">[[page]] / [[pages]]</td></tr></table><hr>', 'footer' => '<p align="center">Fixture footer <a href="https://example.com">link</a> [[page]]</p>' ] ) );
+Pdf\Store::saveBlock( $fixture, [ 'key' => 'fx-text', 'isNew' => true, 'title' => 'Fixture text', 'html' => '<h1>Heading one</h1><p>A paragraph with <strong>bold</strong>, <em>italic</em> and <a href="https://example.com">a link</a>. '. str_repeat( 'Lorem ipsum dolor sit amet. ', 40 ). '</p><h2>Heading two</h2><ul><li>First item</li><li>Second item<ul><li>Nested item</li></ul></li></ul><h3>Heading three</h3><ol><li>One</li><li>Two</li></ol><hr><p align="right">Right</p><p style="text-align:center">Centre</p><table><thead><tr><th width="60%">Item</th><th>Price</th></tr></thead><tbody><tr><td>Cell one</td><td>10,00</td></tr><tr><td>Cell two</td><td>20,00</td></tr></tbody></table><table border="0"><tr><td>No border</td><td>x</td></tr></table>' ] );
+Pdf\Store::saveTemplate( $fixture, [ 'key' => 'fx-one', 'isNew' => true, 'name' => 'Fixture one', 'tag' => 'offer', 'blocks' => [
+	[ 'type' => 'html', 'block' => 'fx-text' ], [ 'type' => 'html', 'block' => 'fx-text' ], [ 'type' => 'input', 'name' => 'note', 'label' => 'Note', 'multiline' => true, 'required' => false ], [ 'type' => 'pagebreak' ],
+	[ 'type' => 'html', 'html' => '<p>[[name]] from [[/nowhere/text]]</p>' ], [ 'type' => 'slot', 'name' => 'rows' ],
+	[ 'type' => 'signature', 'name' => 'seller', 'party' => 'owner', 'label' => 'The seller', 'page' => 'last', 'x' => 20, 'y' => 230, 'w' => 60, 'h' => 20, 'line' => true ],
+] ] );
+$fixtureData = [ 'tokens' => [ 'name' => 'Ada' ], 'slots' => [ 'rows' => '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>' ], 'inputs' => [ 'note' => "one\ntwo" ] ];
+$fixtureA = (string) Pdf::render( $fixture, 'fx-one', $fixtureData, [ 'title' => 'Fixture', 'date' => '2026-01-02', 'append' => '<h2>Appended</h2><p>Terms of the appendix.</p>' ] );
+Pdf\Store::saveLayout( $fixture, $fixtureLayout( [ 'format' => 'letter', 'margins' => [ 15, 16, 17, 18 ], 'font' => 'times', 'size' => 12, 'footer' => '<p>[[page]]</p>' ] ) );
+$fixtureB = (string) Pdf::render( $fixture, 'fx-one', $fixtureData );
+Pdf\Store::saveLayout( $fixture, $fixtureLayout( [ 'margins' => [ 20, 20, 20, 20 ], 'font' => 'courier', 'size' => 9 ] ) );
+$fixtureC = (string) Pdf::render( $fixture, 'fx-one', $fixtureData );
+check( 'byte identity: a fixture of headings, lists, tables, rules, links, a header and a footer, a signature and an appended part, rendered in three layouts with no overrides, is the bytes that 1.1.0 made (their SHA-256, taken on the untouched tree)',
+	hash( 'sha256', $fixtureA ) === 'fb3a2b745d01c09c1f18ef36c021c617dd2709296748b8c2109399acae5d10de' && hash( 'sha256', $fixtureB ) === 'fd66fd859c0ae5dc0a3f9d5e74ebf05bf957f94189d29544da2c72bc0c419daf'
+	&& hash( 'sha256', $fixtureC ) === '48ae334e0281ed5c12d6f13ccb55f68baa50a183579ebf90b0a45c2bb26bda78' && strlen( $fixtureA ) === 4065 && strlen( $fixtureB ) === 3154 && strlen( $fixtureC ) === 2962 );
+
+// The parser: every documented property, on a selector it is read for
+$all = <<<'CSS'
+/* every property */
+body { font-family: Courier; font-size: 11pt; font-weight: normal; font-style: italic; color: #112233; line-height: 1.5 }
+h1, h2 { font-size: 1.5em; font-weight: bold; margin: 5mm 0 2mm 0; text-align: center }
+p { margin: 1mm 0; color: #AABBCC }
+ul { margin: 0 0 3mm 8mm }
+th { padding: 1mm 2mm 3mm 4mm; background: #eeeeee; border-bottom: 0.5pt solid #000000; border-top: 0 }
+td { padding: 2mm; border-bottom: 0 }
+hr { border-top: 1pt solid #999999; margin: 3mm 0 }
+a { text-decoration: none; color: #0000ff }
+.address { margin: 10mm 0 12mm 0 }
+.header { font-size: 8pt; border-bottom: 0.3pt solid #cccccc; margin: 0 0 6mm 0 }
+.footer { border-top: 0.3pt solid #cccccc }
+.signature { font-size: 0.7em; border-top: 0.3pt solid #1f5f8b; margin: 2mm 0 0 0 }
+CSS;
+$read = Sheet::parse( $all );
+check( 'Sheet::parse() reads every documented property: the family, sizes in pt and em, weight, slant, colours (lower case), the line height, the margins of one, two and four values in mm, the paddings, the borders, the backgrounds, the alignment, the decoration',
+	is_array( $read ) === true && $read['body'] === [ 'font-family' => 'courier', 'font-size' => [ 'pt', 11.0 ], 'font-weight' => 'normal', 'font-style' => 'italic', 'color' => '112233', 'line-height' => 1.5 ]
+	&& $read['h1'] === $read['h2'] && $read['h1']['font-size'] === [ 'em', 1.5 ] && $read['h1']['margin'] === [ 5.0, 0.0, 2.0, 0.0 ] && $read['h1']['text-align'] === 'center'
+	&& $read['p'] === [ 'margin' => [ 1.0, 0.0, 1.0, 0.0 ], 'color' => 'aabbcc' ] && $read['ul']['margin'] === [ 0.0, 0.0, 3.0, 8.0 ]
+	&& $read['th'] === [ 'padding' => [ 1.0, 2.0, 3.0, 4.0 ], 'background' => 'eeeeee', 'border-bottom' => [ 0.5, '000000' ], 'border-top' => false ] && $read['td'] === [ 'padding' => [ 2.0, 2.0, 2.0, 2.0 ], 'border-bottom' => false ]
+	&& $read['hr'] === [ 'border-top' => [ 1.0, '999999' ], 'margin' => [ 3.0, 0.0, 3.0, 0.0 ] ] && $read['a'] === [ 'text-decoration' => 'none', 'color' => '0000ff' ]
+	&& $read['.header']['border-bottom'] === [ 0.3, 'cccccc' ] && $read['.footer']['border-top'] === [ 0.3, 'cccccc' ] && $read['.signature']['font-size'] === [ 'em', 0.7 ] && $read['.address']['margin'] === [ 10.0, 0.0, 12.0, 0.0 ] && $read['.signature']['margin'] === [ 2.0, 0.0, 0.0, 0.0 ] );
+check( '...and a text of no rule at all is a sheet of no rules', Sheet::parse( '' ) === [] && Sheet::parse( "/* nothing\nhere */\n" ) === [] );
+
+// Three values are top, horizontal, bottom - CSS's own reading - for margin and for padding
+$three = Sheet::parse( "p { margin: 1mm 0 3mm }\ntd { padding: 4mm 5mm 6mm }" );
+check( 'margin and padding take three values - top, horizontal, bottom: read as top, right, bottom, left with the right twice, written back as three, merged over the feature\'s rules', is_array( $three ) && $three['p']['margin'] === [ 1.0, 0.0, 3.0, 0.0 ] && $three['td']['padding'] === [ 4.0, 5.0, 6.0, 5.0 ]
+	&& str_contains( Sheet::text( $three ), 'margin: 1mm 0 3mm }' ) === true && str_contains( Sheet::text( $three ), 'padding: 4mm 5mm 6mm }' ) === true && Sheet::parse( Sheet::text( $three ) ) == $three
+	&& Sheet::merge( Sheet::defaults( 'helvetica', 10 ), $three )['p']['margin'] === [ 1.0, 0.0, 3.0, 0.0 ] && Sheet::merge( Sheet::defaults( 'helvetica', 10 ), $three )['td']['border-bottom'] === [ 0.4, '808080' ]
+	&& Sheet::check( 'p { margin: 1mm 2mm 3mm 4mm 5mm }' )['code'] === 'value' );
+
+// What it refuses, with the line, the kind and the word
+$refusals = [
+	'an unknown selector'						=> [ "h1 { color: #112233 }\n\nfooter { color: #112233 }", 3, 'selector', 'footer' ],
+	'a selector with an id'					=> [ "#x { color: #112233 }", 1, 'selector', '#x' ],
+	'an unknown property'						=> [ "p {\n\tcolor: #112233;\n\tfloat: left;\n}", 3, 'property', 'float' ],
+	'a property the selector is not read for'=> [ "h1 { color: #112233 }\nh2 { background: #112233 }", 2, 'applies', 'background' ],
+	'a colour that is no six digits'		=> [ "p { color: red }", 1, 'value', 'color: red' ],
+	'a font that is none'						=> [ "p {}\n\nbody { font-family: Comic Sans }", 3, 'value', 'font-family: Comic Sans' ],
+	'a size in px'								=> [ "p {}\nh1 { font-size: 12px }", 2, 'value', 'font-size: 12px' ],
+	'a margin of five values'				=> [ "p { margin: 1mm 2mm 3mm 4mm 5mm }", 1, 'value', 'margin: 1mm 2mm 3mm 4mm 5mm' ],
+	'a margin in em'							=> [ "p { margin: 1em }", 1, 'value', 'margin: 1em' ],
+	'a border of another style'				=> [ "hr { border-top: 1pt dashed #000000 }", 1, 'value', 'border-top: 1pt dashed #000000' ],
+	'a size out of range'						=> [ "p { font-size: 500pt }", 1, 'value', 'font-size: 500pt' ],
+	'a declaration without a colon'			=> [ "p { color }", 1, 'declaration', 'color' ],
+	'a rule that is not closed'				=> [ "p { color: #112233;\n\nh1 { color: #445566 }", 3, 'brace', '' ],
+	'a brace with no rule'					=> [ "p {}\n}", 2, 'brace', '' ],
+	'no brace at all'							=> [ "p color: #112233", 1, 'brace', '' ],
+	'a line after a comment of several lines'=> [ "/* one\ntwo\nthree */\nh9 {}", 4, 'selector', 'h9' ],
+	'a comment that is not closed'			=> [ "p { color: #112233 }\n\n/* the rest\nh1 { color: #445566 }", 3, 'comment', '' ],
+	'a selector of a list on the third line'	=> [ "h1,\nh2,\nfoo { color: #112233 }", 3, 'selector', 'foo' ],
+	'a missing semicolon before the next declaration'	=> [ "p {\n\tcolor: #112233\n\tmargin: 0\n}", 2, 'semicolon', 'color' ],
+	'a declaration that lost its colon across lines'	=> [ "p {\n\tcolor\n\tfont-weight: bold\n}", 2, 'declaration', 'color' ],
+	'a value that runs over a line and is none'		=> [ "p {\n\tcolor: red\n\t  bold\n}", 2, 'value', 'color: red' ],
+	'a rule with no selector'				=> [ "p {}\n{ color: #112233 }", 2, 'noselector', '' ],
+	'an empty selector in a list'			=> [ "h1,\n, h2 { color: #112233 }", 2, 'noselector', '' ],
+	'a margin on a side nothing reads (p, left)' => [ "p { margin: 0 0 0 5mm }", 1, 'applies', 'margin-left' ],
+];
+$problems = [];
+foreach( $refusals as $label => [ $css, $line, $code, $detail ] ) {
+
+	$checked = Sheet::check( $css );
+	$said = Sheet::parse( $css );
+
+	if( isset( $checked['rules'] ) === true || $checked['line'] !== $line || $checked['code'] !== $code || $checked['detail'] !== $detail || str_contains( $checked['detail'], "\n" ) === true || is_string( $said ) === false || str_starts_with( $said, 'line '. $line. ': ' ) === false )
+		$problems[] = $label. ' -> '. json_encode( $checked );
+}
+check( 'Sheet::parse() refuses by line, and names the kind and the word'. ( $problems === [] ? '' : ' - '. implode( '; ', $problems ) ), $problems === [] && count( $refusals ) === 24 );
+check( '...a selector list is a rule for each: one that holds a selector it does not know is refused whole, as is a property one of its selectors is not read for', Sheet::check( 'h1, nope { color: #112233 }' )['code'] === 'selector' && Sheet::check( 'h1, td { background: #112233 }' )['code'] === 'applies'
+	&& Sheet::check( 'H1 { COLOR: #ABCDEF }' )['rules'] === [ 'h1' => [ 'color' => 'abcdef' ] ] );
+
+// The defaults are the sheet, and the text is the defaults
+$defaults = Sheet::defaults( 'helvetica', 10 );
+check( 'the feature\'s own rules are a sheet in the same notation: their text is read back into the same rules, for every size the layout takes', (function() use ( $defaults ): bool {
+	foreach( [ 'helvetica', 'times', 'courier' ] as $family )
+		for( $size = Pdf::SIZE_MIN; $size <= Pdf::SIZE_MAX; $size++ )
+			if( Sheet::parse( Sheet::text( Sheet::defaults( $family, $size ) ) ) != Sheet::defaults( $family, $size ) )
+				return false;
+	return Sheet::check( Sheet::text( $defaults ) )['rules'] != [];
+})() );
+check( '...and they hold what the engine used to hold as constants: 1.8, 1.4 and 1.15 times the base size for the headings, a rule of 0.5 pt, 1.5 mm of padding, a head rule of 0.8 pt, a hairline of 0.4 pt, a gap of 4 mm around the bands, the label of a signature 0.8 of the base size',
+	$defaults['h1']['font-size'] === [ 'em', 1.8 ] && $defaults['h2']['font-size'] === [ 'em', 1.4 ] && $defaults['h3']['font-size'] === [ 'em', 1.15 ] && $defaults['hr']['border-top'][0] === 0.5
+	&& $defaults['td']['padding'] === [ 1.5, 1.5, 1.5, 1.5 ] && $defaults['th']['border-bottom'][0] === 0.8 && $defaults['td']['border-bottom'][0] === 0.4 && $defaults['.header']['margin'][2] === 4.0 && $defaults['.footer']['margin'][0] === 4.0
+	&& $defaults['.signature']['font-size'] === [ 'em', 0.8 ] && $defaults['body']['font-size'] === [ 'pt', 10.0 ] && $defaults['body']['line-height'] === 1.35 );
+
+// Merged per property
+$merged = Sheet::merge( $defaults, [ 'h1' => [ 'color' => '1f5f8b', 'font-size' => [ 'pt', 20.0 ] ], 'td' => [ 'border-bottom' => false ] ] );
+check( 'merge() lays the owner\'s rules over the feature\'s property by property: the properties named win, the others of the same selector stay, the selectors not named are untouched',
+	$merged['h1']['font-size'] === [ 'pt', 20.0 ] && $merged['h1']['color'] === '1f5f8b' && $merged['h1']['font-weight'] === 'bold' && $merged['h1']['margin'] === $defaults['h1']['margin']
+	&& $merged['td']['border-bottom'] === false && $merged['td']['padding'] === [ 1.5, 1.5, 1.5, 1.5 ] && $merged['h2'] === $defaults['h2'] && $defaults['h1']['font-size'] === [ 'em', 1.8 ] );
+
+// The layout holds the design; design() and sheet() answer it
+$kept = Pdf::layout( $appData );
+$keep = static fn( array $change ): array => $change + [ 'format' => $kept['format'], 'margins' => $kept['margins'], 'font' => $kept['font'], 'size' => $kept['size'], 'header' => $kept['header'], 'footer' => $kept['footer'] ];
+$plain = $keep( [ 'format' => 'a4', 'margins' => [ 20, 20, 20, 20 ], 'font' => 'helvetica', 'size' => 10, 'header' => '', 'footer' => '', 'design' => '' ] );
+check( 'a layout with no design answers an empty one, design() the feature\'s rules alone and sheet() their text - for the font and the size of the layout', ( $plain['design'] === '' ) && Pdf::DEFAULTS['design'] === '' && $post( 'pdf/layout/save', $plain )[0] === 200 && Pdf::layout( $appData )['design'] === ''
+	&& Pdf::design( $appData ) == Sheet::defaults( 'helvetica', 10 ) && Pdf::sheet( $appData ) === Sheet::text( Sheet::defaults( 'helvetica', 10 ) ) && str_contains( Pdf::sheet( $appData ), 'font-size: 10pt' ) === true && str_contains( Pdf::sheet( $appData ), 'font-family: Helvetica' ) === true );
+[ $status, $body ] = $post( 'pdf/layout/save', [ 'design' => "h1 { font-size: 20pt; color: #1F5F8B }\r\n\r\nbody { font-size: 1.5em }\n", 'size' => 12, 'font' => 'times' ] + $plain );
+check( 'the design is saved with the layout - trimmed, line breaks as \n -, answered, and design() is the two merged: a body in em is a factor of the size of the layout, in points', $status === 200 && $body['layout']['design'] === "h1 { font-size: 20pt; color: #1F5F8B }\n\nbody { font-size: 1.5em }" && Pdf::layout( $appData )['design'] === $body['layout']['design']
+	&& Pdf::design( $appData )['h1']['font-size'] === [ 'pt', 20.0 ] && Pdf::design( $appData )['h1']['color'] === '1f5f8b' && Pdf::design( $appData )['h1']['font-weight'] === 'bold' && Pdf::design( $appData )['body']['font-size'] === [ 'pt', 18.0 ]
+	&& Pdf::design( $appData )['body']['font-family'] === 'times' && $body['sheet'] === Pdf::sheet( $appData ) && str_contains( Pdf::sheet( $appData ), 'font-size: 12pt' ) === true && str_contains( Pdf::sheet( $appData ), 'font-family: Times' ) === true );
+$stored = Pdf::layout( $appData );
+[ $status, $body ] = $post( 'pdf/layout/save', $keep( [ 'size' => 12, 'font' => 'times' ] ) );
+check( '...a save that does not name the design leaves it as it is', $status === 200 && Pdf::layout( $appData )['design'] === $stored['design'] );
+
+// A bad sheet is refused with its line, and the layout stays as it was
+foreach( [
+	'an unknown property'		=> [ "h1 { color: #112233 }\np { float: left }", 'pdf_design_property', [ 2, 'float' ] ],
+	'an unknown selector'		=> [ "\n\nfooter { color: #112233 }", 'pdf_design_selector', [ 3, 'footer' ] ],
+	'a bad value'				=> [ "h1 { color: red }", 'pdf_design_value', [ 1, 'color: red' ] ],
+	'a property not read'		=> [ "p {}\nh1 { background: #112233 }", 'pdf_design_applies', [ 2, 'background', 'h1' ] ],
+	'a missing brace'			=> [ "p { color: #112233;", 'pdf_design_brace', [ 1, '' ] ],
+	'a declaration'				=> [ "p { color }", 'pdf_design_declaration', [ 1, 'color' ] ],
+	'a missing semicolon'		=> [ "p {\n\tcolor: #112233\n\tmargin: 0 0 1mm 0\n}", 'pdf_design_semicolon', [ 2, 'color' ] ],
+	'a sheet too long'			=> [ str_repeat( "/* x */\n", 1100 ), 'pdf_design_long', [ Pdf::MAX_DESIGN ] ],
+] as $label => [ $css, $code, $params ] ) {
+	[ $status, $body ] = $post( 'pdf/layout/save', [ 'design' => $css ] + $keep( [ 'size' => 14, 'font' => 'courier' ] ) );
+	check( 'layout/save refuses '. $label. ' with 400, the code, the params - line first - and the field design; nothing is written, not even the other fields', $status === 400 && $body['code'] === $code && $body['params'] === $params && $body['field'] === 'design' && Pdf::layout( $appData ) === $stored );
+}
+check( '...every code of a sheet\'s refusal has its sentence in both languages, and says the line', (function() use ( $sentence ): bool {
+	foreach( [ 'long', 'type', 'brace', 'comment', 'semicolon', 'noselector', 'declaration', 'selector', 'property', 'applies', 'value' ] as $kind )
+		foreach( [ 'en_US', 'de_DE' ] as $locale )
+			if( $sentence( 'pdf_design_'. $kind, $locale ) === '' || ( in_array( $kind, [ 'long', 'type' ], true ) === false && str_contains( $sentence( 'pdf_design_'. $kind, $locale ), '%s' ) === false ) )
+				return false;
+	return true;
+})() );
+$stale = \Nino\Filesystem::getFileContent( $appData, Pdf::LAYOUT, [] );
+\Nino\Filesystem::putFileContent( $appData, Pdf::LAYOUT, [ 'design' => "h1 { color: #112233 }\np { float: left }" ] + $stale );
+$handEdited = $post( 'pdf/layout/get' )[1];
+check( 'a design in the file that is no sheet: layout() answers the text as it is stored, design() does not read it - the rules of the feature stand alone - and layout/get says why, with the line; a sheet carries no refusal', Pdf::layout( $appData )['design'] === "h1 { color: #112233 }\np { float: left }"
+	&& Pdf::design( $appData ) == Sheet::defaults( (string) Pdf::layout( $appData )['font'], (int) Pdf::layout( $appData )['size'] ) && $handEdited['layout']['design'] === "h1 { color: #112233 }\np { float: left }" && $handEdited['refusal'] === [ 'code' => 'pdf_design_property', 'params' => [ 2, 'float' ] ] );
+\Nino\Filesystem::putFileContent( $appData, Pdf::LAYOUT, $stale );
+check( '...and the refusal is the code and the params of the sentence a save of the same text says - the words of the panel, none of the parser\'s English - and null for a design that parses and for none', $post( 'pdf/layout/get' )[1]['refusal'] === null && Sheet::parse( '' ) === []
+	&& $handEdited['refusal']['code'] === $post( 'pdf/layout/save', [ 'design' => "h1 { color: #112233 }\np { float: left }" ] + $plain )[1]['code'] && $post( 'pdf/layout/save', [ 'design' => "h1 { color: #112233 }\np { float: left }" ] + $plain )[1]['params'] === $handEdited['refusal']['params'] );
+$post( 'pdf/layout/get' );
+
+// The engine honours the rules. Each case sets one design on a plain layout and lays a text out without a template of the project
+$refusedDesigns = [];
+$plainLayout = static function( string $design, array $change = [] ) use ( $post, $plain, &$refusedDesigns ): int {
+
+	$status = $post( 'pdf/layout/save', [ 'design' => $design ] + $change + $plain )[0];
+
+	if( $status !== 200 )
+		$refusedDesigns[] = $design;
+
+	return $status;
+};
+$laid = static function( string $html, array $options = [], array $blocks = [] ) use ( &$appData ): string {
+	return Pdf::compose( $appData, [ 'name' => 'T', 'tag' => 'offer', 'blocks' => array_merge( [ [ 'type' => 'html', 'html' => $html ] ], $blocks ) ], [], $options, false );
+};
+$colour = static fn( string $hex ): string => implode( ' ', array_map( static fn( string $channel ): string => Pdf\Document\Document::num( round( hexdec( $channel ) / 255, 2 ) ), str_split( $hex, 2 ) ) );
+// Where a word of the text stands: x and y of its Td
+$at = static function( string $pdf, string $word ) use ( $content ): array {
+	preg_match( '#([\d.]+) ([\d.]+) Td \('. preg_quote( $word, '#' ). '\) Tj#', $content( $pdf, 0 ), $found );
+	return [ (float) ( $found[1] ?? -1 ), (float) ( $found[2] ?? -1 ) ];
+};
+$mm = Pdf\Document\Document::MM;
+$text = '<h1>Heading</h1><p>First</p><p>Second</p>';
+
+$plainLayout( '' );
+$plainPdf = $laid( $text );
+check( 'the base: a heading of 1.8 times the size, no colour operator in a page that has no colour', str_contains( $content( $plainPdf, 0 ), ' 18 Tf' ) === true && preg_match( '/ (rg|RG)\b/', $content( $plainPdf, 0 ) ) === 0 );
+
+$plainLayout( 'h1 { font-size: 24pt }' );
+check( 'an override of the size of h1 sets the heading in it - in points, and the em of the same selector is a factor of the base', str_contains( $content( $laid( $text ), 0 ), ' 24 Tf' ) === true && str_contains( $content( $laid( $text ), 0 ), ' 18 Tf' ) === false
+	&& ( $plainLayout( 'h1 { font-size: 2em }' ) === 200 ) && str_contains( $content( $laid( $text ), 0 ), ' 20 Tf' ) === true );
+
+$plainLayout( 'h1 { color: #1f5f8b }' );
+$tinted = $content( $laid( $text ), 0 );
+check( 'a colour: the content stream carries the fill colour operator - two decimals a channel - for the text of the selector, in a state of its own, and the text of the others is not drawn in it', str_contains( $tinted, 'q '. $colour( '1f5f8b' ). ' rg BT' ) === true && substr_count( $tinted, ' rg ' ) === 1
+	&& preg_match( '/\(Heading\) Tj ET\nQ\n/', $tinted ) === 1 && preg_match( '/\n(BT [^\n]+\(First\) Tj ET)\n/', $tinted ) === 1 );
+$plainLayout( 'p { color: #808080 }' );
+check( '...a grey is written as a grey (g), and a colour that is black is no operator at all', str_contains( $content( $laid( $text ), 0 ), 'q 0.5 g BT' ) === true && ( $plainLayout( 'p { color: #000000 }' ) === 200 ) && preg_match( '/ (rg|g|RG|G) BT/', $content( $laid( $text ), 0 ) ) === 0 );
+
+$apart = static fn( string $pdf, string $from, string $to ): float => $at( $pdf, $from )[1] - $at( $pdf, $to )[1];
+$plainLayout( '' );
+$base = $apart( $laid( $text ), 'First', 'Second' );
+$plainLayout( 'p { margin: 0 0 20mm 0 }' );
+$wide = $apart( $laid( $text ), 'First', 'Second' );
+$plainLayout( 'p { margin: 10mm 0 20mm }' );
+$threeLayout = $laid( $text );
+check( 'a margin of three values in the engine: the top and the bottom differ - the space under a paragraph is the larger of its bottom and the next one\'s top (20 mm), above the first one the larger of the heading\'s bottom and its top (10 mm)', abs( ( $apart( $threeLayout, 'First', 'Second' ) - $base ) / $mm - ( 20 - 2.8575 ) ) < 0.01
+	&& abs( ( $apart( $threeLayout, 'Heading', 'First' ) - $apart( $plainPdf, 'Heading', 'First' ) ) / $mm - ( 10 - 2.38125 ) ) < 0.01 );
+$plainLayout( 'p { margin: 12mm 0 0 0 }' );
+$above = $apart( $laid( $text ), 'First', 'Second' );
+check( 'the bottom margin of p is the space after a paragraph: a larger one moves the next paragraph down by the difference (in mm); the top margin is the space above, the larger of the two between paragraphs', abs( ( $wide - $base ) / $mm - ( 20 - 2.8575 ) ) < 0.01
+	&& abs( ( $above - $base ) / $mm - ( 12 - 2.8575 ) ) < 0.01 );
+$plainLayout( 'p { line-height: 2 }' );
+$lineGap = static function( string $html ) use ( $laid, $content ): float {
+	preg_match_all( '/ ([\d.]+) Td \(word/', $content( $laid( $html ), 0 ), $found );
+	return count( $found[1] ) > 3 ? (float) $found[1][0] - (float) $found[1][1] : -1.0;
+};
+$ownLines = $lineGap( '<p>'. str_repeat( 'word ', 80 ). '</p>' );
+$headLines = $plainLayout( 'h1 { line-height: 3 }' ) === 200 ? $lineGap( '<h1>'. str_repeat( 'word ', 40 ). '</h1>' ) : -1.0;
+$plainLayout( '' );
+check( 'line-height of p and of h1 is a factor of their font size for the lines of that selector alone: p at 2 gives 20 pt lines, h1 at 3 gives 54 pt lines - the plain ones are 13.5 pt and 24.3 pt', abs( $ownLines - 20 ) < 0.01 && abs( $headLines - 54 ) < 0.01
+	&& abs( $lineGap( '<p>'. str_repeat( 'word ', 80 ). '</p>' ) - 13.5 ) < 0.01 && abs( $lineGap( '<h1>'. str_repeat( 'word ', 40 ). '</h1>' ) - 24.3 ) < 0.01 );
+$plainLayout( 'body { line-height: 2 }' );
+check( 'line-height of the body is a factor of the font size for every line: lines of a long paragraph are further apart', (function() use ( $laid, $content, $plainLayout ): bool {
+	$long = '<p>'. str_repeat( 'word ', 80 ). '</p>';
+	preg_match_all( '/ ([\d.]+) Td \(word/', $content( $laid( $long ), 0 ), $two );
+	$plainLayout( '' );
+	preg_match_all( '/ ([\d.]+) Td \(word/', $content( $laid( $long ), 0 ), $one );
+	return count( $two[1] ) > 3 && count( $one[1] ) > 3 && abs( ( (float) $two[1][0] - (float) $two[1][1] ) - 2 * 10 ) < 0.01 && abs( ( (float) $one[1][0] - (float) $one[1][1] ) - 13.5 ) < 0.01;
+})() );
+
+$table = '<table><thead><tr><th>Head</th></tr></thead><tbody><tr><td>Cell</td></tr></tbody></table>';
+$plainLayout( 'th { background: #ffeeaa; border-bottom: 2pt solid #112233 }' );
+$cells = $content( $laid( $table ), 0 );
+check( 'th: a background is a box filled in the colour, as high as the row and drawn before the text; the border is a line of the width and the colour under the row', preg_match( '/q '. preg_quote( $colour( 'ffeeaa' ), '/' ). ' rg [\d.]+ [\d.]+ [\d.]+ [\d.]+ re f Q\n/', $cells, $fill, PREG_OFFSET_CAPTURE ) === 1
+	&& strpos( $cells, '(Head) Tj' ) > $fill[0][1] && str_contains( $cells, 'q 2 w '. $colour( '112233' ). ' RG ' ) === true && str_contains( $cells, 'q 0.8 w 0 G ' ) === false );
+$plainLayout( 'td { border-bottom: 0 } th { border-bottom: 0 }' );
+check( '...a border of 0 draws no line, and a table says the same of itself with border="0"', preg_match( '/ w [\d. ]+ m [\d. ]+ l S Q/', $content( $laid( $table ), 0 ) ) === 0 );
+$plainLayout( '' );
+check( '...and the rules of the feature draw the head rule of 0.8 pt in black and the hairline of 0.4 pt in grey, the hairline not in a table of border="0"', str_contains( $content( $laid( $table ), 0 ), 'q 0.8 w 0 G ' ) === true && str_contains( $content( $laid( $table ), 0 ), 'q 0.4 w 0.5 G ' ) === true
+	&& str_contains( $content( $laid( str_replace( '<table>', '<table border="0">', $table ) ), 0 ), 'q 0.4 w' ) === false );
+
+$cellX = static fn( string $pdf ): float => $at( $pdf, 'Cell' )[0];
+$before = $cellX( $laid( $table ) );
+$plainLayout( 'td { padding: 5mm 7mm 5mm 9mm }' );
+$padded = $laid( $table );
+$hairline = static function( string $pdf ) use ( $content ): float {
+	preg_match( '/q 0\.4 w 0\.5 G [\d.]+ ([\d.]+) m/', $content( $pdf, 0 ), $found );
+	return (float) ( $found[1] ?? -1 );
+};
+$plainLayout( '' );
+$hairlineBase = $hairline( $laid( $table ) );
+check( 'td: padding is the room inside the cell - the text stands the left padding from the cell\'s edge and as much lower as the top, and the row is as high as the paddings add up (top and bottom, 10 mm instead of 3)', abs( ( $cellX( $padded ) - $before ) / $mm - ( 9 - 1.5 ) ) < 0.01
+	&& $at( $padded, 'Cell' )[1] < $at( $laid( $table ), 'Cell' )[1] && abs( ( $hairlineBase - $hairline( $padded ) ) / $mm - ( 10 - 3 ) ) < 0.01 );
+
+$link = '<p>See <a href="x">this link</a> now</p>';
+$underlines = static fn( string $pdf ): int => preg_match_all( '/q [\d.]+ w [\d. ]+ m [\d. ]+ l S Q/', $content( $pdf, 0 ) );
+$plainLayout( '' );
+$underlined = $underlines( $laid( $link ) );
+$plainLayout( 'a { text-decoration: none }' );
+$plainLink = $underlines( $laid( $link ) );
+$plainLayout( 'a { color: #ff0000 }' );
+$redLink = $content( $laid( $link ), 0 );
+check( 'a: the link is underlined as it was, text-decoration: none takes the line away, a colour sets the text - and its underline - in it', $underlined === 1 && $plainLink === 0 && str_contains( $redLink, 'q 1 0 0 rg BT' ) === true && str_contains( $redLink, ' w 1 0 0 RG ' ) === true );
+
+$signature = [ [ 'type' => 'signature', 'name' => 'seal', 'party' => 'owner', 'label' => 'Seal', 'page' => 'last', 'x' => 20, 'y' => 200, 'w' => 60, 'h' => 20, 'line' => true ] ];
+$plainLayout( '' );
+$box = $content( $laid( '<p>Text</p>', [], $signature ), 0 );
+$plainLayout( '.signature { border-top: 2pt solid #ff0000; font-size: 12pt; color: #00aa00 }' );
+$sealed = $content( $laid( '<p>Text</p>', [], $signature ), 0 );
+$plainLayout( '.signature { border-top: 0 }' );
+$open = $content( $laid( '<p>Text</p>', [], $signature ), 0 );
+check( '.signature: the line of a signature field is 0.5 pt black as it was; an override gives it the width and the colour, the label the size and the colour, border-top: 0 takes the line away and keeps the label',
+	str_contains( $box, 'q 0.5 w 0 G ' ) === true && str_contains( $box, ' 8 Tf ' ) === true && str_contains( $sealed, 'q 2 w 1 0 0 RG ' ) === true && str_contains( $sealed, ' 12 Tf ' ) === true && str_contains( $sealed, 'q 0 0.67 0 rg BT' ) === true
+	&& str_contains( $open, ' w ' ) === false && str_contains( $open, '(Seal) Tj' ) === true );
+
+$plainLayout( 'hr { border-top: 3pt solid #ff0000; margin: 8mm 0 }' );
+check( 'hr: the rule is the width and the colour of border-top, the margin the space around it', str_contains( $content( $laid( '<p>Over</p><hr><p>Under</p>' ), 0 ), 'q 3 w 1 0 0 RG ' ) === true );
+$plainLayout( '' );
+$plainHr = $apart( $laid( '<p>Over</p><hr><p>Under</p>' ), 'Over', 'Under' );
+$plainLayout( 'hr { margin: 8mm 0 }' );
+check( '...a margin of 8 mm moves the next paragraph by the difference', abs( ( $apart( $laid( '<p>Over</p><hr><p>Under</p>' ), 'Over', 'Under' ) - $plainHr ) / $mm - ( ( 8 - 2.8575 ) + ( 8 - 1.905 ) ) ) < 0.01 );
+
+$plainLayout( 'ul { margin: 0 0 3mm 15mm } li { margin: 0 0 4mm 0 }' );
+$list = $laid( '<ul><li>One</li><li>Two</li></ul>' );
+$plainLayout( '' );
+check( 'ul: the left margin is the indent of a level, li: the bottom margin the space between items', abs( ( $at( $list, 'One' )[0] - $at( $laid( '<ul><li>One</li><li>Two</li></ul>' ), 'One' )[0] ) / $mm - 9 ) < 0.01
+	&& ( $at( $laid( '<ul><li>One</li><li>Two</li></ul>' ), 'One' )[1] - $at( $laid( '<ul><li>One</li><li>Two</li></ul>' ), 'Two' )[1] ) < ( $at( $list, 'One' )[1] - $at( $list, 'Two' )[1] ) );
+
+$plainLayout( 'body { font-family: Courier; font-size: 9pt }' );
+check( 'body: the family and the size of the text; they win over the layout\'s own', str_contains( $laid( '<p>Text</p>' ), '/BaseFont /Courier' ) === true && str_contains( $content( $laid( '<p>Text</p>' ), 0 ), ' 9 Tf ' ) === true && str_contains( $laid( '<p>Text</p>' ), '/BaseFont /Helvetica' ) === false );
+$plainLayout( 'th { font-weight: normal } td { font-style: italic }' );
+check( 'th and td: the weight and the slant of a cell are the rule\'s - a th that is not bold is Helvetica, a td in italic Oblique', str_contains( $laid( $table ), '/BaseFont /Helvetica-Bold' ) === false && str_contains( $laid( $table ), '/BaseFont /Helvetica-Oblique' ) === true );
+
+check( 'Allow keeps one class, address, on a p or a div - in any case, written in lower case - and no other: not another word, not a list, not on a span', Allow::html( '<p class="Address">a</p><div class="address">b</div><p class="address big">c</p><p class="big">d</p><span class="address">e</span><h1 class="address">f</h1>' ) === '<p class="address">a</p><div class="address">b</div><p>c</p><p>d</p><span>e</span><h1>f</h1>' );
+$plainLayout( '.address { color: #ff0000; margin: 0 0 9mm 0 }' );
+$addressed = $content( $laid( '<p class="address">Street 1</p><p>Plain</p>' ), 0 );
+check( '.address: a p or a div with class="address" is set by the rules of p with those of .address over them; the others are not', str_contains( $addressed, 'q 1 0 0 rg BT' ) === true && substr_count( $addressed, ' rg ' ) === 1 && preg_match( '/q 1 0 0 rg BT[^\n]*\(Street 1\) Tj/', $addressed ) === 1 );
+
+$bands = [ 'header' => '<p>Head</p>', 'footer' => '<p>Foot</p>' ];
+$plainLayout( '', $bands );
+$gapBody = $at( $laid( '<p>Body</p>' ), 'Body' )[1];
+$plainLayout( '.header { font-size: 7pt; color: #0000ff; border-bottom: 1pt solid #00ff00; margin: 0 0 10mm 0 } .footer { font-size: 6pt; border-top: 1pt solid #ff00ff; margin: 10mm 0 0 0 }', $bands );
+$banded = $content( $laid( '<p>Body</p>' ), 0 );
+check( '.header and .footer: the text of the bands has its own size and colour, the border is a line at the foot of the header and at the head of the footer, and the body is set in none of it',
+	str_contains( $banded, 'q 0 0 1 rg BT' ) === true && str_contains( $banded, ' 7 Tf ' ) === true && str_contains( $banded, ' 6 Tf ' ) === true && str_contains( $banded, 'q 1 w 0 1 0 RG ' ) === true && str_contains( $banded, 'q 1 w 1 0 1 RG ' ) === true
+	&& preg_match( '/ 10 Tf [\d.]+ [\d.]+ Td \(Body\)/', $banded ) === 1 && substr_count( $banded, ' rg ' ) === 1 );
+$plainLayout( '.header { margin: 0 0 10mm 0 }', $bands );
+check( '...the bottom margin of .header is the gap between it and the text: 6 mm more, the text 6 mm lower (the header is a little shorter in 7 pt only where the size is set)', abs( ( $gapBody - $at( $laid( '<p>Body</p>' ), 'Body' )[1] ) / $mm - 6 ) < 0.01 );
+$plainLayout( '' );
+check( 'every design the cases above set was accepted by the layout\'s save'. ( $refusedDesigns === [] ? '' : ' - refused: '. implode( ' | ', $refusedDesigns ) ), $refusedDesigns === [] );
+
+// Every property a selector accepts is a property the engine reads: for each pair of the table an override with a value of its own renders other bytes
+// than the feature's rules alone, over a text that has every element, a header, a footer and a signature field
+$bands = [ 'header' => '<p>Head</p>', 'footer' => '<p>Foot</p>' ];
+$everything = '<p>Lead</p><h1>Head one</h1><h2>Head two</h2><h3>Head three</h3><p class="address">Street 1</p><p>A short paragraph</p><ul><li>One</li><li>Two</li></ul><ol><li>Uno</li><li>Dos</li></ol><hr><table><thead><tr><th>Head</th></tr></thead><tbody><tr><td>Cell</td></tr></tbody></table><p>See <a href="x">link</a> now</p><p>'. str_repeat( 'word ', 1500 ). '</p>';
+$plainLayout( '', $bands );
+$reference = $laid( $everything, [], $signature );
+$unread = [];
+$pairs = 0;
+foreach( Sheet::APPLIES as $selector => $properties )
+	foreach( $properties as $property ) {
+
+		$value = match( $property ) {
+			'font-family'		=> 'Courier',
+			'font-size'			=> '17pt',
+			'font-weight'		=> in_array( $selector, [ 'h1', 'h2', 'h3', 'th' ], true ) === true ? 'normal' : 'bold',
+			'font-style'		=> 'italic',
+			'color'					=> '#ff0000',
+			'line-height'		=> '2.6',
+			'text-align'		=> 'right',
+			'margin'				=> implode( ' ', array_map( static fn( bool $read ): string => $read === true ? '9mm' : '0', Sheet::MARGINS[$selector] ) ),
+			'padding'				=> '6mm',
+			'border-top', 'border-bottom' => '2pt solid #ff0000',
+			'background'		=> '#ffcc00',
+			'text-decoration' => 'none',
+		};
+
+		$pairs++;
+
+		if( $plainLayout( $selector. ' { '. $property. ': '. $value. ' }', $bands ) !== 200 || $laid( $everything, [], $signature ) === $reference )
+			$unread[] = $selector. ' '. $property;
+	}
+// ... and each side of a margin that a selector reads is read on its own
+foreach( Sheet::MARGINS as $selector => $read )
+	foreach( [ 'top', 'right', 'bottom', 'left' ] as $index => $name )
+		if( $read[$index] === true ) {
+
+			$pairs++;
+
+			// The other sides stay what the feature sets, so that the one side is all that differs
+			$margin = Sheet::defaults( 'helvetica', 10 )[$selector]['margin'] ?? Sheet::defaults( 'helvetica', 10 )['p']['margin'];
+			$margin[$index] = 9.0;
+
+			if( $plainLayout( $selector. ' { margin: '. implode( ' ', array_map( static fn( float $mm ): string => rtrim( rtrim( number_format( $mm, 7, '.', '' ), '0' ), '.' ). 'mm', $margin ) ). ' }', $bands ) !== 200 || $laid( $everything, [], $signature ) === $reference )
+				$unread[] = $selector. ' margin-'. $name;
+		}
+$plainLayout( '' );
+check( 'every property a selector accepts is read by the engine: an override of each ('. $pairs. ' pairs of the table) changes the bytes of a text that has every element, a header, a footer and a signature field'. ( $unread === [] ? '' : ' - not read: '. implode( ', ', $unread ) ), $unread === [] && $pairs === array_sum( array_map( 'count', Sheet::APPLIES ) ) + array_sum( array_map( static fn( array $read ): int => count( array_filter( $read ) ), Sheet::MARGINS ) ) && $pairs > 110 );
+
+// ... and the sides of a margin: a side that is read takes a distance, one that is not takes 0 or the rule is refused with the line and the side
+$sides = [];
+foreach( Sheet::MARGINS as $selector => $read )
+	foreach( [ 'top', 'right', 'bottom', 'left' ] as $index => $name ) {
+
+		$margin = implode( ' ', array_map( static fn( int $side ): string => $side === $index ? '5mm' : '0', [ 0, 1, 2, 3 ] ) );
+		$checked = Sheet::check( "\n". $selector. ' { margin: '. $margin. ' }' );
+
+		if( $read[$index] === true ? isset( $checked['rules'] ) === false : ( $checked['code'] ?? '' ) !== 'applies' || $checked['detail'] !== 'margin-'. $name || $checked['selector'] !== $selector || $checked['line'] !== 2 )
+			$sides[] = $selector. ' '. $name;
+	}
+check( '...every selector with a margin has its sides: the sides the engine reads take a distance, any other side is refused with a distance that is not 0 - code applies, the side as margin-left, the line - and accepts 0'. ( $sides === [] ? '' : ' - '. implode( ', ', $sides ) ), $sides === [] && count( Sheet::MARGINS ) === 13
+	&& ( static function(): array { $keys = array_keys( Sheet::MARGINS ); sort( $keys ); return $keys; } )() === ( static function(): array { $keys = array_values( array_filter( array_keys( Sheet::APPLIES ), static fn( string $selector ): bool => in_array( 'margin', Sheet::APPLIES[$selector], true ) ) ); sort( $keys ); return $keys; } )()
+	&& isset( Sheet::check( 'li { margin: 0 0 4mm 0 } ul { margin: 0 0 3mm 8mm } .header { margin: 0 0 6mm 0 } p { margin: 5mm 0 2mm }' )['rules'] ) === true );
+
+// text-align where it is read: the items of a list, the text of a band
+$plainLayout( 'li { text-align: right }' );
+$listed = $laid( '<ul><li>One</li></ul>' );
+$plainLayout( '' );
+check( 'text-align of li sets the items of a list, of .header and .footer the text of the bands: the item stands at the right of the column, a band\'s text at the right of the page', $at( $listed, 'One' )[0] > 400 && $at( $laid( '<ul><li>One</li></ul>' ), 'One' )[0] < 100 );
+$plainLayout( '.header { text-align: right } .footer { text-align: center }', $bands );
+$aligned = $laid( '<p>Body</p>' );
+$plainLayout( '', $bands );
+check( '...and the text of a band follows the text-align of its own rules: .header right, .footer centred, and left where none is named', $at( $aligned, 'Head' )[0] > 450 && $at( $aligned, 'Foot' )[0] > 250 && $at( $aligned, 'Foot' )[0] < 320 && $at( $laid( '<p>Body</p>' ), 'Head' )[0] < 100 && $at( $laid( '<p>Body</p>' ), 'Foot' )[0] < 100 );
+
+// The colour of the body is the colour of the signature's label, which has none of its own; a text a person typed is a paragraph of p
+$plainLayout( 'body { color: #ff0000 }' );
+$redLabel = $content( $laid( '<p>Text</p>', [], $signature ), 0 );
+$plainLayout( 'body { color: #ff0000 } .signature { color: #00aa00 }' );
+$ownLabel = $content( $laid( '<p>Text</p>', [], $signature ), 0 );
+check( 'the label of a signature field follows the colour of the body until .signature names one of its own', preg_match( '/q 1 0 0 rg BT[^\n]*\(Seal\) Tj/', $redLabel ) === 1 && preg_match( '/q 0 0.67 0 rg BT[^\n]*\(Seal\) Tj/', $ownLabel ) === 1 );
+$inputTemplate = [ 'name' => 'T', 'tag' => 'offer', 'blocks' => [ [ 'type' => 'input', 'name' => 'note', 'label' => 'Note', 'multiline' => false, 'required' => false ] ] ];
+$typed = static fn(): string => Pdf::compose( $appData, $inputTemplate, [ 'inputs' => [ 'note' => 'Typed words' ] ], [], false );
+$plainLayout( '' );
+$typedBase = $typed();
+$plainLayout( 'p { font-size: 15pt; color: #ff0000; font-family: Courier; text-align: right }' );
+$typedOwn = $typed();
+$plainLayout( 'body { font-size: 13pt }' );
+$typedBody = $typed();
+$plainLayout( '' );
+check( 'a text a person typed in an input is set as a paragraph: the size, the colour, the family and the alignment of p, over the body\'s', str_contains( $content( $typedOwn, 0 ), 'q 1 0 0 rg BT' ) === true && str_contains( $content( $typedOwn, 0 ), ' 15 Tf ' ) === true && str_contains( $typedOwn, '/BaseFont /Courier' ) === true
+	&& $at( $typedOwn, 'Typed words' )[0] > 300 && str_contains( $content( $typedBase, 0 ), ' 10 Tf ' ) === true && str_contains( $content( $typedBody, 0 ), ' 13 Tf ' ) === true );
+
+// One gender for the PDF in the German texts: das PDF, ein PDF, jedes PDF
+$feminine = [];
+foreach( [ 'text/de_DE.php', 'feature.php' ] as $file )
+	if( preg_match( '/\b(?:jede|jeder|eine|einer|keine|diese|dieser|die|der) PDF(?!-)/iu', (string) preg_replace( '/\'en_US\' => \'[^\n]*\'/u', '', (string) file_get_contents( dirname( __DIR__ ). '/'. $file ) ) ) === 1 )
+		$feminine[] = $file;
+check( 'the German texts and manual say das PDF throughout - no jede, eine, die or der PDF'. ( $feminine === [] ? '' : ' - '. implode( ', ', $feminine ) ), $feminine === [] );
+
+// The cap of the design: 8000 characters after the trim, characters and not bytes
+$capped = static fn( int $characters, string $pad = '' ): string => $pad. '/* '. str_repeat( 'ä', $characters - 6 ). ' */'. $pad;
+$capOk = $post( 'pdf/layout/save', [ 'design' => $capped( Pdf::MAX_DESIGN, "  \n" ) ] + $plain );
+$capOver = $post( 'pdf/layout/save', [ 'design' => $capped( Pdf::MAX_DESIGN + 1, "\n" ) ] + $plain );
+check( 'a design of 8000 characters - multibyte, and spaces round it that the trim takes - is accepted, one of 8001 is refused as too long, and the refused one writes nothing', $capOk[0] === 200 && mb_strlen( Pdf::layout( $appData )['design'] ) === Pdf::MAX_DESIGN && strlen( Pdf::layout( $appData )['design'] ) > Pdf::MAX_DESIGN
+	&& $capOver[0] === 400 && $capOver[1]['code'] === 'pdf_design_long' && mb_strlen( Pdf::layout( $appData )['design'] ) === Pdf::MAX_DESIGN );
+$post( 'pdf/layout/save', [ 'design' => '' ] + $plain );
+
+// A design that is no text is refused, and the stored one stays
+$post( 'pdf/layout/save', [ 'design' => 'h1 { color: #112233 }' ] + $plain );
+$notText = [];
+foreach( [ 'an array' => [ 'h1' ], 'a number' => 12, 'null' => null, 'true' => true ] as $label => $given ) {
+	[ $status, $body ] = $post( 'pdf/layout/save', [ 'design' => $given ] + $plain );
+	if( $status !== 400 || $body['code'] !== 'pdf_design_type' || $body['field'] !== 'design' || Pdf::layout( $appData )['design'] !== 'h1 { color: #112233 }' )
+		$notText[] = $label;
+}
+check( 'a design posted as anything but a text is refused with the code and the field of the design, and the stored one stays'. ( $notText === [] ? '' : ' - '. implode( ', ', $notText ) ), $notText === [] );
+$post( 'pdf/layout/save', [ 'design' => '' ] + $plain );
+
+// What the panel does with it
+[ $status, $body ] = $post( 'pdf/layout/get' );
+check( 'layout/get answers the feature\'s rules as text beside the layout, and the longest a design may be', $status === 200 && $body['sheet'] === Pdf::sheet( $appData ) && $body['layout']['design'] === '' && $body['ranges']['design'] === Pdf::MAX_DESIGN );
+$post( 'pdf/layout/save', [ 'design' => 'h1 { color: #ff0000 }' ] + $plain );
+[ $status, $body ] = $post( 'pdf/layout/preview' );
+$designed = base64_decode( (string) ( $body['pdf'] ?? '' ), true );
+check( 'layout/preview answers the sample text as the PDF of the layout and the design as they are saved - the colour of the override is in it - and writes nothing', $status === 200 && is_string( $designed ) === true && str_starts_with( $designed, '%PDF' ) === true && str_contains( $content( $designed, 0 ), 'q 1 0 0 rg BT' ) === true
+	&& $body['file'] === 'design.pdf' && Pdf::layout( $appData )['design'] === 'h1 { color: #ff0000 }' );
+$post( 'pdf/layout/save', [ 'design' => '' ] + $plain );
+check( '...and the same preview of a project without a design has no colour in it', preg_match( '/ (rg|RG)\b/', $content( (string) base64_decode( $post( 'pdf/layout/preview' )[1]['pdf'] ), 0 ) ) === 0 );
+$post( 'pdf/layout/save', $keep( [] ) );
+$post( 'pdf/layout/save', [ 'design' => $kept['design'] ] + $keep( [] ) );
+check( 'the layout of the project is as it was before this section', Pdf::layout( $appData ) === $kept );
+
+// Tokens: the caller's slash keys
+$site = Tokens::fill( $appData, '[[/project/company/general/name]]', [] );
+check( 'a slash key is looked up in the tokens of the caller first, flat, then in the site\'s texts: the caller\'s wins over a text of the site of the same key, the site\'s text answers where the caller has none',
+	$site === 'Acme &amp; &lt;Sons&gt;' && Tokens::fill( $appData, '[[/project/company/general/name]]', [ '/project/company/general/name' => 'Mine & co' ] ) === 'Mine &amp; co'
+	&& Tokens::fill( $appData, '[[/project/company/general/name]] [[/customer/name]]', [ '/customer/name' => 'Ada' ] ) === 'Acme &amp; &lt;Sons&gt; Ada' );
+check( '...the key is the key as a whole, flat: an array under customer is not read for /customer/name - and a value that is a number is the number, an array or nothing is nothing', Tokens::fill( $appData, '[[/customer/name]]', [ 'customer' => [ 'name' => 'Nested' ] ] ) === ''
+	&& Tokens::fill( $appData, '[[/n]]|[[/f]]|[[/a]]|[[/z]]', [ '/n' => 12, '/f' => 1.5, '/a' => [ 'x' ], '/z' => null ] ) === '12|1.5||' );
+check( '...a value of the caller is escaped as a text is, a bracket in it as its character reference, and not read for tokens again', Tokens::fill( $appData, '[[/a]]', [ '/a' => '<b>[[/b]]</b>', '/b' => 'x' ] ) === '&lt;b&gt;&#91;&#91;/b]]&lt;/b&gt;' );
+check( '...the dotted form and the plain name work as they did: the same tokens, nested and flat, in one text with the slash keys', Tokens::fill( $appData, '[[client.city]]|[[name]]|[[/client/city]]', [ 'client' => [ 'city' => 'Köln' ], 'name' => 'Ada', '/client/city' => 'Bonn' ] ) === 'Köln|Ada|Bonn'
+	&& Tokens::fill( $appData, '[[a.b]]', [ 'a.b' => 'flat dotted' ] ) === '' );
+check( '...a key nobody has is removed, and in a preview written in square brackets like the names of the caller\'s - a key of the caller\'s that has no value, too', Tokens::fill( $appData, '[[/nobody/has]]|[[/project/company/general/none]]', [] ) === '|'
+	&& Tokens::fill( $appData, '[[/nobody/has]]', [], true ) === '&#91;/nobody/has]' && Tokens::fill( $appData, '[[/project/company/general/name]]', [], true ) === 'Acme &amp; &lt;Sons&gt;' );
+$slashTemplate = [ 'name' => 'S', 'tag' => 'offer', 'blocks' => [ [ 'type' => 'html', 'html' => '<p>For [[/customer/name]] at [[/project/company/general/name]] [[/customer/none]]</p>' ] ] ];
+$slashPdf = Pdf::compose( $appData, $slashTemplate, [ 'tokens' => [ '/customer/name' => 'Ada Lovelace' ] ], [], false );
+check( 'in a document: the slash keys of the caller and the site\'s texts fill one paragraph, the key nobody has leaves nothing; in the preview it stands as the preview marks it', str_contains( $content( $slashPdf, 0 ), '(For Ada Lovelace at Acme & <Sons>) Tj' ) === true
+	&& str_contains( $content( Pdf::compose( $appData, $slashTemplate, [], [], true ), 0 ), '[/customer/name]' ) === true && str_contains( $content( Pdf::compose( $appData, $slashTemplate, [], [], true ), 0 ), '[/customer/none]' ) === true );
+
+// install()
+$project = $bootProject( 'pdf-install' );
+$templatesIn = [ 'quote' => [ 'name' => 'Quote', 'tag' => 'offer', 'blocks' => [ [ 'type' => 'html', 'block' => 'terms' ], [ 'type' => 'html', 'html' => '<p>[[/customer/name]]</p>' ] ] ], 'bill' => [ 'name' => 'Bill', 'tag' => 'invoice', 'blocks' => [] ] ];
+$blocksIn = [ 'terms' => [ 'title' => 'Terms', 'html' => '<p onclick="x()">Terms</p><script>y()</script>' ] ];
+$layoutIn = [ 'header' => '<p>Head</p>', 'footer' => '<p>Foot [[page]]</p>', 'design' => 'h1 { color: #112233 }' ];
+$first = Pdf::install( $project, $templatesIn, $blocksIn, $layoutIn );
+check( 'install() adds the blocks, the layout texts and the templates and answers what it added: a template may name a block that comes with it, the HTML is held to the list of Allow, the design is the layout\'s', $first['added'] === [ 'blocks' => [ 'terms' ], 'templates' => [ 'quote', 'bill' ], 'layout' => [ 'header', 'footer', 'design' ] ]
+	&& $first['existing'] === [ 'blocks' => [], 'templates' => [], 'layout' => [] ] && $first['refused'] === [ 'blocks' => [], 'templates' => [], 'layout' => [] ] && array_keys( Pdf::templates( $project ) ) === [ 'bill', 'quote' ]
+	&& Pdf::blocks( $project )['terms']['html'] === '<p>Terms</p>' && Pdf::layout( $project )['header'] === '<p>Head</p>' && Pdf::layout( $project )['design'] === 'h1 { color: #112233 }' && count( Pdf::template( $project, 'quote' )['blocks'] ) === 2 );
+Pdf\Store::saveBlock( $project, [ 'key' => 'terms', 'title' => 'My terms', 'html' => '<p>Mine</p>' ] );
+Pdf\Store::saveTemplate( $project, [ 'key' => 'quote', 'name' => 'My quote', 'tag' => 'offer', 'blocks' => [] ] );
+Pdf\Store::saveLayout( $project, [ 'header' => '<p>My head</p>', 'footer' => '', 'format' => 'a4', 'font' => 'helvetica', 'size' => 10, 'margins' => [ 20, 20, 20, 20 ] ] );
+$second = Pdf::install( $project, $templatesIn + [ 'extra' => [ 'name' => 'Extra', 'tag' => 'offer', 'blocks' => [] ] ], $blocksIn + [ 'more' => [ 'title' => 'More', 'html' => '<p>More</p>' ] ], $layoutIn );
+check( '...it is add-only: a template and a block the project has stay as they are, so does a layout text that is not empty, and what is empty is filled; the answer lists what was added and what was there', $second['added'] === [ 'blocks' => [ 'more' ], 'templates' => [ 'extra' ], 'layout' => [ 'footer' ] ]
+	&& $second['existing'] === [ 'blocks' => [ 'terms' ], 'templates' => [ 'quote', 'bill' ], 'layout' => [ 'header', 'design' ] ] && Pdf::blocks( $project )['terms']['title'] === 'My terms' && Pdf::template( $project, 'quote' )['name'] === 'My quote'
+	&& Pdf::layout( $project )['header'] === '<p>My head</p>' && Pdf::layout( $project )['footer'] === '<p>Foot [[page]]</p>' && Pdf::layout( $project )['design'] === 'h1 { color: #112233 }' );
+$third = Pdf::install( $project, $templatesIn, $blocksIn, $layoutIn );
+check( '...and a second installation of the same adds nothing', $third['added'] === [ 'blocks' => [], 'templates' => [], 'layout' => [] ] && $third['existing'] === [ 'blocks' => [ 'terms' ], 'templates' => [ 'quote', 'bill' ], 'layout' => [ 'header', 'footer', 'design' ] ] );
+$forced = Pdf::install( $project, $templatesIn, $blocksIn, $layoutIn, true );
+check( '...with $overwrite what the project has is replaced', $forced['added'] === [ 'blocks' => [ 'terms' ], 'templates' => [ 'quote', 'bill' ], 'layout' => [ 'header', 'footer', 'design' ] ] && Pdf::blocks( $project )['terms']['title'] === 'Terms' && Pdf::template( $project, 'quote' )['name'] === 'Quote' && Pdf::layout( $project )['header'] === '<p>Head</p>' );
+$refused = Pdf::install( $project, [ 'Bad Key' => [ 'name' => 'x', 'tag' => 'offer', 'blocks' => [] ], 'no-tag' => [ 'name' => 'x', 'tag' => 'nothing', 'blocks' => [] ], 'no-block' => [ 'name' => 'x', 'tag' => 'offer', 'blocks' => [ [ 'type' => 'html', 'block' => 'absent' ] ] ] ], [ 'x' => [ 'title' => 'X', 'html' => '' ], 'no-title' => [ 'title' => '', 'html' => '' ], 'no-html' => [ 'title' => 'No html' ], 'fine-one' => [ 'title' => 'Fine', 'html' => '<p>ok</p>' ] ],
+	[ 'logo' => 'logo.png', 'design' => "h1 { colour: red }", 'header' => str_repeat( 'x', Pdf::MAX_BAND + 1 ) ] );
+check( '...a piece that is wrong is left out and named by its code, the others are written, and the pictures of the layout are no part of it', $refused['added'] === [ 'blocks' => [ 'fine-one' ], 'templates' => [], 'layout' => [] ] && $refused['refused']['templates'] === [ 'Bad Key' => 'pdf_key', 'no-tag' => 'pdf_tag', 'no-block' => 'pdf_block_ref' ]
+	&& $refused['refused']['blocks'] === [ 'x' => 'pdf_key', 'no-title' => 'pdf_title', 'no-html' => 'pdf_html_empty' ] && $refused['refused']['layout'] === [ 'logo' => 'pdf_layout_field', 'design' => 'pdf_design_property', 'header' => 'pdf_band_long' ] && Pdf::layout( $project )['logo'] === '' );
+check( '...every code it answers with has its sentence in both languages', (function() use ( $sentence, $refused ): bool {
+	foreach( array_merge( ...array_values( array_map( 'array_values', $refused['refused'] ) ) ) as $code )
+		foreach( [ 'en_US', 'de_DE' ] as $locale )
+			if( $sentence( $code, $locale ) === '' )
+				return false;
+	return true;
+})() );
+$rendered = Pdf::render( $project, 'quote', [ 'tokens' => [ '/customer/name' => 'Ada' ] ] );
+check( 'an installed template renders with the installed layout: the caller\'s slash key is in it, and the header', is_string( $rendered ) === true && str_contains( $content( $rendered, 0 ), '(Ada) Tj' ) === true && str_contains( $content( $rendered, 0 ), '(Head) Tj' ) === true );
+
+foreach( [ $fixture, $project ] as $gone )
+	\Nino\Filesystem::removeDir( ninoSandboxDir( $gone ) );
+
 
 // --- the blob frame -----------------------------------------------------------------------------------------------
 

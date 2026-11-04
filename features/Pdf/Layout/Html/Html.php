@@ -19,13 +19,19 @@ namespace Nino\Modules\Pdf\Layout {
 	 *	Html							A string of HTML parsed with \DOMDocument into blocks the engine
 	 *										lays out: paragraphs of measured atoms, rules and tables.
 	 *
-	 *										Understood: h1, h2 and h3 (bold, 1.8, 1.4 and 1.15 times the base
-	 *										size, space above), p and div (a paragraph, 0.6 line after), br,
-	 *										strong and b, em and i (both: bold italic), ul, ol and li (indented
-	 *										6 mm, a bullet or the number), a (its text, underlined), hr, table
+	 *										Understood: h1, h2 and h3, p and div (a paragraph; with class="address"
+	 *										the rules of .address over those of p), br, strong and b, em and i
+	 *										(both: bold italic), ul, ol and li (a bullet or the number), a (its
+	 *										text), hr, table
 	 *										with thead, tbody, tfoot, tr, th and td, span (its text), img with
 	 *										the src pdf:logo and a width in mm, and align="right|center" or
 	 *										style="text-align:..." on a paragraph, a heading or a cell.
+	 *
+	 *										How they look is the sheet's (see Sheet): the sizes, the weights, the
+	 *										colours, the line heights, the space above and below, the indent of a
+	 *										list, the padding and the rules of a table, the underline of a link are
+	 *										read from the rules the reader is handed - the feature's own, with the
+	 *										owner's laid over them.
 	 *
 	 *										That is the list of Allow, and the reader is handed nothing else:
 	 *										the text is parsed and held to the list before it is read (see
@@ -39,8 +45,10 @@ namespace Nino\Modules\Pdf\Layout {
 	 *										bullet or a number, or null), before, after, keep (a heading, kept
 	 *										with what follows it) and base (the type of an empty line);
 	 *										hr: before, after; table: rows - head, and the cells: blocks,
-	 *										th, pct (the width the first row asked for) - border, before and
-	 *										after. All distances are in points.
+	 *										th, pct (the width the first row asked for), pad (top, right, bottom,
+	 *										left) and bg (a colour or null) - border, before and after, and per
+	 *										row the rule under it and the rule over it (a width and a colour, or
+	 *										false). hr: before, after and rule. All distances are in points.
 	 *
 	 *	@package					Dape/Nino
 	 *	@author						David Perchermeier <mail@dape.io>
@@ -48,33 +56,58 @@ namespace Nino\Modules\Pdf\Layout {
 	 */
 	class Html {
 
-		// The space after a paragraph, a list and a table, and between the items of a list, in lines of the base size
-		private const float AFTER = 0.6;
-		private const float ITEM = 0.15;
+		/**
+		 *	The type a document is set in, for the rules and the part of the page: the body's, with the
+		 *	rules of .header or .footer laid over it in the band
+		 *
+		 *	@param		array 		$rules				The merged sheet
+		 *	@param		string		$scope				.header, .footer or nothing
+		 *
+		 *	@return 	array											family, size (points), b, i, c (six hex digits), l (the line height as a factor), align (left, center or right: a band's own)
+		 */
+		public static function base( array $rules, string $scope = '' ): array {
 
-		// tag => size factor, lines above, lines below
-		private const array HEADINGS = [ 'h1' => [ 1.8, 1.2, 0.5 ], 'h2' => [ 1.4, 1.0, 0.4 ], 'h3' => [ 1.15, 0.8, 0.3 ] ];
+			$body = $rules['body'] ?? [];
+			$base = [ 'family' => (string) ( $body['font-family'] ?? 'helvetica' ), 'size' => Sheet::size( $body, 10.0 ), 'b' => ( $body['font-weight'] ?? 'normal' ) === 'bold', 'i' => ( $body['font-style'] ?? 'normal' ) === 'italic', 'c' => (string) ( $body['color'] ?? '000000' ), 'l' => (float) ( $body['line-height'] ?? Text::LEADING ), 'align' => 'left' ];
+
+			if( $scope === '' || isset( $rules[$scope] ) === false )
+				return $base;
+
+			$band = $rules[$scope];
+
+			return [
+				'family'	=> (string) ( $band['font-family'] ?? $base['family'] ),
+				'size'		=> Sheet::size( $band, $base['size'] ),
+				'b'				=> isset( $band['font-weight'] ) ? $band['font-weight'] === 'bold' : $base['b'],
+				'i'				=> isset( $band['font-style'] ) ? $band['font-style'] === 'italic' : $base['i'],
+				'c'				=> (string) ( $band['color'] ?? $base['c'] ),
+				'l'				=> (float) ( $band['line-height'] ?? $base['l'] ),
+				'align'		=> (string) ( $band['text-align'] ?? $base['align'] ),
+			];
+		}
 
 		/**
 		 *	Parse html into blocks
 		 *
 		 *	@param		string		$html
-		 *	@param		array 		$base					[ family => helvetica|times|courier, size => the base size in points ]
+		 *	@param		array 		$rules				The merged sheet (see Sheet)
 		 *	@param		Image|null	$logo				What src="pdf:logo" is
 		 *	@param		float			$width				The width of the column in points, which a picture is held to
+		 *	@param		string		$scope				.header or .footer for the text of a band, else nothing
 		 *
 		 *	@return 	array
 		 */
-		public static function blocks( string $html, array $base, ?Image $logo, float $width ): array {
+		public static function blocks( string $html, array $rules, ?Image $logo, float $width, string $scope = '' ): array {
 
 			$body = Allow::body( $html );
 
 			if( $body === null )
 				return [];
 
-			$ctx = [ 'family' => $base['family'], 'size' => (float) $base['size'], 'logo' => $logo, 'width' => $width, 'indent' => 0.0, 'align' => 'left', 'depth' => 0, 'cell' => false ];
+			$base = self::base( $rules, $scope );
+			$ctx = [ 'rules' => $rules, 'size' => $base['size'], 'logo' => $logo, 'width' => $width, 'indent' => 0.0, 'align' => $base['align'], 'depth' => 0, 'cell' => false ];
 
-			return self::_content( $body, [ 'b' => false, 'i' => false, 'u' => false, 'z' => $ctx['size'] ], $ctx );
+			return self::_content( $body, [ 'fam' => $base['family'], 'b' => $base['b'], 'i' => $base['i'], 'u' => false, 'z' => $base['size'], 'c' => $base['c'], 'l' => $base['l'] ], $ctx );
 		}
 
 		/**
@@ -94,7 +127,7 @@ namespace Nino\Modules\Pdf\Layout {
 			foreach( iterator_to_array( $node->childNodes ) as $child )
 				self::_node( $child, $style, $ctx, $blocks, $inline );
 
-			self::_flush( $blocks, $inline, $ctx, $style, 0.0, self::AFTER * Text::LEADING * $ctx['size'], false );
+			self::_flush( $blocks, $inline, $ctx, $style, 0.0, self::_gap( $ctx, [ 'p' ] )[1], false );
 
 			return $blocks;
 		}
@@ -113,7 +146,7 @@ namespace Nino\Modules\Pdf\Layout {
 		private static function _node( \DOMNode $node, array $style, array $ctx, array &$blocks, array &$inline ): void {
 
 			if( $node instanceof \DOMText ) {
-				array_push( $inline, ...Text::atoms( $node->data, self::_type( $style, $ctx ) ) );
+				array_push( $inline, ...Text::atoms( $node->data, self::_type( $style ) ) );
 				return;
 			}
 
@@ -121,7 +154,7 @@ namespace Nino\Modules\Pdf\Layout {
 				return;
 
 			$tag = strtolower( $node->nodeName );
-			$line = Text::LEADING * $ctx['size'];
+			$after = self::_gap( $ctx, [ 'p' ] )[1];
 
 			switch( $tag ) {
 
@@ -140,7 +173,8 @@ namespace Nino\Modules\Pdf\Layout {
 					break;
 
 				case 'a':
-					$style['u'] = true;
+					$style = self::_style( $style, $ctx, [ 'a' ] );
+					$style['u'] = ( $ctx['rules']['a']['text-decoration'] ?? 'underline' ) === 'underline';
 					break;
 
 				case 'img':
@@ -150,43 +184,47 @@ namespace Nino\Modules\Pdf\Layout {
 					return;
 
 				case 'hr':
-					self::_flush( $blocks, $inline, $ctx, $style, 0.0, self::AFTER * $line, false );
-					$blocks[] = [ 'k' => 'hr', 'before' => 0.4 * $line, 'after' => 0.4 * $line ];
+					self::_flush( $blocks, $inline, $ctx, $style, 0.0, $after, false );
+					[ $above, $below ] = self::_gap( $ctx, [ 'hr' ] );
+					$rule = $ctx['rules']['hr']['border-top'] ?? false;
+					$blocks[] = [ 'k' => 'hr', 'before' => $above, 'after' => $below, 'rule' => $rule ];
 					return;
 
 				case 'h1':
 				case 'h2':
 				case 'h3':
-					[ $scale, $above, $below ] = self::HEADINGS[$tag];
-					self::_flush( $blocks, $inline, $ctx, $style, 0.0, self::AFTER * $line, false );
-					$style['b'] = true;
-					$style['z'] = $ctx['size'] * $scale;
-					$ctx['align'] = self::_align( $node, $ctx['align'] );
+					[ $above, $below ] = self::_gap( $ctx, [ $tag ] );
+					self::_flush( $blocks, $inline, $ctx, $style, 0.0, $after, false );
+					$style = self::_style( $style, $ctx, [ $tag ] );
+					$ctx['align'] = self::_align( $node, $ctx['rules'][$tag]['text-align'] ?? $ctx['align'] );
 					$inner = [];
 					foreach( iterator_to_array( $node->childNodes ) as $child )
 						self::_node( $child, $style, $ctx, $blocks, $inner );
-					self::_flush( $blocks, $inner, $ctx, $style, $above * $line, $below * $line, true );
+					self::_flush( $blocks, $inner, $ctx, $style, $above, $below, true );
 					return;
 
 				case 'p':
 				case 'div':
-					self::_flush( $blocks, $inline, $ctx, $style, 0.0, self::AFTER * $line, false );
-					$ctx['align'] = self::_align( $node, $ctx['align'] );
+					$names = $node->getAttribute( 'class' ) === 'address' ? [ 'p', '.address' ] : [ 'p' ];
+					[ $above, $below ] = self::_gap( $ctx, $names );
+					self::_flush( $blocks, $inline, $ctx, $style, 0.0, $after, false );
+					$style = self::_style( $style, $ctx, $names );
+					$ctx['align'] = self::_align( $node, self::_rule( $ctx, $names, 'text-align', $ctx['align'] ) );
 					$inner = [];
 					foreach( iterator_to_array( $node->childNodes ) as $child )
 						self::_node( $child, $style, $ctx, $blocks, $inner );
-					self::_flush( $blocks, $inner, $ctx, $style, 0.0, self::AFTER * $line, false );
+					self::_flush( $blocks, $inner, $ctx, $style, $above, $below, false );
 					return;
 
 				case 'ul':
 				case 'ol':
-					self::_flush( $blocks, $inline, $ctx, $style, 0.0, self::AFTER * $line, false );
+					self::_flush( $blocks, $inline, $ctx, $style, 0.0, $after, false );
 					self::_list( $node, $style, $ctx, $blocks );
 					return;
 
 				case 'table':
 					if( $ctx['cell'] === false ) {
-						self::_flush( $blocks, $inline, $ctx, $style, 0.0, self::AFTER * $line, false );
+						self::_flush( $blocks, $inline, $ctx, $style, 0.0, $after, false );
 						$blocks[] = self::_table( $node, $style, $ctx );
 						return;
 					}
@@ -198,16 +236,89 @@ namespace Nino\Modules\Pdf\Layout {
 		}
 
 		/**
-		 *	The atoms' type for a style: the base font of the family, the size, the underline
+		 *	The value a property has for the first of the selectors that sets it - the last of them, as a cascade has it
+		 *
+		 *	@param		array 		$ctx
+		 *	@param		array 		$selectors		In the order they are laid over each other
+		 *	@param		string		$property
+		 *	@param		mixed			$fallback
+		 *
+		 *	@return 	mixed
+		 */
+		private static function _rule( array $ctx, array $selectors, string $property, mixed $fallback ): mixed {
+
+			$value = $fallback;
+
+			foreach( $selectors as $selector )
+				if( array_key_exists( $property, $ctx['rules'][$selector] ?? [] ) === true )
+					$value = $ctx['rules'][$selector][$property];
+
+			return $value;
+		}
+
+		/**
+		 *	The space a block keeps above and below, and the left margin, in points
+		 *
+		 *	@param		array 		$ctx
+		 *	@param		array 		$selectors
+		 *
+		 *	@return 	array											[ top, bottom, left ]
+		 */
+		private static function _gap( array $ctx, array $selectors ): array {
+
+			$margin = self::_rule( $ctx, $selectors, 'margin', [ 0.0, 0.0, 0.0, 0.0 ] );
+
+			return [ $margin[0] * Document::MM, $margin[2] * Document::MM, $margin[3] * Document::MM ];
+		}
+
+		/**
+		 *	A style with the rules of some selectors laid over it: the family, the size, the weight, the slant, the
+		 *	colour and the line height they name
 		 *
 		 *	@param		array 		$style
 		 *	@param		array 		$ctx
+		 *	@param		array 		$selectors
 		 *
 		 *	@return 	array
 		 */
-		private static function _type( array $style, array $ctx ): array {
+		private static function _style( array $style, array $ctx, array $selectors ): array {
 
-			return [ 'f' => Metrics::font( $ctx['family'], $style['b'], $style['i'] ), 'z' => (float) $style['z'], 'u' => $style['u'] ];
+			foreach( $selectors as $selector ) {
+
+				$rule = $ctx['rules'][$selector] ?? [];
+
+				if( isset( $rule['font-family'] ) === true )
+					$style['fam'] = $rule['font-family'];
+
+				if( isset( $rule['font-size'] ) === true )
+					$style['z'] = Sheet::size( $rule, (float) $ctx['size'] );
+
+				if( isset( $rule['font-weight'] ) === true )
+					$style['b'] = $rule['font-weight'] === 'bold';
+
+				if( isset( $rule['font-style'] ) === true )
+					$style['i'] = $rule['font-style'] === 'italic';
+
+				if( isset( $rule['color'] ) === true )
+					$style['c'] = $rule['color'];
+
+				if( isset( $rule['line-height'] ) === true )
+					$style['l'] = (float) $rule['line-height'];
+			}
+
+			return $style;
+		}
+
+		/**
+		 *	The atoms' type for a style: the font of the family, the size, the underline, the colour, the line height
+		 *
+		 *	@param		array 		$style
+		 *
+		 *	@return 	array
+		 */
+		private static function _type( array $style ): array {
+
+			return [ 'f' => Metrics::font( $style['fam'], $style['b'], $style['i'] ), 'z' => (float) $style['z'], 'u' => $style['u'], 'c' => $style['c'], 'l' => $style['l'] ];
 		}
 
 		/**
@@ -237,9 +348,9 @@ namespace Nino\Modules\Pdf\Layout {
 			if( $atoms === [] )
 				return;
 
-			$type = self::_type( $style, $ctx );
+			$type = self::_type( $style );
 
-			$blocks[] = [ 'k' => 'p', 'atoms' => $atoms, 'align' => $ctx['align'], 'indent' => $ctx['indent'], 'marker' => null, 'before' => $before, 'after' => $after, 'keep' => $keep, 'base' => [ 'f' => $type['f'], 'z' => $type['z'] ] ];
+			$blocks[] = [ 'k' => 'p', 'atoms' => $atoms, 'align' => $ctx['align'], 'indent' => $ctx['indent'], 'marker' => null, 'before' => $before, 'after' => $after, 'keep' => $keep, 'base' => [ 'f' => $type['f'], 'z' => $type['z'], 'l' => $type['l'] ] ];
 		}
 
 		/**
@@ -254,11 +365,16 @@ namespace Nino\Modules\Pdf\Layout {
 		 */
 		private static function _list( \DOMElement $list, array $style, array $ctx, array &$blocks ): void {
 
+			$name = strtolower( $list->nodeName );
+			[ $above, $below ] = self::_gap( $ctx, [ $name ] );
 			$ctx['depth']++;
-			$ctx['indent'] = $ctx['depth'] * 6 * Document::MM;
-			$ordered = strtolower( $list->nodeName ) === 'ol';
+			$ctx['indent'] = $ctx['depth'] * (float) self::_rule( $ctx, [ $name ], 'margin', [ 0.0, 0.0, 0.0, 0.0 ] )[3] * Document::MM;
+			$ordered = $name === 'ol';
 			$number = 0;
-			$line = Text::LEADING * $ctx['size'];
+			$first = count( $blocks );
+			$style = self::_style( $style, $ctx, [ 'li' ] );
+			$ctx['align'] = (string) ( $ctx['rules']['li']['text-align'] ?? $ctx['align'] );
+			$between = self::_gap( $ctx, [ 'li' ] )[1];
 
 			foreach( iterator_to_array( $list->childNodes ) as $item ) {
 
@@ -271,12 +387,12 @@ namespace Nino\Modules\Pdf\Layout {
 				foreach( iterator_to_array( $item->childNodes ) as $child )
 					self::_node( $child, $style, $ctx, $inner, $inline );
 
-				self::_flush( $inner, $inline, $ctx, $style, 0.0, self::ITEM * $line, false );
+				self::_flush( $inner, $inline, $ctx, $style, 0.0, $between, false );
 				$number++;
 
 				foreach( $inner as $at => $block )
 					if( $block['k'] === 'p' ) {
-						$inner[$at]['marker'] = Text::atoms( $ordered === true ? $number. '.' : "\u{2022}", self::_type( $style, $ctx ) );
+						$inner[$at]['marker'] = Text::atoms( $ordered === true ? $number. '.' : "\u{2022}", self::_type( $style ) );
 						break;
 					}
 
@@ -284,7 +400,10 @@ namespace Nino\Modules\Pdf\Layout {
 			}
 
 			if( $ctx['depth'] === 1 && $blocks !== [] && $blocks[ count( $blocks ) - 1 ]['k'] === 'p' )
-				$blocks[ count( $blocks ) - 1 ]['after'] = self::AFTER * $line;
+				$blocks[ count( $blocks ) - 1 ]['after'] = $below;
+
+			if( $ctx['depth'] === 1 && count( $blocks ) > $first )
+				$blocks[$first]['before'] = max( $blocks[$first]['before'], $above );
 		}
 
 		/**
@@ -299,10 +418,12 @@ namespace Nino\Modules\Pdf\Layout {
 		private static function _table( \DOMElement $table, array $style, array $ctx ): array {
 
 			$rows = [];
+			$border = trim( $table->getAttribute( 'border' ) ) !== '0';
 
-			$read = static function( \DOMElement $tr, bool $head ) use ( &$rows, $style, $ctx ): void {
+			$read = static function( \DOMElement $tr, bool $head ) use ( &$rows, $style, $ctx, $border ): void {
 
 				$cells = [];
+				$kind = '';
 
 				foreach( iterator_to_array( $tr->childNodes ) as $cell ) {
 
@@ -311,23 +432,31 @@ namespace Nino\Modules\Pdf\Layout {
 					if( $tag !== 'td' && $tag !== 'th' )
 						continue;
 
+					$kind = $kind === 'th' ? 'th' : $tag;
+					$rule = $ctx['rules'][$tag] ?? [];
+					$pad = $rule['padding'] ?? [ 0.0, 0.0, 0.0, 0.0 ];
 					$inner = $ctx;
 					$inner['cell'] = true;
 					$inner['indent'] = 0.0;
 					$inner['depth'] = 0;
-					$inner['align'] = self::_align( $cell, 'left' );
-					$look = $style;
-					$look['b'] = $tag === 'th' ? true : $look['b'];
+					$inner['align'] = self::_align( $cell, $rule['text-align'] ?? 'left' );
 
 					$cells[] = [
-						'blocks'	=> self::_content( $cell, $look, $inner ),
+						'blocks'	=> self::_content( $cell, self::_style( $style, $ctx, [ $tag ] ), $inner ),
 						'th'			=> $tag === 'th',
 						'pct'			=> preg_match( '/^\s*(\d+(?:\.\d+)?)\s*%\s*$/', $cell->getAttribute( 'width' ), $found ) === 1 ? (float) $found[1] : null,
+						'pad'			=> [ $pad[0] * Document::MM, $pad[1] * Document::MM, $pad[2] * Document::MM, $pad[3] * Document::MM ],
+						'bg'			=> $rule['background'] ?? null,
 					];
 				}
 
-				if( $cells !== [] )
-					$rows[] = [ 'head' => $head, 'cells' => $cells ];
+				if( $cells === [] )
+					return;
+
+				// The rules of a row: a row with a th has the th's, a head rule whatever the table says of its border; any other row has the td's, unless the table says border="0"
+				$rule = $ctx['rules'][$kind] ?? [];
+				$lines = $kind === 'th' || $border === true;
+				$rows[] = [ 'head' => $head, 'cells' => $cells, 'rule' => $lines === true ? ( $rule['border-bottom'] ?? false ) : false, 'top' => $lines === true ? ( $rule['border-top'] ?? false ) : false ];
 			};
 
 			foreach( iterator_to_array( $table->childNodes ) as $child ) {
@@ -345,7 +474,9 @@ namespace Nino\Modules\Pdf\Layout {
 							$read( $tr, $tag === 'thead' );
 			}
 
-			return [ 'k' => 'table', 'rows' => $rows, 'border' => trim( $table->getAttribute( 'border' ) ) !== '0', 'before' => 0.0, 'after' => self::AFTER * Text::LEADING * $ctx['size'] ];
+			[ $above, $below ] = self::_gap( $ctx, [ 'table' ] );
+
+			return [ 'k' => 'table', 'rows' => $rows, 'border' => $border, 'before' => $above, 'after' => $below ];
 		}
 
 		/**

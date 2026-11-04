@@ -13,6 +13,7 @@ namespace Nino\Modules {
 	use Nino\Modules\Pdf\Document\Document;
 	use Nino\Modules\Pdf\Images\Image;
 	use Nino\Modules\Pdf\Layout\Engine;
+	use Nino\Modules\Pdf\Layout\Sheet;
 	use Nino\Modules\Pdf\Layout\Tokens;
 
 	/**
@@ -24,7 +25,8 @@ namespace Nino\Modules {
 	 *
 	 *										The data is the project's, below /data/pdf/: layout.php (the
 	 *										paper, the margins, the font and size, the header and footer
-	 *										HTML, the file names of the logo and of the owner's signature),
+	 *										HTML, the owner's design rules in CSS, the file names of the logo
+	 *										and of the owner's signature),
 	 *										blocks.php (key => title and html), templates/<key>.php (a name,
 	 *										a tag of the project's list and the blocks of the template, see
 	 *										template()) and images/ (the logo and the signature).
@@ -37,6 +39,9 @@ namespace Nino\Modules {
 	 *										  inputs( $appData, $template )                    the input blocks
 	 *										  tags( $appData )                                 the project's tags
 	 *										  layout( $appData )                               the layout, defaults in
+	 *										  design( $appData )                               the rules a PDF is set with: the feature's, the owner's over them
+	 *										  sheet( $appData )                                the feature's own rules as CSS text
+	 *										  install( $appData, $templates, $blocks, $layout ) add what a caller brings, add-only
 	 *
 	 *										A document is laid out by \Nino\Modules\Pdf\Layout\Engine from the
 	 *										HTML of its blocks - a small subset, see \Nino\Modules\Pdf\Layout\Html -
@@ -67,7 +72,7 @@ namespace Nino\Modules {
 		// A key of a template or of a block, and a tag: a slug of 2 to 40 characters
 		public const string SLUG = '/^[a-z][a-z0-9-]{1,39}$/D';
 
-		// What a layout holds when nothing is saved: the paper, the margins in mm (top, right, bottom, left), the font, the base size in pt
+		// What a layout holds when nothing is saved: the paper, the margins in mm (top, right, bottom, left), the font, the base size in pt, the owner's rules over the feature's sheet (CSS, see Sheet)
 		public const array DEFAULTS = [
 			'format'		=> 'a4',
 			'margins'		=> [ 20, 20, 20, 20 ],
@@ -75,6 +80,7 @@ namespace Nino\Modules {
 			'size'			=> 10,
 			'header'		=> '',
 			'footer'		=> '',
+			'design'		=> '',
 			'logo'			=> '',
 			'signature'	=> '',
 		];
@@ -84,6 +90,7 @@ namespace Nino\Modules {
 		public const int SIZE_MIN = 8;
 		public const int SIZE_MAX = 14;
 		public const int MAX_BAND = 4000;
+		public const int MAX_DESIGN = 8000;
 		public const int MAX_TITLE = 120;
 		public const int MAX_HTML = 20000;
 		public const int MAX_LABEL = 120;
@@ -142,7 +149,8 @@ namespace Nino\Modules {
 		 *	The bytes of a PDF
 		 *
 		 *	$data: tokens (name => string, nested arrays allowed, what [[name]] and [[a.b]] stand for -
-		 *	text, whatever it holds), slots (name => html, what a slot block holds - held to the list of
+		 *	text, whatever it holds; and the slash keys of the caller, flat - '/customer/name' => 'Ada' -
+		 *	which [[/customer/name]] stands for before a text of the site of the same key does), slots (name => html, what a slot block holds - held to the list of
 		 *	\Nino\Modules\Pdf\Layout\Allow when the document is laid out, as a text a person saved is),
 		 *	inputs (name => text, what an input block holds). $options: signatures (name => the bytes
 		 *	of a PNG or JPEG or the absolute path of one, drawn in the box of the signature block of that
@@ -276,11 +284,83 @@ namespace Nino\Modules {
 				if( is_string( $stored[$band] ?? null ) === true && mb_strlen( $stored[$band] ) <= self::MAX_BAND )
 					$layout[$band] = $stored[$band];
 
+			// The text as it is stored, a text that is no sheet too: the owner sees it and why it is not read (see design()), and a save does not overwrite it unseen
+			if( is_string( $stored['design'] ?? null ) === true )
+				$layout['design'] = $stored['design'];
+
 			foreach( [ 'logo', 'signature' ] as $kind )
 				if( is_string( $stored[$kind] ?? null ) === true && preg_match( self::PICTURE, $stored[$kind], $found ) === 1 && $found[1] === $kind )
 					$layout[$kind] = $stored[$kind];
 
 			return $layout;
+		}
+
+		/**
+		 *	The rules a PDF is set with: the feature's own (see Sheet::defaults(), set for the layout's font and size)
+		 *	with the owner's design laid over them, property by property. A body size in em is a factor of the layout's size. A stored
+	 *	design that does not parse is not read: the feature's rules stand alone
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *
+		 *	@return 	array											selector => property => value, see Sheet
+		 */
+		public static function design( array &$appData ): array {
+
+			return self::_rules( self::layout( $appData ) );
+		}
+
+		/**
+		 *	The feature's own rules as CSS text, for the layout's font and size: what the panel shows beside the owner's
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *
+		 *	@return 	string
+		 */
+		public static function sheet( array &$appData ): string {
+
+			$layout = self::layout( $appData );
+
+			return Sheet::text( Sheet::defaults( (string) $layout['font'], (int) $layout['size'] ) );
+		}
+
+		/**
+		 *	Add what a caller brings - the templates, the blocks of the library, the header, the footer and the
+		 *	design of the layout - to the project, and nothing it has: a key of a block or of a template that
+		 *	exists stays, so does a field of the layout that holds a text, and the pictures are no part of it. With
+		 *	$overwrite what exists is replaced. A piece that is refused is left out and named.
+		 *
+		 *	  $templates   key => [ name, tag (one of the project's), blocks (see template()) ]
+		 *	  $blocks      key => [ title, html ]
+		 *	  $layout      header, footer, design => text
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		$templates
+		 *	@param		array 		$blocks
+		 *	@param		array 		$layout
+		 *	@param		bool			$overwrite
+		 *
+		 *	@return 	array											added, existing, refused - each blocks, templates, layout: the keys (the fields) written, the ones that were there, and key => code of the ones refused
+		 */
+		public static function install( array &$appData, array $templates, array $blocks, array $layout, bool $overwrite = false ): array {
+
+			return \Nino\Modules\Pdf\Store::install( $appData, $templates, $blocks, $layout, $overwrite );
+		}
+
+		/**
+		 *	The merged rules of a layout
+		 *
+		 *	@param		array 		$layout				See layout()
+		 *
+		 *	@return 	array
+		 */
+		private static function _rules( array $layout ): array {
+
+			$rules = Sheet::merge( Sheet::defaults( (string) $layout['font'], (int) $layout['size'] ), Sheet::check( (string) $layout['design'] )['rules'] ?? [] );
+
+			// The body's size is in points, whatever the owner wrote: em is a factor of the size of the layout
+			$rules['body']['font-size'] = [ 'pt', Sheet::size( $rules['body'], (float) $layout['size'] ) ];
+
+			return $rules;
 		}
 
 		/**
@@ -471,7 +551,7 @@ namespace Nino\Modules {
 
 			$document = new Document( self::_producer(), is_string( $options['title'] ?? null ) === true ? $options['title'] : '', $date );
 
-			( new Engine( $document, $layout, $logo ) )->run( $parts, $header, $footer, $fields );
+			( new Engine( $document, $layout, self::_rules( $layout ), $logo ) )->run( $parts, $header, $footer, $fields );
 
 			return $document->output();
 		}

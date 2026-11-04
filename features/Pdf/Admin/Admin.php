@@ -20,7 +20,9 @@ namespace Nino\Modules\Pdf {
 	 *										of the project are.
 	 *
 	 *										Layout: the paper, the four margins, the font and the base size,
-	 *										the header and the footer as HTML, the logo and the owner's
+	 *										the header and the footer as HTML, the design - the feature's own
+	 *										rules as CSS, read-only, and the owner's rules over them, with a
+	 *										preview of the saved design - the logo and the owner's
 	 *										signature as pictures. Text blocks: the library, a title and
 	 *										HTML each, which a template uses by reference. Templates: a name,
 	 *										a tag and the ordered blocks of a document - html, a slot, an
@@ -55,6 +57,7 @@ namespace Nino\Modules\Pdf {
 				'pdf/layout/save'					=> [ self::class, 'apiLayoutSave' ],
 				'pdf/layout/image'				=> [ self::class, 'apiLayoutImage' ],
 				'pdf/layout/image/delete'	=> [ self::class, 'apiLayoutImageDelete' ],
+				'pdf/layout/preview'			=> [ self::class, 'apiLayoutPreview' ],
 				'pdf/blocks/list'					=> [ self::class, 'apiBlocksList' ],
 				'pdf/blocks/save'					=> [ self::class, 'apiBlocksSave' ],
 				'pdf/blocks/delete'				=> [ self::class, 'apiBlocksDelete' ],
@@ -154,6 +157,24 @@ namespace Nino\Modules\Pdf {
 				return;
 
 			self::_answer( $request, Store::saveLayout( $appData, \Nino\Admin\Admin::postData() ), static fn(): array => self::_layout( $appData ) );
+		}
+
+		/**
+		 *	A PDF of the sample text with the layout and the design as they are saved, as base64 in the answer
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		&$request			(reference) Current server request
+		 *
+		 *	@return 	void
+		 */
+		public static function apiLayoutPreview( array &$appData, array &$request ): void {
+
+			if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+				return;
+
+			$bytes = Feature::compose( $appData, [ 'name' => 'Design', 'tag' => '', 'blocks' => [] ], [], [ 'title' => 'Design' ], true );
+
+			\Nino\Http::ok( $request, [ 'pdf' => base64_encode( $bytes ), 'file' => 'design.pdf' ] );
 		}
 
 		/**
@@ -332,7 +353,7 @@ namespace Nino\Modules\Pdf {
 
 		/**
 		 *	The layout and what the screen needs to edit it: the pictures as data addresses (a picture of
-		 *	a megabyte or less), the papers, the fonts, and the ranges the server holds the numbers to
+		 *	a megabyte or less), the papers, the fonts, the feature's rules as CSS, and the ranges the server holds the numbers to
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *
@@ -351,11 +372,28 @@ namespace Nino\Modules\Pdf {
 
 			return [
 				'layout'	=> $layout,
+				'sheet'		=> Feature::sheet( $appData ),
+				'refusal'	=> self::_refusal( $layout['design'] ),
 				'images'	=> $images,
 				'papers'	=> array_keys( \Nino\Modules\Pdf\Layout\Engine::PAPER ),
 				'fonts'		=> \Nino\Modules\Pdf\Fonts\Metrics::FAMILIES,
-				'ranges'	=> [ 'margin' => [ Feature::MARGIN_MIN, Feature::MARGIN_MAX ], 'size' => [ Feature::SIZE_MIN, Feature::SIZE_MAX ], 'band' => Feature::MAX_BAND ],
+				'ranges'	=> [ 'margin' => [ Feature::MARGIN_MIN, Feature::MARGIN_MAX ], 'size' => [ Feature::SIZE_MIN, Feature::SIZE_MAX ], 'band' => Feature::MAX_BAND, 'design' => Feature::MAX_DESIGN ],
 			];
+		}
+
+		/**
+		 *	Why a stored design is not read: the code and the params of the refusal, as a save refuses the same text - the panel says
+		 *	them in its own language - and null where the text is a sheet
+		 *
+		 *	@param		string		$design
+		 *
+		 *	@return 	array|null
+		 */
+		private static function _refusal( string $design ): ?array {
+
+			$read = \Nino\Modules\Pdf\Layout\Sheet::check( $design );
+
+			return isset( $read['rules'] ) === true ? null : Store::refusal( $read );
 		}
 
 		/**

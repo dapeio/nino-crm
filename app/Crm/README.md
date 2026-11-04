@@ -194,27 +194,27 @@ Die Panels der Workbench waren für die Arbeit mit Kunden und Belegen zu sperrig
 
 Die Daten des Inhabers (Name, Anschrift, Steuernummer, Bankverbindung, Logo, Unterschrift) stehen in seinen Vorlagen, in Kopf und Fuß des Features PDF - die App gibt der Vorlage, was nur sie weiß: den Kunden, den Beleg, die Zeilen, die Summen und den Steuerhinweis. Eine Vorlage mit dem Tag `offer` gehört zu Angeboten, eine mit dem Tag `invoice` zu Rechnungen und Stornorechnungen, eine mit dem Tag `contract` zu Verträgen, `privacy` zu Datenschutz- und `information` zu Informationsdokumenten. Die Eingabefelder (Blöcke vom Typ *Eingabe*) der gewählten Vorlage fragt das Panel im Editor ab und setzt sie dort ein, wo die Vorlage sie hat; ein Pflichtfeld muss beim Festschreiben gefüllt sein.
 
-**Platzhalter (Tokens)** in den Textblöcken einer Vorlage:
+**Platzhalter** in den Textblöcken einer Vorlage sind Schlüssel mit Schrägstrichen, wie die Texte der Website, in doppelten Klammern; die App gibt sie dem Feature PDF unter genau diesem Schlüssel, und die Texte der Website (`[[/project/company/general/name]]`) stehen in derselben Vorlage daneben:
 
-| Token | Inhalt |
+| Platzhalter | Inhalt |
 | --- | --- |
-| `[[document.title]]` | Angebot, Rechnung oder Stornorechnung |
-| `[[document.number]]` | die Nummer |
-| `[[document.date]]` | das Datum, `TT.MM.JJJJ` |
-| `[[document.due]]` | Zahlungsziel (nur Rechnung), sonst leer |
-| `[[document.valid]]` | Gültig bis (Angebot), sonst leer |
-| `[[document.period]]` | Leistungszeit `TT.MM.JJJJ - TT.MM.JJJJ`; ohne Angabe bei Rechnung und Stornorechnung der Satz *Leistungsdatum entspricht dem Rechnungsdatum*, beim Angebot leer |
-| `[[document.parent]]` | die Nummer des Belegs, auf den dieser sich bezieht (das Angebot einer Rechnung, die Rechnung einer Stornorechnung), sonst leer |
-| `[[document.vatnote]]` | der Satz zu § 19 UStG bei Kleinunternehmern, der Satz zur Steuerschuldnerschaft des Leistungsempfängers bei Reverse-Charge, sonst leer |
-| `[[document.net]]`, `[[document.vat]]`, `[[document.gross]]` | Netto, Umsatzsteuer und Brutto mit der Währung |
-| `[[site.portal]]`, `[[site.login]]` | die absoluten Adressen von `/portal` und `/login` der Website (leer, wo die Website keine Adresse hat) - damit eine Information der Brief mit den Zugangsdaten sein kann; bei jeder Art |
-| `[[client.number]]`, `[[client.company]]`, `[[client.name]]`, `[[client.street]]`, `[[client.zip]]`, `[[client.city]]`, `[[client.country]]`, `[[client.vat_id]]`, `[[client.email]]` | der Kunde, wie er beim Festschreiben war |
+| `[[/document/title]]` | Angebot, Rechnung oder Stornorechnung |
+| `[[/document/number]]` | die Nummer |
+| `[[/document/date]]` | das Datum, `TT.MM.JJJJ` |
+| `[[/document/parent]]` | die Nummer des Belegs, auf den dieser sich bezieht (das Angebot einer Rechnung, die Rechnung einer Stornorechnung), sonst leer |
+| `[[/document/vatnote]]` | der Satz zu § 19 UStG bei Kleinunternehmern, der Satz zur Steuerschuldnerschaft des Leistungsempfängers bei Reverse-Charge, sonst leer |
+| `[[/document/net]]`, `[[/document/vat]]`, `[[/document/gross]]` | Netto, Umsatzsteuer und Brutto mit der Währung |
+| `[[/invoice/due]]` | Zahlungsziel (Rechnung und Stornorechnung), sonst leer |
+| `[[/invoice/period]]` | Leistungszeit `TT.MM.JJJJ - TT.MM.JJJJ`; ohne Angabe der Satz *Leistungsdatum entspricht dem Rechnungsdatum* (Rechnung und Stornorechnung), sonst leer |
+| `[[/offer/number]]`, `[[/offer/date]]`, `[[/offer/valid]]`, `[[/offer/gross]]`, `[[/offer/period]]` | beim Angebot das eigene: Nummer, Datum, Gültig bis, Brutto, Leistungszeit `TT.MM.JJJJ - TT.MM.JJJJ` (leer, wo es keine hat); beim Vertrag das Angebot, auf dem er steht |
+| `[[/customer/number]]`, `[[/customer/company]]`, `[[/customer/name]]`, `[[/customer/street]]`, `[[/customer/zip]]`, `[[/customer/city]]`, `[[/customer/country]]`, `[[/customer/email]]`, `[[/customer/vat]]` | der Kunde, wie er beim Festschreiben war (`vat` ist seine USt-IdNr.) |
+| `[[/site/portal]]`, `[[/site/login]]` | die absoluten Adressen von `/portal` und `/login` der Website (leer, wo die Website keine Adresse hat) - damit eine Information der Brief mit den Zugangsdaten sein kann; bei jeder Art |
 
 **Platzhalter-Blöcke (Slots)** der Vorlage: `address` (der Block des Kunden: Firma, Name, Straße, PLZ und Ort, das Land mit seinem deutschen Namen, wenn es nicht DE ist: ist die PHP-Erweiterung intl geladen, steht dort *Österreich*, sonst das Kürzel `AT`; für Deutschland steht nie eine Landzeile), `lines` (die Tabelle der Zeilen: Position, Bezeichnung mit Beschreibung darunter, Menge mit Einheit, Einzelpreis, bei Regelbesteuerung der Satz, Betrag) und `totals` (bei Regelbesteuerung Netto, die Umsatzsteuer je Satz auf ihrer Basis und Brutto; bei Kleinunternehmern nur der Gesamtbetrag, der zugleich das Netto ist). Der Aufbau der Slots steht in `Documents/templates/*.tpl`.
 
-**Vertrag, Datenschutz und Information** kennen `document.title` (der Titel des Dokuments selbst), `document.date`, `document.parent` (beim Vertrag die Nummer seines Angebots), `client.*`, `site.*` und den Slot `address`. Ein **Vertrag** kennt dazu die Tokens seines Angebots - `offer.number`, `offer.date`, `offer.valid`, `offer.net`, `offer.vat` und `offer.gross` - und die Slots `lines` (die Zeilen des Angebots) und `totals` (seine Summen), damit er zitieren kann, worum es geht. Die Nummer, die Fälligkeit, die Leistungszeit, der Steuerhinweis und die Summen des Belegs selbst gibt es bei diesen drei Arten nicht.
+**Vertrag, Datenschutz und Information** kennen `/document/title` (der Titel des Dokuments selbst), `/document/date`, `/document/parent` (beim Vertrag die Nummer seines Angebots), `/customer/*`, `/site/*` und den Slot `address`. Ein **Vertrag** kennt dazu die Platzhalter seines Angebots - `/offer/number`, `/offer/date`, `/offer/valid`, `/offer/gross` und `/offer/period` - und die Slots `lines` (die Zeilen des Angebots) und `totals` (seine Summen), damit er zitieren kann, worum es geht. Die Nummer, die Fälligkeit, die Leistungszeit, der Steuerhinweis und die Summen des Belegs selbst gibt es bei diesen drei Arten nicht.
 
-**Eine Vorlage, die eine vollständige Rechnung ergibt,** braucht die Slots `address`, `lines` und `totals` und den Token `document.vatnote`. Die Angaben nach § 14 UStG (vollständiger Name und Anschrift beider Seiten, Steuernummer oder USt-IdNr. des Inhabers, Ausstellungsdatum, fortlaufende Rechnungsnummer, Leistungszeit, Entgelt, Steuersatz und Steuerbetrag oder der Hinweis auf die Befreiung) sind Deine Verantwortung; die App gibt Dir jede Angabe, die nur sie kennt.
+**Eine Vorlage, die eine vollständige Rechnung ergibt,** braucht die Slots `address`, `lines` und `totals` und den Platzhalter `[[/document/vatnote]]`. Die Angaben nach § 14 UStG (vollständiger Name und Anschrift beider Seiten, Steuernummer oder USt-IdNr. des Inhabers, Ausstellungsdatum, fortlaufende Rechnungsnummer, Leistungszeit, Entgelt, Steuersatz und Steuerbetrag oder der Hinweis auf die Befreiung) sind Deine Verantwortung; die App gibt Dir jede Angabe, die nur sie kennt.
 
 Die Worte in der PDF-Datei (Angebot, Rechnung, Spaltenköpfe, die Hinweise) sind deutsch und stehen in `Documents/Render/text/de_DE.php`.
 

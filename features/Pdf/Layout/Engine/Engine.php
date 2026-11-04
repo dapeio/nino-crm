@@ -17,8 +17,10 @@ namespace Nino\Modules\Pdf\Layout {
 	 *	Nino							A compact filesystembased php framework
 	 *	Engine						Lays a document out into a \Nino\Modules\Pdf\Document\Document.
 	 *
-	 *										It is handed the layout (the paper, the margins, the font and the
-	 *										base size), the logo, and run() the parts of the document in order
+	 *										It is handed the layout (the paper and the margins), the rules of the
+	 *										sheet (see Sheet: the font and the base size are the body's, and every
+	 *										size, space, colour and line below is read from them), the logo, and
+	 *										run() the parts of the document in order
 	 *										- html, a text a person typed, a page break - with the HTML of the
 	 *										header and the footer and the fields to draw at a position. The
 	 *										parts are parsed into blocks (see Html), the blocks wrapped into
@@ -32,7 +34,8 @@ namespace Nino\Modules\Pdf\Layout {
 	 *										The page is the paper less the margins. The header band is the
 	 *										header HTML laid out at the top of the column and the footer band
 	 *										the footer HTML at its bottom, each at most 40 mm and each the same
-	 *										height on every page, with a gap of 4 mm to the text; the text
+	 *										height on every page, with the gap of the rules of .header and .footer
+	 *										(4 mm) to the text and the line of their border where they have one; the text
 	 *										flows in what is left. They are laid out twice: once to measure
 	 *										them, with the page numbers 1 and 1, and once for each page when
 	 *										the document has all its pages and [[page]] and [[pages]] can be
@@ -45,10 +48,12 @@ namespace Nino\Modules\Pdf\Layout {
 	 *										template's pages only.
 	 *
 	 *										An item is what the engine draws, a positional array: r (a run of
-	 *										text: x, baseline, font, size, bytes, underlined, width), i (a
-	 *										picture: x, top, w, h, the Image) and l (a horizontal line: x, y,
-	 *										length, thickness, grey). Their coordinates are points from the
-	 *										top-left corner of the box they belong to.
+	 *										text: x, baseline, font, size, bytes, underlined, width, colour), i (a
+	 *										picture: x, top, w, h, the Image), l (a horizontal line: x, y,
+	 *										length, thickness, colour) and f (a filled box: x, y, w, h, colour).
+	 *										A colour is six hex digits; a text without one is black, and a colour
+	 *										is written with two decimals a channel, grey as grey. Their coordinates
+	 *										are points from the top-left corner of the box they belong to.
 	 *
 	 *	@package					Dape/Nino
 	 *	@author						David Perchermeier <mail@dape.io>
@@ -59,12 +64,8 @@ namespace Nino\Modules\Pdf\Layout {
 		// The paper in millimetres: width, height
 		public const array PAPER = [ 'a4' => [ 210.0, 297.0 ], 'letter' => [ 215.9, 279.4 ] ];
 
-		// The height a header or a footer may take, and the gap between it and the text, in millimetres
+		// The height a header or a footer may take, in millimetres
 		public const float BAND = 40.0;
-		public const float GAP = 4.0;
-
-		// The small size of a field's label, in times the base size
-		public const float SMALL = 0.8;
 
 		// The page being filled, and where
 		private int $_page = -1;
@@ -86,10 +87,11 @@ namespace Nino\Modules\Pdf\Layout {
 
 		/**
 		 *	@param		Document		$_doc
-		 *	@param		array 			$_layout				format, margins ([ top, right, bottom, left ] in mm), font, size, header, footer
+		 *	@param		array 		$_layout				format, margins ([ top, right, bottom, left ] in mm)
+		 *	@param		array 			$_rules					The merged sheet, with the body's font-family and font-size in points
 		 *	@param		Image|null	$_logo
 		 */
-		public function __construct( private Document $_doc, private array $_layout, private ?Image $_logo ) {
+		public function __construct( private Document $_doc, private array $_layout, private array $_rules, private ?Image $_logo ) {
 		}
 
 		/**
@@ -112,11 +114,14 @@ namespace Nino\Modules\Pdf\Layout {
 			$this->_left = $left;
 			$this->_width = $this->_paper - $left - $right;
 
-			$headH = min( $this->_band( $header, 1, 1 )['h'], self::BAND * Document::MM );
-			$footH = min( $this->_band( $footer, 1, 1 )['h'], self::BAND * Document::MM );
+			$headH = min( $this->_band( $header, 1, 1, '.header' )['h'], self::BAND * Document::MM );
+			$footH = min( $this->_band( $footer, 1, 1, '.footer' )['h'], self::BAND * Document::MM );
 
-			$this->_top = $top + $headH + ( $headH > 0 ? self::GAP * Document::MM : 0.0 );
-			$this->_bottom = $this->_sheet - $bottom - $footH - ( $footH > 0 ? self::GAP * Document::MM : 0.0 );
+			$headGap = (float) ( $this->_rules['.header']['margin'][2] ?? 0.0 ) * Document::MM;
+			$footGap = (float) ( $this->_rules['.footer']['margin'][0] ?? 0.0 ) * Document::MM;
+
+			$this->_top = $top + $headH + ( $headH > 0 ? $headGap : 0.0 );
+			$this->_bottom = $this->_sheet - $bottom - $footH - ( $footH > 0 ? $footGap : 0.0 );
 
 			$this->newPage();
 
@@ -142,7 +147,7 @@ namespace Nino\Modules\Pdf\Layout {
 				// break of the template that is still waiting is spent by the first block, which stands on a fresh page
 				if( $part['k'] === 'append' ) {
 
-					$blocks = Html::blocks( $part['html'], $this->_base(), $this->_logo, $this->_width );
+					$blocks = Html::blocks( $part['html'], $this->_rules, $this->_logo, $this->_width );
 
 					if( $blocks === [] )
 						continue;
@@ -156,7 +161,7 @@ namespace Nino\Modules\Pdf\Layout {
 					continue;
 				}
 
-				foreach( $part['k'] === 'html' ? Html::blocks( $part['html'], $this->_base(), $this->_logo, $this->_width ) : [ $this->_typed( $part['text'], $part['multiline'] ) ] as $block )
+				foreach( $part['k'] === 'html' ? Html::blocks( $part['html'], $this->_rules, $this->_logo, $this->_width ) : [ $this->_typed( $part['text'], $part['multiline'] ) ] as $block )
 					if( $block !== null )
 						$this->_flow( $block );
 			}
@@ -168,15 +173,30 @@ namespace Nino\Modules\Pdf\Layout {
 
 			for( $page = 0; $page < $pages; $page++ ) {
 
-				$head = $this->_band( $header, $page + 1, $pages );
-				$foot = $this->_band( $footer, $page + 1, $pages );
+				$head = $this->_band( $header, $page + 1, $pages, '.header' );
+				$foot = $this->_band( $footer, $page + 1, $pages, '.footer' );
 
-				if( $head['h'] > 0 )
+				if( $head['h'] > 0 ) {
+
 					$this->_emit( $page, $left, $top, $head['items'], [ $left, $top, $this->_width, $headH ] );
 
+					// The line under the header: at the foot of its band
+					$rule = $this->_rules['.header']['border-bottom'] ?? false;
+
+					if( $rule !== false )
+						$this->_emit( $page, $left, $top + $headH, [ [ 'l', 0.0, 0.0, $this->_width, $rule[0], $rule[1] ] ] );
+				}
+
 				if( $foot['h'] > 0 ) {
+
 					$at = $this->_sheet - $bottom - min( $foot['h'], $footH );
 					$this->_emit( $page, $left, $at, $foot['items'], [ $left, $this->_sheet - $bottom - $footH, $this->_width, $footH ] );
+
+					// The line over the footer: at the head of its band
+					$rule = $this->_rules['.footer']['border-top'] ?? false;
+
+					if( $rule !== false )
+						$this->_emit( $page, $left, $this->_sheet - $bottom - $footH, [ [ 'l', 0.0, 0.0, $this->_width, $rule[0], $rule[1] ] ] );
 				}
 			}
 
@@ -302,8 +322,13 @@ namespace Nino\Modules\Pdf\Layout {
 					}
 				}
 				else if( $block['k'] === 'hr' ) {
-					$items[] = [ 'l', 0.0, $y + $gap, $width, 0.5, 0.55 ];
-					$y += $gap + 0.5;
+
+					$thick = $block['rule'] === false ? 0.0 : (float) $block['rule'][0];
+
+					if( $block['rule'] !== false )
+						$items[] = [ 'l', 0.0, $y + $gap, $width, $thick, $block['rule'][1] ];
+
+					$y += $gap + $thick;
 				}
 				else {
 					$table = Table::stack( $this, $block, $width );
@@ -362,13 +387,14 @@ namespace Nino\Modules\Pdf\Layout {
 			if( $block['k'] === 'hr' ) {
 
 				$gap = $this->gap( $block['before'] );
+				$thick = $block['rule'] === false ? 0.0 : (float) $block['rule'][0];
 
-				if( $this->fits( $gap + 0.5 ) === false ) {
+				if( $this->fits( $gap + $thick ) === false ) {
 					$this->newPage();
 					$gap = 0.0;
 				}
 
-				$this->put( [ [ 'l', 0.0, 0.0, $this->_width, 0.5, 0.55 ] ], $gap, 0.5, $block['after'] );
+				$this->put( $block['rule'] === false ? [] : [ [ 'l', 0.0, 0.0, $this->_width, $thick, $block['rule'][1] ] ], $gap, $thick, $block['after'] );
 				return;
 			}
 
@@ -379,7 +405,8 @@ namespace Nino\Modules\Pdf\Layout {
 			// A heading stays with the start of what follows it: room for it and two lines of the base size
 			if( $block['keep'] === true && $this->_fresh === false ) {
 
-				$need = $this->gap( $block['before'] ) + array_sum( array_column( $lines, 'h' ) ) + 2 * Text::LEADING * (float) $this->_layout['size'];
+				$base = $this->_base();
+				$need = $this->gap( $block['before'] ) + array_sum( array_column( $lines, 'h' ) ) + 2 * $base['l'] * $base['size'];
 
 				if( $this->fits( $need ) === false )
 					$this->newPage();
@@ -471,7 +498,7 @@ namespace Nino\Modules\Pdf\Layout {
 						continue;
 					}
 
-					if( $run !== null && $run[3] === $atom['f'] && $run[4] === $atom['z'] && $run[6] === $atom['u'] ) {
+					if( $run !== null && $run[3] === $atom['f'] && $run[4] === $atom['z'] && $run[6] === $atom['u'] && $run[8] === $atom['c'] ) {
 						$run[5] .= $atom['s'];
 						$run[7] += $atom['w'];
 					}
@@ -480,7 +507,7 @@ namespace Nino\Modules\Pdf\Layout {
 						if( $run !== null )
 							$items[] = $run;
 
-						$run = [ 'r', $x, $line['base'], $atom['f'], $atom['z'], $atom['s'], $atom['u'], $atom['w'] ];
+						$run = [ 'r', $x, $line['base'], $atom['f'], $atom['z'], $atom['s'], $atom['u'], $atom['w'], $atom['c'] ];
 					}
 
 					$x += $atom['w'];
@@ -493,7 +520,7 @@ namespace Nino\Modules\Pdf\Layout {
 				if( $n === 0 && $block['marker'] !== null && $block['marker'] !== [] ) {
 
 					$mark = $block['marker'][0];
-					$items[] = [ 'r', $block['indent'] - 1.5 * Document::MM - $mark['w'], $line['base'], $mark['f'], $mark['z'], $mark['s'], false, $mark['w'] ];
+					$items[] = [ 'r', $block['indent'] - 1.5 * Document::MM - $mark['w'], $line['base'], $mark['f'], $mark['z'], $mark['s'], false, $mark['w'], $mark['c'] ];
 				}
 
 				$out[] = [ 'h' => $line['h'], 'items' => $items ];
@@ -513,8 +540,12 @@ namespace Nino\Modules\Pdf\Layout {
 		 */
 		private function _typed( string $text, bool $multiline ): ?array {
 
+			// A text a person typed is a paragraph: the body's type with the rules of p over it
 			$base = $this->_base();
-			$type = [ 'f' => \Nino\Modules\Pdf\Fonts\Metrics::font( $base['family'], false, false ), 'z' => $base['size'], 'u' => false ];
+			$rule = $this->_rules['p'] ?? [];
+			$bold = isset( $rule['font-weight'] ) === true ? $rule['font-weight'] === 'bold' : $base['b'];
+			$italic = isset( $rule['font-style'] ) === true ? $rule['font-style'] === 'italic' : $base['i'];
+			$type = [ 'f' => \Nino\Modules\Pdf\Fonts\Metrics::font( (string) ( $rule['font-family'] ?? $base['family'] ), $bold, $italic ), 'z' => Sheet::size( $rule, $base['size'] ), 'u' => false, 'c' => (string) ( $rule['color'] ?? $base['c'] ), 'l' => (float) ( $rule['line-height'] ?? $base['l'] ) ];
 			$atoms = [];
 
 			foreach( $multiline === true ? preg_split( '/\r\n|\r|\n/', $text ) ?: [] : [ $text ] as $at => $line ) {
@@ -534,17 +565,19 @@ namespace Nino\Modules\Pdf\Layout {
 			if( $atoms === [] )
 				return null;
 
-			return [ 'k' => 'p', 'atoms' => $atoms, 'align' => 'left', 'indent' => 0.0, 'marker' => null, 'before' => 0.0, 'after' => 0.6 * Text::LEADING * $base['size'], 'keep' => false, 'base' => [ 'f' => $type['f'], 'z' => $type['z'] ] ];
+			return [ 'k' => 'p', 'atoms' => $atoms, 'align' => (string) ( $rule['text-align'] ?? 'left' ), 'indent' => 0.0, 'marker' => null, 'before' => (float) ( $rule['margin'][0] ?? 0.0 ) * Document::MM, 'after' => (float) ( $rule['margin'][2] ?? 0.0 ) * Document::MM, 'keep' => false, 'base' => [ 'f' => $type['f'], 'z' => $type['z'], 'l' => $type['l'] ] ];
 		}
 
 		/**
-		 *	The font and size the document is set in
+		 *	The type the document is set in: the body's family, size, weight, slant, colour and line height
 		 *
-		 *	@return 	array
+		 *	@param		string		$scope				.header or .footer
+		 *
+		 *	@return 	array											See Html::base()
 		 */
-		private function _base(): array {
+		private function _base( string $scope = '' ): array {
 
-			return [ 'family' => (string) $this->_layout['font'], 'size' => (float) $this->_layout['size'] ];
+			return Html::base( $this->_rules, $scope );
 		}
 
 		/**
@@ -553,12 +586,13 @@ namespace Nino\Modules\Pdf\Layout {
 		 *	@param		string		$html
 		 *	@param		int				$page
 		 *	@param		int				$pages
+		 *	@param		string		$scope				.header or .footer
 		 *
 		 *	@return 	array											[ h, items ]
 		 */
-		private function _band( string $html, int $page, int $pages ): array {
+		private function _band( string $html, int $page, int $pages, string $scope ): array {
 
-			$blocks = Html::blocks( str_replace( [ '[[page]]', '[[pages]]' ], [ (string) $page, (string) $pages ], $html ), $this->_base(), $this->_logo, $this->_width );
+			$blocks = Html::blocks( str_replace( [ '[[page]]', '[[pages]]' ], [ (string) $page, (string) $pages ], $html ), $this->_rules, $this->_logo, $this->_width, $scope );
 
 			return $blocks === [] ? [ 'h' => 0.0, 'items' => [] ] : $this->stack( $blocks, $this->_width );
 		}
@@ -574,6 +608,12 @@ namespace Nino\Modules\Pdf\Layout {
 
 			$pages = $this->_body;
 			$base = $this->_base();
+			$rule = $this->_rules['.signature'] ?? [];
+			$small = Sheet::size( $rule, $base['size'] );
+			$family = (string) ( $rule['font-family'] ?? $base['family'] );
+			$colour = (string) ( $rule['color'] ?? $base['c'] );
+			$line = $rule['border-top'] ?? false;
+			$gap = (float) ( $rule['margin'][0] ?? 0.0 ) * Document::MM;
 
 			foreach( $fields as $field ) {
 
@@ -595,11 +635,10 @@ namespace Nino\Modules\Pdf\Layout {
 					$items[] = [ 'i', $x, $y + $h - $drawn[1], $drawn[0], $drawn[1], $field['image'] ];
 				}
 
-				if( $field['line'] === true )
-					$items[] = [ 'l', $x, $y + $h, $w, 0.5, 0.0 ];
+				if( $field['line'] === true && $line !== false )
+					$items[] = [ 'l', $x, $y + $h, $w, $line[0], $line[1] ];
 
-				$small = $base['size'] * self::SMALL;
-				$font = \Nino\Modules\Pdf\Fonts\Metrics::font( $base['family'], false, false );
+				$font = \Nino\Modules\Pdf\Fonts\Metrics::font( $family, false, false );
 				$text = '';
 				$wide = 0.0;
 
@@ -610,10 +649,29 @@ namespace Nino\Modules\Pdf\Layout {
 
 				// Under the box, one millimetre below the line
 				if( trim( $text ) !== '' )
-					$items[] = [ 'r', $x, $y + $h + 1.0 * Document::MM + 0.72 * $small, $font, $small, trim( $text ), false, $wide ];
+					$items[] = [ 'r', $x, $y + $h + $gap + 0.72 * $small, $font, $small, trim( $text ), false, $wide, $colour ];
 
 				$this->_emit( $page, 0.0, 0.0, $items );
 			}
+		}
+
+		/**
+		 *	A colour as the operator that sets it: each channel with two decimals, a grey as one number
+		 *
+		 *	@param		string		$colour				Six hex digits
+		 *	@param		bool			$fill					The fill colour, else the stroke colour
+		 *
+		 *	@return 	string
+		 */
+		private static function _paint( string $colour, bool $fill ): string {
+
+			$n = Document::num( ... );
+			$channels = array_map( static fn( string $hex ): float => round( hexdec( $hex ) / 255, 2 ), str_split( $colour, 2 ) );
+
+			if( $channels[0] === $channels[1] && $channels[1] === $channels[2] )
+				return $n( $channels[0] ). ( $fill === true ? ' g' : ' G' );
+
+			return $n( $channels[0] ). ' '. $n( $channels[1] ). ' '. $n( $channels[2] ). ( $fill === true ? ' rg' : ' RG' );
 		}
 
 		/**
@@ -642,15 +700,22 @@ namespace Nino\Modules\Pdf\Layout {
 
 				if( $item[0] === 'r' ) {
 
+					// A text in a colour is drawn in a state of its own, the underline with it; black is what the page starts with
+					$coloured = isset( $item[8] ) === true && $item[8] !== '000000';
+					$ops .= $coloured === true ? 'q '. self::_paint( $item[8], true ). ' ' : '';
 					$ops .= 'BT '. $this->_doc->font( $page, $item[3] ). ' '. $n( $item[4] ). ' Tf '. $n( $x ). ' '. $n( $y ). ' Td '. Document::literal( $item[5] )." Tj ET\n";
 
 					if( $item[6] === true )
-						$ops .= 'q '. $n( 0.05 * $item[4] ). ' w '. $n( $x ). ' '. $n( $y - 0.12 * $item[4] ). ' m '. $n( $x + $item[7] ). ' '. $n( $y - 0.12 * $item[4] )." l S Q\n";
+						$ops .= 'q '. $n( 0.05 * $item[4] ). ' w '. ( $coloured === true ? self::_paint( $item[8], false ). ' ' : '' ). $n( $x ). ' '. $n( $y - 0.12 * $item[4] ). ' m '. $n( $x + $item[7] ). ' '. $n( $y - 0.12 * $item[4] )." l S Q\n";
+
+					$ops .= $coloured === true ? "Q\n" : '';
 				}
 				else if( $item[0] === 'i' )
 					$ops .= 'q '. $n( $item[3] ). ' 0 0 '. $n( $item[4] ). ' '. $n( $x ). ' '. $n( $y - $item[4] ). ' cm '. $this->_doc->image( $page, $item[5] )." Do Q\n";
+				else if( $item[0] === 'f' )
+					$ops .= 'q '. self::_paint( $item[5], true ). ' '. $n( $x ). ' '. $n( $y - $item[4] ). ' '. $n( $item[3] ). ' '. $n( $item[4] )." re f Q\n";
 				else
-					$ops .= 'q '. $n( $item[4] ). ' w '. $n( $item[5] ). ' G '. $n( $x ). ' '. $n( $y ). ' m '. $n( $x + $item[3] ). ' '. $n( $y )." l S Q\n";
+					$ops .= 'q '. $n( $item[4] ). ' w '. self::_paint( $item[5], false ). ' '. $n( $x ). ' '. $n( $y ). ' m '. $n( $x + $item[3] ). ' '. $n( $y )." l S Q\n";
 			}
 
 			$this->_doc->draw( $page, $ops. ( $clip === null ? '' : "Q\n" ) );
