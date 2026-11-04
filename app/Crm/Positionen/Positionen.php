@@ -1,8 +1,9 @@
 <?php
 declare(strict_types=1);
 /**
- *	Crm\Positionen		What the owner sells, read from the elements of the type /positionen. The Elements panel is the editor of
- *								the items and the Builder draws them on a public page; this class only reads them, in the site's native
+ *	Crm\Positionen		What the owner sells, read from the elements of the type /positionen. The items are made, changed and removed in
+ *								the screen Positionen of the surface and in the Elements panel (the surface drives the panel's own actions for this type, see
+ *								Surface\Elements) and the Builder draws them on a public page; this class only reads them, in the site's native
  *								language and with \Nino\Elements::getElementWithFallback(), so a field that has no text in it shows the
  *								text of another language. A line of a document copies the words and numbers of an item when the editor
  *								adds it and never follows the element afterwards.
@@ -76,7 +77,7 @@ class Positionen {
 	 *
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	array											id, sort, price (cents), vat (hundredths), active and words ( locale => title, description, unit ) of each
+	 *	@return 	array											id, sort (null for an item that has none), price (cents), vat (hundredths), active and words ( locale => title, description, unit ) of each
 	 */
 	public static function all( array &$appData ): array {
 
@@ -105,7 +106,7 @@ class Positionen {
 				$words[$locale] = array_intersect_key( $words[$locale], [ 'title' => 1, 'description' => 1, 'unit' => 1 ] );
 			}
 
-			$items[] = [ 'id' => $item['id'], 'sort' => $item['sort'], 'price' => $item['price'], 'vat' => $item['vat'], 'active' => $item['active'], 'words' => $words ];
+			$items[] = [ 'id' => $item['id'], 'sort' => is_int( $first['sort'] ?? null ) === true ? $item['sort'] : null, 'price' => $item['price'], 'vat' => $item['vat'], 'active' => $item['active'], 'words' => $words ];
 		}
 
 		return $items;

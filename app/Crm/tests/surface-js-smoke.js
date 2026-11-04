@@ -52,7 +52,7 @@ function words() {
 	while( ( found = re.exec( text ) ) )
 		map[found[1]] = found[2].replace( /\\(['\\])/g, '$1' );
 
-	[ 'app/Crm/Clients/Admin/text/de_DE.php', 'app/Crm/Documents/Admin/text/de_DE.php', 'app/Crm/Crm/Admin/text/de_DE.php', 'features/Pdf/text/de_DE.php' ].forEach( function( file ) {
+	[ 'app/Crm/Clients/Admin/text/de_DE.php', 'app/Crm/Documents/Admin/text/de_DE.php', 'app/Crm/Crm/Admin/text/de_DE.php', 'features/Pdf/text/de_DE.php', '_admin/Nino/Modules/Elements/text/de_DE.php' ].forEach( function( file ) {
 		const sentences = fills( file );
 		Object.keys( sentences ).forEach( function( key ) {
 
@@ -2040,21 +2040,21 @@ function press( w, key, target ) {
 	};
 	const kp1 = await popen();
 	const ptable = all( kp1.main, '#items' )[0];
-	check( 'Positionen asks crm-documents/positionen and nothing else, and draws a read-only table: a column of words for each language of the site, then the unit, the net price, the rate and whether it is active', JSON.stringify( kp1.last( 'crm-documents/positionen' ).data ) === '{}' && all( ptable, 'th' ).map( textOf ).join( '|' ) === 'Titel (de)|Titel (en)|Einheit|Netto|USt|Aktiv'
+	check( 'Positionen asks crm-documents/positionen and nothing else, and draws a read-only table: a column of words for each language of the site, then the unit, the net price, the rate and whether it is active', JSON.stringify( kp1.last( 'crm-documents/positionen' ).data ) === '{}' && all( ptable, 'th' ).map( textOf ).join( '|' ) === 'Titel (de)|Titel (en)|Einheit|Netto|USt|Aktiv|Reihenfolge ↑'
 		&& all( ptable, 'input' ).length === 0 && all( ptable, 'tbody tr' ).length === 3 && textOf( all( kp1.main, 'h1' )[0] ) === 'Positionen' );
 	const prow = function( index ) { return Array.from( all( ptable, 'tbody tr' )[index].children ) };
 	check( '...a row has the title and the description of each language - a language with no text is empty - in the order of the sort the server gives, the unit once for each language that has one, the price and the rate as the line copies them, and ja or nein', textOf( prow( 0 )[0] ) === 'MixingMischung eines Songs · bis 48 Spuren' && textOf( prow( 0 )[1] ) === 'MixingMixing of one song' && textOf( prow( 0 )[2] ) === 'Std. / h'
 		&& textOf( prow( 0 )[3] ) === '90,00'+ NBSP+ '€' && textOf( prow( 0 )[4] ) === '19 %' && textOf( prow( 0 )[5] ) === 'ja' && textOf( prow( 1 )[0] ) === '' && textOf( prow( 1 )[1] ) === 'Recording day' && textOf( prow( 1 )[2] ) === 'day' && textOf( prow( 1 )[4] ) === '7 %'
 		&& textOf( prow( 2 )[5] ) === 'nein' && textOf( prow( 2 )[2] ) === 'Std.' );
 	check( '...a title that is markup is text', textOf( prow( 2 )[0] ) === '<b>Alt</b>' && findAll( ptable, function( node ) { return node.tagName === 'B' } ).length === 0 );
-	check( '...the primary action is the link Im Panel Elemente bearbeiten, to the Elements panel at the type, in a tab of its own', textOf( all( kp1.main, '#items-edit' )[0] ) === 'Im Panel Elemente bearbeiten' && all( kp1.main, '#items-edit' )[0].getAttribute( 'href' ) === '/_admin/#elements/positionen' && all( kp1.main, '#items-edit' )[0].classList.contains( 'primary' ) === true
+	check( '...the link Im Panel Elemente bearbeiten is a secondary one, to the Elements panel at the type, in a tab of its own - there is no primary button, the account may not change anything', textOf( all( kp1.main, '#items-edit' )[0] ) === 'Im Panel Elemente bearbeiten' && all( kp1.main, '#items-edit' )[0].getAttribute( 'href' ) === '/_admin/#elements/positionen' && all( kp1.main, '#items-edit' )[0].classList.contains( 'primary' ) === false && all( kp1.main, '.primary' ).length === 0
 		&& all( kp1.main, '#items-edit' )[0].getAttribute( 'target' ) === '_blank' && textOf( all( kp1.main, '.state-note' ).pop() ).indexOf( 'Nur zum Ansehen' ) === 0 );
 	const kp2 = await popen( { locales : [ 'de_DE' ] }, smallBusiness );
-	check( 'a site with one language has one column of words, and a small business has no rate to show: a stroke, as the line copies 0', all( all( kp2.main, '#items' )[0], 'th' ).map( textOf ).join( '|' ) === 'Titel (de)|Einheit|Netto|USt|Aktiv' && textOf( all( all( kp2.main, '#items' )[0], 'tbody tr' )[0].children[3] ) === '–' );
+	check( 'a site with one language has one column of words, and a small business has no rate to show: a stroke, as the line copies 0', all( all( kp2.main, '#items' )[0], 'th' ).map( textOf ).join( '|' ) === 'Titel (de)|Einheit|Netto|USt|Aktiv|Reihenfolge ↑' && textOf( all( all( kp2.main, '#items' )[0], 'tbody tr' )[0].children[3] ) === '–' );
 	const kp3 = await popen( { missing : true, items : [] } );
 	check( 'where the element type is not there the screen says so and points to the settings, where the portal is set up - no table', all( kp3.main, '#items' ).length === 0 && textOf( all( kp3.main, '.note' )[0] ).indexOf( 'Den Elementtyp Positionen gibt es noch nicht.' ) === 0 && all( all( kp3.main, '.note' )[0], 'a' )[0].getAttribute( 'href' ) === '#einstellungen' );
 	const kp4 = await popen( { items : [] } );
-	check( 'a type with no item says so', textOf( all( all( kp4.main, '#items' )[0], 'tbody' )[0] ) === 'Noch keine Position. Lege sie im Panel Elemente an.' );
+	check( 'a type with no item says so', textOf( all( all( kp4.main, '#items' )[0], 'tbody' )[0] ) === 'Noch keine Position.' );
 	const kp5 = await kopen( '#positionen', { 'crm-documents/positionen' : function() { return [ 403, { error : 'x', code : 'x' } ] } } );
 	check( 'a refusal says that the account may not, and offers to try again', textOf( kp5.main ).indexOf( 'Dafür fehlt Deinem Konto die Berechtigung.' ) !== -1 );
 
@@ -2903,6 +2903,393 @@ function press( w, key, target ) {
 	check( 'every word the screens of PDF-Vorlagen ask for is a word of the page, the families they build with it - the groups of the placeholders, the vocabulary, the slots, the papers, the fonts - and the sentences of the Pdf panel\'s codes the script names', pdfMissing.length === 0 && pdfWords.size > 120
 		&& typeof texts['error.pdf_block_missing'] === 'string' && typeof texts['error.pdf_block_used'] === 'string' && typeof texts['error.pdf_off'] === 'string' && typeof texts['error.upload_too_large'] === 'string' );
 	check( '...and the vocabulary the menu has is the one the script lists: 30 placeholders of the CRM, the page numbers apart', [ ...script.matchAll( /\n\t\t\[ '[a-z]+', \[ ([^\]]*) \] \],/g ) ].reduce( function( sum, found ) { return sum+ found[1].split( ',' ).length }, 0 ) === 30 );
+	}
+
+	// === C12: the Positionen are made, changed and removed in the surface - the Elements panel's own actions, for the type positionen
+	{
+	const eperms = { crm : true, pdf : false, elements : true };
+	const eitems = [
+		{ id : 'mixing', sort : 1, price : 9050, vat : 1900, active : true, words : { de_DE : { title : 'Mixing', description : 'Mischung eines Songs\nbis 48 Spuren', unit : 'Std.' }, en_US : { title : 'Mixing', description : 'Mixing of one song', unit : 'h' } } },
+		{ id : 'recording', sort : 2, price : 5000, vat : 700, active : true, words : { de_DE : { title : '', description : '', unit : '' }, en_US : { title : 'Recording day', description : '', unit : 'day' } } },
+		{ id : 'alt', sort : 7, price : 100, vat : 0, active : false, words : { de_DE : { title : '<b>Alt</b>', description : '', unit : 'Std.' }, en_US : { title : '', description : '', unit : '' } } },
+	];
+	const elist = function( over ) {
+		return Object.assign( { missing : false, locales : [ 'en_US', 'de_DE' ], native : 'de_DE', items : eitems, settings : settings }, over || {} );
+	};
+	const egot = function( over ) {
+		return Object.assign( { global : { price : 90.5, vat : 19, hidden : false, sort : 1 }, locales : { de_DE : { title : 'Mixing', description : 'Mischung eines Songs\nbis 48 Spuren', unit : 'Std.' }, en_US : { title : 'Mixing', description : 'Mixing of one song', unit : 'h' } }, raw : {} }, over || {} );
+	};
+	const eposts = [];
+	const eanswers = function( over ) {
+		return Object.assign( {
+			'crm/status' : function() { return [ 200, { first_run : false, items : [] } ] },
+			'crm-documents/positionen' : function() { return [ 200, elist() ] },
+			'elements/get' : function( data ) { return data.uri === 'mixing' ? [ 200, egot() ] : data.uri === 'versteckt' ? [ 200, egot( { global : { price : 1234.5, vat : 7.5, hidden : true, sort : 4 } } ) ] : [ 404, { error : 'element not found' } ] },
+			'elements/save' : function( data ) { eposts.push( data ); return [ 200, { element : { '.uri' : '/positionen/'+ data.uri, '.locale' : data.locale } } ] },
+			'elements/delete' : function() { return [ 200, { ok : true } ] },
+		}, over || {} );
+	};
+	const xopen = async function( hash, over, perms ) {
+		eposts.length = 0;
+		const w = world( { hash : hash, answers : eanswers( over ), perms : perms === undefined ? eperms : perms } );
+		w.boot();
+		await settle();
+		return w;
+	};
+	const itemOf = function( root, label ) { return all( root, '[role="menuitem"]' ).find( function( one ) { return textOf( one ) === label } ) };
+	const menuOf = function( root, label ) { return all( root, '.menu' ).find( function( one ) { return textOf( all( one, 'button' )[0] ) === label } ) };
+	const xf = function( w, id ) { return all( w.main, '#'+ id )[0] };
+	const xcards = function( w ) { return all( w.main, '#position-form .card' ) };
+	const xfail = function( status, code, params, field ) { return [ status, code === '' ? { error : 'Element already exists.' } : { error : 'x', code : code, params : params || [], field : field || '' } ] };
+	const xtoggle = function( input, checked ) { input.checked = checked; fire( input, 'change', { target : input } ) };
+	const xnote = function( w, id ) {
+		const row = xf( w, id ).parentNode;
+		const notes = all( row, '.state-note.bad' );
+		return notes.length === 0 ? '' : textOf( notes[0] );
+	};
+	const xsave = async function( w ) { submit( w, xf( w, 'position-form' ) ); await settle() };
+
+	// --- the screen: the table of C08, and for the account with the permission the way into the editor
+	const xs = await xopen( '#positionen' );
+	check( 'with the permission of the Elements panel the table keeps its columns and gains the way in: Neue Position is the primary link, the Elements panel a secondary one, in a tab of its own - and still only the one read of the items', JSON.stringify( xs.all( 'crm-documents/positionen' ).map( function( call ) { return call.data } ) ) === '[{}]'
+		&& all( xs.main, 'th' ).map( textOf ).join( '|' ) === 'Titel (en)|Titel (de)|Einheit|Netto|USt|Aktiv|Reihenfolge ↑' && textOf( xf( xs, 'items-new' ) ) === 'Neue Position' && xf( xs, 'items-new' ).getAttribute( 'href' ) === '#positionen-neu' && xf( xs, 'items-new' ).classList.contains( 'primary' ) === true
+		&& textOf( xf( xs, 'items-edit' ) ) === 'Im Panel Elemente' && xf( xs, 'items-edit' ).getAttribute( 'href' ) === '/_admin/#elements/positionen' && xf( xs, 'items-edit' ).classList.contains( 'primary' ) === false && xf( xs, 'items-edit' ).getAttribute( 'target' ) === '_blank' );
+	const xrows = all( xf( xs, 'items' ), 'tbody tr' );
+	check( '...a row leads to the editor of its item: the title in the native language is the link (the site lists en_US first), and a click on the row goes there as well; an item with no title in that language is named by its uri', all( xrows[0], 'a' ).length === 1 && all( xrows[0].children[1], 'a' )[0].getAttribute( 'href' ) === '#position-mixing' && textOf( all( xrows[0], 'a' )[0] ) === 'Mixing'
+		&& textOf( all( xrows[1], 'a' )[0] ) === 'recording' && all( xrows[1], 'a' )[0].getAttribute( 'href' ) === '#position-recording' && xf( xs, 'items' ).classList.contains( 'static' ) === false );
+	const xclick = await xopen( '#positionen' );
+	click( xclick, all( xf( xclick, 'items' ), 'tbody tr' )[2] );
+	check( '...a click on a row goes to its editor', xclick.location.hash === '#position-alt' );
+	check( '...the subtitle is the one of the editor, and the read-only screen has a sentence of its own that does not say the type is kept in the panel beside the one that says the permission is missing', textOf( all( xs.main, '.sub' )[0] ) === texts['items.sub-edit'] && texts['items.sub'] !== texts['items.sub-edit'] );
+	check( '...its sentence under the table says where else they are kept, and the empty table invites to the first one', textOf( all( xs.main, '.state-note' ).pop() ).indexOf( 'zweite Ort' ) !== -1
+		&& textOf( all( xf( await xopen( '#positionen', { 'crm-documents/positionen' : function() { return [ 200, elist( { items : [] } ) ] } } ), 'items' ), 'tbody' )[0] ).indexOf( 'Neue Position' ) !== -1 );
+	const xr = await xopen( '#positionen', {}, { crm : true, pdf : false, elements : false } );
+	check( 'without the permission the screen is the read-only one of C08: the table with no way in - no link, no click -, no primary button, the link to the Elements panel as a secondary one, and the sentence that says the permission is missing', xf( xr, 'items-new' ) === undefined && textOf( xf( xr, 'items-edit' ) ) === 'Im Panel Elemente bearbeiten' && xf( xr, 'items-edit' ).classList.contains( 'primary' ) === false && all( xr.main, '.primary' ).length === 0
+		&& all( xf( xr, 'items' ), 'a' ).length === 0 && xf( xr, 'items' ).classList.contains( 'static' ) === true && ( click( xr, all( xf( xr, 'items' ), 'tbody tr' )[0] ), xr.location.hash === '#positionen' ) && textOf( all( xr.main, '.sub' )[0] ) === texts['items.sub'] && texts['items.sub'].indexOf( 'Panel Elemente' ) === -1 && textOf( all( xr.main, '.state-note' ).pop() ) === texts['items.note'] && texts['items.note'].indexOf( 'Berechtigung des Panels Elemente' ) !== -1 );
+
+	// --- the router
+	check( 'the hashes name the editor: #positionen-neu a new item, #position-<uri> one that is there - the uri as the panel allows it - and the rail marks Positionen; what is no uri is the Übersicht', xs.app.parse( '#positionen-neu' ).screen === 'position' && xs.app.parse( '#positionen-neu' ).uri === undefined
+		&& JSON.stringify( xs.app.parse( '#position-neu' ) ) === '{"screen":"position","uri":"neu"}' && JSON.stringify( xs.app.parse( '#position-mueller-2_x' ) ) === '{"screen":"position","uri":"mueller-2_x"}' && xs.app.parse( '#position-' ).screen === 'uebersicht' && xs.app.parse( '#position-a/b' ).screen === 'uebersicht' && xs.app.parse( '#position--x' ).screen === 'uebersicht'
+		&& all( ( await xopen( '#position-mixing' ) ).nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).map( function( a ) { return a.getAttribute( 'data-r' ) } ).join() === 'positionen' );
+
+	// --- the table: search, the sort by the heads, pages of fifty
+	const xt0 = await xopen( '#positionen' );
+	const xids = function( w ) { return all( xf( w, 'items' ), 'tbody tr' ).map( function( tr ) { return tr.dataset.id } ).join() };
+	const xhead = function( w, key ) { return all( xf( w, 'items' ), 'button' ).find( function( b ) { return b.dataset.sort === key } ) };
+	check( 'the table has the heads of the sort: the native title, Netto, USt, Aktiv and Reihenfolge are buttons, the other languages and the unit are not; it starts in the order of the field sort, ascending', all( xf( xt0, 'items' ), 'button' ).map( function( b ) { return b.dataset.sort } ).join() === 'title,price,vat,active,sort'
+		&& xids( xt0 ) === 'mixing,recording,alt' && all( xf( xt0, 'items' ), 'th' )[6].getAttribute( 'aria-sort' ) === 'ascending' && textOf( xhead( xt0, 'sort' ) ) === 'Reihenfolge ↑' );
+	click( xt0, xhead( xt0, 'title' ) );
+	const xbyTitle = xids( xt0 );
+	click( xt0, xhead( xt0, 'title' ) );
+	check( '...the native title sorts the words (no title first, markup as the text it is) and turns on a second click', xbyTitle === 'recording,alt,mixing' && xids( xt0 ) === 'mixing,alt,recording' && all( xf( xt0, 'items' ), 'th' )[1].getAttribute( 'aria-sort' ) === 'descending' );
+	click( xt0, xhead( xt0, 'price' ) );
+	const xbyPrice = xids( xt0 );
+	click( xt0, xhead( xt0, 'vat' ) );
+	const xbyVat = xids( xt0 );
+	click( xt0, xhead( xt0, 'active' ) );
+	const xbyActive = xids( xt0 );
+	click( xt0, xhead( xt0, 'sort' ) );
+	click( xt0, xhead( xt0, 'sort' ) );
+	check( '...Netto sorts by the cents (100, 5000, 9050), USt by the hundredths, Aktiv with the ones that are off first, Reihenfolge by the number - and turns', xbyPrice === 'alt,recording,mixing' && xbyVat === 'alt,recording,mixing' && xbyActive === 'alt,mixing,recording' && xids( xt0 ) === 'alt,recording,mixing' );
+	const xq = function( w, text ) { type( xf( w, 'q' ), text, false ) };
+	xq( xt0, 'RECORDING' );
+	const xfoundTitle = xids( xt0 );
+	xq( xt0, 'day' );
+	const xfoundOther = xids( xt0 );
+	xq( xt0, 'std' );
+	const xfoundUnit = xids( xt0 );
+	xq( xt0, 'nichts da' );
+	check( 'the search looks in the titles of every language and in the units, whatever the case: a title of the other language and a unit are found; nothing found says so', xfoundTitle === 'recording' && xfoundOther === 'recording' && xfoundUnit === 'alt,mixing' && textOf( all( xf( xt0, 'items' ), 'tbody' )[0] ) === texts['items.none'] );
+	const xhundred = [];
+	for( let n = 1; n <= 120; n++ )
+		xhundred.push( { id : 'p'+ String( n ).padStart( 3, '0' ), sort : n, price : n * 100, vat : 0, active : true, words : { de_DE : { title : 'Position '+ n, description : '', unit : n % 2 === 0 ? 'Std.' : '' }, en_US : { title : '', description : '', unit : '' } } } );
+	const xpg = await xopen( '#positionen', { 'crm-documents/positionen' : function() { return [ 200, elist( { items : xhundred } ) ] } } );
+	check( 'a hundred and twenty items are three pages of fifty: the pager says which, Zurück is off on the first', all( xf( xpg, 'items' ), 'tbody tr' ).length === 50 && textOf( all( xpg.main, '.pager .state-note' )[0] ) === 'Seite 1 von 3' && xf( xpg, 'prev' ).disabled === true && xf( xpg, 'next' ).disabled === false );
+	click( xpg, xf( xpg, 'next' ) );
+	click( xpg, xf( xpg, 'next' ) );
+	check( '...the last page has twenty, the next is off', all( xf( xpg, 'items' ), 'tbody tr' ).length === 20 && textOf( all( xpg.main, '.pager .state-note' )[0] ) === 'Seite 3 von 3' && xf( xpg, 'next' ).disabled === true && xids( xpg ).split( ',' )[0] === 'p101' );
+	xq( xpg, 'Position 7' );
+	check( '...a search goes back to the first page and counts what is found: Position 7, 70 to 79 - eleven items', xids( xpg ).split( ',' ).length === 11 && all( xpg.main, '.pager' ).length === 0 );
+	const xro = await xopen( '#positionen', {}, { crm : true, pdf : false, elements : false } );
+	click( xro, xhead( xro, 'price' ) );
+	check( 'the read-only screen has the search and the sort as well', xids( xro ) === 'alt,recording,mixing' && xf( xro, 'q' ) !== undefined );
+
+	// --- numbers sort as numbers, an order that is not there is empty
+	const xitem = function( id, sort, price ) { return { id : id, sort : sort, price : price, vat : 0, active : true, words : { de_DE : { title : id, description : '', unit : '' }, en_US : { title : '', description : '', unit : '' } } } };
+	const xbig = await xopen( '#positionen', { 'crm-documents/positionen' : function() { return [ 200, elist( { items : [ xitem( 'a', 1, 1200000 ), xitem( 'b', 2, 900000 ), xitem( 'c', 3, 99900 ) ] } ) ] } } );
+	click( xbig, xhead( xbig, 'price' ) );
+	check( 'Netto sorts as a number, not as text: 999,00 and 9.000,00 come before 12.000,00 although "1200000" comes before "900000" as a text', xids( xbig ) === 'c,b,a' );
+	const xnosortTable = await xopen( '#positionen', { 'crm-documents/positionen' : function() { return [ 200, elist( { items : [ xitem( 'ohne', null, 100 ), xitem( 'null', 0, 100 ), xitem( 'drei', 3, 100 ) ] } ) ] } } );
+	check( 'an item with no order shows an empty cell in Reihenfolge, not 0 - and one whose order is 0 shows 0', all( xf( xnosortTable, 'items' ), 'tbody tr' ).map( function( tr ) { return tr.dataset.id+ '=' + textOf( tr.children[6] ) } ).sort().join( '|' ) === 'drei=3|null=0|ohne=' );
+	const xnosortEditor = await xopen( '#position-mixing', { 'elements/get' : function() { return [ 200, egot( { global : { price : 90.5, vat : 19, hidden : false } } ) ] } } );
+	const xzeroEditor = await xopen( '#position-mixing', { 'elements/get' : function() { return [ 200, egot( { global : { price : 90.5, vat : 19, hidden : false, sort : 0 } } ) ] } } );
+	check( '...and the editor of an item with no order has an empty field, where an order of 0 is 0', xf( xnosortEditor, 'f-sort' ).value === '' && xf( xzeroEditor, 'f-sort' ).value === '0' );
+
+	// --- a change posts what was changed
+	const xc1 = await xopen( '#position-mixing' );
+	type( xf( xc1, 'f-price' ), '99', false );
+	await xsave( xc1 );
+	check( 'a changed price alone posts the price alone: no words, no other number, and no second language', eposts.length === 1 && JSON.stringify( eposts[0].fields ) === '{"price":99}' && eposts[0].isNew === false );
+	const xc0 = await xopen( '#position-mixing' );
+	await xsave( xc0 );
+	check( '...a save with nothing changed posts nothing, and the item is read again', eposts.length === 0 && xc0.all( 'elements/get' ).length === 2 );
+	const xnosort = await xopen( '#position-mixing', { 'elements/get' : function() { return [ 200, egot( { global : { price : 90.5, vat : 19, hidden : false } } ) ] } } );
+	type( xf( xnosort, 'f-title-de_DE' ), 'Mixing Plus', false );
+	await xsave( xnosort );
+	check( '...an item made elsewhere without an order is not given one by a change of its title: only the title goes', eposts.length === 1 && JSON.stringify( eposts[0].fields ) === '{"title":"Mixing Plus"}' );
+	const xnew0 = await xopen( '#positionen-neu' );
+	type( xf( xnew0, 'f-title-de_DE' ), 'Ganz neu', false );
+	type( xf( xnew0, 'f-price' ), '1', false );
+	await xsave( xnew0 );
+	check( '...a new item posts everything it has, the numbers it was started with included', JSON.stringify( Object.keys( eposts[0].fields ) ) === '["title","description","unit","price","vat","hidden","sort"]' );
+	const xstored = await xopen( '#position-mixing', { 'elements/get' : function() { return [ 200, egot( { global : { price : -5, vat : 19, hidden : false, sort : 1 } } ) ] } } );
+	type( xf( xstored, 'f-title-de_DE' ), 'Mixing Rabatt', false );
+	await xsave( xstored );
+	check( 'a price that is not looked at is not refused: an item that holds a price below nought and has only its title changed posts the title alone', eposts.length === 1 && JSON.stringify( eposts[0].fields ) === '{"title":"Mixing Rabatt"}' && all( xstored.main, '.err' ).length === 0 );
+	const xmapped = await xopen( '#position-mixing', { 'elements/save' : function( data ) { eposts.push( data ); return xfail( 403, 'elements_fields_not_allowed', [ 'price, vat, hidden, sort, title, description, unit' ], 'price' ) } } );
+	type( xf( xmapped, 'f-price' ), '3', false );
+	await xsave( xmapped );
+	check( 'the fields a refusal names are called as the screen calls them, not by the keys of the model: Preis netto, Steuersatz, Angeboten, Reihenfolge, Titel, Beschreibung, Einheit', xnote( xmapped, 'f-price' ) === 'Dein Konto darf diese Felder nicht ändern: Preis netto, Steuersatz, Angeboten, Reihenfolge, Titel, Beschreibung, Einheit' );
+	const xhint = await xopen( '#position-mixing' );
+	check( 'the hint under the title of another language says what is the case, in the sentence that has its key (and not under the native one)', textOf( all( xcards( xhint )[1], '.state-note' )[0] ) === texts['items.hint-title-lang'] && texts['items.hint-title-lang'] !== 'Ohne Titel wird diese Sprache nicht gespeichert.' && textOf( xcards( xhint )[0] ).indexOf( texts['items.hint-title-lang'] ) === -1 );
+	const xdefault = await xopen( '#positionen-neu', { 'crm-documents/positionen' : function() { return [ 200, elist( { settings : Object.assign( {}, settings, { rates : [ 700, 1900 ] } ) } ) ] } } );
+	check( 'a new item starts with the highest rate the settings list, wherever it stands in the list: 7 and 19 make 19', xf( xdefault, 'f-vat' ).value === '19' );
+	const xneg = await xopen( '#positionen-neu' );
+	type( xf( xneg, 'f-title-de_DE' ), 'Rabatt', false );
+	type( xf( xneg, 'f-price' ), '-5', false );
+	await xsave( xneg );
+	check( 'a price below nought is refused beside the price, and nothing is posted', eposts.length === 0 && xnote( xneg, 'f-price' ) === texts['items.err-price'] && xf( xneg, 'f-price' ).classList.contains( 'err' ) === true );
+	const xneu = await xopen( '#position-neu', { 'elements/get' : function( data ) { return data.uri === 'neu' ? [ 200, egot() ] : [ 404, { error : 'x' } ] } } );
+	check( 'an item that is named neu opens at #position-neu like any other: the address of a new item is #positionen-neu', xcards( xneu ).length === 3 && textOf( xf( xneu, 'position-uri' ) ) === '/positionen/neu' && xneu.all( 'elements/get' ).length === 1 );
+
+	// --- a save that is running: the way out waits for it
+	const xcreated = [];
+	const xrun = hold();
+	const xwaiting = await xopen( '#positionen-neu', { 'elements/save' : function( data ) { eposts.push( data ); return xrun.promise.then( function() { if( data.isNew === true ) xcreated.push( { id : data.uri, sort : 30, price : 1000, vat : 0, active : true, words : { de_DE : { title : data.fields.title, description : '', unit : '' }, en_US : { title : '', description : '', unit : '' } } } ); return [ 200, { element : {} } ] } ) },
+		'crm-documents/positionen' : function() { return [ 200, elist( { items : eitems.concat( xcreated ) } ) ] } } );
+	type( xf( xwaiting, 'f-title-de_DE' ), 'Wartend', false );
+	type( xf( xwaiting, 'f-price' ), '10', false );
+	await xsave( xwaiting );
+	const xlink = all( xwaiting.nav, '[data-r]' )[3];
+	click( xwaiting, xlink );
+	xwaiting.location.hash = '#positionen';
+	await settle();
+	check( 'while the posts are on their way a click on a link away asks nothing - the toast says Speichern läuft - and the screen that is asked for is not drawn yet, so that it cannot lack the item', xwaiting.dialogs.length === 0 && textOf( xwaiting.toast ) === texts['items.saving'] && textOf( xwaiting.main ) === texts['items.saving'] && xf( xwaiting, 'items' ) === undefined );
+	xrun.release();
+	await settle();
+	check( '...once they are through the table is drawn from a read that came after them: it holds the new item', xf( xwaiting, 'items' ) !== undefined && xids( xwaiting ).split( ',' ).includes( 'wartend' ) === true && xwaiting.location.hash === '#positionen' );
+
+	// --- the name of an item
+	const xkey = xs.app.model.positionKey;
+	check( 'the name of a new item is its native title as a slug, umlauts spelled out, as the key of a template is: Äpfel & Öl – Größe is aepfel-oel-groesse; -2 and on after a name that was taken; neu is a name like another, never empty, at most 40 characters without a dash at the end',
+		xkey( 'Äpfel & Öl – Größe' ) === 'aepfel-oel-groesse' && xkey( 'Müller Beratung', 1 ) === 'mueller-beratung' && xkey( 'Müller Beratung', 2 ) === 'mueller-beratung-2' && xkey( 'Müller Beratung', 9 ) === 'mueller-beratung-9' && xkey( 'Neu' ) === 'neu' && xkey( '!!!' ) === 'position' && xkey( '' ) === 'position'
+		&& xkey( 'Ein sehr langer Titel einer Position, der kein Ende nehmen will' ).length <= 40 && /^[a-z0-9]+(-[a-z0-9]+)*$/.test( xkey( 'Ein sehr langer Titel einer Position, der kein Ende nehmen will' ) ) === true && /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test( xkey( 'é à ñ 12' ) ) === true );
+
+	// --- the editor of an item that is there
+	const xe = await xopen( '#position-mixing' );
+	check( 'the editor asks the panel for the item (type positionen, its uri) and the list for the languages and the names taken; the cards of the languages are in the order of the site with the native one first - the site lists en_US first -, then the card of what is shared',
+		JSON.stringify( xe.last( 'elements/get' ).data ) === '{"type":"positionen","uri":"mixing"}' && xe.all( 'crm-documents/positionen' ).length === 1 && xcards( xe ).map( function( card ) { return card.id } ).join() === 'position-lang-de_DE,position-lang-en_US,position-shared' && xcards( xe ).length === 3
+		&& textOf( all( xcards( xe )[0], 'h3' )[0] ).indexOf( 'Muttersprache der Website' ) !== -1 && textOf( all( xcards( xe )[1], 'h3' )[0] ).indexOf( 'Muttersprache' ) === -1 && textOf( all( xcards( xe )[2], 'h3' )[0] ) === 'Für alle Sprachen' );
+	check( '...a language card has the title, the description (a text area) and the unit, with what the panel holds in that language; the shared card has the price with its decimal comma, the rate, the switch Angeboten (on: the item is not hidden) and the order', xf( xe, 'f-title-de_DE' ).value === 'Mixing' && xf( xe, 'f-description-de_DE' ).value === 'Mischung eines Songs\nbis 48 Spuren' && xf( xe, 'f-description-de_DE' ).tagName === 'TEXTAREA'
+		&& xf( xe, 'f-unit-de_DE' ).value === 'Std.' && xf( xe, 'f-unit-en_US' ).value === 'h' && xf( xe, 'f-description-en_US' ).value === 'Mixing of one song' && xf( xe, 'f-price' ).value === '90,50' && xf( xe, 'f-vat' ).value === '19' && xf( xe, 'f-sort' ).value === '1'
+		&& xf( xe, 'f-active' ).type === 'checkbox' && xf( xe, 'f-active' ).checked === true && xf( xe, 'f-active' ).getAttribute( 'role' ) === 'switch'
+		&& all( xcards( xe )[2], 'dt' ).map( textOf ).join( '|' ) === 'Preis netto (€)|Steuersatz (%)|Angeboten|Reihenfolge' && all( xcards( xe )[0], 'dt' ).map( textOf ).join( '|' ) === 'Titel|Beschreibung|Einheit' );
+	check( '...the uri is shown, and it is text - there is no field for it; the menu ⋯ has Löschen; nothing is unsaved yet', textOf( xf( xe, 'position-uri' ) ) === '/positionen/mixing' && all( xf( xe, 'position-form' ), 'input' ).filter( function( i ) { return i.value === 'mixing' } ).length === 0 && itemOf( xe.main, 'Löschen' ) !== undefined && xe.app.state.draft.dirty === false );
+	const xh = await xopen( '#position-versteckt' );
+	check( '...an item that is hidden has the switch off; a price of more than a thousand has its dot, a rate its comma', xf( xh, 'f-active' ).checked === false && xf( xh, 'f-price' ).value === '1.234,50' && xf( xh, 'f-vat' ).value === '7,5' && xf( xh, 'f-sort' ).value === '4' );
+	const xl = await xopen( '#position-versteckt', { 'crm-documents/positionen' : function() { return [ 200, elist( { locales : [ 'de_DE' ] } ) ] } } );
+	check( '...a site with one language has one card of words and the shared one', xcards( xl ).map( function( card ) { return card.id } ).join() === 'position-lang-de_DE,position-shared' );
+
+	// --- Speichern: one post per language, the native one first with the numbers, and only the languages that were changed
+	type( xf( xe, 'f-title-de_DE' ), 'Mixing Pro', false );
+	type( xf( xe, 'f-price' ), '1.234,5', false );
+	type( xf( xe, 'f-vat' ), '7,5', false );
+	xtoggle( xf( xe, 'f-active' ), false );
+	type( xf( xe, 'f-sort' ), '3', false );
+	check( 'what is typed is unsaved input: the guard of the page knows it, and a link away asks first in the words of a form', xe.app.state.draft.dirty === true && click( xe, all( xe.nav, '[data-r]' )[0] ) === true && xe.dialogs.length === 1 && textOf( all( xe.dialogs[0], 'p' )[0] ) === 'Die Seite enthält Änderungen, die noch nicht gespeichert sind.' );
+	click( xe, all( xe.dialogs[0], 'button' )[0] );
+	xe.dialogs[0].close();
+	await xsave( xe );
+	check( 'Speichern posts one language: the native one, with what was changed - the title and the numbers: the price as a number (1234.5), the rate as a number (7.5), hidden the opposite of the switch, the order as a whole number - and what was not changed - the description, the unit, the language that was left alone - is not posted',
+		eposts.length === 1 && JSON.stringify( eposts[0] ) === JSON.stringify( { type : 'positionen', uri : 'mixing', locale : 'de_DE', isNew : false, fields : { title : 'Mixing Pro', price : 1234.5, vat : 7.5, hidden : true, sort : 3 } } ) );
+	check( '...it says Gespeichert., nothing is unsaved, and the item is read again from the panel so that the editor shows what is stored', textOf( xe.toast ) === 'Gespeichert.' && xe.app.state.draft.dirty === false && xe.all( 'elements/get' ).length === 2 );
+	const xe2 = await xopen( '#position-mixing' );
+	type( xf( xe2, 'f-title-de_DE' ), 'Mixing', false );
+	type( xf( xe2, 'f-unit-en_US' ), 'hour', false );
+	type( xf( xe2, 'f-description-de_DE' ), 'Mischung', false );
+	await xsave( xe2 );
+	check( '...a changed second language is the second post: its words alone, the uri of the first, isNew false - the order of the posts is the order of the cards, and a number that was not touched is not posted at all', eposts.length === 2 && eposts[0].locale === 'de_DE' && eposts[1].locale === 'en_US' && JSON.stringify( eposts[0].fields ) === '{"description":"Mischung"}'
+		&& JSON.stringify( eposts[1] ) === JSON.stringify( { type : 'positionen', uri : 'mixing', locale : 'en_US', isNew : false, fields : { unit : 'hour' } } ) );
+
+	// --- a new item
+	const xn = await xopen( '#positionen-neu' );
+	check( 'a new item reads the list and nothing of the panel; the cards are empty, the switch is on, the rate is the highest the settings list, the order is the next after the last, there is no uri to show and no menu', xn.all( 'elements/get' ).length === 0 && xf( xn, 'f-title-de_DE' ).value === '' && xf( xn, 'f-price' ).value === '' && xf( xn, 'f-active' ).checked === true
+		&& xf( xn, 'f-vat' ).value === '19' && xf( xn, 'f-sort' ).value === '8' && textOf( xf( xn, 'position-uri' ) ) === '' && itemOf( xn.main, 'Löschen' ) === undefined && textOf( all( xn.main, 'h1' )[0] ) === 'Neue Position' );
+	const xs0 = await xopen( '#positionen-neu', { 'crm-documents/positionen' : function() { return [ 200, elist( { settings : smallBusiness } ) ] } } );
+	check( '...a small business has the rate 0 to start from', xf( xs0, 'f-vat' ).value === '0' );
+	type( xf( xn, 'f-title-de_DE' ), 'Müller Beratung & Söhne', false );
+	type( xf( xn, 'f-unit-de_DE' ), 'Tag', false );
+	type( xf( xn, 'f-title-en_US' ), 'Consulting', false );
+	type( xf( xn, 'f-price' ), '90', false );
+	await xsave( xn );
+	check( 'Speichern posts the native language first - with the uri made of its title, isNew true and the numbers - and then the other, as an update of the item the first post made', eposts.length === 2 && eposts[0].uri === 'mueller-beratung-soehne' && eposts[0].locale === 'de_DE' && eposts[0].isNew === true
+		&& JSON.stringify( eposts[0].fields ) === JSON.stringify( { title : 'Müller Beratung & Söhne', description : '', unit : 'Tag', price : 90, vat : 19, hidden : false, sort : 8 } ) && eposts[1].uri === 'mueller-beratung-soehne' && eposts[1].locale === 'en_US' && eposts[1].isNew === false
+		&& JSON.stringify( eposts[1].fields ) === '{"title":"Consulting","description":"","unit":""}' );
+	check( '...and the editor of the item that is there opens: the address names it', xn.location.hash === '#position-mueller-beratung-soehne' );
+	const xt = await xopen( '#positionen-neu' );
+	type( xf( xt, 'f-title-de_DE' ), 'Mixing', false );
+	type( xf( xt, 'f-price' ), '10', false );
+	await xsave( xt );
+	check( 'a name that is taken is the next: Mixing is mixing-2 when mixing is there, and mixing-3 when both are', eposts[0].uri === 'mixing-2' );
+	const xt3 = await xopen( '#positionen-neu', { 'crm-documents/positionen' : function() { return [ 200, elist( { items : eitems.concat( [ { id : 'mixing-2', sort : 9, price : 1, vat : 0, active : true, words : { de_DE : { title : 'x', description : '', unit : '' }, en_US : { title : '', description : '', unit : '' } } } ] ) } ) ] } } );
+	type( xf( xt3, 'f-title-de_DE' ), 'Mixing', false );
+	type( xf( xt3, 'f-price' ), '10', false );
+	await xsave( xt3 );
+	check( '...and mixing-3 when mixing-2 is there as well', eposts[0].uri === 'mixing-3' );
+	const xmany = [ 'mixing' ].concat( [ 2, 3, 4, 5, 6, 7, 8, 9 ].map( function( n ) { return 'mixing-'+ n } ) ).map( function( id ) { return Object.assign( {}, eitems[0], { id : id } ) } );
+	const xt9 = await xopen( '#positionen-neu', { 'crm-documents/positionen' : function() { return [ 200, elist( { items : xmany } ) ] } } );
+	type( xf( xt9, 'f-title-de_DE' ), 'Mixing', false );
+	type( xf( xt9, 'f-price' ), '10', false );
+	await xsave( xt9 );
+	check( '...after nine tries there is none: nothing is posted and the sentence is beside the title', eposts.length === 0 && xnote( xt9, 'f-title-de_DE' ) === texts['items.err-uri'] && xf( xt9, 'f-title-de_DE' ).classList.contains( 'err' ) === true );
+	const xlate = await xopen( '#positionen-neu', { 'elements/save' : function( data ) { eposts.push( data ); return eposts.length === 1 ? xfail( 400, '' ) : [ 200, { element : {} } ] },
+		'crm-documents/positionen' : (function() { let reads = 0; return function() { reads++; return [ 200, elist( reads === 1 ? {} : { items : eitems.concat( [ { id : 'frisch', sort : 9, price : 1, vat : 0, active : true, words : { de_DE : { title : 'Frisch', description : '', unit : '' }, en_US : { title : '', description : '', unit : '' } } } ] ) } ) ] } })() } );
+	type( xf( xlate, 'f-title-de_DE' ), 'Frisch', false );
+	type( xf( xlate, 'f-price' ), '10', false );
+	await xsave( xlate );
+	check( 'a name that was free when the list was read and is taken now - the panel refuses the first post - is tried again as the next name, once the list says so', eposts.map( function( post ) { return post.uri } ).join() === 'frisch,frisch-2' && eposts[1].isNew === true && xlate.location.hash === '#position-frisch-2' );
+
+	// --- what keeps a save back, said beside the field and before anything is posted
+	const xv = await xopen( '#positionen-neu' );
+	await xsave( xv );
+	check( 'a new item with no title and no price posts nothing: the sentences are beside the title (of the native language) and the price, the controls marked, the focus on the first, the toast says the first', eposts.length === 0 && xnote( xv, 'f-title-de_DE' ) === texts['items.err-title'] && xnote( xv, 'f-price' ) === texts['items.err-price']
+		&& xf( xv, 'f-title-de_DE' ).classList.contains( 'err' ) === true && xf( xv, 'f-price' ).getAttribute( 'aria-invalid' ) === 'true' && xf( xv, 'f-title-en_US' ).classList.contains( 'err' ) === false && textOf( xv.toast ) === texts['items.err-title'] && xv.toast.classList.contains( 'bad' ) === true );
+	type( xf( xv, 'f-title-de_DE' ), 'Ok', false );
+	check( 'typing in a field takes its refusal away', xnote( xv, 'f-title-de_DE' ) === '' && xf( xv, 'f-title-de_DE' ).classList.contains( 'err' ) === false && xf( xv, 'f-price' ).classList.contains( 'err' ) === true );
+	type( xf( xv, 'f-price' ), '1,234', false );
+	type( xf( xv, 'f-vat' ), '120', false );
+	type( xf( xv, 'f-sort' ), '1,5', false );
+	type( xf( xv, 'f-description-en_US' ), 'Only a description', false );
+	await xsave( xv );
+	check( '...a price with three decimals, a rate of more than a hundred, an order that is no whole number and another language that has words and no title are each refused beside their field', eposts.length === 0 && xnote( xv, 'f-price' ) === texts['items.err-price'] && xnote( xv, 'f-vat' ) === texts['items.err-vat'] && xnote( xv, 'f-sort' ) === texts['items.err-sort'] && xnote( xv, 'f-title-en_US' ) === texts['items.err-title-lang'] );
+	type( xf( xv, 'f-price' ), '1.234,50', false );
+	type( xf( xv, 'f-vat' ), '', false );
+	type( xf( xv, 'f-sort' ), '', false );
+	type( xf( xv, 'f-title-en_US' ), 'Title', false );
+	await xsave( xv );
+	check( '...and with them put right it goes: an empty rate and an empty order are 0, the price is a number', eposts.length === 2 && eposts[0].fields.price === 1234.5 && eposts[0].fields.vat === 0 && eposts[0].fields.sort === 0 );
+	const xcl = await xopen( '#position-mixing' );
+	type( xf( xcl, 'f-title-en_US' ), '', false );
+	await xsave( xcl );
+	check( 'a language that had words cannot be emptied (the title is required of every language that is written): the sentence is beside its title and nothing is posted', eposts.length === 0 && xnote( xcl, 'f-title-en_US' ) === texts['items.err-title-lang'] );
+
+	// --- the refusals of the panel, beside the field they name
+	const xr1 = await xopen( '#position-mixing', { 'elements/save' : function( data ) { eposts.push( data ); return xfail( 403, 'elements_fields_not_allowed', [ 'price' ], 'price' ) } } );
+	type( xf( xr1, 'f-price' ), '99', false );
+	await xsave( xr1 );
+	check( 'the panel\'s refusal with a field is put beside that field, in the panel\'s sentence with its params: the price', xnote( xr1, 'f-price' ) === 'Dein Konto darf diese Felder nicht ändern: Preis netto' && xf( xr1, 'f-price' ).classList.contains( 'err' ) === true && xr1.toast.classList.contains( 'bad' ) === true && xr1.app.state.draft.dirty === true && all( xr1.main, '#position-save' )[0].disabled === false );
+	xr1.answers['elements/save'] = function( data ) { eposts.push( data ); return xfail( 400, '' ) };
+	await xsave( xr1 );
+	check( '...a second Speichern takes the old refusals away before it posts: the answer that names no field leaves none marked', xnote( xr1, 'f-price' ) === '' && all( xr1.main, '.err' ).length === 0 && textOf( xr1.toast ) === texts['items.error-save'] );
+	const xr2 = await xopen( '#position-mixing', { 'elements/save' : function( data ) { eposts.push( data ); return xfail( 403, 'elements_fields_not_allowed', [ 'hidden' ], 'hidden' ) } } );
+	xtoggle( xf( xr2, 'f-active' ), false );
+	await xsave( xr2 );
+	check( '...hidden is the switch Angeboten, the title of a language the card of the language that was being saved', xnote( xr2, 'f-active' ) === 'Dein Konto darf diese Felder nicht ändern: Angeboten' && xf( xr2, 'f-active' ).classList.contains( 'err' ) === true );
+	const xr3 = await xopen( '#position-mixing', { 'elements/save' : function( data ) { eposts.push( data ); return data.locale === 'en_US' ? xfail( 403, 'elements_fields_not_allowed', [ 'title' ], 'title' ) : [ 200, { element : {} } ] } } );
+	type( xf( xr3, 'f-title-de_DE' ), 'Mixing 1', false );
+	type( xf( xr3, 'f-title-en_US' ), 'Mixing 2', false );
+	await xsave( xr3 );
+	check( '...the first language went, the second was refused: the sentence is beside the title of the English card, not of the German one, and the page stays unsaved so that a second Speichern tries again', eposts.length === 2 && xnote( xr3, 'f-title-en_US' ) === 'Dein Konto darf diese Felder nicht ändern: Titel' && xnote( xr3, 'f-title-de_DE' ) === '' && xr3.app.state.draft.dirty === true && xr3.location.hash === '#position-mixing' );
+	const xr4 = await xopen( '#position-mixing', { 'elements/save' : function( data ) { eposts.push( data ); return xfail( 400, '' ) } } );
+	type( xf( xr4, 'f-price' ), '99', false );
+	await xsave( xr4 );
+	check( 'a refusal with no code and no field - the kernel\'s message as the panel gives it - is the sentence of the screen in the toast, and nothing is marked', textOf( xr4.toast ) === texts['items.error-save'] && all( xr4.main, '.err' ).length === 0 );
+	const xp = await xopen( '#positionen-neu', { 'elements/save' : function( data ) { eposts.push( data ); return data.locale === 'en_US' && eposts.length === 2 ? xfail( 400, '' ) : [ 200, { element : {} } ] } } );
+	type( xf( xp, 'f-title-de_DE' ), 'Neu angelegt', false );
+	type( xf( xp, 'f-title-en_US' ), 'Newly made', false );
+	type( xf( xp, 'f-price' ), '5', false );
+	await xsave( xp );
+	check( 'a refused second language leaves the uri of the item that was made on the screen: it is there, and the next save is no new item', textOf( xf( xp, 'position-uri' ) ) === '/positionen/neu-angelegt' && eposts.length === 2 );
+	await xsave( xp );
+	check( 'a new item whose second language was refused is there: the next Speichern updates it under the uri it was made under, and does not make it twice', eposts.length === 4 && eposts[0].isNew === true && eposts[2].isNew === false && eposts[2].uri === 'neu-angelegt' && eposts[3].uri === 'neu-angelegt' && eposts[3].locale === 'en_US' && xp.location.hash === '#position-neu-angelegt' );
+
+	// --- Löschen
+	let xgone = null;
+	const xd = await xopen( '#position-mixing', { 'elements/delete' : function( data ) { xgone = data; return [ 200, { ok : true } ] } } );
+	click( xd, itemOf( menuOf( xd.main, '⋯' ), 'Löschen' ) );
+	check( 'Löschen asks first, with the title and with what stays: the lines of documents keep what they copied', xd.dialogs.length === 1 && textOf( all( xd.dialogs[0], 'p' )[0] ) === 'Die Position „Mixing“ wird in allen Sprachen gelöscht. Die Zeilen von Belegen behalten, was sie kopiert haben.' && xgone === null );
+	click( xd, all( xd.dialogs[0], 'button' )[0] );
+	await settle();
+	check( '...no is no: nothing is posted, the editor stays', xgone === null && xd.location.hash === '#position-mixing' );
+	click( xd, itemOf( menuOf( xd.main, '⋯' ), 'Löschen' ) );
+	click( xd, all( xd.dialogs[1], 'button' ).pop() );
+	await settle();
+	check( '...yes posts elements/delete with the type and the uri, says Gelöscht. and leads back to the table', JSON.stringify( xgone ) === '{"type":"positionen","uri":"mixing"}' && textOf( xd.toast ) === 'Gelöscht.' && xd.location.hash === '#positionen' );
+	const xdf = await xopen( '#position-mixing', { 'elements/delete' : function() { return xfail( 403, 'elements_fields_not_allowed', [ 'x' ] ) } } );
+	click( xdf, itemOf( menuOf( xdf.main, '⋯' ), 'Löschen' ) );
+	click( xdf, all( xdf.dialogs[0], 'button' ).pop() );
+	await settle();
+	check( '...a refusal of the delete is said in the toast and the editor stays', xdf.location.hash === '#position-mixing' && xdf.toast.classList.contains( 'bad' ) === true );
+
+	// --- an item that is not there, the type that is not there, the account without the permission
+	const xg = await xopen( '#position-weg' );
+	check( 'an item that is not there says so and leads back to the table; no editor is drawn', xcards( xg ).length === 0 && textOf( xg.main ).indexOf( texts['items.gone'] ) !== -1 && all( xg.main, 'a' ).some( function( a ) { return a.getAttribute( 'href' ) === '#positionen' } ) );
+	const xm = await xopen( '#positionen-neu', { 'crm-documents/positionen' : function() { return [ 200, elist( { missing : true, items : [] } ) ] } } );
+	check( 'where the type is not there the editor says so and points to the settings', xcards( xm ).length === 0 && all( xm.main, 'a' ).some( function( a ) { return a.getAttribute( 'href' ) === '#einstellungen' } ) );
+	const xx = await xopen( '#position-mixing', {}, { crm : true, pdf : false, elements : false } );
+	check( 'a deep link without the permission draws the sentence of the screen and asks for nothing of the panel: no read of the item, no list', xx.sent().filter( function( action ) { return /^elements\//.test( action ) } ).length === 0 && xx.all( 'crm-documents/positionen' ).length === 0 && textOf( all( xx.main, '.note' )[0] ) === texts['items.forbidden'] && xcards( xx ).length === 0 );
+	const xhostile = await xopen( '#position-versteckt', { 'elements/get' : function() { return [ 200, egot( { locales : { de_DE : { title : '<img src=x onerror=alert(1)>', description : '<b>x</b>', unit : '' }, en_US : {} } } ) ] } } );
+	check( 'what the panel holds is a value of a field and nothing else: a title that is markup makes no element', xf( xhostile, 'f-title-de_DE' ).value === '<img src=x onerror=alert(1)>' && findAll( xhostile.main, function( node ) { return node.tagName === 'IMG' || node.tagName === 'B' } ).length === 0 );
+
+	// --- the answers that come after the screen was left
+	const xhold = hold();
+	const xwait = await xopen( '#kunde-neu' );
+	xwait.answers['elements/get'] = function() { return xhold.promise };
+	xwait.location.hash = '#position-mixing';
+	await settle();
+	xwait.location.hash = '#kunde-neu';
+	await settle();
+	xhold.release( [ 200, egot() ] );
+	await settle();
+	check( 'the answer of the item that arrives after the screen was left draws nothing: the screen the address names stays', onNew( xwait ) && xcards( xwait ).length === 0 );
+	const xsaveHold = hold();
+	const xlateSave = await xopen( '#position-mixing', { 'elements/save' : function( data ) { eposts.push( data ); return eposts.length === 1 ? xsaveHold.promise : [ 200, { element : {} } ] } } );
+	type( xf( xlateSave, 'f-title-de_DE' ), 'Mixing 3', false );
+	type( xf( xlateSave, 'f-title-en_US' ), 'Mixing 3', false );
+	await xsave( xlateSave );
+	xlateSave.location.hash = '#kunde-neu';
+	await settle();
+	const xtoastBefore = xlateSave.toast.textContent;
+	const xgets = xlateSave.all( 'elements/get' ).length;
+	xsaveHold.release( [ 200, { element : {} } ] );
+	await settle();
+	check( 'a save whose answer comes late: nothing is said, nothing opens, nothing is read again - and the language that was still to go is posted, so that the item is not left half saved', onNew( xlateSave ) && xlateSave.toast.textContent === xtoastBefore && xlateSave.all( 'elements/get' ).length === xgets && eposts.length === 2 && eposts[1].locale === 'en_US' );
+	const xrefHold = hold();
+	const xlateRefuse = await xopen( '#position-mixing', { 'elements/save' : function() { return xrefHold.promise } } );
+	type( xf( xlateRefuse, 'f-price' ), '99', false );
+	await xsave( xlateRefuse );
+	xlateRefuse.location.hash = '#kunde-neu';
+	await settle();
+	xrefHold.release( xfail( 403, 'elements_fields_not_allowed', [ 'price' ], 'price' ) );
+	await settle();
+	check( '...a refusal that comes late is said in the toast and marks nothing on the screen that is there now', onNew( xlateRefuse ) && xlateRefuse.toast.textContent === 'Dein Konto darf diese Felder nicht ändern: Preis netto' && all( xlateRefuse.main, '.err' ).length === 0 );
+	const xdelHold = hold();
+	const xlateDelete = await xopen( '#position-mixing', { 'elements/delete' : function() { return xdelHold.promise } } );
+	click( xlateDelete, itemOf( menuOf( xlateDelete.main, '⋯' ), 'Löschen' ) );
+	click( xlateDelete, all( xlateDelete.dialogs[0], 'button' ).pop() );
+	await settle();
+	xlateDelete.location.hash = '#kunde-neu';
+	await settle();
+	xdelHold.release( [ 200, { ok : true } ] );
+	await settle();
+	check( '...so does the answer of a delete: nothing opens', onNew( xlateDelete ) && xlateDelete.location.hash === '#kunde-neu' );
+
+	// --- the words
+	const xwords = [ ...new Set( [ ...script.matchAll( /'(items\.[a-z0-9-]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return /-$/.test( key ) === false } ).concat( [ 'title', 'description', 'unit', 'price', 'vat', 'hidden', 'sort' ].map( function( name ) { return 'items.k-'+ name } ) ) ) ];
+	const xmissing = xwords.filter( function( key ) { return typeof texts[key] !== 'string' || texts[key] === '' } );
+	check( 'every word the screen and the editor of the Positionen ask for is a word of the page, and so are the sentences of the panel\'s code the editor shows and of the restriction', xmissing.length === 0 && xwords.length >= 40 && typeof texts['error.elements_fields_not_allowed'] === 'string' && texts['error.crm_positionen_type'] === 'Über diesen Weg lassen sich nur die Positionen bearbeiten.' );
+	check( 'the editor posts to the panel\'s actions for the type and to nothing else of it: elements/get, save and delete, with the type positionen', [ ...script.matchAll( /api\( '(elements\/[a-z]+)'/g ), ...script.matchAll( /call\( '(elements\/[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).sort().join() === 'elements/delete,elements/get,elements/save'
+		&& script.indexOf( "POSITION_TYPE = 'positionen'" ) !== -1 );
 	}
 
 	done();

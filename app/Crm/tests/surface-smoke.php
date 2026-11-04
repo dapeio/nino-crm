@@ -22,6 +22,7 @@ require $root. '/tests/harness.php';
 
 use Crm\Db;
 use Crm\Documents;
+use Crm\Positionen;
 use Crm\Surface;
 use Crm\Settings;
 
@@ -154,6 +155,9 @@ ninoUser( $appData, 'admin@example.com' );
 \Nino\Auth::insertUser( $appData, 'old@example.com', 'old password', [ '/_admin/crm-clients/manage', '/_admin/crm-documents/manage' ] );
 \Nino\Auth::insertUser( $appData, 'pdf@example.com', 'pdf password', [ '/_admin/crm/manage', '/_admin/pdf/manage' ] );
 \Nino\Auth::insertUser( $appData, 'pdfonly@example.com', 'pdfonly password', [ '/_admin/pdf/manage' ] );
+\Nino\Auth::insertUser( $appData, 'items@example.com', 'items password', [ '/_admin/crm/manage', '/_admin/elements/manage' ] );
+\Nino\Auth::insertUser( $appData, 'itemsonly@example.com', 'itemsonly password', [ '/_admin/elements/manage' ] );
+\Nino\Auth::insertUser( $appData, 'itemtitle@example.com', 'itemtitle password', [ '/_admin/crm/manage', '/_admin/elements/manage', '/_admin/elements/positionen/update/title' ] );
 $asAdmin = static function() use ( $asUser ): void { $asUser( 'admin@example.com', 'correct horse battery staple' ); };
 $asCrm = static function() use ( $asUser ): void { $asUser( 'crm@example.com', 'crm password' ); };
 
@@ -670,7 +674,7 @@ $stillThere = array_filter( [ 'crm-documents/list', 'crm-clients/list', 'crm-cli
 check( '...and the workbench does not have the actions of the old panels any more: they are no panel\'s, so POST /_admin answers 404 for them, to the account that has every permission as well', $stillThere === [] );
 
 $asCrm();
-$unknown = [ 'an action nobody has' => 'crm-documents/nope', 'no action' => '', 'an action of the Pdf panel that it has not' => 'pdf/nope', 'an action of another panel' => 'elements/list', 'one of the workbench' => 'users/list', 'a path' => '../crm-documents/list', 'the name of a method' => 'apiList',
+$unknown = [ 'an action nobody has' => 'crm-documents/nope', 'no action' => '', 'an action of the Pdf panel that it has not' => 'pdf/nope', 'an action of the Elements panel that it has not' => 'elements/types', 'another one, for the pictures of a type' => 'elements/uploadimage', 'one of the workbench' => 'users/list', 'a path' => '../crm-documents/list', 'the name of a method' => 'apiList',
 	'the setup before it moved' => 'crm-clients/setup', 'the status before it moved' => 'crm-clients/status', 'an action of the panel CRM that it has not' => 'crm/nope' ];
 
 foreach( $unknown as $why => $action ) {
@@ -683,8 +687,8 @@ foreach( [ 'not json', '[]', '{"action":["crm-documents/list"]}', '{"action":1}'
 	check( 'a body that is no action ('. $broken. ') is 404 action as well', $answer['statusCode'] === 404 && $answer['body']['code'] === 'action' );
 }
 
-check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel and the context of the screens PDF-Vorlagen, and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ] )
-	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context)$~D', $action ) !== 1 ) === []
+check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen and the four actions of the Elements panel that edit the Positionen, and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ] )
+	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete))$~D', $action ) !== 1 ) === []
 	&& in_array( 'crm-clients/setup', array_keys( Surface::actions() ), true ) === false && in_array( 'crm-clients/status', array_keys( Surface::actions() ), true ) === false );
 
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiList' ], [ 'year' => (string) date( 'Y' ) ], 'crm-documents/list' );
@@ -928,7 +932,7 @@ $perms = static function( string $mail, string $password ) use ( $asUser, &$appD
 	$asUser( $mail, $password );
 	return surfaceData( (string) surfaceServe( $appData, 'GET', '/crm' )['body'] )['perms'] ?? [];
 };
-check( 'the data block carries which permissions the account has: crm and pdf - the account of the CRM alone has the first only, the account with both has both', $perms( 'crm@example.com', 'crm password' ) === [ 'crm' => true, 'pdf' => false ] && $perms( 'pdf@example.com', 'pdf password' ) === [ 'crm' => true, 'pdf' => true ] && $perms( 'admin@example.com', 'correct horse battery staple' )['pdf'] === true );
+check( 'the data block carries which permissions the account has: crm, pdf and elements - the account of the CRM alone has the first only, the account with both has both', $perms( 'crm@example.com', 'crm password' ) === [ 'crm' => true, 'pdf' => false, 'elements' => false ] && $perms( 'pdf@example.com', 'pdf password' ) === [ 'crm' => true, 'pdf' => true, 'elements' => false ] && $perms( 'admin@example.com', 'correct horse battery staple' )['pdf'] === true );
 $asPdf();
 $html = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
 check( '...the rail has the entry PDF-Vorlagen at #pdf, hidden in the markup (the script shows it for the permission), between Positionen and Einstellungen', preg_match( '~<a href="#pdf" data-r="pdf" id="nav-pdf" hidden>PDF-Vorlagen</a>~', $html ) === 1
@@ -1102,6 +1106,129 @@ unlink( $absentScript );
 check( 'with the feature Pdf absent the surface knows it: the class check says no, the table holds none of its actions and no sentences of its codes are read, the owner still holds the permission - the data block says perms.pdf true and pdf_available false - and the preview route answers 409, not 403', ( $absent['available'] ?? null ) === false && ( $absent['actions'] ?? null ) === [] && ( $absent['text'] ?? null ) === '' && ( $absent['table'] ?? null ) === 0
 	&& ( $absent['allowed'] ?? null ) === true && ( $absent['perm'] ?? null ) === true && ( $absent['flag'] ?? null ) === false && ( $absent['route'] ?? null ) === 409 );
 check( '...and with the feature there the same questions answer the other way', Surface\Pdf::available() === true && Surface\Pdf::actions() !== [] && Surface\Pdf::textFile() !== '' );
+
+// --- Positionen: the actions of the Elements panel through the endpoint, for the type Positionen alone -------------------
+
+echo "\nPositionen\n";
+
+$asItems = static function() use ( $asUser ): void { $asUser( 'items@example.com', 'items password' ); };
+$itemsLines = static fn( string $needle ): int => count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ), static fn( string $entry ): bool => str_contains( $entry, $needle ) === true ) );
+$four = [
+	'elements/list'   => [ 'type' => 'positionen' ],
+	'elements/get'    => [ 'type' => 'positionen', 'uri' => 'beratung' ],
+	'elements/save'   => [ 'type' => 'positionen', 'uri' => 'beratung', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Beratung', 'price' => 90 ] ],
+	'elements/delete' => [ 'type' => 'positionen', 'uri' => 'beratung' ],
+];
+
+check( 'before anything the type is there and empty', Positionen::missing( $appData ) === false && Positionen::all( $appData ) === [] );
+
+$asVisitor();
+check( 'the four actions of the Elements panel are in the table by their names - and not its types, its pictures: 401 for nobody', array_filter( $four, static fn( array $data, string $action ): bool => surfaceApi( $appData, $action, $data )[0] !== 401, ARRAY_FILTER_USE_BOTH ) === [] );
+$asCrm();
+check( '...403 for an account with the permission of the CRM only - the panel\'s own guard holds, the table does not widen it - for the list, the read, a save and a delete; nothing is made', array_filter( $four, static fn( array $data, string $action ): bool => surfaceApi( $appData, $action, $data )[0] !== 403, ARRAY_FILTER_USE_BOTH ) === [] && Positionen::all( $appData ) === [] );
+$asUser( 'itemsonly@example.com', 'itemsonly password' );
+check( '...and 403 for the permission of the Elements panel alone: the endpoint asks for the CRM\'s first, as for every action', array_filter( $four, static fn( array $data, string $action ): bool => surfaceApi( $appData, $action, $data )[0] !== 403, ARRAY_FILTER_USE_BOTH ) === [] );
+
+$asItems();
+[ $status, $list ] = surfaceApi( $appData, 'elements/list', [ 'type' => 'positionen' ] );
+check( '...200 with both: the list is the panel\'s, to the byte of its JSON', $status === 200 && $list === [ 'columns' => [ 'title', 'description', 'unit', 'price', 'vat', 'hidden', 'sort' ], 'elements' => [] ]
+	&& json_encode( $list ) === json_encode( ninoCall( $appData, [ \Nino\Modules\Elements\Admin::class, 'apiList' ], [ 'type' => 'positionen' ], 'elements/list' )[1] ) );
+
+// The type restriction: a post that names another type, or none, is refused before the panel is asked
+\Nino\Elements::insertElementType( $appData, '/notes', [ 'title' => [ 'type' => 'string', 'locale' => true ] ] );
+\Nino\Elements::insertElement( $appData, '/notes/erste', [ 'title' => 'Erste' ], 'de_DE' );
+$other = [];
+
+foreach( [ 'legal', 'notes', '', 'Positionen', '/positionen', 'positionen/x', 'positionen ' ] as $type )
+	foreach( [ 'elements/list' => [], 'elements/get' => [ 'uri' => 'erste' ], 'elements/save' => [ 'uri' => 'zweite', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Zweite' ] ], 'elements/delete' => [ 'uri' => 'erste' ] ] as $action => $data ) {
+		[ $status, $answer ] = surfaceApi( $appData, $action, [ 'type' => $type ] + $data );
+
+		if( $status !== 404 || ( $answer['code'] ?? '' ) !== 'crm_positionen_type' || array_keys( $answer ) !== [ 'error', 'code' ] )
+			$other[] = $type. ' '. $action;
+	}
+
+[ $status, $answer ] = surfaceApi( $appData, 'elements/get', [ 'uri' => 'erste' ] );
+check( 'a type that is not positionen - another type, none, the name in another spelling - is 404 with the code crm_positionen_type for each of the four actions, and the answer holds nothing of the panel', $other === [] && $status === 404 && $answer['code'] === 'crm_positionen_type' );
+check( '...and nothing was asked of the panel: the element of the other type is still there, the one it would have made is not, and the type has none of it', \Nino\Elements::getElement( $appData, '/notes/erste', 'de_DE' ) !== false && \Nino\Elements::getElement( $appData, '/notes/zweite', 'de_DE' ) === false
+	&& \Nino\Elements::getElement( $appData, '/legal/zweite', 'de_DE' ) === false && Positionen::all( $appData ) === [] );
+$asCrm();
+check( '...the permission is asked first: the account of the CRM alone is told 403 for another type as well, not what the type may be', surfaceApi( $appData, 'elements/get', [ 'type' => 'legal', 'uri' => 'x' ] )[0] === 403 );
+$asItems();
+
+// What a person does: an item in two languages, one post per language, the native one with the numbers first
+$mixing = [ 'type' => 'positionen', 'uri' => 'mixing', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Mixing', 'description' => "Mischung eines Songs\nbis 48 Spuren", 'unit' => 'Std.', 'price' => 90.5, 'vat' => 19, 'hidden' => false, 'sort' => 5 ] ];
+$linesBefore = count( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ) );
+[ $status, $made ] = surfaceApi( $appData, 'elements/save', $mixing );
+[ $statusEn, ] = surfaceApi( $appData, 'elements/save', [ 'type' => 'positionen', 'uri' => 'mixing', 'locale' => 'en_US', 'isNew' => false, 'fields' => [ 'title' => 'Mixing', 'description' => 'Mixing of one song', 'unit' => 'h' ] ] );
+$item = Positionen::get( $appData, 'mixing' );
+check( 'a save through the endpoint makes the element the panel makes: 200 and the element in the answer, the second language an update; Positionen::list() answers it in cents and hundredths, and the words of the other language are there', $status === 200 && $made['element']['.uri'] === '/positionen/mixing' && $statusEn === 200
+	&& $item === [ 'id' => 'mixing', 'title' => 'Mixing', 'description' => "Mischung eines Songs\nbis 48 Spuren", 'unit' => 'Std.', 'price' => 9050, 'vat' => 1900, 'active' => true, 'sort' => 5 ] && Positionen::all( $appData )[0]['words']['en_US'] === [ 'title' => 'Mixing', 'description' => 'Mixing of one song', 'unit' => 'h' ] );
+$loop = static fn(): array => array_map( static fn( array $one ): string => (string) $one['.uri'], \Nino\Modules\Elements::queryLoop( $appData, [ '/positionen', 'sort' => 'sort', 'query' => 'hidden=0' ], true ) );
+check( '...and the loop of the Builder, [elements /positionen sort="sort" query="hidden=0"], reads it: the same element, in the order of its sort', $loop() === [ '/positionen/mixing' ] );
+[ , $second ] = [ surfaceApi( $appData, 'elements/save', [ 'type' => 'positionen', 'uri' => 'beratung', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Beratung', 'unit' => 'Tag', 'price' => 120, 'vat' => 7.5, 'hidden' => false, 'sort' => 2 ] ] ), 0 ];
+check( '...a second, with a lower sort, comes first on both: the list and the loop', array_column( Positionen::list( $appData ), 'id' ) === [ 'beratung', 'mixing' ] && $loop() === [ '/positionen/beratung', '/positionen/mixing' ] && Positionen::get( $appData, 'beratung' )['vat'] === 750 );
+
+// The switch Angeboten off and on: the field hidden
+surfaceApi( $appData, 'elements/save', [ 'type' => 'positionen', 'uri' => 'mixing', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'title' => 'Mixing', 'description' => "Mischung eines Songs\nbis 48 Spuren", 'unit' => 'Std.', 'price' => 90.5, 'vat' => 19, 'hidden' => true, 'sort' => 5 ] ] );
+check( 'the switch off is hidden true: the item is left out of the editor\'s list and of the loop, and still there when it is asked for; on again, it is back', array_column( Positionen::list( $appData ), 'id' ) === [ 'beratung' ] && $loop() === [ '/positionen/beratung' ] && Positionen::get( $appData, 'mixing' )['active'] === false
+	&& array_column( Positionen::all( $appData ), 'active', 'id' ) === [ 'beratung' => true, 'mixing' => false ]
+	&& surfaceApi( $appData, 'elements/save', [ 'type' => 'positionen', 'uri' => 'mixing', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'hidden' => false ] ] )[0] === 200 && array_column( Positionen::list( $appData ), 'id' ) === [ 'beratung', 'mixing' ] );
+
+// The same element, byte for byte, whichever place makes it
+ninoCall( $appData, [ \Nino\Modules\Elements\Admin::class, 'apiSave' ], [ 'uri' => 'durch-das-panel' ] + $mixing, 'elements/save' );
+surfaceApi( $appData, 'elements/save', [ 'uri' => 'durch-die-oberflaeche' ] + $mixing );
+$stored = (array) \Nino\Filesystem::getFileContent( $appData, '/elements/positionen.php', [] );
+check( 'an item made through the endpoint and one made by the panel\'s own call are the same in the type file: the same global bucket and the same words', ( $stored['*']['durch-das-panel'] ?? null ) === ( $stored['*']['durch-die-oberflaeche'] ?? [] ) && ( $stored['de_DE']['durch-das-panel'] ?? null ) === ( $stored['de_DE']['durch-die-oberflaeche'] ?? [] ) && ( $stored['*']['durch-das-panel'] ?? [] ) !== [] );
+
+// A refusal keeps its code and its field; the panel's sentences are the page's
+$asUser( 'itemtitle@example.com', 'itemtitle password' );
+[ $status, $answer ] = surfaceApi( $appData, 'elements/save', [ 'type' => 'positionen', 'uri' => 'mixing', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'title' => 'Mixing', 'price' => 99 ] ] );
+check( 'a refusal of the panel comes through with its code, its params and the field it names: an account that may change the title alone, saving the price, is 403 elements_fields_not_allowed on the field price', $status === 403 && $answer['code'] === 'elements_fields_not_allowed' && $answer['params'] === [ 'price' ] && $answer['field'] === 'price' && Positionen::get( $appData, 'mixing' )['price'] === 9050 );
+check( '...and the same account changes the title: the scoped permission is the panel\'s', surfaceApi( $appData, 'elements/save', [ 'type' => 'positionen', 'uri' => 'mixing', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'title' => 'Mixing Pro' ] ] )[0] === 200 && Positionen::get( $appData, 'mixing' )['title'] === 'Mixing Pro' );
+$asItems();
+[ $status, $answer ] = surfaceApi( $appData, 'elements/save', [ 'type' => 'positionen', 'uri' => 'ohne-titel', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'price' => 1 ] ] );
+check( '...a title that is missing is the panel\'s 400 with the kernel\'s message and no code: the page says it at the field before it posts', $status === 400 && str_contains( $answer['error'], 'title' ) === true && isset( $answer['code'] ) === false && Positionen::get( $appData, 'ohne-titel' ) === null );
+check( '...a name the panel refuses (a space in it) and one that is taken are 400 with no code as well, and the item that was there is as it was', surfaceApi( $appData, 'elements/save', [ 'uri' => 'mit leerzeichen' ] + $mixing )[0] === 400 && ( $taken = surfaceApi( $appData, 'elements/save', $mixing ) )[0] === 400 && isset( $taken[1]['code'] ) === false && Positionen::get( $appData, 'mixing' )['title'] === 'Mixing Pro' );
+$texts = Surface::texts();
+check( 'the sentences are the page\'s: the code of the restriction has its own, and the codes of the Elements panel come from its text file - so does the one with a place for the fields', ( $texts['error.crm_positionen_type'] ?? '' ) !== '' && str_contains( $texts['error.elements_fields_not_allowed'] ?? '', '%s' ) === true
+	&& Surface\Elements::textFile() !== '' && str_ends_with( Surface\Elements::textFile(), '/Elements/text/de_DE.php' ) === true );
+
+// The permission in the data block
+$html = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
+check( 'the data block says whether the account holds the permission of the Elements panel: perms.elements is true for it and for the owner, false for the account of the CRM alone', surfaceData( $html )['perms']['elements'] === true && $perms( 'items@example.com', 'items password' )['elements'] === true && $perms( 'crm@example.com', 'crm password' )['elements'] === false
+	&& $perms( 'admin@example.com', 'correct horse battery staple' )['elements'] === true );
+$asItems();
+
+// The activity log: the panel's lines, by the account that did it, none for a read
+$added = $itemsLines( 'Add Element /positionen/mixing' );
+$edited = $itemsLines( 'Edit Element /positionen/mixing' );
+surfaceApi( $appData, 'elements/list', [ 'type' => 'positionen' ] );
+$readsBefore = count( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ) );
+surfaceApi( $appData, 'elements/list', [ 'type' => 'positionen' ] );
+surfaceApi( $appData, 'elements/get', [ 'type' => 'positionen', 'uri' => 'mixing' ] );
+check( 'the activity log has the panel\'s lines for the saves: Add Element once for the first language, Edit Element for the others - by the account that did it - and none for a list or a read', $added === 1 && $edited >= 2 && count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ), static fn( string $entry ): bool => str_contains( $entry, 'Add Element /positionen/mixing' ) && str_contains( $entry, 'items@example.com' ) ) ) === 1
+	&& count( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ) ) === $readsBefore && $linesBefore < $readsBefore );
+
+// Reading one item: the panel's answer, the numbers once and the words of each language
+[ $status, $got ] = surfaceApi( $appData, 'elements/get', [ 'type' => 'positionen', 'uri' => 'mixing' ] );
+check( 'elements/get answers the numbers once and the words of each language of the site, as the panel does; an item that is none is 404', $status === 200 && $got['global'] === [ 'price' => 90.5, 'vat' => 19.0, 'hidden' => false, 'sort' => 5 ] && array_keys( $got['locales'] ) === [ 'de_DE', 'en_US' ] && $got['locales']['en_US']['unit'] === 'h'
+	&& surfaceApi( $appData, 'elements/get', [ 'type' => 'positionen', 'uri' => 'gibt-es-nicht' ] )[0] === 404 );
+
+// An item made elsewhere with no order: all() says none (null), list() has 0 for the order of the lines and the editor of documents
+\Nino\Elements::insertElement( $appData, '/positionen/ohne-ordnung', [ 'price' => 1, 'title' => 'Ohne Ordnung' ], 'de_DE' );
+$noOrder = array_values( array_filter( Positionen::all( $appData ), static fn( array $one ): bool => $one['id'] === 'ohne-ordnung' ) );
+check( 'an item with no order is told apart from one whose order is 0: all() has null for the first, the numbers for the others, and list() has 0 for it', count( $noOrder ) === 1 && $noOrder[0]['sort'] === null && array_unique( array_map( 'gettype', array_column( array_filter( Positionen::all( $appData ), static fn( array $one ): bool => $one['id'] !== 'ohne-ordnung' ), 'sort' ) ) ) === [ 'integer' ] && Positionen::get( $appData, 'ohne-ordnung' )['sort'] === 0 );
+\Nino\Elements::deleteElement( $appData, '/positionen/ohne-ordnung', '*' );
+
+// Delete: the item goes, the words a line copied stay
+$copy = (array) Documents::add( $appData, 'invoice', $a['id'], [ 'date' => $day( -1 ), 'lines' => [ [ 'title' => 'Mixing Pro', 'description' => "Mischung eines Songs\nbis 48 Spuren", 'unit' => 'Std.', 'qty' => '2', 'price' => '90,5', 'vat_rate' => 0 ] ], 'template_key' => 'rechnung' ] );
+$lineBefore = Documents::get( $appData, $copy['id'] )['lines'][0];
+[ $status, ] = surfaceApi( $appData, 'elements/delete', [ 'type' => 'positionen', 'uri' => 'mixing' ] );
+$lineAfter = Documents::get( $appData, $copy['id'] )['lines'][0];
+check( 'a delete through the endpoint removes the element in every language, and Positionen::list(), the loop and all() have nothing of it; the line of a document that copied its words keeps them', $status === 200 && Positionen::get( $appData, 'mixing' ) === null && in_array( 'mixing', array_column( Positionen::all( $appData ), 'id' ), true ) === false
+	&& in_array( '/positionen/mixing', $loop(), true ) === false && \Nino\Elements::getElement( $appData, '/positionen/mixing', 'en_US' ) === false && $lineAfter['title'] === 'Mixing Pro' && $lineAfter['description'] === "Mischung eines Songs\nbis 48 Spuren" && $lineAfter === $lineBefore
+	&& $itemsLines( 'Delete Element /positionen/mixing' ) === 1 );
+$asCrm();
 
 // The vocabulary the menu offers is the vocabulary the documents hand a template
 $script = (string) file_get_contents( $root. '/app/Crm/Surface/assets/crm.js' );

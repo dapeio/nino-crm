@@ -14,7 +14,8 @@ declare(strict_types=1);
  *																					status, body, code, params and field exactly as the workbench gives them. The kernel checks the
  *																					token (the route says csrf, the page sends it in X-CSRF-Token); a refused token is the 403 with
  *																					the code csrf, no session the 401 with the code session, an action the table does not hold the
- *																					404 with the code action. The upload of a picture (pdf/layout/image) comes as a multipart post with the action and the
+ *																					404 with the code action; the four actions of the Elements panel (elements/list, get, save, delete) are for the type positionen alone, any
+ *																					other type is the 404 with the code crm_positionen_type. The upload of a picture (pdf/layout/image) comes as a multipart post with the action and the
  *																					data as fields and the file, which the method reads from $_FILES; no other action takes a file
  *								GET  /crm/assets/<hash>-<name>		a file of ASSETS whose content hash is the one in the name, for a year
  *								GET  /crm/preview/<id>		the PDF of a draft as its template makes it now, inline, nothing stored
@@ -40,7 +41,7 @@ class Surface {
 		'login.js' => [ 'Surface/assets/login.js', 'text/javascript; charset=utf-8' ],
 	];
 
-	// The pages of the workbench the surface links: name => the hash behind /_admin/#. The element type of the items is edited in the Elements panel, the
+	// The pages of the workbench the surface links: name => the hash behind /_admin/#. The element type of the items is edited in the screen Positionen and, as the second place, in the Elements panel, the
 	// templates in the panel of Pdf, the accounts of the portal in Members, the permission of the CRM in Users
 	private const array PANELS = [ 'items' => 'elements/positionen', 'pdf' => 'pdf', 'members' => 'members', 'users' => 'users' ];
 
@@ -76,18 +77,19 @@ class Surface {
 
 	/**
 	 *	The actions the endpoint answers: the API of the clients and of the documents, the two actions of the panel CRM and - where the feature Pdf is
-	 *	there - the actions of its panel and the context of the screens PDF-Vorlagen, by their names
+	 *	there - the actions of its panel and the context of the screens PDF-Vorlagen, and the four actions of the Elements panel that edit the Positionen
+	 *	(for that type alone, see Surface\Elements), by their names
 	 *
 	 *	@return 	array											action => [ class, method ]
 	 */
 	public static function actions(): array {
 
-		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), Surface\Pdf::actions() );
+		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions() );
 	}
 
 	/**
 	 *	The words of the surface: its own file, the sentences of the codes the API answers a refusal with (those of the panels of the clients and of the
-	 *	documents, and of the Pdf panel where the feature is there), as error.<code>, and the sentences of the
+	 *	documents, of the Elements panel and of the Pdf panel where the feature is there), as error.<code>, and the sentences of the
 	 *	status of the module and of the setup, which the panel CRM of the workbench has as well, as status.<key> and setup.<key>
 	 *
 	 *	@return 	array											key => text
@@ -106,6 +108,10 @@ class Surface {
 			// The sentences of the codes the panel of the feature Pdf answers a refusal with
 			if( Surface\Pdf::textFile() !== '' )
 				$files[] = Surface\Pdf::textFile();
+
+			// ...and those of the Elements panel, whose actions edit the Positionen
+			if( Surface\Elements::textFile() !== '' )
+				$files[] = Surface\Elements::textFile();
 
 			foreach( $files as $file )
 				foreach( (array) require $file as $key => $text )
@@ -182,7 +188,7 @@ class Surface {
 			'csrf'  => \Nino\Csrf::getToken( $appData ),
 			'user'  => [ 'name' => (string) $user['mail'] ],
 			'perm'  => \Crm\Crm::MANAGE_PERM,
-			'perms' => [ 'crm' => true, 'pdf' => Surface\Pdf::allowed( $appData ) ],
+			'perms' => [ 'crm' => true, 'pdf' => Surface\Pdf::allowed( $appData ), 'elements' => Surface\Elements::allowed( $appData ) ],
 			'pdf_available' => Surface\Pdf::available(),
 			'texts' => self::texts(),
 			'links' => $links + array_map( static fn( string $panel ): string => $dir. '/_admin/#'. $panel, self::PANELS ),

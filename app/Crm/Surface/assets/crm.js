@@ -8,10 +8,11 @@
  *								what it posts, the totals it shows
  *				  the shell		the element helper (every element is made from data, no markup is written), the toast, the menus, the dialogs
  *								(<dialog>), the keys (/ finds the search, Esc closes), the router (#uebersicht, #belege, #beleg-12,
- *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #positionen, #einstellungen, #einrichtung, and
+ *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #positionen, #positionen-neu, #position-<uri>, #einstellungen, #einrichtung, and
  *								for PDF-Vorlagen #pdf, #pdf-bausteine, #pdf-layout, #pdf-design, #pdf-vorlage-<key>, #pdf-neue-vorlage-<tag>, #pdf-baustein-<key>,
  *								#pdf-neuer-baustein) and the answers of the endpoint (the session that ended, the token that is stale)
- *				  the screens	Übersicht, Belege, Beleg and Entwurf, then Kunden, Kundenkarte, Neuer Kunde, Positionen and Einstellungen, the
+ *				  the screens	Übersicht, Belege, Beleg and Entwurf, then Kunden, Kundenkarte, Neuer Kunde, Positionen (for an account with the permission of the
+ *								Elements panel with the editor of an item, Position, which edits the elements of the type positionen through the panel's actions) and Einstellungen, the
  *								Einrichtung of the first run (the page starts there while crm/status says the product is not whole) and - for an account
  *								with the permission of the Pdf panel - PDF-Vorlagen: Vorlagen with the editor of a template, Bausteine with the editor of a
  *								block, Layout and Design, which edit what the feature Pdf keeps through its own actions
@@ -52,12 +53,12 @@
 		Object.keys( state ).forEach( function( key ) { delete state[key] } );
 
 		Object.assign( state, {
-			base : '', csrf : '', perm : '', perms : { crm : true, pdf : false }, user : '', texts : {}, links : {},
+			base : '', csrf : '', perm : '', perms : { crm : true, pdf : false, elements : false }, user : '', texts : {}, links : {},
 			settings : { currency : '', vat_mode : 'small_business', rates : [], payment_days : '14', offer_days : '30' },
 			clients : [], items : [], offers : [], years : [], docs : [], summary : null, people : [], owed : {},
 			filter : { chip : 'all', q : '', sort : 'date', dir : -1, year : 0, page : 1 },
 			cfilter : { q : '', sort : 'number', dir : 1, page : 1 },
-			pfilter : { q : '', sort : 'name', dir : 1 }, pdf : { site : [] },
+			pfilter : { q : '', sort : 'name', dir : 1 }, ifilter : { q : '', sort : 'sort', dir : 1, page : 1 }, pbody : null, busy : null, pdf : { site : [] },
 			view : 0, entered : false, seen : null, tab : '', draft : null, saving : false, queued : false, pending : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
 		} );
 	};
@@ -3282,6 +3283,52 @@
 		return seen.join( ' / ' );
 	};
 
+	/**
+	 *	The languages of the site, the native one first: the order of the cards of the editor and of its posts
+	 *
+	 *	@param		{Array}		locales
+	 *	@param		{string}	native
+	 *
+	 *	@return		{Array}
+	 */
+	const nativeFirst = function( locales, native ) {
+		return ( locales.includes( native ) === true ? [ native ] : [] ).concat( locales.filter( function( locale ) { return locale !== native } ) );
+	};
+
+	/**
+	 *	The items the table shows: those whose titles (in every language) or units hold the search, in the order of the column
+	 *
+	 *	@param		{Array}		items						As crm-documents/positionen has them
+	 *	@param		{Object}	filter					q, sort, dir
+	 *	@param		{string}	native
+	 *
+	 *	@return		{Array}
+	 */
+	const visibleItems = function( items, filter, native ) {
+
+		const query = filter.q.trim().toLowerCase();
+		const keys = {
+			title : function( item ) { return ( item.words[native] || { title : '' } ).title.toLowerCase() }, price : function( item ) { return item.price }, vat : function( item ) { return item.vat },
+			active : function( item ) { return item.active === true ? 1 : 0 }, sort : function( item ) { return item.sort === null ? 0 : item.sort },
+		};
+		const key = keys[filter.sort] || keys.sort;
+
+		const rows = items.filter( function( item ) {
+			return query === '' || Object.keys( item.words ).some( function( locale ) { return ( item.words[locale].title+ ' '+ item.words[locale].unit ).toLowerCase().includes( query ) } );
+		} );
+
+		rows.sort( function( a, b ) {
+
+			const left = key( a );
+			const right = key( b );
+			const order = typeof left === 'string' ? left.localeCompare( right, 'de' ) : left - right;
+
+			return order !== 0 ? order * filter.dir : ( ( a.sort || 0 ) - ( b.sort || 0 ) || String( a.id ).localeCompare( String( b.id ) ) );
+		} );
+
+		return rows;
+	};
+
 	const positionen = function( where, mine ) {
 
 		loading();
@@ -3297,38 +3344,534 @@
 			}
 
 			adopt( answer.body );
+			state.pbody = answer.body;
+			drawPositionen();
+		} );
+	};
 
-			const body = answer.body;
-			const small = state.settings.vat_mode === 'small_business';
+	const drawPositionen = function() {
+
+		const body = state.pbody;
+		const filter = state.ifilter;
+		const small = state.settings.vat_mode === 'small_business';
+		const edits = state.perms.elements === true;
+		const native = body.native;
+
+		reveal();
+
+		// An account with the permission of the Elements panel makes, changes and removes the items here; the panel stays the second place. One without it sees the table
+		state.main.appendChild( head( t( 'items.title' ), el( 'span', { class: 'sub', text: t( edits === true ? 'items.sub-edit' : 'items.sub' ) } ), el( 'span', { class: 'grow' } ),
+			body.missing === true ? null : search( t( 'items.search' ), filter.q, { input: function( event ) {
+				filter.q = event.target.value;
+				filter.page = 1;
+				keepSearch( drawPositionen, true );
+			} } ),
+			link( state.links.items, t( edits === true ? 'items.panel' : 'items.edit' ), { class: 'btn', id: 'items-edit', target : '_blank', rel : 'noopener' } ),
+			edits === true ? link( '#positionen-neu', t( 'items.new' ), { class: 'btn primary', id: 'items-new' } ) : null ) );
+
+		if( body.missing === true ) {
+			state.main.appendChild( note( '', t( 'items.missing' ), ' ', link( '#einstellungen', t( 'items.missing-link' ) ) ) );
+			return;
+		}
+
+		const rows = visibleItems( body.items, filter, native );
+		const pages = Math.max( 1, Math.ceil( rows.length / PAGE_SIZE ) );
+
+		filter.page = Math.min( Math.max( 1, filter.page ), pages );
+
+		const shown = rows.slice( ( filter.page - 1 ) * PAGE_SIZE, filter.page * PAGE_SIZE );
+		const again = function() { drawPositionen() };
+		const heading = function( key, label, right ) { return sortHead( filter, key, label, right, again, 1 ) };
+
+		const words = function( item, locale ) {
+			const one = item.words[locale] || { title : '', description : '', unit : '' };
+			const title = edits === true && locale === native ? link( '#position-'+ item.id, one.title !== '' ? one.title : item.id ) : one.title;
+			return [ title, one.description !== '' ? el( 'div', { class: 'muted small' }, one.description.split( '\n' ).join( ' · ' ) ) : null ];
+		};
+
+		state.main.appendChild( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: edits === true ? 'tbl' : 'tbl static', id: 'items' },
+			el( 'thead', {}, el( 'tr', {}, body.locales.map( function( locale ) {
+					return locale === native ? heading( 'title', t( 'items.title-in', languageOf( locale ) ) ) : el( 'th', { text: t( 'items.title-in', languageOf( locale ) ) } );
+				} ),
+				el( 'th', { text: t( 'items.unit' ) } ), heading( 'price', t( 'items.net' ), true ), heading( 'vat', t( 'items.vat' ), true ), heading( 'active', t( 'items.active' ) ), heading( 'sort', t( 'items.f-sort' ), true ) ) ),
+			el( 'tbody', {}, shown.length === 0
+				? el( 'tr', { class: 'plain' }, el( 'td', { colspan: String( body.locales.length + 5 ), class: 'muted', text: t( body.items.length > 0 ? 'items.none' : ( edits === true ? 'items.empty-edit' : 'items.empty' ) ) } ) )
+				: shown.map( function( item ) {
+					return el( 'tr', { dataset: { id: item.id }, on: edits === true ? { click: function() { wn.location.hash = '#position-'+ item.id } } : {} },
+						body.locales.map( function( locale ) { return el( 'td', { class: 'wrap' }, words( item, locale ) ) } ),
+						el( 'td', { text: units( item, body.locales ) } ),
+						el( 'td', { class: 'r num', text: cash( item.price ) } ),
+						el( 'td', { class: 'r num', text: small ? '–' : money().formatRate( item.vat ) } ),
+						el( 'td', { text: t( item.active === true ? 'items.yes' : 'items.no' ) } ),
+						el( 'td', { class: 'r num', text: item.sort === null ? '' : String( item.sort ) } ) );
+				} ) ) ) ) );
+		append( state.main, [ pagerOf( filter, pages, again ), el( 'p', { class: 'state-note top', text: t( edits === true ? 'items.note-edit' : 'items.note' ) } ) ] );
+	};
+
+	// --- Position: the editor of an item -----------------------------------------------------------------------------
+	// The surface drives the Elements panel's own actions for the type positionen: elements/get reads an item, elements/save writes one language
+	// per post (the native language with the numbers first), elements/delete removes it. The list of the items and the languages come from
+	// crm-documents/positionen, which the screen of the table reads as well.
+
+	const POSITION_TYPE = 'positionen';
+	const POSITION_WORDS = [ 'title', 'description', 'unit' ];
+	const POSITION_TRIES = 9;
+
+	/**
+	 *	The name of an item (the last part of its uri) from its title: lower case words, umlauts spelled out, a dash between them
+	 *
+	 *	@param		{string}	title
+	 *	@param		{number}	[attempt]				1 for the first name, 2 and on for the names after a name that was taken
+	 *
+	 *	@return		{string}									mueller-angebot; -2, -3 ... on a later attempt
+	 */
+	const positionKey = function( title, attempt ) {
+
+		const umlauts = { 'ä' : 'ae', 'ö' : 'oe', 'ü' : 'ue', 'ß' : 'ss' };
+		let slug = String( title ).toLowerCase().replace( /[äöüß]/g, function( char ) { return umlauts[char] } ).normalize( 'NFD' ).replace( /[̀-ͯ]/g, '' ).replace( /[^a-z0-9]+/g, '-' ).replace( /^-+|-+$/g, '' ).slice( 0, 40 ).replace( /-+$/, '' );
+
+		if( slug === '' )
+			slug = 'position';
+
+		return attempt === undefined || attempt < 2 ? slug : slug+ '-'+ attempt;
+	};
+
+	/**
+	 *	@param		{string}	locale					de_DE
+	 *
+	 *	@return		{string}									Deutsch where the browser knows the name of the language, else DE
+	 */
+	const languageName = function( locale ) {
+
+		const code = languageOf( locale );
+
+		try {
+			return new wn.Intl.DisplayNames( [ 'de' ], { type : 'language' } ).of( code ) || code.toUpperCase();
+		}
+		catch( e ) {
+			return code.toUpperCase();
+		}
+	};
+
+	/**
+	 *	@param		{number}	euros
+	 *
+	 *	@return		{string}									90,50
+	 */
+	const priceText = function( euros ) { return money().format( Math.round( euros * 100 ), '' ) };
+
+	/**
+	 *	@param		{number}	percent
+	 *
+	 *	@return		{string}									19 and 7,5
+	 */
+	const percentText = function( percent ) { return money().formatRate( Math.round( percent * 100 ) ).replace( / %$/, '' ) };
+
+	/**
+	 *	What the editor starts from
+	 *
+	 *	@param		{Object|null}	got					The answer of elements/get; null for a new item
+	 *	@param		{Array}				locales
+	 *	@param		{Object}			defaults		vat and sort of a new item
+	 *
+	 *	@return		{Object}										words (locale => title, description, unit), price, vat, sort as typed, and active
+	 */
+	const positionDraftOf = function( got, locales, defaults ) {
+
+		const shared = got === null ? {} : got.global || {};
+		const words = {};
+
+		locales.forEach( function( locale ) {
+
+			const one = got === null ? {} : ( got.locales || {} )[locale] || {};
+			words[locale] = {};
+			POSITION_WORDS.forEach( function( name ) { words[locale][name] = typeof one[name] === 'string' ? one[name] : '' } );
+		} );
+
+		return {
+			words : words,
+			price : typeof shared.price === 'number' ? priceText( shared.price ) : '',
+			vat : typeof shared.vat === 'number' ? percentText( shared.vat ) : ( got === null ? defaults.vat : '' ),
+			active : got === null ? true : shared.hidden !== true,
+			sort : Number.isInteger( shared.sort ) ? String( shared.sort ) : ( got === null ? defaults.sort : '' ),
+		};
+	};
+
+	/**
+	 *	What a save of the editor posts, in the order it posts it, or what keeps it back. The panel saves one language per post; the first post is the
+	 *	native language and carries the numbers (and creates a new item), then each other language whose words were changed. A new item posts everything it
+	 *	has; a change posts only what was changed - the words of a language and the shared values the person touched - so that an account that may change
+	 *	some fields is not refused for the ones it left alone, and a value another place left out is not made up. The title is required in the native
+	 *	language of a new item and in every language whose words are written: the model asks for it of each
+	 *
+	 *	@param		{Object}	read						What the controls hold: words, price, vat, sort as typed, active
+	 *	@param		{Object}	base						What the editor started from: words (locale => title, description, unit), price, vat, sort, active
+	 *	@param		{Array}		locales					The native language first
+	 *	@param		{boolean}	isNew						Whether the item is made by this save
+	 *
+	 *	@return		{Object}									problems ([ { name, key } ]: the control and the word of the sentence) and posts ([ { locale, fields } ])
+	 */
+	const positionPosts = function( read, base, locales, isNew ) {
+
+		const problems = [];
+		const posts = [];
+		const clean = function( one ) { return { title : one.title.trim(), description : one.description.trim(), unit : one.unit.trim() } };
+		const changed = {};
+		const touched = function( name ) { return isNew === true || String( read[name] ).trim() !== String( base[name] ).trim() };
+
+		locales.forEach( function( locale, index ) {
+
+			const words = clean( read.words[locale] );
+			const before = clean( base.words[locale] );
+			changed[locale] = POSITION_WORDS.filter( function( name ) { return words[name] !== before[name] } );
+
+			if( words.title === '' && ( ( isNew === true && index === 0 ) || changed[locale].length > 0 ) )
+				problems.push( { name : 'title.'+ locale, key : index === 0 ? 'items.err-title' : 'items.err-title-lang' } );
+		} );
+
+		const cents = money().parse( read.price.trim() );
+		const rate = read.vat.trim() === '' ? 0 : money().parse( read.vat.trim() );
+		const sort = read.sort.trim() === '' ? 0 : ( /^-?[0-9]{1,9}$/.test( read.sort.trim() ) === true ? Number( read.sort.trim() ) : null );
+
+		if( touched( 'price' ) === true && ( cents === null || cents < 0 ) )
+			problems.push( { name : 'price', key : 'items.err-price' } );
+
+		if( touched( 'vat' ) === true && ( rate === null || rate < 0 || rate > 10000 ) )
+			problems.push( { name : 'vat', key : 'items.err-vat' } );
+
+		if( touched( 'sort' ) === true && sort === null )
+			problems.push( { name : 'sort', key : 'items.err-sort' } );
+
+		if( problems.length > 0 )
+			return { problems : problems, posts : [] };
+
+		locales.forEach( function( locale, index ) {
+
+			const words = clean( read.words[locale] );
+			const fields = {};
+
+			if( index > 0 && changed[locale].length === 0 )
+				return;
+
+			POSITION_WORDS.forEach( function( name ) {
+				if( isNew === true || changed[locale].includes( name ) === true )
+					fields[name] = words[name];
+			} );
+
+			if( index === 0 ) {
+				if( touched( 'price' ) === true )
+					fields.price = cents / 100;
+
+				if( touched( 'vat' ) === true )
+					fields.vat = rate / 100;
+
+				if( isNew === true || read.active !== base.active )
+					fields.hidden = read.active !== true;
+
+				if( touched( 'sort' ) === true )
+					fields.sort = sort;
+			}
+
+			if( Object.keys( fields ).length > 0 )
+				posts.push( { locale : locale, fields : fields } );
+		} );
+
+		return { problems : [], posts : posts };
+	};
+
+	/**
+	 *	The screen of one item: #position-<uri>, or #positionen-neu for a new one
+	 *
+	 *	@param		{Object}	where						uri, absent for a new item
+	 *	@param		{number}	mine						The view that draws
+	 *
+	 *	@return		{void}
+	 */
+	const position = function( where, mine ) {
+
+		if( state.perms.elements !== true ) {
 			reveal();
+			state.main.appendChild( head( t( 'items.title' ) ) );
+			state.main.appendChild( note( 'bad', t( 'items.forbidden' ) ) );
+			return;
+		}
 
-			state.main.appendChild( head( t( 'items.title' ), el( 'span', { class: 'sub', text: t( 'items.sub' ) } ), el( 'span', { class: 'grow' } ), link( state.links.items, t( 'items.edit' ), { class: 'btn primary', id: 'items-edit', target : '_blank', rel : 'noopener' } ) ) );
+		loading();
 
-			if( body.missing === true ) {
-				state.main.appendChild( note( '', t( 'items.missing' ), ' ', link( '#einstellungen', t( 'items.missing-link' ) ) ) );
+		Promise.all( [ api( 'crm-documents/positionen' ), where.uri === undefined ? Promise.resolve( null ) : api( 'elements/get', { type : POSITION_TYPE, uri : where.uri } ) ] ).then( function( answers ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answers[0].ok !== true ) {
+				loadFailed( answers[0], 'error.load', function() { route() } );
 				return;
 			}
 
-			const words = function( item, locale ) {
-				const one = item.words[locale] || { title : '', description : '', unit : '' };
-				return [ one.title, one.description !== '' ? el( 'div', { class: 'muted small' }, one.description.split( '\n' ).join( ' · ' ) ) : null ];
+			const list = answers[0].body;
+
+			if( answers[1] !== null && answers[1].ok !== true && answers[1].status !== 404 ) {
+				loadFailed( answers[1], 'error.load', function() { route() } );
+				return;
+			}
+
+			reveal();
+
+			if( list.missing === true || ( answers[1] !== null && answers[1].ok !== true ) ) {
+				state.main.appendChild( head( t( 'items.title' ) ) );
+				state.main.appendChild( note( list.missing === true ? '' : 'bad', list.missing === true ? [ t( 'items.missing' ), ' ', link( '#einstellungen', t( 'items.missing-link' ) ) ] : [ el( 'span', { text: t( 'items.gone' ) } ), ' ', link( '#positionen', t( 'items.back' ) ) ] ) );
+				return;
+			}
+
+			drawPosition( list, answers[1] === null ? null : answers[1].body, where.uri );
+		} );
+	};
+
+	/**
+	 *	The editor: a card for each language of the site (the native one first), one for what is the same in all of them, Speichern, and the menu with Löschen
+	 *
+	 *	@param		{Object}				list				The answer of crm-documents/positionen: locales, native, items, settings
+	 *	@param		{Object|null}		got					The answer of elements/get; null for a new item
+	 *	@param		{string}				[given]			The uri of an item that is there
+	 *
+	 *	@return		{void}
+	 */
+	const drawPosition = function( list, got, given ) {
+
+		const mine = state.view;
+		const locales = nativeFirst( list.locales, list.native );
+		const rates = Array.isArray( list.settings.rates ) === true ? list.settings.rates : [];
+		const defaults = {
+			vat : list.settings.vat_mode === 'small_business' ? '0' : ( rates.length > 0 ? percentText( Math.max( ...rates ) / 100 ) : '' ),
+			sort : String( list.items.reduce( function( top, item ) { return Math.max( top, item.sort === null ? 0 : item.sort ) }, 0 ) + 1 ),
+		};
+		const draft = positionDraftOf( got, locales, defaults );
+		const form = formOf();
+		const taken = list.items.map( function( item ) { return String( item.id ).toLowerCase() } );
+		const heading = given === undefined ? t( 'items.new-title' ) : ( draft.words[locales[0]].title !== '' ? draft.words[locales[0]].title : given );
+		let uri = given;
+		let saving = false;
+
+		const cardOf = function( locale, index ) {
+
+			const set = draft.words[locale];
+			const rows = [
+				{ name : 'title.'+ locale, label : t( 'items.f-title' ), control : el( 'input', { id: 'f-title-'+ locale, type: 'text', value: set.title, maxlength: '200', autocomplete: 'off' } ), hint : index === 0 ? undefined : t( 'items.hint-title-lang' ) },
+				{ name : 'description.'+ locale, label : t( 'items.f-description' ), control : el( 'textarea', { id: 'f-description-'+ locale, rows: 4, maxlength: '2000', value: set.description } ) },
+				{ name : 'unit.'+ locale, label : t( 'items.f-unit' ), control : el( 'input', { id: 'f-unit-'+ locale, type: 'text', value: set.unit, maxlength: '20', autocomplete: 'off', class: 'short' } ), hint : t( 'items.hint-unit' ) },
+			];
+
+			return el( 'div', { class: 'card pad', id: 'position-lang-'+ locale, dataset: { locale: locale } }, el( 'h3', { text: index === 0 ? t( 'items.card-native', languageName( locale ) ) : languageName( locale ) } ), formList( rows, form ) );
+		};
+
+		const shared = el( 'div', { class: 'card pad', id: 'position-shared' }, el( 'h3', { text: t( 'items.card-shared' ) } ), formList( [
+			{ name : 'price', label : t( 'items.f-price' ), control : el( 'input', { id: 'f-price', type: 'text', value: draft.price, inputmode: 'decimal', autocomplete: 'off', class: 'short' } ), hint : t( 'items.hint-price' ) },
+			{ name : 'vat', label : t( 'items.f-vat' ), control : el( 'input', { id: 'f-vat', type: 'text', value: draft.vat, inputmode: 'decimal', autocomplete: 'off', class: 'short' } ), hint : t( 'items.hint-vat' ) },
+			{ name : 'active', label : t( 'items.f-active' ), control : el( 'input', { id: 'f-active', type: 'checkbox', role: 'switch', checked: draft.active } ), hint : t( 'items.hint-active' ) },
+			{ name : 'sort', label : t( 'items.f-sort' ), control : el( 'input', { id: 'f-sort', type: 'text', value: draft.sort, inputmode: 'numeric', autocomplete: 'off', class: 'short' } ), hint : t( 'items.hint-sort' ) },
+		], form ) );
+
+		const uriNote = el( 'span', { class: 'sub num', id: 'position-uri', text: uri === undefined ? '' : '/'+ POSITION_TYPE+ '/'+ uri } );
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'position-save', text: t( 'form.save' ) } );
+
+		/**
+		 *	Put the sentence of a refusal beside a control
+		 *
+		 *	@param		{string}	name
+		 *	@param		{string}	sentence
+		 *
+		 *	@return		{boolean}									Whether there is a control of that name
+		 */
+		const mark = function( name, sentence ) {
+
+			if( form.controls[name] === undefined )
+				return false;
+
+			form.controls[name].classList.add( 'err' );
+			form.controls[name].setAttribute( 'aria-invalid', 'true' );
+			form.notes[name].textContent = sentence;
+
+			return true;
+		};
+
+		const read = function() {
+
+			const values = { words : {}, price : form.controls.price.value, vat : form.controls.vat.value, sort : form.controls.sort.value, active : form.controls.active.checked };
+
+			locales.forEach( function( locale ) {
+				values.words[locale] = {};
+				POSITION_WORDS.forEach( function( name ) { values.words[locale][name] = form.controls[name+ '.'+ locale].value } );
+			} );
+
+			return values;
+		};
+
+		const remove = function() {
+
+			ask( { title : t( 'items.delete' ), text : t( 'items.delete-text', heading ), yes : t( 'items.delete' ), danger : true } ).then( function( yes ) {
+
+				if( yes !== true || state.view !== mine )
+					return;
+
+				call( 'elements/delete', { type : POSITION_TYPE, uri : uri }, 'items.error-delete' ).then( function( answer ) {
+					if( answer.ok === true && state.view === mine ) {
+						toast( t( 'items.deleted' ) );
+						wn.location.hash = '#positionen';
+					}
+				} );
+			} );
+		};
+
+		const submit = function( event ) {
+
+			event.preventDefault();
+
+			if( saving === true )
+				return;
+
+			Object.keys( form.controls ).forEach( function( name ) {
+				form.controls[name].classList.remove( 'err' );
+				form.controls[name].removeAttribute( 'aria-invalid' );
+				form.notes[name].textContent = '';
+			} );
+
+			const typed = read();
+			const made = positionPosts( typed, draft, locales, uri === undefined );
+			let attempt = 1;
+
+			// The name of a new item is made of its title once, at the first save; a name that is taken is left for the next: -2, -3, ... up to nine
+			const free = function() {
+
+				while( taken.includes( positionKey( typed.words[locales[0]].title, attempt ) ) === true && attempt < POSITION_TRIES )
+					attempt++;
+
+				return taken.includes( positionKey( typed.words[locales[0]].title, attempt ) ) === false;
 			};
 
-			state.main.appendChild( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static', id: 'items' },
-				el( 'thead', {}, el( 'tr', {}, body.locales.map( function( locale ) { return el( 'th', { text: t( 'items.title-in', languageOf( locale ) ) } ) } ),
-					el( 'th', { text: t( 'items.unit' ) } ), el( 'th', { class: 'r', text: t( 'items.net' ) } ), el( 'th', { class: 'r', text: t( 'items.vat' ) } ), el( 'th', { text: t( 'items.active' ) } ) ) ),
-				el( 'tbody', {}, body.items.length === 0
-					? el( 'tr', { class: 'plain' }, el( 'td', { colspan: String( body.locales.length + 4 ), class: 'muted', text: t( 'items.empty' ) } ) )
-					: body.items.map( function( item ) {
-						return el( 'tr', { dataset: { id: item.id } },
-							body.locales.map( function( locale ) { return el( 'td', { class: 'wrap' }, words( item, locale ) ) } ),
-							el( 'td', { text: units( item, body.locales ) } ),
-							el( 'td', { class: 'r num', text: cash( item.price ) } ),
-							el( 'td', { class: 'r num', text: small ? '–' : money().formatRate( item.vat ) } ),
-							el( 'td', { text: t( item.active === true ? 'items.yes' : 'items.no' ) } ) );
-					} ) ) ) ) );
-			state.main.appendChild( el( 'p', { class: 'state-note top', text: t( 'items.note' ) } ) );
-		} );
+			if( made.problems.length === 0 && uri === undefined && free() === false )
+				made.problems.push( { name : 'title.'+ locales[0], key : 'items.err-uri' } );
+
+			if( made.problems.length > 0 ) {
+
+				made.problems.forEach( function( problem ) { mark( problem.name, t( problem.key ) ) } );
+				form.controls[made.problems[0].name].focus();
+				toast( t( made.problems[0].key ), true );
+				return;
+			}
+
+			// Nothing was changed: nothing is posted, and the item is read again
+			if( made.posts.length === 0 ) {
+				route();
+				return;
+			}
+
+			// While the posts go out, a way out of the screen waits for them (see route())
+			let release = function() {};
+
+			state.busy = new Promise( function( resolve ) { release = resolve } );
+			saving = true;
+			save.disabled = true;
+
+			const over = function() {
+				saving = false;
+				save.disabled = false;
+				state.busy = null;
+				release();
+			};
+
+			// Where a refusal belongs: the panel names the posted key (hidden, title ...), the control is the one of the language that was being saved. An answer
+			// that comes after the screen was left is said in the toast all the same: the item may be half saved, and the person is to know
+			const refuse = function( answer, locale ) {
+
+				const body = answer.body !== null && typeof answer.body === 'object' ? answer.body : null;
+
+				// The keys of the model are the panel's words: the sentence names the fields as the screen does
+				if( body !== null && body.code === 'elements_fields_not_allowed' && Array.isArray( body.params ) === true )
+					body.params = body.params.map( function( names ) {
+						return String( names ).split( ', ' ).map( function( name ) { return typeof state.texts['items.k-'+ name] === 'string' ? t( 'items.k-'+ name ) : name } ).join( ', ' );
+					} );
+
+				if( body !== null && typeof body.field === 'string' )
+					body.field = body.field === 'hidden' ? 'active' : ( form.controls[body.field+ '.'+ locale] !== undefined ? body.field+ '.'+ locale : body.field );
+
+				refuseAt( form, answer, 'items.error-save' );
+			};
+
+			const send = function( index ) {
+
+				const one = made.posts[index];
+				const first = index === 0 && uri === undefined;
+
+				if( first === true )
+					uri = positionKey( typed.words[locales[0]].title, attempt );
+
+				api( 'elements/save', { type : POSITION_TYPE, uri : uri, locale : one.locale, isNew : first, fields : one.fields } ).then( function( answer ) {
+
+					if( answer.ok !== true ) {
+
+						// The name was free when the list was read; another place may have taken it since: read the list again, and try the next name
+						if( first === true && answer.status === 400 && ( answer.body === null || typeof answer.body.code !== 'string' ) && attempt < POSITION_TRIES ) {
+
+							const tried = uri;
+							uri = undefined;
+
+							api( 'crm-documents/positionen' ).then( function( again ) {
+
+								if( again.ok === true )
+									taken.splice( 0, taken.length, ...again.body.items.map( function( item ) { return String( item.id ).toLowerCase() } ) );
+
+								if( taken.includes( tried ) === true && free() === true ) {
+									send( index );
+									return;
+								}
+
+								refuse( answer, one.locale );
+								over();
+							} );
+							return;
+						}
+
+						// A later language was refused after the item was made: the item is there now, and the next save changes it
+						if( first === true )
+							uri = undefined;
+
+						refuse( answer, one.locale );
+						over();
+
+						return;
+					}
+
+					if( index === 0 )
+						uriNote.textContent = '/'+ POSITION_TYPE+ '/'+ uri;
+
+					if( index + 1 < made.posts.length ) {
+						send( index + 1 );
+						return;
+					}
+
+					over();
+
+					if( state.view !== mine )
+						return;
+
+					toast( t( 'items.saved' ) );
+
+					if( given === undefined )
+						wn.location.hash = '#position-'+ uri;
+					else
+						route();
+				} );
+			};
+
+			send( 0 );
+		};
+
+		reveal();
+
+		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#positionen', t( 'items.title' ) ), ' › ', heading ) );
+		state.main.appendChild( el( 'form', { id: 'position-form', novalidate: 'novalidate', on: { submit: submit } },
+			head( heading, uriNote, el( 'span', { class: 'grow' } ), given === undefined ? null : menu( { label : '⋯', aria : t( 'items.more' ), items : [ { label : t( 'items.delete' ), danger : true, run : remove } ] } ), save ),
+			el( 'div', { class: 'tpl-grid' }, el( 'div', { class: 'stack' }, locales.map( cardOf ) ), shared ) ) );
 	};
 
 
@@ -4907,6 +5450,14 @@
 		if( text === 'positionen' )
 			return { screen : 'positionen' };
 
+		if( text === 'positionen-neu' )
+			return { screen : 'position' };
+
+		found = /^position-([A-Za-z0-9][A-Za-z0-9_-]{0,99})$/.exec( text );
+
+		if( found !== null )
+			return { screen : 'position', uri : found[1] };
+
 		if( text === 'einstellungen' )
 			return { screen : 'einstellungen' };
 
@@ -4946,9 +5497,9 @@
 		return { screen : 'uebersicht' };
 	};
 
-	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, positionen : positionen, einstellungen : einstellungen, einrichtung : einrichtung,
+	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, positionen : positionen, position : position, einstellungen : einstellungen, einrichtung : einrichtung,
 		pdfvorlagen : pdfVorlagen, pdfvorlage : pdfVorlage, pdfbausteine : pdfBausteine, pdfbaustein : pdfBaustein, pdflayout : pdfLayout, pdfdesign : pdfDesign };
-	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', positionen : 'positionen', einstellungen : 'einstellungen', einrichtung : '',
+	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', positionen : 'positionen', position : 'positionen', einstellungen : 'einstellungen', einrichtung : '',
 		pdfvorlagen : 'pdf', pdfvorlage : 'pdf', pdfbausteine : 'pdf', pdfbaustein : 'pdf', pdflayout : 'pdf', pdfdesign : 'pdf' };
 
 	const route = function() {
@@ -4958,6 +5509,14 @@
 		state.view++;
 		state.draft = null;
 		closeMenus();
+
+		// An item is being saved: the screen that was asked for is drawn once the posts are through, so that it holds what they made
+		if( state.busy !== null ) {
+			clear( state.main );
+			state.main.appendChild( el( 'p', { class: 'state-note', role: 'status', text: t( 'items.saving' ) } ) );
+			state.busy.then( function() { route() } );
+			return;
+		}
 
 		dc.querySelectorAll( '[data-r]' ).forEach( function( anchor ) {
 
@@ -5019,7 +5578,7 @@
 		state.base = data.base;
 		state.csrf = data.csrf;
 		state.perm = data.perm;
-		state.perms = Object.assign( { crm : true, pdf : false }, data.perms );
+		state.perms = Object.assign( { crm : true, pdf : false, elements : false }, data.perms );
 		state.pdfAvailable = data.pdf_available !== false;
 		state.user = data.user.name;
 		state.texts = data.texts;
@@ -5043,6 +5602,12 @@
 			const target = event.target !== null && event.target !== undefined && typeof event.target.closest === 'function' ? event.target : null;
 
 			closeMenus( target === null ? null : target.closest( '.menu' ) );
+
+			// A save is running: the way out waits for it (see route()), and nothing is asked
+			if( state.busy !== null && typeof target?.closest === 'function' && target.closest( 'a' ) !== null && String( target.closest( 'a' ).getAttribute( 'href' ) ).charAt( 0 ) === '#' ) {
+				toast( t( 'items.saving' ) );
+				return;
+			}
 
 			// A link away from a draft that holds what was not stored asks first
 			const anchor = target === null ? null : target.closest( 'a' );
@@ -5100,7 +5665,7 @@
 		el : el,
 		t : t,
 		model : { docName : docName, visible : visible, visibleClients : visibleClients, clientTitle : clientTitle, ratesText : ratesText, chips : chips, draftOf : draftOf, draftNew : draftNew, payloadOf : payloadOf, totalsOf : totalsOf, ready : ready, lineOf : lineOf, primaryOf : primaryOf, tabsOf : tabsOf, errorText : errorText,
-			templateKey : templateKey, blockDraft : blockDraft, blockPayload : blockPayload, millimetres : millimetres, tokenGroups : tokenGroups, insertAt : insertAt },
+			templateKey : templateKey, positionKey : positionKey, positionDraftOf : positionDraftOf, positionPosts : positionPosts, blockDraft : blockDraft, blockPayload : blockPayload, millimetres : millimetres, tokenGroups : tokenGroups, insertAt : insertAt },
 	};
 
 	if( dc.readyState === 'loading' )

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 // unit/positionen.php - the element type the items are kept in, copied to /elements/positionen.php where the project has none (the
 // manifest's elementTypes, add-only: a type of this name that the project has stays as it is, whatever fields it changed). An item
-// is an element of this type, entered in the Elements panel; \Crm\Positionen reads them for the editor of the documents and the Builder
+// is an element of this type, entered in the screen Positionen of the surface or in the Elements panel; \Crm\Positionen reads them for the editor of the documents and the Builder
 // draws them on a page: [elements /positionen sort="sort" query="hidden=0"].
 //
 // The shape is the one \Nino\Elements::insertElementType() writes: the model, then one bucket per locale plus '*' for what is not
