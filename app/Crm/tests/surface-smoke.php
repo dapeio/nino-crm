@@ -219,10 +219,10 @@ check( '...the page has no inline script (the only script without a src is the J
 check( '...every token is filled and no word is missing: no [[ is left in the page', str_contains( $html, '[[' ) === false && str_contains( $html, '&#91;' ) === false );
 check( '...the JSON block holds the token of the session, the user, the permission, the words, the links and the directory', $data['csrf'] === \Nino\Csrf::getToken( $appData ) && $data['user'] === [ 'name' => 'crm@example.com' ] && $data['perm'] === '/_admin/crm/manage' && $data['base'] === '' && $data['texts']['nav.overview'] === 'Übersicht'
 	&& $data['links']['workbench'] === '/_admin/' && $data['links']['site'] === '/' );
-check( '...the links lead to the pages of the workbench the surface has no screen of: the Elements panel at the type of the items, the panels PDF, Members and Users - and none to a panel Kunden or Belege, which are gone', $data['links']['items'] === '/_admin/#elements/positionen' && $data['links']['pdf'] === '/_admin/#pdf'
-	&& $data['links']['members'] === '/_admin/#members' && $data['links']['users'] === '/_admin/#users' && array_diff( array_keys( $data['links'] ), [ 'css', 'site', 'workbench', 'items', 'pdf', 'members', 'users' ] ) === [] && str_contains( $html, 'crm-clients' ) === false && str_contains( $html, 'crm-documents' ) === false );
-check( '...the rail has six entries and each is a screen of the surface: Kunden, Positionen, PDF-Vorlagen and Einstellungen are hashes with their own mark, the count of the clients has its place, nothing leaves the page but the two links of the foot', preg_match_all( '~<nav class="nav".*?</nav>~s', $html, $rail ) === 1
-	&& preg_match_all( '~<a href="([^"]*)"(?: data-r="([a-z]+)")?~', $rail[0][0], $entries, PREG_SET_ORDER ) === 6 && array_map( static fn( array $entry ): string => $entry[1]. '|'. ( $entry[2] ?? '' ), $entries ) === [ '#uebersicht|uebersicht', '#belege|belege', '#kunden|kunden', '#positionen|positionen', '#pdf|pdf', '#einstellungen|einstellungen' ]
+check( '...the links lead to the pages of the workbench the surface has no screen of: the Elements panel at the type of the items, the panels PDF, Members and Users - and none to a panel Kunden or Belege, which are gone', $data['links']['items'] === '/_admin/#elements/positionen' && $data['links']['projects'] === '/_admin/#elements/projekte' && $data['links']['files'] === '/_admin/#files' && $data['links']['pdf'] === '/_admin/#pdf'
+	&& $data['links']['members'] === '/_admin/#members' && $data['links']['users'] === '/_admin/#users' && array_diff( array_keys( $data['links'] ), [ 'css', 'site', 'workbench', 'items', 'projects', 'files', 'pdf', 'members', 'users' ] ) === [] && str_contains( $html, 'crm-clients' ) === false && str_contains( $html, 'crm-documents' ) === false );
+check( '...the rail has seven entries and each is a screen of the surface: Kunden, Projekte, Positionen, PDF-Vorlagen and Einstellungen are hashes with their own mark, the count of the clients has its place, nothing leaves the page but the two links of the foot', preg_match_all( '~<nav class="nav".*?</nav>~s', $html, $rail ) === 1
+	&& preg_match_all( '~<a href="([^"]*)"(?: data-r="([a-z]+)")?~', $rail[0][0], $entries, PREG_SET_ORDER ) === 7 && array_map( static fn( array $entry ): string => $entry[1]. '|'. ( $entry[2] ?? '' ), $entries ) === [ '#uebersicht|uebersicht', '#belege|belege', '#kunden|kunden', '#projekte|projekte', '#positionen|positionen', '#pdf|pdf', '#einstellungen|einstellungen' ]
 	&& str_contains( $rail[0][0], 'id="n-kunden"' ) === true && str_contains( $rail[0][0], 'id="n-belege"' ) === true );
 check( '...the words are the surface\'s and the sentences of the codes of both panels, as error.<code>', $data['texts']['error.crm_documents_fixed'] === Surface::texts()['error.crm_documents_fixed'] && isset( $data['texts']['error.crm_clients_email'] ) === true
 	&& str_starts_with( $data['texts']['error.crm_documents_state'], 'Dieser Schritt' ) === true && count( array_filter( array_keys( $data['texts'] ), static fn( string $key ): bool => str_starts_with( $key, 'error.crm_' ) ) ) > 60 );
@@ -687,8 +687,8 @@ foreach( [ 'not json', '[]', '{"action":["crm-documents/list"]}', '{"action":1}'
 	check( 'a body that is no action ('. $broken. ') is 404 action as well', $answer['statusCode'] === 404 && $answer['body']['code'] === 'action' );
 }
 
-check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the four actions of the Elements panel that edit the Positionen and the two of the Text panel that edit the company\'s texts, and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ] )
-	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch))$~D', $action ) !== 1 ) === []
+check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the six of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/delete' ] )
+	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|delete))$~D', $action ) !== 1 ) === []
 	&& in_array( 'crm-clients/setup', array_keys( Surface::actions() ), true ) === false && in_array( 'crm-clients/status', array_keys( Surface::actions() ), true ) === false );
 
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiList' ], [ 'year' => (string) date( 'Y' ) ], 'crm-documents/list' );
@@ -823,7 +823,7 @@ check( '...the files of the panels Kunden and Belege are gone: no script, no sty
 	&& is_file( $root. '/app/Crm/Crm/Admin/assets/admin.js' ) === true && is_file( $root. '/app/Crm/Crm/Admin/assets/admin.css' ) === true && is_file( $root. '/app/Crm/Crm/Admin/templates/panel.tpl' ) === true && is_file( $root. '/app/Crm/Crm/Admin/text/de_DE.php' ) === true && is_file( $root. '/app/Crm/Crm/Admin/text/en_US.php' ) === true );
 check( '...no word of the workbench is left for a panel that is not there: the texts of Kunden and Belege hold the sentences of their codes and nothing else', array_filter( [ 'Clients', 'Documents' ], static fn( string $dir ): bool => array_filter( array_keys( (array) require $root. '/app/Crm/'. $dir. '/Admin/text/de_DE.php' ), static fn( string $key ): bool => str_starts_with( $key, '[[/_admin/error/crm_' ) === false ) !== [] ) === [] );
 $texts = Surface::texts();
-check( 'the surface has the sentences of the status and of the setup from the panel CRM as status.<key> and setup.done, and the code of the setup as an error', ( $texts['status.allok'] ?? '' ) !== '' && ( $texts['status.portal-partial'] ?? '' ) !== '' && ( $texts['status.lacks-types'] ?? '' ) === 'der Elementtyp Positionen' && substr_count( $texts['setup.done'] ?? '', '%s' ) === 7 && ( $texts['setup.home-new'] ?? '' ) === 'Die Startseite ist jetzt das Tor des Portals.' && ( $texts['setup.home-starter'] ?? '' ) === 'Die Startseite ist jetzt das Tor des Portals; die Seite /home des Assistenten ist nicht mehr verlinkt.' && ( $texts['setup.home-own'] ?? '' ) === 'Deine Startseite bleibt; das Tor des Portals liegt unter /portal.' && ( $texts['status.home-own'] ?? '' ) === 'Startseite: eigene Seite, nicht das Tor.' && ( $texts['status.home-other'] ?? '' ) !== '' && ( $texts['status.pdf-templates-none'] ?? '' ) !== '' && ( $texts['error.crm_setup_feature'] ?? '' ) !== '' && ( $texts['error.crm_setup_pdf'] ?? '' ) !== '' && isset( $texts['error.crm_setup_members'] ) === false
+check( 'the surface has the sentences of the status and of the setup from the panel CRM as status.<key> and setup.done, and the code of the setup as an error', ( $texts['status.allok'] ?? '' ) !== '' && ( $texts['status.portal-partial'] ?? '' ) !== '' && ( $texts['status.lacks-type-positionen'] ?? '' ) === 'der Elementtyp Positionen' && ( $texts['status.lacks-type-projekte'] ?? '' ) === 'der Elementtyp Projekte' && substr_count( $texts['setup.done'] ?? '', '%s' ) === 7 && ( $texts['setup.home-new'] ?? '' ) === 'Die Startseite ist jetzt das Tor des Portals.' && ( $texts['setup.home-starter'] ?? '' ) === 'Die Startseite ist jetzt das Tor des Portals; die Seite /home des Assistenten ist nicht mehr verlinkt.' && ( $texts['setup.home-own'] ?? '' ) === 'Deine Startseite bleibt; das Tor des Portals liegt unter /portal.' && ( $texts['status.home-own'] ?? '' ) === 'Startseite: eigene Seite, nicht das Tor.' && ( $texts['status.home-other'] ?? '' ) !== '' && ( $texts['status.pdf-templates-none'] ?? '' ) !== '' && ( $texts['error.crm_setup_feature'] ?? '' ) !== '' && ( $texts['error.crm_setup_pdf'] ?? '' ) !== '' && isset( $texts['error.crm_setup_members'] ) === false
 	&& str_contains( (string) ( $texts['status.module-off'] ?? '' ), '\\Crm\\Crm' ) === true );
 
 // status and setup through the endpoint
@@ -848,7 +848,7 @@ unset( $appData['/nino/mail/cap'] );
 $linesBefore = count( \Nino\Modules\Logs\Admin::recentLines( $appData, 200 ) );
 [ $status, $setupAnswer ] = surfaceApi( $appData, 'crm/setup' );
 $portalAfter = surfaceApi( $appData, 'crm-documents/settings-get' )[1]['portal'];
-check( 'setup through the endpoint applies the unit: the routes, the templates and the element type are added and the answer says so; the status says the portal is ready, and the settings that all six pages are there', $status === 200 && count( $setupAnswer['added']['routes'] ) === 6 && $setupAnswer['added']['types'] === [ 'positionen.php' ] && array_column( surfaceApi( $appData, 'crm/status' )[1]['items'], 'state', 'key' )['portal'] === 'ok'
+check( 'setup through the endpoint applies the unit: the routes, the templates and the element type are added and the answer says so; the status says the portal is ready, and the settings that all six pages are there', $status === 200 && count( $setupAnswer['added']['routes'] ) === 6 && $setupAnswer['added']['types'] === [ 'positionen.php', 'projekte.php' ] && array_column( surfaceApi( $appData, 'crm/status' )[1]['items'], 'state', 'key' )['portal'] === 'ok'
 	&& array_unique( array_column( $portalAfter['pages'], 'present' ) ) === [ true ] && \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) !== $routesBefore );
 $setupLines = array_values( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 20 ), static fn( string $entry ): bool => str_contains( $entry, 'Set the CRM up' ) === true ) );
 check( '...and the activity log has its line, by the account that did it, and the status a read leaves none', count( $setupLines ) === 1 && str_contains( $setupLines[0], 'crm@example.com' ) === true && count( \Nino\Modules\Logs\Admin::recentLines( $appData, 200 ) ) === $linesBefore + 1 );
@@ -932,7 +932,7 @@ $perms = static function( string $mail, string $password ) use ( $asUser, &$appD
 	$asUser( $mail, $password );
 	return surfaceData( (string) surfaceServe( $appData, 'GET', '/crm' )['body'] )['perms'] ?? [];
 };
-check( 'the data block carries which permissions the account has: crm, pdf, elements and text - the account of the CRM alone has the first only, the account with both has both', $perms( 'crm@example.com', 'crm password' ) === [ 'crm' => true, 'pdf' => false, 'elements' => false, 'text' => false ] && $perms( 'pdf@example.com', 'pdf password' ) === [ 'crm' => true, 'pdf' => true, 'elements' => false, 'text' => false ] && $perms( 'admin@example.com', 'correct horse battery staple' )['pdf'] === true );
+check( 'the data block carries which permissions the account has: crm, pdf, elements, text and files - the account of the CRM alone has the first only, the account with both has both', $perms( 'crm@example.com', 'crm password' ) === [ 'crm' => true, 'pdf' => false, 'elements' => false, 'text' => false, 'files' => false ] && $perms( 'pdf@example.com', 'pdf password' ) === [ 'crm' => true, 'pdf' => true, 'elements' => false, 'text' => false, 'files' => false ] && $perms( 'admin@example.com', 'correct horse battery staple' )['pdf'] === true );
 $asPdf();
 $html = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
 check( '...the rail has the entry PDF-Vorlagen at #pdf, hidden in the markup (the script shows it for the permission), between Positionen and Einstellungen', preg_match( '~<a href="#pdf" data-r="pdf" id="nav-pdf" hidden>PDF-Vorlagen</a>~', $html ) === 1
@@ -1228,6 +1228,240 @@ $lineAfter = Documents::get( $appData, $copy['id'] )['lines'][0];
 check( 'a delete through the endpoint removes the element in every language, and Positionen::list(), the loop and all() have nothing of it; the line of a document that copied its words keeps them', $status === 200 && Positionen::get( $appData, 'mixing' ) === null && in_array( 'mixing', array_column( Positionen::all( $appData ), 'id' ), true ) === false
 	&& in_array( '/positionen/mixing', $loop(), true ) === false && \Nino\Elements::getElement( $appData, '/positionen/mixing', 'en_US' ) === false && $lineAfter['title'] === 'Mixing Pro' && $lineAfter['description'] === "Mischung eines Songs\nbis 48 Spuren" && $lineAfter === $lineBefore
 	&& $itemsLines( 'Delete Element /positionen/mixing' ) === 1 );
+$asCrm();
+
+// --- Projekte: the Elements panel's actions for the type, the reads of the projects, the Files panel's actions for their folders -------------------
+
+echo "\nProjekte\n";
+
+\Nino\Auth::insertUser( $appData, 'files@example.com', 'files password', [ '/_admin/crm/manage', '/_admin/files/manage' ] );
+\Nino\Auth::insertUser( $appData, 'filesonly@example.com', 'filesonly password', [ '/_admin/files/manage' ] );
+\Nino\Auth::insertUser( $appData, 'projects@example.com', 'projects password', [ '/_admin/crm/manage', '/_admin/elements/manage', '/_admin/files/manage' ] );
+$asFiles = static function() use ( $asUser ): void { $asUser( 'files@example.com', 'files password' ); };
+$asProjects = static function() use ( $asUser ): void { $asUser( 'projects@example.com', 'projects password' ); };
+$lines = static fn( string $needle ): int => count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 600 ), static fn( string $entry ): bool => str_contains( $entry, $needle ) === true ) );
+$group = \Crm\Clients::group( $a['number'] );
+$accountA = \Nino\Modules\Members::add( $appData, 'anna@studio-nord.example', 'Anna Nord', $group );
+
+check( 'the type of the projects is there, empty, and the client has an account in the group of its number - which is what makes the group one the Files panel knows', \Crm\Projekte::missing( $appData ) === false && \Crm\Projekte::list( $appData ) === [] && is_array( $accountA ) && in_array( $group, \Nino\Modules\Members::groups( $appData ), true ) === true && $group === strtolower( $a['number'] ) );
+
+// --- the Elements panel's actions, for the type projekte
+$project = [ 'type' => 'projekte', 'uri' => '', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Album 2027', 'client' => $a['number'], 'description' => "Aufnahme\nund Mix", 'started' => '2026-10-01' ] ];
+$asVisitor();
+check( 'the actions of the Elements panel take the type projekte as they take positionen: 401 for nobody', surfaceApi( $appData, 'elements/save', $project )[0] === 401 && surfaceApi( $appData, 'elements/delete', [ 'type' => 'projekte', 'uri' => '00001' ] )[0] === 401 );
+$asCrm();
+check( '...403 for the account of the CRM alone - the panel\'s guard comes first', surfaceApi( $appData, 'elements/save', $project )[0] === 403 && surfaceApi( $appData, 'elements/list', [ 'type' => 'projekte' ] )[0] === 403 && \Crm\Projekte::list( $appData ) === [] );
+$asItems();
+
+[ $status, $made ] = surfaceApi( $appData, 'elements/save', $project );
+check( 'a save without a uri makes the next numbered element, which is the panel\'s own way for a type that numbers: 200 and the uri in the element; Projekte::get() reads it', $status === 200 && $made['element']['.uri'] === '/projekte/00001' && $made['nextUri'] === '00002'
+	&& \Crm\Projekte::get( $appData, '00001' ) === [ 'id' => '00001', 'title' => 'Album 2027', 'client' => $a['number'], 'description' => "Aufnahme\nund Mix", 'started' => '2026-10-01', 'done' => false, 'folder' => '' ] );
+[ $status, ] = surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'done' => true ] ] + $project );
+check( '...a change names the number: done is the switch, the other fields stay; the folder is a field of its own', $status === 200 && \Crm\Projekte::get( $appData, '00001' )['done'] === true && \Crm\Projekte::get( $appData, '00001' )['title'] === 'Album 2027'
+	&& surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'done' => false, 'folder' => 'aaaaaaaaaaaa' ] ] + $project )[0] === 200 && \Crm\Projekte::get( $appData, '00001' )['folder'] === 'aaaaaaaaaaaa' && \Crm\Projekte::get( $appData, '00001' )['done'] === false );
+check( 'the list of the panel answers the project; elements/get answers its fields once, for all languages', surfaceApi( $appData, 'elements/list', [ 'type' => 'projekte' ] )[1]['elements'][0]['uri'] === '00001' && ( $got = surfaceApi( $appData, 'elements/get', [ 'type' => 'projekte', 'uri' => '00001' ] ) )[0] === 200
+	&& $got[1]['global']['client'] === $a['number'] && $got[1]['global']['folder'] === 'aaaaaaaaaaaa' );
+surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'folder' => '' ] ] + $project );
+$other = [];
+
+foreach( [ 'legal', 'notes', '', 'Projekte', '/projekte', 'projekte/x', 'projekte ' ] as $type )
+	foreach( [ 'elements/list' => [], 'elements/get' => [ 'uri' => '00001' ], 'elements/save' => [ 'uri' => '', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Fremd', 'client' => $a['number'] ] ], 'elements/delete' => [ 'uri' => '00001' ] ] as $action => $data ) {
+		[ $status, $answer ] = surfaceApi( $appData, $action, [ 'type' => $type ] + $data );
+
+		if( $status !== 404 || ( $answer['code'] ?? '' ) !== 'crm_positionen_type' )
+			$other[] = $type. ' '. $action;
+	}
+
+check( 'a third type - or the name of the second in another spelling - is still 404 crm_positionen_type for each of the four actions, and nothing was made or removed', $other === [] && array_column( \Crm\Projekte::list( $appData ), 'id' ) === [ '00001' ] && \Nino\Elements::getElement( $appData, '/notes/erste', 'de_DE' ) !== false );
+
+// A client the project names is a client; and it is the client it was while a document names the project
+[ $status, $answer ] = surfaceApi( $appData, 'elements/save', [ 'fields' => [ 'title' => 'Ohne Kunden', 'client' => 'K-9999' ] ] + $project );
+check( 'the client of a new project must be a number a client has: 400 crm_project_client_unknown at the field client - nothing is made; no number at all is the same', $status === 400 && $answer['code'] === 'crm_project_client_unknown' && $answer['field'] === 'client' && array_column( \Crm\Projekte::list( $appData ), 'id' ) === [ '00001' ]
+	&& surfaceApi( $appData, 'elements/save', [ 'fields' => [ 'title' => 'x', 'client' => '' ] ] + $project )[1]['code'] === 'crm_project_client_unknown' && surfaceApi( $appData, 'elements/save', [ 'fields' => [ 'title' => 'x', 'client' => [ 1 ] ] ] + $project )[1]['code'] === 'crm_project_client_unknown' );
+check( '...a save that names no client (a new title, the switch) is not asked about it', surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'title' => 'Album 2027 neu' ] ] + $project )[0] === 200 && \Crm\Projekte::get( $appData, '00001' )['title'] === 'Album 2027 neu' );
+$carried = (array) Documents::add( $appData, 'invoice', $a['id'], [ 'project' => '00001', 'lines' => [ $line( 'Aufnahme' ) ], 'template_key' => 'rechnung' ] );
+check( 'a document names the project', ( $carried['project'] ?? '' ) === '00001' && \Crm\Projekte::documentsOf( $appData, '00001' ) === 1 );
+[ $status, $answer ] = surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'client' => $b['number'] ] ] + $project );
+check( '...and the client of the project does not change then: 409 crm_project_client_locked with the count, at the field client; the same client is no change', $status === 409 && $answer['code'] === 'crm_project_client_locked' && $answer['params'] === [ 1 ] && $answer['field'] === 'client' && \Crm\Projekte::get( $appData, '00001' )['client'] === $a['number']
+	&& surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'client' => $a['number'] ] ] + $project )[0] === 200 );
+[ $status, $answer ] = surfaceApi( $appData, 'elements/delete', [ 'type' => 'projekte', 'uri' => '00001' ] );
+check( 'a project that a document names is not deleted: 409 crm_project_documents with the count - the element is there, and nothing was asked of the panel', $status === 409 && $answer['code'] === 'crm_project_documents' && $answer['params'] === [ 1 ] && array_keys( $answer ) === [ 'error', 'code', 'params' ] && \Crm\Projekte::get( $appData, '00001' ) !== null && $lines( 'Delete Element /projekte/00001' ) === 0 );
+check( '...a client without a document of its own may change on a project that has none', surfaceApi( $appData, 'elements/save', [ 'fields' => [ 'title' => 'Zweites', 'client' => $b['number'] ] ] + $project )[0] === 200 && surfaceApi( $appData, 'elements/save', [ 'uri' => '00002', 'isNew' => false, 'fields' => [ 'client' => $a['number'] ] ] + $project )[0] === 200 && \Crm\Projekte::get( $appData, '00002' )['client'] === $a['number'] );
+// The same three rules in the workbench's own panel: the kernel's vetoes, not the endpoint's check
+[ $status, ] = ninoCall( $appData, [ \Nino\Modules\Elements\Admin::class, 'apiDelete' ], [ 'type' => 'projekte', 'uri' => '00001' ], 'elements/delete' );
+check( 'the Elements panel of the workbench does not delete a project that a document names either: not 200, the project is there', $status !== 200 && $status !== 403 && \Crm\Projekte::get( $appData, '00001' ) !== null );
+[ $statusMove, ] = ninoCall( $appData, [ \Nino\Modules\Elements\Admin::class, 'apiSave' ], [ 'type' => 'projekte', 'uri' => '00001', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'client' => $b['number'] ] ], 'elements/save' );
+[ $statusNone, ] = ninoCall( $appData, [ \Nino\Modules\Elements\Admin::class, 'apiSave' ], [ 'type' => 'projekte', 'uri' => '00002', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'client' => 'K-9999' ] ], 'elements/save' );
+[ $statusNew, ] = ninoCall( $appData, [ \Nino\Modules\Elements\Admin::class, 'apiSave' ], [ 'type' => 'projekte', 'uri' => '', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Fremd', 'client' => 'K-9999' ] ], 'elements/save' );
+check( '...nor changes its client while one does (not 200, the client is the old one), nor takes a client nobody has - for a change or for a new project; nothing is made', $statusMove !== 200 && $statusMove !== 403 && \Crm\Projekte::get( $appData, '00001' )['client'] === $a['number']
+	&& $statusNone !== 200 && $statusNone !== 403 && \Crm\Projekte::get( $appData, '00002' )['client'] === $a['number'] && $statusNew !== 200 && $statusNew !== 403 && array_column( \Crm\Projekte::list( $appData ), 'title' ) === [ 'Zweites', 'Album 2027 neu' ] );
+check( '...what the rules allow it still does: a change of the title, the same client again, a new project of a client that is there, and the client of a project that no document names', ninoCall( $appData, [ \Nino\Modules\Elements\Admin::class, 'apiSave' ], [ 'type' => 'projekte', 'uri' => '00001', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'title' => 'Album 2027 neu', 'client' => $a['number'] ] ], 'elements/save' )[0] === 200
+	&& ninoCall( $appData, [ \Nino\Modules\Elements\Admin::class, 'apiSave' ], [ 'type' => 'projekte', 'uri' => '00002', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'client' => $b['number'] ] ], 'elements/save' )[0] === 200 && \Crm\Projekte::get( $appData, '00002' )['client'] === $b['number'] );
+surfaceApi( $appData, 'elements/save', [ 'type' => 'projekte', 'uri' => '00002', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'client' => $a['number'] ] ] );
+Documents::setProject( $appData, $carried['id'], '' );
+[ $status, ] = surfaceApi( $appData, 'elements/delete', [ 'type' => 'projekte', 'uri' => '00002' ] );
+check( '...and with no document on it a project is deleted by the panel\'s own action: 200, gone, the log has the panel\'s line', $status === 200 && \Crm\Projekte::get( $appData, '00002' ) === null && $lines( 'Delete Element /projekte/00002' ) === 1 && $lines( 'Add Element /projekte/' ) >= 1 );
+Documents::setProject( $appData, $carried['id'], '00001' );
+$texts = Surface::texts();
+check( 'the sentences of the refusals are the page\'s, each says what it counts', array_filter( [ 'crm_project_documents', 'crm_project_client_locked' ], static fn( string $code ): bool => str_contains( $texts['error.'. $code] ?? '', '%s' ) === false ) === [] && ( $texts['error.crm_project_client_unknown'] ?? '' ) !== '' && ( $texts['error.crm_project'] ?? '' ) !== '' && ( $texts['error.crm_project_client'] ?? '' ) !== '' );
+
+// --- the reads of the projects
+echo "\nThe reads of the projects\n";
+
+$asVisitor();
+check( 'crm-projekte/list and crm-projekte/get are in the table: 401 for nobody, and 403 for an account without the CRM\'s permission', surfaceApi( $appData, 'crm-projekte/list' )[0] === 401 && surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[0] === 401 );
+$asUser( 'plain@example.com', 'plain password' );
+check( '...403 for the account without the permission of the CRM', surfaceApi( $appData, 'crm-projekte/list' )[0] === 403 && surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[0] === 403 );
+$asCrm();
+[ $status, $list ] = surfaceApi( $appData, 'crm-projekte/list' );
+check( 'the list answers for the permission of the CRM alone: whether the type is missing, the language the screens save in, whether Files is on, and the project with its client, the number of its documents and of its offers that wait', $status === 200 && $list['missing'] === false && $list['native'] === 'de_DE' && $list['files'] === true && count( $list['projects'] ) === 1
+	&& array_intersect_key( $list['projects'][0], array_flip( [ 'id', 'title', 'client', 'client_id', 'client_title', 'documents', 'open', 'done', 'folder', 'files' ] ) ) === [ 'id' => '00001', 'title' => 'Album 2027 neu', 'client' => $a['number'], 'done' => false, 'folder' => '', 'documents' => 1, 'open' => 0, 'client_id' => $a['id'], 'client_title' => 'Studio Nord GmbH', 'files' => 0 ] );
+$offer = $final( 'offer', $a['id'], [ 'lines' => [ $line( 'Mix' ) ], 'template_key' => 'angebot', 'project' => '00001' ] );
+$decided = $final( 'offer', $a['id'], [ 'lines' => [ $line( 'Master' ) ], 'template_key' => 'angebot', 'project' => '00001' ] );
+Documents::setState( $appData, $decided['id'], 'accepted' );
+check( '...the offers that wait are the ones open or sent - an accepted one is a document and no waiting offer', surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'][0]['documents'] === 3 && surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'][0]['open'] === 1 );
+$asItems();
+surfaceApi( $appData, 'elements/save', [ 'fields' => [ 'title' => 'Podcast', 'client' => $b['number'] ] ] + $project );
+surfaceApi( $appData, 'elements/save', [ 'fields' => [ 'title' => 'Fertig', 'client' => $a['number'], 'done' => true ] ] + $project );
+$asCrm();
+check( '...the filters: a client\'s projects by its id, the open ones, a search in the title - a client nobody has has none, a filter that is no id is 400', array_column( surfaceApi( $appData, 'crm-projekte/list', [ 'client' => (string) $b['id'] ] )[1]['projects'], 'title' ) === [ 'Podcast' ]
+	&& array_column( surfaceApi( $appData, 'crm-projekte/list', [ 'open' => true ] )[1]['projects'], 'title' ) === [ 'Podcast', 'Album 2027 neu' ] && array_column( surfaceApi( $appData, 'crm-projekte/list', [ 'q' => 'fert' ] )[1]['projects'], 'title' ) === [ 'Fertig' ]
+	&& surfaceApi( $appData, 'crm-projekte/list', [ 'client' => '99999' ] )[1]['projects'] === [] && surfaceApi( $appData, 'crm-projekte/list', [ 'client' => 'x' ] )[0] === 400 && array_column( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'], 'id' ) === [ '00004', '00003', '00001' ] );
+[ $status, $got ] = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] );
+check( 'get answers one project the same way, with its client, the language, whether Files is on, no folder and no list of files where it has no folder', $status === 200 && $got['project']['id'] === '00001' && $got['project']['documents'] === 3 && $got['project']['open'] === 1 && $got['client'] === [ 'id' => $a['id'], 'number' => $a['number'], 'title' => 'Studio Nord GmbH', 'active' => true ]
+	&& $got['native'] === 'de_DE' && $got['files'] === true && $got['folder'] === null && $got['list'] === [] && isset( $got['project']['file_list'] ) === false );
+check( '...a project nobody has is 404 crm_projekte_unknown at the field id; an id that is no id as well', ( $r = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00099' ] ) )[0] === 404 && $r[1]['code'] === 'crm_projekte_unknown' && $r[1]['field'] === 'id' && surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '../x' ] )[1]['code'] === 'crm_projekte_unknown' );
+
+// --- the Files panel's actions, for the folders of the clients
+echo "\nDateien\n";
+
+$four = [ 'files/list' => [ 'group' => $group ], 'files/folder/add' => [ 'group' => $group, 'name' => 'Album' ], 'files/folder/save' => [ 'id' => 'aaaaaaaaaaaa', 'name' => 'x' ], 'files/upload' => [ 'folder' => 'aaaaaaaaaaaa', 'name' => 'a.txt', 'size' => 1, 'index' => 0, 'count' => 1 ], 'files/save' => [ 'id' => 'aaaaaaaaaaaa', 'visible' => true ], 'files/delete' => [ 'id' => 'aaaaaaaaaaaa' ] ];
+$asVisitor();
+check( 'the six actions of the Files panel are in the table by their names: 401 for nobody', array_filter( $four, static fn( array $data, string $action ): bool => surfaceApi( $appData, $action, $data )[0] !== 401, ARRAY_FILTER_USE_BOTH ) === [] );
+$asCrm();
+$denied = static function() use ( &$appData, $four ): array {
+	return array_filter( $four, static function( array $data, string $action ) use ( &$appData ): bool { return surfaceApi( $appData, $action, $data )[0] !== 403; }, ARRAY_FILTER_USE_BOTH );
+};
+$crmOnly = $denied();
+$asUser( 'filesonly@example.com', 'filesonly password' );
+check( '...403 for the account of the CRM alone - the panel\'s guard holds - and for the permission of the Files panel alone: the endpoint asks for the CRM\'s first', $crmOnly === [] && $denied() === [] );
+$asFiles();
+check( '...a folder of the panel\'s other actions, the delete of a folder and the mark of the upload folder, is not offered: 404 action, with the permission, and the table does not hold them', surfaceApi( $appData, 'files/folder/delete', [ 'id' => 'aaaaaaaaaaaa' ] )[0] === 404 && surfaceApi( $appData, 'files/folder/delete', [ 'id' => 'aaaaaaaaaaaa' ] )[1]['code'] === 'action'
+	&& surfaceApi( $appData, 'files/folder/upload-target', [ 'id' => 'aaaaaaaaaaaa', 'on' => true ] )[1]['code'] === 'action' && array_diff( array_keys( Surface::actions() ), array_keys( \Nino\Modules\Files\Admin::actions() ) ) !== array_keys( Surface::actions() )
+	&& array_intersect( [ 'files/folder/delete', 'files/folder/upload-target' ], array_keys( Surface::actions() ) ) === [] );
+
+$foldersBefore = array_keys( \Nino\Modules\Files\Store::read( $appData )['folders'] );
+[ $status, $folder ] = surfaceApi( $appData, 'files/folder/add', [ 'group' => $group, 'name' => 'Album 2027 neu' ] );
+check( 'files/folder/add in the group of a client makes the folder the panel makes: 200, the folder with its id, in the group', $status === 200 && preg_match( '/^[a-f0-9]{12}$/D', $folder['folder']['id'] ) === 1 && $folder['folder']['group'] === $group && $folder['folder']['name'] === 'Album 2027 neu'
+	&& in_array( $folder['folder']['id'], array_column( \Nino\Modules\Files::folders( $appData, $group ), 'id' ), true ) === true );
+$folderId = $folder['folder']['id'];
+$stranger = \Nino\Modules\Files\Store::addFolder( $appData, 'allgemein', 'Fremd' );
+$nobody = [];
+
+foreach( [ 'allgemein', 'k-9999', 'K-0001', 'k-1', 'k-00011', 'k-0001x', '', 'k-0001 ', ' k-0001', $group. '/x', 'x' ] as $bad )
+	foreach( [ 'files/list' => [ 'group' => $bad ], 'files/folder/add' => [ 'group' => $bad, 'name' => 'Eindringling' ] ] as $action => $data ) {
+		[ $status, $answer ] = surfaceApi( $appData, $action, $data );
+
+		if( $status !== 404 || ( $answer['code'] ?? '' ) !== 'crm_files_group' || array_keys( $answer ) !== [ 'error', 'code' ] )
+			$nobody[] = $bad. ' '. $action;
+	}
+
+check( 'a group that is no client\'s - another group of Members, a number nobody has, a spelling of the group that is none - is 404 crm_files_group for the list and the add, and the answer holds nothing of the panel', $nobody === [] );
+check( '...nothing was made: no folder in any of those groups, the folder of the stranger is as it was', \Nino\Modules\Files::folders( $appData, 'allgemein' ) === [ $stranger ] && \Nino\Modules\Files::folders( $appData, 'k-9999' ) === [] && array_keys( \Nino\Modules\Files\Store::read( $appData )['folders'] ) === array_merge( $foldersBefore, [ $folderId, $stranger['id'] ] ) );
+check( '...the client without an account (a group the panel does not know yet) is a client\'s group all the same: the add is the panel\'s own refusal, 400 files_group, and the list shows nothing of any other group', ( $r = surfaceApi( $appData, 'files/folder/add', [ 'group' => \Crm\Clients::group( $c['number'] ), 'name' => 'Leer' ] ) )[0] === 400 && $r[1]['code'] === 'files_group'
+	&& ( $l = surfaceApi( $appData, 'files/list', [ 'group' => \Crm\Clients::group( $c['number'] ) ] ) )[0] === 200 && $l[1]['group'] === \Crm\Clients::group( $c['number'] ) && $l[1]['folders'] === [] && $l[1]['files'] === [] );
+[ $status, $l ] = surfaceApi( $appData, 'files/list', [ 'group' => $group ] );
+check( '...the list of a client\'s group is the panel\'s: its folders, its files, the limits of the uploads (the chunk and the largest file) and the types', $status === 200 && $l['group'] === $group && in_array( $folderId, array_column( $l['folders'], 'id' ), true ) === true && array_column( $l['folders'], 'id' ) === array_column( \Nino\Modules\Files::folders( $appData, $group ), 'id' ) && $l['limits']['chunk'] > 0 && $l['limits']['max'] > 0 && in_array( 'txt', $l['types'], true ) === true );
+
+[ $status, $renamed ] = surfaceApi( $appData, 'files/folder/save', [ 'id' => $folderId, 'name' => 'Album 2027' ] );
+check( 'files/folder/save renames a folder of a client\'s group; a folder of another group is 404 crm_files_group and keeps its name, an id that is none the same', $status === 200 && $renamed['folder']['name'] === 'Album 2027' && ( $r = surfaceApi( $appData, 'files/folder/save', [ 'id' => $stranger['id'], 'name' => 'Umbenannt' ] ) )[0] === 404 && $r[1]['code'] === 'crm_files_group'
+	&& \Nino\Modules\Files\Store::folder( $appData, $stranger['id'] )['name'] === 'Fremd' && surfaceApi( $appData, 'files/folder/save', [ 'id' => 'zzzz', 'name' => 'x' ] )[1]['code'] === 'crm_files_group' && surfaceApi( $appData, 'files/folder/save', [ 'id' => $folderId, 'name' => '' ] )[1]['code'] === 'files_name' );
+
+// The upload: a multipart post, the action and the data as fields and the bytes as the part chunk - in two chunks
+\Nino\Features::saveSettings( $appData, 'files', [ 'chunk' => 1 ] );
+$bytes = str_repeat( "Zeile eines Textes\n", 60000 ). 'Ende';
+$total = strlen( $bytes );
+$chunkSize = \Nino\Modules\Files\Store::chunkBytes( $appData );
+$pieces = str_split( $bytes, $chunkSize );
+$sendChunk = static function( array $data, ?string $piece ) use ( &$appData ): array {
+	$tmp = tempnam( sys_get_temp_dir(), 'crm-chunk' );
+	file_put_contents( $tmp, (string) $piece );
+	$_POST = [ 'action' => 'files/upload', 'data' => (string) json_encode( $data ) ];
+	$_FILES = $piece === null ? [] : [ 'chunk' => [ 'name' => 'blob', 'type' => 'application/octet-stream', 'tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK, 'size' => strlen( $piece ) ] ];
+	$request = ninoVisit( $appData, '/crm/api', 'POST', [ 'HTTP_X_CSRF_TOKEN' => \Nino\Csrf::getToken( $appData ) ] );
+	\Nino\Http::response( $appData, $request );
+	$_POST = [];
+	$_FILES = [];
+	@unlink( $tmp );
+
+	return [ $request['/nino/http/response']['statusCode'], $request['/nino/http/response']['body'] ];
+};
+$meta = [ 'folder' => $folderId, 'name' => 'Notizen.txt', 'size' => $total, 'count' => count( $pieces ), 'visible' => true ];
+[ $firstStatus, $firstAnswer ] = $sendChunk( $meta + [ 'upload' => '', 'index' => 0 ], $pieces[0] );
+check( 'the upload goes through the endpoint as the panel\'s script sends it: the first chunk is 200 with the id of the upload and its index', count( $pieces ) === 2 && $firstStatus === 200 && preg_match( '/^[a-f0-9]{16}$/D', (string) ( $firstAnswer['upload'] ?? '' ) ) === 1 && $firstAnswer['index'] === 0 && \Nino\Modules\Files::files( $appData, $folderId ) === [] );
+[ $lastStatus, $lastAnswer ] = $sendChunk( $meta + [ 'upload' => $firstAnswer['upload'], 'index' => 1 ], $pieces[1] );
+$stored = \Nino\Modules\Files::files( $appData, $folderId );
+check( '...the last chunk puts the file in the folder of the project: 200 with its id, name and size; the index has it, visible, put there by the owner, with the bytes it was sent', $lastStatus === 200 && $lastAnswer['name'] === 'Notizen.txt' && $lastAnswer['size'] === $total && count( $stored ) === 1 && $stored[0]['id'] === $lastAnswer['id'] && $stored[0]['folder'] === $folderId && $stored[0]['visible'] === true
+	&& $stored[0]['by'] === [ 'kind' => 'owner', 'id' => '' ] && file_get_contents( (string) \Nino\Modules\Files::path( $appData, $stored[0]['id'] ) ) === $bytes );
+check( '...the log has the panel\'s line, once, when the last chunk is in - and not for the first', $lines( 'Uploaded file '. $lastAnswer['id'] ) === 1 && $lines( 'Added folder '. $folderId ) === 1 && $lines( 'Renamed folder '. $folderId ) === 1 );
+check( '...a chunk for a folder of another group is 404 crm_files_group and stores nothing; so is a chunk that names no folder; a chunk the panel refuses keeps its code (files_type for a name it does not take)', ( $r = $sendChunk( [ 'folder' => $stranger['id'], 'name' => 'a.txt', 'size' => 3, 'count' => 1, 'index' => 0, 'upload' => '' ], 'abc' ) )[0] === 404 && $r[1]['code'] === 'crm_files_group' && \Nino\Modules\Files::files( $appData, $stranger['id'] ) === []
+	&& $sendChunk( [ 'name' => 'a.txt', 'size' => 3, 'count' => 1, 'index' => 0, 'upload' => '' ], 'abc' )[1]['code'] === 'crm_files_group' && ( $r = $sendChunk( [ 'folder' => $folderId, 'name' => 'bild.exe', 'size' => 3, 'count' => 1, 'index' => 0, 'upload' => '' ], 'abc' ) )[0] === 400 && $r[1]['code'] === 'files_type' );
+$asVisitor();
+$seen = $sendChunk( $meta + [ 'upload' => '', 'index' => 0 ], $pieces[0] )[0];
+$asCrm();
+check( '...a visitor with a multipart post is 401, and the account of the CRM alone 403 - the file is not looked at', $seen === 401 && $sendChunk( $meta + [ 'upload' => '', 'index' => 0 ], $pieces[0] )[0] === 403 );
+$asFiles();
+
+// The file: visible or not, and gone
+$fileId = $stored[0]['id'];
+[ $status, $saved ] = surfaceApi( $appData, 'files/save', [ 'id' => $fileId, 'visible' => false ] );
+check( 'files/save switches a file of the project\'s folder: 200, the file as it is now; the files of a folder of another group are not touched - 404 crm_files_group', $status === 200 && $saved['file']['visible'] === false && \Nino\Modules\Files::file( $appData, $fileId )['visible'] === false );
+$strangeFile = \Nino\Modules\Files\Store::addFile( $appData, 'bbbbbbbbbbbb', [ 'folder' => $stranger['id'], 'name' => 'f.txt', 'ext' => 'txt', 'size' => 1, 'mime' => 'text/plain', 'sha256' => str_repeat( 'a', 64 ), 'by' => [ 'kind' => 'owner', 'id' => '' ], 'visible' => true, 'created' => gmdate( 'Y-m-d\TH:i:s\Z' ) ], 0 );
+check( '...a file of another group is neither switched nor deleted: 404 crm_files_group for both', is_array( $strangeFile ) && ( $r = surfaceApi( $appData, 'files/save', [ 'id' => 'bbbbbbbbbbbb', 'visible' => false ] ) )[0] === 404 && $r[1]['code'] === 'crm_files_group' && surfaceApi( $appData, 'files/delete', [ 'id' => 'bbbbbbbbbbbb' ] )[1]['code'] === 'crm_files_group'
+	&& \Nino\Modules\Files::file( $appData, 'bbbbbbbbbbbb' ) !== null && \Nino\Modules\Files::file( $appData, 'bbbbbbbbbbbb' )['visible'] === true );
+check( '...a file nobody has is the panel\'s own 404 files_unknown, which touches nothing', ( $r = surfaceApi( $appData, 'files/delete', [ 'id' => 'cccccccccccc' ] ) )[0] === 404 && $r[1]['code'] === 'files_unknown' );
+
+// The reads of the projects, now with a folder and a file in it
+$asItems();
+surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'folder' => $folderId ] ] + $project );
+$asCrm();
+[ , $list ] = surfaceApi( $appData, 'crm-projekte/list' );
+check( 'with a folder the list counts the files of the project and the card lists them with the address each is downloaded at, who put it there and whether the members see it - for the account of the CRM alone', array_column( $list['projects'], 'files', 'id' )['00001'] === 1 && array_column( $list['projects'], 'files', 'id' )['00003'] === 0
+	&& ( $got = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1] )['folder'] === [ 'id' => $folderId, 'name' => 'Album 2027' ] && count( $got['list'] ) === 1 && $got['list'][0] === [ 'id' => $fileId, 'name' => 'Notizen.txt', 'ext' => 'txt', 'size' => $total, 'mime' => 'text/plain', 'created' => $stored[0]['created'], 'visible' => false, 'by' => [ 'kind' => 'owner', 'label' => '' ], 'url' => '/.files/'. $fileId ] );
+$asItems();
+surfaceApi( $appData, 'elements/save', [ 'uri' => '00004', 'isNew' => false, 'fields' => [ 'folder' => 'dddddddddddd' ] ] + $project );
+$asCrm();
+check( '...a folder id that Files does not have (deleted there) is no folder: the card says none, and the count is 0', surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00004' ] )[1]['folder'] === null && array_column( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'], 'files', 'id' )['00004'] === 0 );
+
+// Whether the files can be changed is told by the answer, as of now
+$allowedCrm = [ surfaceApi( $appData, 'crm-projekte/list' )[1]['allowed'], surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['allowed'] ];
+$asFiles();
+$allowedFiles = [ surfaceApi( $appData, 'crm-projekte/list' )[1]['allowed'], surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['allowed'] ];
+\Nino\Features::deactivate( $appData, 'files' );
+$allowedOff = surfaceApi( $appData, 'crm-projekte/list' )[1]['allowed'];
+\Nino\Features::activate( $appData, 'files' );
+check( 'the list and the card say whether the account may change the files now - not the page, whose data block is as old as its load, and a setup switches the feature on under it: false for the account of the CRM alone, true with the permission of the Files panel, false again where the feature is off', $allowedCrm === [ false, false ] && $allowedFiles === [ true, true ] && $allowedOff === false );
+$asCrm();
+
+// Files off: no files to count and the actions say so
+\Nino\Features::deactivate( $appData, 'files' );
+[ , $off ] = surfaceApi( $appData, 'crm-projekte/list' );
+$cardOff = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1];
+$asFiles();
+$listOff = surfaceApi( $appData, 'files/list', [ 'group' => $group ] );
+check( 'where the feature Files is off the list has no count of files (null) and says so, and the card has no list; the actions of the panel are 409 files_off, with the permission', $off['files'] === false && array_unique( array_column( $off['projects'], 'files' ) ) === [ null ] && $cardOff['files'] === false && $cardOff['list'] === null && $cardOff['folder'] === null
+	&& $listOff[0] === 409 && $listOff[1]['code'] === 'files_off' );
+\Nino\Features::activate( $appData, 'files' );
+
+// The permission in the data block and the sentences
+$html = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
+$withFeature = [ $perms( 'files@example.com', 'files password' )['files'], $perms( 'crm@example.com', 'crm password' )['files'], $perms( 'admin@example.com', 'correct horse battery staple' )['files'] ];
+\Nino\Features::deactivate( $appData, 'files' );
+$featureOff = $perms( 'files@example.com', 'files password' )['files'];
+\Nino\Features::activate( $appData, 'files' );
+check( 'the data block says whether the account holds the permission of the Files panel with the feature on: perms.files is true for it and for the owner, false for the account of the CRM alone - and false for the one that holds it while the feature is off', surfaceData( $html )['perms']['files'] === true && $withFeature === [ true, false, true ] && $featureOff === false );
+$texts = Surface::texts();
+check( 'the sentences are the page\'s: the restriction has its own, the codes of the Files panel come from its text file, and the feature that is off has one', ( $texts['error.crm_files_group'] ?? '' ) !== '' && ( $texts['error.files_off'] ?? '' ) !== '' && str_contains( $texts['error.files_quota'] ?? '', '%s' ) === true && ( $texts['error.files_group'] ?? '' ) !== '' && Surface\Files::textFile() !== '' && str_ends_with( Surface\Files::textFile(), '/Files/text/de_DE.php' ) === true );
 $asCrm();
 
 // --- Firmendaten: the actions of the Text panel through the endpoint, for the keys below /project/company/ alone ------------

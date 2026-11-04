@@ -52,7 +52,7 @@ function words() {
 	while( ( found = re.exec( text ) ) )
 		map[found[1]] = found[2].replace( /\\(['\\])/g, '$1' );
 
-	[ 'app/Crm/Clients/Admin/text/de_DE.php', 'app/Crm/Documents/Admin/text/de_DE.php', 'app/Crm/Crm/Admin/text/de_DE.php', 'features/Pdf/text/de_DE.php', '_admin/Nino/Modules/Elements/text/de_DE.php', '_admin/Nino/Modules/Text/text/de_DE.php' ].forEach( function( file ) {
+	[ 'app/Crm/Clients/Admin/text/de_DE.php', 'app/Crm/Documents/Admin/text/de_DE.php', 'app/Crm/Crm/Admin/text/de_DE.php', 'features/Pdf/text/de_DE.php', 'features/Files/text/de_DE.php', '_admin/Nino/Modules/Elements/text/de_DE.php', '_admin/Nino/Modules/Text/text/de_DE.php' ].forEach( function( file ) {
 		const sentences = fills( file );
 		Object.keys( sentences ).forEach( function( key ) {
 
@@ -102,7 +102,7 @@ const offers = [ { id : 13, number : 'A-2026-0011', date : '2026-10-28', client_
  */
 function row( over ) {
 	return Object.assign( { id : 1, category : 'invoice', number : 'R-2026-0001', title : '', state : 'open', released : false, sign_state : '', expired : false, overdue : false, date : '2026-10-02', due_date : '2026-10-16', valid_until : null,
-		gross : 100000, client_id : 1, client_title : 'Nordlicht Records GmbH', parent_id : null }, over );
+		gross : 100000, client_id : 1, client_title : 'Nordlicht Records GmbH', parent_id : null, project : '', project_title : '' }, over );
 }
 
 /**
@@ -115,7 +115,7 @@ function row( over ) {
 function full( over ) {
 	return Object.assign( { id : 11, category : 'invoice', client_id : 1, parent_id : null, number : 'R-2026-0007', state : 'open', date : '2026-10-02', due_date : '2026-10-16', valid_until : null, period_from : '2026-09-14', period_to : '2026-09-30',
 		vat_mode : 'regular', reverse_charge : false, net : 100000, vat : 19000, gross : 119000, template_key : 'rechnung', inputs : {}, notes : 'Rechnungen an die Buchhaltung', pdf_path : '/data/crm/pdf/2026/R-2026-0007.pdf', pdf_sha256 : 'abcdef0123456789abcdef',
-		finalised : '2026-10-02T09:12:00Z', sent_at : null, paid_at : null, created : '2026-10-01T08:00:00Z', updated : '2026-10-02T09:12:00Z', title : '', released : false, released_at : null, sign_id : '', sign_state : '', signed_at : null, expired : false, overdue : false,
+		finalised : '2026-10-02T09:12:00Z', sent_at : null, paid_at : null, created : '2026-10-01T08:00:00Z', updated : '2026-10-02T09:12:00Z', title : '', released : false, released_at : null, sign_id : '', sign_state : '', signed_at : null, expired : false, overdue : false, project : '', project_title : '',
 		lines : [
 			{ id : 1, document_id : 11, sort : 1, title : 'Recording-Tag', description : 'Studio A', qty : 4000, unit : 'Tag', price_net : 20000, vat_rate : 1900, amount_net : 80000 },
 			{ id : 2, document_id : 11, sort : 2, title : 'Mixing', description : '', qty : 2000, unit : 'Std.', price_net : 10000, vat_rate : 1900, amount_net : 20000 },
@@ -132,7 +132,7 @@ function full( over ) {
  *	@return		{Object}
  */
 function view( over, extra ) {
-	return Object.assign( { document : full( over ), templates : templates, clients : clients, settings : settings, items : items, offers : offers, accounts : [], sign_days : 14 }, extra || {} );
+	return Object.assign( { document : full( over ), templates : templates, clients : clients, settings : settings, items : items, offers : offers, projects : [], accounts : [], sign_days : 14 }, extra || {} );
 }
 
 const summary = { count : 3, gross : 150000, overdue_count : 2, overdue_gross : 90000, overdue_oldest : '2026-03-15', offers_count : 1, offers_gross : 214200, paid_year : 2026, paid_count : 4, paid_gross : 2030000, drafts_count : 1, drafts_last : '2026-11-03' };
@@ -165,7 +165,7 @@ function world( options ) {
 
 	const nav = element('nav');
 	nav.id = 'nav';
-	[ 'uebersicht', 'belege', 'kunden', 'positionen', 'pdf', 'einstellungen' ].forEach( function( key ) {
+	[ 'uebersicht', 'belege', 'kunden', 'projekte', 'positionen', 'pdf', 'einstellungen' ].forEach( function( key ) {
 		const anchor = element('a');
 		anchor.setAttribute( 'data-r', key );
 		anchor.setAttribute( 'href', '#'+ key );
@@ -192,7 +192,7 @@ function world( options ) {
 
 	const block = element('script');
 	block.id = 'crm-data';
-	block.textContent = JSON.stringify( { base : '', csrf : 'token-1', user : { name : 'crm@example.com' }, perm : '/_admin/crm/manage', perms : opts.perms, pdf_available : opts.pdfAvailable, texts : texts, links : { workbench : '/_admin/', site : '/', items : '/_admin/#elements/positionen', pdf : '/_admin/#pdf', members : '/_admin/#members', users : '/_admin/#users' } } );
+	block.textContent = JSON.stringify( { base : '', csrf : 'token-1', user : { name : 'crm@example.com' }, perm : '/_admin/crm/manage', perms : opts.perms, pdf_available : opts.pdfAvailable, texts : texts, links : { workbench : '/_admin/', site : '/', items : '/_admin/#elements/positionen', projects : '/_admin/#elements/projekte', files : '/_admin/#files', pdf : '/_admin/#pdf', members : '/_admin/#members', users : '/_admin/#users' } } );
 	mount.appendChild( block );
 
 	const page = documentOf( mount );
@@ -254,10 +254,10 @@ function world( options ) {
 		fetch : function( url, init ) {
 
 			const form = init.body instanceof win.FormData;
-			const request = form ? { action : init.body.get( 'action' ), data : JSON.parse( init.body.get( 'data' ) ), file : init.body.get( 'file' ) } : JSON.parse( init.body );
+			const request = form ? { action : init.body.get( 'action' ), data : JSON.parse( init.body.get( 'data' ) ), file : init.body.get( 'file' ) ?? init.body.get( 'chunk' ), part : init.body.get( 'chunk' ) === null ? 'file' : 'chunk' } : JSON.parse( init.body );
 			const answer = typeof opts.answers[request.action] === 'function' ? opts.answers[request.action]( request.data ) : [ 404, { error : 'no answer in the test for '+ request.action, code : 'action' } ];
 
-			calls.push( { url : url, init : init, action : request.action, data : request.data, file : request.file, form : form } );
+			calls.push( { url : url, init : init, action : request.action, data : request.data, file : request.file, part : request.part, form : form } );
 
 			// An answer may be a promise of one, which the test keeps back until it lets it go
 			return Promise.resolve( answer ).then( function( given ) {
@@ -448,9 +448,9 @@ function press( w, key, target, mods ) {
 		[ '#belege', { screen : 'belege' }, 'crm-documents/list', 1 ],
 		[ '#beleg-12', { screen : 'beleg', id : 12 }, 'crm-documents/get', 1 ],
 		[ '#entwurf-16', { screen : 'entwurf', id : 16 }, 'crm-documents/get', 1 ],
-		[ '#neu-invoice', { screen : 'entwurf', category : 'invoice', offer : '', client : '' }, 'crm-documents/templates', 1 ],
-		[ '#neu-contract-13', { screen : 'entwurf', category : 'contract', offer : '13', client : '' }, 'crm-documents/templates', 1 ],
-		[ '#neu-invoice-k3', { screen : 'entwurf', category : 'invoice', offer : '', client : '3' }, 'crm-documents/templates', 1 ],
+		[ '#neu-invoice', { screen : 'entwurf', category : 'invoice', offer : '', client : '', project : '' }, 'crm-documents/templates', 1 ],
+		[ '#neu-contract-13', { screen : 'entwurf', category : 'contract', offer : '13', client : '', project : '' }, 'crm-documents/templates', 1 ],
+		[ '#neu-invoice-k3', { screen : 'entwurf', category : 'invoice', offer : '', client : '3', project : '' }, 'crm-documents/templates', 1 ],
 		[ '#uebersicht', { screen : 'uebersicht' }, 'crm-documents/overview', 1 ],
 		[ '#unsinn', { screen : 'uebersicht' }, 'crm-documents/overview', 1 ],
 		[ '#beleg-0', { screen : 'uebersicht' }, 'crm-documents/overview', 1 ],
@@ -560,16 +560,16 @@ function press( w, key, target, mods ) {
 
 	check( 'Belege asks for the list of the year, and shows eight tabs with the counts of the documents each takes', lists2.length === 1 && lists2[0].year === String( new Date().getFullYear() ) && tabs().length === 8
 		&& tabs().map( textOf ).join( '|' ) === 'Alle8|Offen3|Überfällig1|Entwürfe1|Angebote2|Rechnungen5|Verträge & Dokumente1|Bezahlt1' );
-	check( '...the table has the columns, the number in the first, and the foot has the sum of what is shown: the credit note is taken off', all( listing.main, 'thead th' ).map( textOf ).join( '|' ) === 'Nummer|Art|Kunde|Datum ↓|Fällig / gültig|Betrag|Status|' && rows().length === 8
+	check( '...the table has the columns, the number in the first, and the foot has the sum of what is shown: the credit note is taken off', all( listing.main, 'thead th' ).map( textOf ).join( '|' ) === 'Nummer|Art|Kunde|Projekt|Datum ↓|Fällig / gültig|Betrag|Status|' && rows().length === 8
 		&& textOf( all( listing.main, '#sum' )[0] ) === '5.908,40'+ NBSP+ '€' );
 	check( '...a row has the kind, the client, the day, the due or valid day, the gross in the currency and the state', ( function() {
 		const first = rows().find( function( r ) { return textOf( r.children[0] ) === 'R-2026-0007' } );
-		return cells( first ).slice( 1, 6 ).join( '|' ) === 'Rechnung|Nordlicht Records GmbH|02.10.2026|16.10.2026|1.190,00'+ NBSP+ '€' && first.children[4].classList.contains( 'bad' ) === true;
+		return cells( first ).slice( 1, 7 ).join( '|' ) === 'Rechnung|Nordlicht Records GmbH|–|02.10.2026|16.10.2026|1.190,00'+ NBSP+ '€' && first.children[5].classList.contains( 'bad' ) === true;
 	} )() );
 	check( '...an overdue invoice says überfällig, a document in the portal says Portal, a signature that waits says angesehen, an offer says its state, a draft Entwurf and has no number - its kind is the name', ( function() {
 		const by = function( id ) { return rows().find( function( r ) { return r.dataset.id === String( id ) } ) };
-		return textOf( by( 11 ).children[6] ) === 'überfällig Portal' && textOf( by( 18 ).children[6] ) === 'offen Portal angesehen' && textOf( by( 13 ).children[6] ) === 'offen' && textOf( by( 19 ).children[6] ) === 'angenommen' && textOf( by( 16 ).children[6] ) === 'Entwurf' && textOf( by( 16 ).children[0] ) === 'Entwurf'
-			&& textOf( by( 18 ).children[0] ) === 'Dienstleistungsvertrag Album 2027' && textOf( by( 18 ).children[5] ) === '–';
+		return textOf( by( 11 ).children[7] ) === 'überfällig Portal' && textOf( by( 18 ).children[7] ) === 'offen Portal angesehen' && textOf( by( 13 ).children[7] ) === 'offen' && textOf( by( 19 ).children[7] ) === 'angenommen' && textOf( by( 16 ).children[7] ) === 'Entwurf' && textOf( by( 16 ).children[0] ) === 'Entwurf'
+			&& textOf( by( 18 ).children[0] ) === 'Dienstleistungsvertrag Album 2027' && textOf( by( 18 ).children[6] ) === '–';
 	} )() );
 	check( '...the PDF button of a document leads to its file, the one of a draft to the preview', ( function() {
 		const by = function( id ) { return rows().find( function( r ) { return r.dataset.id === String( id ) } ) };
@@ -600,14 +600,14 @@ function press( w, key, target, mods ) {
 
 	// the sort is by the cents, not by the text
 	const heads = function() { return all( listing.main, 'thead th' ) };
-	click( listing, all( heads()[5], 'button' )[0] );
-	check( 'a click on the head of the amount sorts by cents, up: -270,00 before 392,70 before 990,00 before 1.071,00 and so on - not as text', numbers().join() === 'G-2026-0001,Dienstleistungsvertrag Album 2027,A-2026-0010,R-2026-0008,R-2026-0006,Entwurf,R-2026-0007,A-2026-0011' && heads()[5].getAttribute( 'aria-sort' ) === 'ascending' );
-	click( listing, all( heads()[5], 'button' )[0] );
-	check( '...a second click turns it round', numbers()[0] === 'A-2026-0011' && numbers()[7] === 'G-2026-0001' && heads()[5].getAttribute( 'aria-sort' ) === 'descending' );
+	click( listing, all( heads()[6], 'button' )[0] );
+	check( 'a click on the head of the amount sorts by cents, up: -270,00 before 392,70 before 990,00 before 1.071,00 and so on - not as text', numbers().join() === 'G-2026-0001,Dienstleistungsvertrag Album 2027,A-2026-0010,R-2026-0008,R-2026-0006,Entwurf,R-2026-0007,A-2026-0011' && heads()[6].getAttribute( 'aria-sort' ) === 'ascending' );
+	click( listing, all( heads()[6], 'button' )[0] );
+	check( '...a second click turns it round', numbers()[0] === 'A-2026-0011' && numbers()[7] === 'G-2026-0001' && heads()[6].getAttribute( 'aria-sort' ) === 'descending' );
 	click( listing, all( heads()[2], 'button' )[0] );
 	check( 'by client the names are in the order of the German alphabet, by number the numbers in text', textOf( rows()[0].children[2] ) === 'Alt AG' && ( click( listing, all( heads()[0], 'button' )[0] ), numbers()[0] === 'A-2026-0010' ) );
-	click( listing, all( heads()[3], 'button' )[0] );
-	check( 'by date a first click sorts the newest first, by the due day the days of an offer are among the due days', numbers()[0] === 'Entwurf' && ( click( listing, all( heads()[4], 'button' )[0] ), textOf( rows()[0].children[4] ) === '' ) );
+	click( listing, all( heads()[4], 'button' )[0] );
+	check( 'by date a first click sorts the newest first, by the due day the days of an offer are among the due days', numbers()[0] === 'Entwurf' && ( click( listing, all( heads()[5], 'button' )[0] ), textOf( rows()[0].children[5] ) === '' ) );
 
 	// a row opens the document
 	click( listing, all( rows().find( function( r ) { return r.dataset.id === '11' } ), 'td' )[2] );
@@ -698,16 +698,16 @@ function press( w, key, target, mods ) {
 	}
 
 	const menus = [
-		[ 'an open invoice', { state : 'open' }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Stornieren|Als Entwurf kopieren|Notizen' ],
-		[ 'a sent invoice that is overdue and in the portal', { state : 'sent', overdue : true, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Notizen' ],
-		[ 'a paid invoice', { state : 'paid' }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Notizen' ],
-		[ 'a cancelled invoice', { state : 'cancelled' }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Notizen' ],
-		[ 'an open offer', { id : 13, category : 'offer', state : 'open', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als angenommen markieren|Als abgelehnt markieren|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Notizen' ],
-		[ 'an accepted offer', { id : 13, category : 'offer', state : 'accepted', due_date : null }, 'PDF ansehen|PDF herunterladen|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Notizen' ],
-		[ 'a credit note', { id : 17, category : 'credit', state : 'sent', due_date : null }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Notizen' ],
-		[ 'a contract that waits for a signature', { id : 18, category : 'contract', state : 'open', sign_state : 'viewed', lines : [], title : 'V', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Erinnern|Anfrage zurückziehen|Notizen' ],
-		[ 'a contract with no request', { id : 18, category : 'contract', state : 'open', released : true, lines : [], title : 'V', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Unterschrift anfordern|Freigabe zurücknehmen|Notizen' ],
-		[ 'an information document', { id : 20, category : 'information', state : 'open', lines : [], title : 'Z', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Notizen' ],
+		[ 'an open invoice', { state : 'open' }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Stornieren|Als Entwurf kopieren|Projekt ändern|Notizen' ],
+		[ 'a sent invoice that is overdue and in the portal', { state : 'sent', overdue : true, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'a paid invoice', { state : 'paid' }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Projekt ändern|Notizen' ],
+		[ 'a cancelled invoice', { state : 'cancelled' }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
+		[ 'an open offer', { id : 13, category : 'offer', state : 'open', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als angenommen markieren|Als abgelehnt markieren|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
+		[ 'an accepted offer', { id : 13, category : 'offer', state : 'accepted', due_date : null }, 'PDF ansehen|PDF herunterladen|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
+		[ 'a credit note', { id : 17, category : 'credit', state : 'sent', due_date : null }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
+		[ 'a contract that waits for a signature', { id : 18, category : 'contract', state : 'open', sign_state : 'viewed', lines : [], title : 'V', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Erinnern|Anfrage zurückziehen|Projekt ändern|Notizen' ],
+		[ 'a contract with no request', { id : 18, category : 'contract', state : 'open', released : true, lines : [], title : 'V', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Unterschrift anfordern|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'an information document', { id : 20, category : 'information', state : 'open', lines : [], title : 'Z', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 	];
 
 	for( const [ label, over, expected ] of menus ) {
@@ -997,7 +997,7 @@ function press( w, key, target, mods ) {
 	click( edit, field( edit, 'save' ) );
 	await settle();
 	check( 'Speichern posts the draft as the panel does: the id as a string, the client as a string, the dates, the template and the inputs of that template, the reverse charge, the lines with the quantity and the price as typed', JSON.stringify( edit.saves[0] ) === JSON.stringify( {
-		date : '2026-11-03', template_key : 'rechnung', inputs : { intro : 'Zeile 1\nZeile 2' }, id : '16', client_id : '2', period_from : '2026-10-01', period_to : '2026-10-31', reverse_charge : false, due_date : '2026-11-17',
+		date : '2026-11-03', template_key : 'rechnung', inputs : { intro : 'Zeile 1\nZeile 2' }, project : '', id : '16', client_id : '2', period_from : '2026-10-01', period_to : '2026-10-31', reverse_charge : false, due_date : '2026-11-17',
 		lines : [ { title : 'Editing', description : 'Staffel 3', unit : 'Std.', qty : '10', price : '60,00', vat_rate : 1900 }, { title : 'Mastering', description : '', unit : 'Song', qty : '3', price : '110,00', vat_rate : 700 } ] } ) );
 	check( '...the time of the save is shown, the draft is clean again, and the rail\'s count is read again', textOf( field( edit, 'saved' ) ).indexOf( 'Gespeichert um ' ) === 0 && edit.app.state.draft.dirty === false && edit.all( 'crm-documents/overview' ).length >= 2 && field( edit, 'message' ).children.length === 0 );
 
@@ -1272,12 +1272,12 @@ function press( w, key, target, mods ) {
 
 	// === fix round 1: the menu by state, released or not
 	const moreMenus = [
-		[ 'an invoice that is overdue and not in the portal: no reminder, no way back', { state : 'sent', overdue : true, released : false }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Notizen' ],
-		[ 'an invoice that is in the portal and not overdue: no reminder, the way back', { state : 'sent', overdue : false, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Freigabe zurücknehmen|Notizen' ],
-		[ 'an open invoice that is overdue and in the portal: marked as sent, the reminder', { state : 'open', overdue : true, released : true }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Notizen' ],
-		[ 'a declined offer: no invoice, a contract is still possible', { id : 13, category : 'offer', state : 'declined', due_date : null }, 'PDF ansehen|PDF herunterladen|Vertrag erstellen|Als Entwurf kopieren|Notizen' ],
-		[ 'a sent offer', { id : 13, category : 'offer', state : 'sent', due_date : null }, 'PDF ansehen|PDF herunterladen|Als angenommen markieren|Als abgelehnt markieren|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Notizen' ],
-		[ 'a cancelled invoice that is in the portal', { state : 'cancelled', released : true }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Freigabe zurücknehmen|Notizen' ],
+		[ 'an invoice that is overdue and not in the portal: no reminder, no way back', { state : 'sent', overdue : true, released : false }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Projekt ändern|Notizen' ],
+		[ 'an invoice that is in the portal and not overdue: no reminder, the way back', { state : 'sent', overdue : false, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'an open invoice that is overdue and in the portal: marked as sent, the reminder', { state : 'open', overdue : true, released : true }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'a declined offer: no invoice, a contract is still possible', { id : 13, category : 'offer', state : 'declined', due_date : null }, 'PDF ansehen|PDF herunterladen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
+		[ 'a sent offer', { id : 13, category : 'offer', state : 'sent', due_date : null }, 'PDF ansehen|PDF herunterladen|Als angenommen markieren|Als abgelehnt markieren|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
+		[ 'a cancelled invoice that is in the portal', { state : 'cancelled', released : true }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
 	];
 
 	for( const [ label, over, expected ] of moreMenus ) {
@@ -1660,7 +1660,7 @@ function press( w, key, target, mods ) {
 		&& all( all( kc.main, '#master' )[0], 'dt' ).map( textOf ).join( '|' ) === 'Firma|Name|E-Mail|Telefon|Anschrift|USt-IdNr.|Kunde seit' );
 	const kc2 = await kopen( '#kunde-2' );
 	check( '...a client without a company, a phone and a VAT id leaves those rows out, and a country that is not DE is on the third line of the address', all( all( kc2.main, '#master' )[0], 'dt' ).map( textOf ).join( '|' ) === 'Name|E-Mail|Anschrift|Kunde seit' && textOf( all( kc2.main, '#master dd' )[2] ) === 'Lindenweg 31010 WienAT' );
-	check( '...the tabs are Belege with the count, Portal and Notizen, and the first is open', all( kc.main, '.tabs button' ).map( textOf ).join( '|' ) === 'Belege7|Portal|Notizen' && all( kc.main, '.tabs button' )[0].getAttribute( 'aria-selected' ) === 'true' && all( kc.main, '.tabs button' )[0].classList.contains( 'on' ) === true );
+	check( '...the tabs are Belege with the count, Portal and Notizen, and the first is open', all( kc.main, '.tabs button' ).map( textOf ).join( '|' ) === 'Belege7|Projekte|Portal|Notizen' && all( kc.main, '.tabs button' )[0].getAttribute( 'aria-selected' ) === 'true' && all( kc.main, '.tabs button' )[0].classList.contains( 'on' ) === true );
 	const docRows = all( all( kc.main, '#tab' )[0], 'tbody tr' );
 	check( '...Belege lists the documents of the client with the number (the title for a document without one, the word for a draft), the kind, the day, the amount - a stroke where there are no lines - and the badges; a click opens the document, a draft its editor',
 		docRows.length === 7 && kcells( docRows[0] ).join( '|' ) === 'R-2026-0007|Rechnung|02.10.2026|1.190,00'+ NBSP+ '€|versendet Portal' && kcells( docRows[6] )[0] === 'Vertrag Album 2027' && kcells( docRows[6] )[3] === '–' && kcells( docRows[5] )[0] === 'Entwurf'
@@ -1880,10 +1880,10 @@ function press( w, key, target, mods ) {
 	click( ktab, kitem( kmenu( ktab, '⋯' ), 'Stammdaten bearbeiten' ) );
 	const openForm = all( ktab.main, '#master' )[0];
 	type( all( openForm, '#f-city' )[0], 'Lübeck', false );
-	click( ktab, all( ktab.main, '.tabs button' )[2] );
+	click( ktab, all( ktab.main, '.tabs button' )[3] );
 	click( ktab, all( ktab.main, '.tabs button' )[0] );
 	check( 'a tab changes the body under the strip and nothing above it: the form of the Stammdaten that is open is the same form, with what was typed, and the guard still knows it', all( ktab.main, '#master' )[0] === openForm && all( openForm, '#f-city' )[0].value === 'Lübeck' && ktab.app.state.draft.dirty === true
-		&& all( ktab.main, '.tabs button' ).map( function( b ) { return b.classList.contains( 'on' ) } ).join() === 'true,false,false' && all( ktab.main, '.tabs button' ).map( function( b ) { return b.getAttribute( 'aria-selected' ) } ).join() === 'true,false,false' );
+		&& all( ktab.main, '.tabs button' ).map( function( b ) { return b.classList.contains( 'on' ) } ).join() === 'true,false,false,false' && all( ktab.main, '.tabs button' ).map( function( b ) { return b.getAttribute( 'aria-selected' ) } ).join() === 'true,false,false,false' );
 	click( ktab, kitem( kmenu( ktab, '⋯' ), 'Stammdaten bearbeiten' ) );
 	check( '...and the menu item that opens the form, pressed again, does not make a new one: what was typed is still there', all( ktab.main, '#master' )[0] === openForm && all( openForm, '#f-city' )[0].value === 'Lübeck' && all( ktab.main, '#client-save' ).length === 1 );
 	const kopenInvite = await kopen( '#kunde-1', { 'crm-clients/account-name' : function() { return [ 200, { account : Object.assign( {}, kaccounts[0], { name : 'Neu' } ) } ] } } );
@@ -1913,22 +1913,22 @@ function press( w, key, target, mods ) {
 
 	// the tabs
 	const kp = await kopen( '#kunde-1' );
-	click( kp, all( kp.main, '.tabs button' )[1] );
+	click( kp, all( kp.main, '.tabs button' )[2] );
 	await settle();
 	const portalText = function( w ) { return all( w.main, '#client-portal' )[0] };
 	check( 'the tab Portal asks crm-clients/portal for the client, and shows the documents the client sees as links to them - the title for a document that has one, the number else - with their kind and day', JSON.stringify( kp.last( 'crm-clients/portal' ).data ) === '{"id":"1"}' && all( portalText( kp ), '.list-mini' )[0].children.length === 2
-		&& all( all( portalText( kp ), '.list-mini' )[0], 'a' ).map( function( a ) { return a.getAttribute( 'href' ) + ':' + textOf( a ) } ).join( '|' ) === '#beleg-11:R-2026-0007|#beleg-17:Vertrag Album 2027' && all( kp.main, '.tabs button' )[1].classList.contains( 'on' ) === true );
+		&& all( all( portalText( kp ), '.list-mini' )[0], 'a' ).map( function( a ) { return a.getAttribute( 'href' ) + ':' + textOf( a ) } ).join( '|' ) === '#beleg-11:R-2026-0007|#beleg-17:Vertrag Album 2027' && all( kp.main, '.tabs button' )[2].classList.contains( 'on' ) === true );
 	check( '...the folders of Files with how many files the client may see in each and whether it uploads - a name that is markup is text -, and what Review counts', all( all( portalText( kp ), '.list-mini' )[1], 'li' ).map( textOf ).join( '|' ) === 'Ordner „Nordlicht <Album>“ · 14 Dateien · Upload erlaubt|Ordner „Cover“ · 1 Datei · kein Upload'
 		&& findAll( portalText( kp ), function( node ) { return node.tagName === 'ALBUM' } ).length === 0 && textOf( portalText( kp ) ).indexOf( 'Review: 3 zum Kommentieren, 7 Kommentare' ) !== -1 && textOf( portalText( kp ) ).indexOf( 'Gezählt sind die Dateien, die der Kunde sehen darf' ) !== -1 );
+	click( kp, all( kp.main, '.tabs button' )[3] );
 	click( kp, all( kp.main, '.tabs button' )[2] );
-	click( kp, all( kp.main, '.tabs button' )[1] );
 	await settle();
 	check( '...it is asked for once: the tab drawn again takes what it has', kp.all( 'crm-clients/portal' ).length === 1 && textOf( portalText( kp ) ).indexOf( 'Review: 3 zum Kommentieren' ) !== -1 );
 	const koffp = await kopen( '#kunde-1-portal', { 'crm-clients/portal' : function() { return [ 200, { documents : [], features : { files : false, review : false }, folders : [], review : { media : 0, comments : 0 } } ] } } );
 	check( 'with Files off the tab says that the portal shows none, with Review off it says nothing of comments, and with no document it says that nothing is released', textOf( portalText( koffp ) ).indexOf( 'Das Feature Dateien ist nicht aktiv, das Portal zeigt keine Dateien.' ) !== -1 && textOf( portalText( koffp ) ).indexOf( 'Review' ) === -1 && textOf( portalText( koffp ) ).indexOf( 'Nichts freigegeben.' ) !== -1 );
 	const kfolderless = await kopen( '#kunde-1-portal', { 'crm-clients/portal' : function() { return [ 200, { documents : [], features : { files : true, review : true }, folders : [], review : { media : 0, comments : 0 } } ] } } );
 	check( '...a client with no folder and nothing to comment on says that', textOf( portalText( kfolderless ) ).indexOf( 'Der Kunde hat noch keinen Ordner.' ) !== -1 && textOf( portalText( kfolderless ) ).indexOf( 'Review: nichts zum Kommentieren' ) !== -1 );
-	check( 'the address of a tab opens it: #kunde-1-portal draws the Portal tab at once', all( koffp.main, '.tabs button' )[1].classList.contains( 'on' ) === true && koffp.last( 'crm-clients/portal' ) !== undefined );
+	check( 'the address of a tab opens it: #kunde-1-portal draws the Portal tab at once', all( koffp.main, '.tabs button' )[2].classList.contains( 'on' ) === true && koffp.last( 'crm-clients/portal' ) !== undefined );
 
 	let notesSaved = null;
 	const kt = await kopen( '#kunde-1-notizen', { 'crm-clients/save' : function( data ) { notesSaved = data; return [ 200, { client : Object.assign( {}, kclient, data ) } ] } } );
@@ -1942,7 +1942,7 @@ function press( w, key, target, mods ) {
 	const kinv = await kopen( '#kunde-3-einladen', { 'crm-clients/get' : function() { return [ 200, { client : kclients[2], accounts : [] } ] } } );
 	const timerCount = kinv.timers.length;
 	kinv.timers.slice().reverse().forEach( function( timer ) { if( timer.cleared !== true ) timer.fn() } );
-	check( 'the address #kunde-3-einladen - what "einladen" in the Übersicht leads to - is the card of that client at the tab Portal with the invitation open, the address field the one with the cursor in it', all( kinv.main, '.tabs button' )[1].classList.contains( 'on' ) === true && all( kinv.main, '#invite' ).length === 1 && all( kinv.main, '#f-invite-email' )[0].focused === true
+	check( 'the address #kunde-3-einladen - what "einladen" in the Übersicht leads to - is the card of that client at the tab Portal with the invitation open, the address field the one with the cursor in it', all( kinv.main, '.tabs button' )[2].classList.contains( 'on' ) === true && all( kinv.main, '#invite' ).length === 1 && all( kinv.main, '#f-invite-email' )[0].focused === true
 		&& JSON.stringify( kinv.last( 'crm-clients/get' ).data ) === '{"id":"3"}' && timerCount >= 1 );
 	check( '...a client without accounts says so above the buttons', textOf( accountsCard( kinv ) ).indexOf( 'Noch kein Konto. Der Kunde sieht das Portal erst mit einem.' ) !== -1 );
 
@@ -2139,7 +2139,7 @@ function press( w, key, target, mods ) {
 		&& es2.all( 'crm-documents/settings-get' ).length === readsBefore + 1 && JSON.stringify( es2.app.state.settings.rates ) === '[1900,700,550,0]' && es2.app.state.draft !== null && es2.app.state.draft.dirty === false );
 
 	// the status and the button
-	const pitemsStatus = [ { key : 'module', state : 'ok' }, { key : 'data', state : 'unwritable' }, { key : 'sign', state : 'off' }, { key : 'pdf', state : 'missing' }, { key : 'portal', state : 'partial', lacks : [ 'routes', 'types' ] } ];
+	const pitemsStatus = [ { key : 'module', state : 'ok' }, { key : 'data', state : 'unwritable' }, { key : 'sign', state : 'off' }, { key : 'pdf', state : 'missing' }, { key : 'portal', state : 'partial', lacks : [ 'routes', 'type-projekte' ] } ];
 	let setups = 0;
 	let statusItems = pitemsStatus;
 	const est = await eopen( {}, undefined, {
@@ -2148,7 +2148,7 @@ function press( w, key, target, mods ) {
 	} );
 	check( 'a module that misses something says it line by line, in the words of the state - a portal that is partly there names what it lacks, in the words of the parts - and the button Portal einrichten is there', all( all( est.main, '#status-missing' )[0], 'li' ).map( textOf ).join( '|' ) === [
 		'Das Verzeichnis data/ ist nicht beschreibbar, die Datenbank kann nicht angelegt werden.', texts['status.sign-off'], 'Das Feature PDF ist nicht installiert.',
-		texts['status.portal-partial'].replace( '%s', 'Routen, der Elementtyp Positionen' ) ].join( '|' ) && all( est.main, '#portal-setup' )[0].hidden === false && textOf( all( est.main, '#portal-setup' )[0] ) === 'Portal einrichten' );
+		texts['status.portal-partial'].replace( '%s', 'Routen, der Elementtyp Projekte' ) ].join( '|' ) && all( est.main, '#portal-setup' )[0].hidden === false && textOf( all( est.main, '#portal-setup' )[0] ) === 'Portal einrichten' );
 	type( efield( est, 'currency' ), 'CHF', false );
 	statusItems = eok;
 	click( est, all( est.main, '#portal-setup' )[0] );
@@ -2191,7 +2191,7 @@ function press( w, key, target, mods ) {
 
 	const first = await iopen( '' );
 	check( 'the first showing of the page asks for the status before it draws the Übersicht, and a module that is not whole sends it to the Einrichtung: the overview is not asked for', first.sent().join() === 'crm/status' && first.location.hash === '#einrichtung' && first.all( 'crm-documents/overview' ).length === 0 && all( first.main, '#einrichtung-rows' ).length === 1 );
-	check( '...the rail has its six entries (PDF-Vorlagen hidden for an account without the Pdf permission) and none is marked: the Einrichtung is no entry of it', all( first.nav, '[data-r]' ).length === 6 && all( first.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).length === 0 );
+	check( '...the rail has its seven entries (PDF-Vorlagen hidden for an account without the Pdf permission) and none is marked: the Einrichtung is no entry of it', all( first.nav, '[data-r]' ).length === 7 && all( first.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).length === 0 );
 	check( '...a row for each item of the status, its word and its state: done for the module and the data directory, to do for the rest', irows( first ).length === ifresh.length && Array.from( irows( first ) ).map( function( li ) { return li.getAttribute( 'data-key' )+ ':'+ li.getAttribute( 'data-state' ) } ).join() === 'module:ok,data:ok,members:todo,files:todo,review:todo,sign:todo,pdf:todo,events:todo,portal:todo,pdf-templates:todo,home:todo'
 		&& textOf( irows( first )[2] ).indexOf( texts['einrichtung.row-members'] ) === 0 && textOf( irows( first )[2] ).indexOf( texts['status.members-off'] ) !== -1 && textOf( irows( first )[2] ).indexOf( texts['einrichtung.state-todo'] ) !== -1 && textOf( irows( first )[0] ).indexOf( texts['status.allok'] ) === -1 );
 	check( '...what is missing is said in one sentence of the status: the portal names what it lacks, the PDF templates their keys, the start page that it is not the door yet', textOf( irows( first )[8] ).indexOf( texts['status.portal-partial'].replace( '%s', texts['status.lacks-paths']+ ', '+ texts['status.lacks-start'] ) ) !== -1
@@ -2264,7 +2264,7 @@ function press( w, key, target, mods ) {
 	while( ( kfound = kpattern.exec( script ) ) )
 		kwords.add( kfound[1] );
 
-	const kfamilies = { 'acc.state-' : [ 'signed', 'invited', 'off', 'gone' ], 'status.lacks-' : [ 'routes', 'templates', 'texts', 'types', 'paths', 'start' ], 'ctab.' : [ 'belege', 'portal', 'notizen' ], 'tag.' : [ 'offer', 'invoice', 'contract', 'privacy', 'information' ], 'settings.number-' : [ 'offer', 'invoice', 'credit' ],
+	const kfamilies = { 'acc.state-' : [ 'signed', 'invited', 'off', 'gone' ], 'status.lacks-' : [ 'routes', 'templates', 'texts', 'type-positionen', 'type-projekte', 'paths', 'start' ], 'ctab.' : [ 'belege', 'portal', 'notizen' ], 'tag.' : [ 'offer', 'invoice', 'contract', 'privacy', 'information' ], 'settings.number-' : [ 'offer', 'invoice', 'credit' ],
 		'clientfield.' : [ 'company', 'name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id', 'account_email', 'account_name' ], 'status.' : [ 'allok', 'module-off', 'data-unwritable', 'portal-none', 'portal-partial', 'members-missing', 'members-off', 'members-problem', 'files-off', 'review-off', 'sign-off', 'pdf-missing', 'pdf-problem', 'events-off', 'pdf-templates-none', 'pdf-templates-partial', 'home-other' ],
 		'acc.resend-' : [ 'invite', 'login' ], 'acc.resent-' : [ 'invite', 'login' ], 'acc.switch-' : [ 'off', 'on' ], 'acc.switched-' : [ 'off', 'on' ], 'newclient.done-' : [ 'invited', 'unmailed' ], 'error.' : [ 'client-save', 'client-active', 'client-portal', 'account-invite', 'account-resend', 'account-active', 'account-name', 'account-remove', 'account-link', 'unlinked', 'settings', 'setup' ] };
 
@@ -2434,7 +2434,7 @@ function press( w, key, target, mods ) {
 	pm.panel.showCurrent();
 	pm.answer( 200, { items : pitemsStatus } );
 	const pmLines = findAll( pm.mount, function( node ) { return node.tagName === 'LI' } ).map( function( node ) { return node.textContent } );
-	check( 'what is missing is told line by line in the words of its state, a portal that is partly there names what it lacks, and the button is there', pmLines.length === 4 && pmLines[1] === pm.words['/_admin/crm/status/sign-off'] && pmLines[3] === pm.said( '/_admin/crm/status/portal-partial', 'Routen, der Elementtyp Positionen' )
+	check( 'what is missing is told line by line in the words of its state, a portal that is partly there names what it lacks, and the button is there', pmLines.length === 4 && pmLines[1] === pm.words['/_admin/crm/status/sign-off'] && pmLines[3] === pm.said( '/_admin/crm/status/portal-partial', 'Routen, der Elementtyp Projekte' )
 		&& pm.find( function( node ) { return node.id === 'crm-setup' } ).hidden === false && pm.find( function( node ) { return node.id === 'crm-setup' } ).textContent === 'Portal einrichten' );
 	const pmButton = pm.find( function( node ) { return node.id === 'crm-setup' } );
 	pmButton.click();
@@ -3327,9 +3327,9 @@ function press( w, key, target, mods ) {
 	// --- the words
 	const xwords = [ ...new Set( [ ...script.matchAll( /'(items\.[a-z0-9-]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return /-$/.test( key ) === false } ).concat( [ 'title', 'description', 'unit', 'price', 'vat', 'hidden', 'sort' ].map( function( name ) { return 'items.k-'+ name } ) ) ) ];
 	const xmissing = xwords.filter( function( key ) { return typeof texts[key] !== 'string' || texts[key] === '' } );
-	check( 'every word the screen and the editor of the Positionen ask for is a word of the page, and so are the sentences of the panel\'s code the editor shows and of the restriction', xmissing.length === 0 && xwords.length >= 40 && typeof texts['error.elements_fields_not_allowed'] === 'string' && texts['error.crm_positionen_type'] === 'Über diesen Weg lassen sich nur die Positionen bearbeiten.' );
-	check( 'the editor posts to the panel\'s actions for the type and to nothing else of it: elements/get, save and delete, with the type positionen', [ ...script.matchAll( /api\( '(elements\/[a-z]+)'/g ), ...script.matchAll( /call\( '(elements\/[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).sort().join() === 'elements/delete,elements/get,elements/save'
-		&& script.indexOf( "POSITION_TYPE = 'positionen'" ) !== -1 );
+	check( 'every word the screen and the editor of the Positionen ask for is a word of the page, and so are the sentences of the panel\'s code the editor shows and of the restriction', xmissing.length === 0 && xwords.length >= 40 && typeof texts['error.elements_fields_not_allowed'] === 'string' && texts['error.crm_positionen_type'].indexOf( texts['nav.items'] ) !== -1 && texts['error.crm_positionen_type'].indexOf( texts['nav.projects'] ) !== -1 );
+	check( 'the editor posts to the panel\'s actions for the type and to nothing else of it: elements/get, save and delete, with the type positionen, and save and delete with the type projekte - nothing else', [ ...script.matchAll( /api\( '(elements\/[a-z]+)'/g ), ...script.matchAll( /call\( '(elements\/[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).sort().join() === 'elements/delete,elements/delete,elements/get,elements/save,elements/save'
+		&& script.indexOf( "POSITION_TYPE = 'positionen'" ) !== -1 && script.indexOf( "PROJECT_TYPE = 'projekte'" ) !== -1 );
 
 	// --- C13: Strg+S in the editor of a Position
 	const xk = await xopen( '#position-mixing' );
@@ -3616,7 +3616,497 @@ function press( w, key, target, mods ) {
 	titled.push( [ 'client-save', all( tkc.main, '#client-save' )[0] ], [ 'invite-send', all( tkc.main, '#invite-send' )[0] ] );
 	titled.push( [ 'notes-save', all( ( await kopen( '#kunde-1-notizen' ) ).main, '#notes-save' )[0] ], [ 'settings-save', tf( tp, 'settings-save' ) ], [ 'firma-save', tf( tp, 'firma-save' ) ], [ 'save', field( await editing(), 'save' ) ] );
 	check( 'every Speichern of the editors carries title="Strg+S": the draft, the Stammdaten, the invitation, the notes, the new client, the settings and the Firmendaten', titled.length === 7 && titled.every( function( pair ) { return pair[1] !== undefined && pair[1].title === 'Strg+S' } ) && texts['save.shortcut'] === 'Strg+S' );
-	check( 'the script carries no Speichern without it: every button made with one of the words of the save has a title', ( script.match( /id: '[a-z-]*(?:save|create|send)[a-z-]*', (?:title: t\( 'save\.shortcut' \), )?text: t\( '/g ) || [] ).every( function( found ) { return found.indexOf( 'title: t( \'save.shortcut\' )' ) !== -1 || /id: 'invite-cancel|client-cancel/.test( found ) } ) );
+	check( 'the script carries no Speichern without it: every button made with one of the words of the save has a title', ( script.match( /id: '[a-z-]*(?:save|create|send)[a-z-]*', (?:title: t\( 'save\.shortcut' \), )?text: t\( '/g ) || [] ).every( function( found ) { return found.indexOf( 'title: t( \'save.shortcut\' )' ) !== -1 || /id: 'invite-cancel|client-cancel|up-send/.test( found ) } ) );
+	}
+
+	// === C16: Projekte - the element type, the project of a document, the project's folder of files, and the screens
+	{
+	const jperms = { crm : true, pdf : false, elements : true, text : false, files : true };
+	const jclient1 = { id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true };
+	const jrow = function( over ) {
+		return Object.assign( { id : '00001', title : 'Album 2027', client : 'K-0001', description : 'Aufnahme\nund Mix', started : '2026-10-01', done : false, folder : 'f00000000001', documents : 3, open : 1, client_id : 1, client_title : 'Nordlicht Records GmbH', client_active : true, files : 1 }, over || {} );
+	};
+	const jprojects = [
+		jrow( { id : '00003', title : 'Podcast', client : 'K-0002', client_id : 2, client_title : 'Jonas Richter', description : '', started : '', folder : '', documents : 0, open : 0, files : 0 } ),
+		jrow( { id : '00002', title : 'Webseite', started : '2026-05-01', done : true, folder : 'f00000000002', documents : 4, open : 0, files : 2 } ),
+		jrow(),
+	];
+	const jfiles = [
+		{ id : 'a00000000001', name : 'Notizen.txt', ext : 'txt', size : 1140004, mime : 'text/plain', created : '2026-11-03T10:00:00Z', visible : true, by : { kind : 'owner', label : '' }, url : '/.files/a00000000001' },
+		{ id : 'a00000000002', name : '<b>Cover</b>.png', ext : 'png', size : 52000, mime : 'image/png', created : '2026-11-02T09:00:00Z', visible : false, by : { kind : 'member', label : 'Lena Brandt' }, url : '/.files/a00000000002' },
+	];
+	let jpermsNow = jperms;
+	const jlist = function( over ) { return Object.assign( { missing : false, native : 'de_DE', files : true, allowed : jpermsNow.files === true, projects : jprojects }, over || {} ) };
+	const jget = function( over ) {
+		return JSON.parse( JSON.stringify( Object.assign( { native : 'de_DE', project : jrow(), client : jclient1, files : true, allowed : jpermsNow.files === true, folder : { id : 'f00000000001', name : 'Album 2027' }, list : jfiles }, over || {} ) ) );
+	};
+	const jposts = [];
+	let jnext = 5;
+	const janswers = function( over ) {
+		return Object.assign( {
+			'crm/status' : function() { return [ 200, { first_run : false, items : [] } ] },
+			'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+			'crm-projekte/list' : function( data ) { return [ 200, jlist( data.client === undefined ? {} : { projects : jprojects.filter( function( one ) { return String( one.client_id ) === data.client } ) } ) ] },
+			'crm-projekte/get' : function( data ) { return data.id === '00001' ? [ 200, jget() ] : [ 404, { error : 'x', code : 'crm_projekte_unknown', params : [], field : 'id' } ] },
+			'crm-clients/list' : function() { return [ 200, { clients : kclients } ] },
+			'crm-clients/get' : function( data ) { return [ 200, { client : kclients.find( function( one ) { return String( one.id ) === data.id } ) || kclient, accounts : kaccounts } ] },
+			'crm-documents/list' : function( data ) { return [ 200, { documents : data.client !== undefined ? kdocs : data.project === undefined ? [] : [ row( { id : 11, project : data.project, project_title : 'Album 2027', state : 'sent' } ), row( { id : 31, category : 'offer', number : 'A-2026-0030', state : 'open', gross : 50000, project : data.project, project_title : 'Album 2027' } ) ], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] },
+			'elements/save' : function( data ) { jposts.push( [ 'elements/save', data ] ); return [ 200, { element : { '.uri' : '/projekte/'+ ( data.uri === '' ? String( jnext++ ).padStart( 5, '0' ) : data.uri ) } } ] },
+			'elements/delete' : function( data ) { jposts.push( [ 'elements/delete', data ] ); return [ 200, {} ] },
+			'files/folder/add' : function( data ) { jposts.push( [ 'files/folder/add', data ] ); return [ 200, { folder : { id : 'f00000000099', group : data.group, name : data.name } } ] },
+			'files/folder/save' : function( data ) { jposts.push( [ 'files/folder/save', data ] ); return [ 200, { folder : { id : data.id, name : data.name } } ] },
+			'files/list' : function() { return [ 200, { groups : [ 'k-0001' ], group : 'k-0001', folders : [], files : [], types : [ 'txt' ], limits : { chunk : 1000, max : 5000, php : 0, quota : 0, used : 0 } } ] },
+			'files/save' : function( data ) { jposts.push( [ 'files/save', data ] ); return [ 200, { file : {} } ] },
+			'files/delete' : function( data ) { jposts.push( [ 'files/delete', data ] ); return [ 200, {} ] },
+			'files/upload' : function( data ) { return [ 200, data.index + 1 < data.count ? { upload : '0123456789abcdef', index : data.index } : { id : 'b00000000001', name : data.name, size : data.size } ] },
+		}, over || {} );
+	};
+	const jopen = async function( hash, over, perms ) {
+		jposts.length = 0;
+		jnext = 5;
+		jpermsNow = perms === undefined ? jperms : perms;
+		const w = world( { hash : hash, answers : janswers( over ), perms : perms === undefined ? jperms : perms } );
+		w.boot();
+		await settle();
+		return w;
+	};
+	const jf = function( w, id ) { return all( w.main, '#'+ id )[0] };
+	const jrows = function( w ) { return all( jf( w, 'projects' ), 'tbody tr' ) };
+	const jmenu = function( w, label ) { return all( w.main, '.menu' ).find( function( one ) { return textOf( all( one, 'button' )[0] ) === label } ) };
+	const jitem = function( w, label, menuLabel ) { return all( jmenu( w, menuLabel ?? '⋯' ), '[role="menuitem"]' ).find( function( one ) { return textOf( one ) === label } ) };
+	const jsubmit = function( form ) { fire( form, 'submit', { target : form, preventDefault : function() {} } ) };
+	const jtoggle = function( input, checked ) { input.checked = checked; fire( input, 'change', { target : input } ) };
+	const jyes = function( w, index ) { click( w, all( w.dialogs[index], 'button' ).pop() ) };
+	const jtab = function( w, name ) { return all( w.main, '.tabs button' ).find( function( b ) { return b.dataset.tab === name } ) };
+
+	// --- the router
+	const jr = await jopen( '#projekte' );
+	check( 'the hashes name the screens: #projekte the list, #projekte-neu a new project, #projekte-neu-k<id> with the client chosen, #projekt-<id> the card and #projekt-<id>-belege|dateien its tabs; what is no id is the Übersicht', JSON.stringify( jr.app.parse( '#projekte' ) ) === '{"screen":"projekte"}' && JSON.stringify( jr.app.parse( '#projekte-neu' ) ) === '{"screen":"projektneu","client":""}'
+		&& JSON.stringify( jr.app.parse( '#projekte-neu-k3' ) ) === '{"screen":"projektneu","client":"3"}' && JSON.stringify( jr.app.parse( '#projekt-00001' ) ) === '{"screen":"projekt","id":"00001","tab":""}' && JSON.stringify( jr.app.parse( '#projekt-00001-dateien' ) ) === '{"screen":"projekt","id":"00001","tab":"dateien"}'
+		&& jr.app.parse( '#projekt-00001-belege' ).tab === 'belege' && [ '#projekt-', '#projekt-a/b', '#projekt-00001-nichts', '#projekte-neu-k0', '#projekte-neu-x' ].every( function( hash ) { return jr.app.parse( hash ).screen === 'uebersicht' } ) );
+	check( '...the address of a draft takes the project: #neu-invoice-k1-p00001; a project needs a client to go with', JSON.stringify( jr.app.parse( '#neu-invoice-k1-p00001' ) ) === '{"screen":"entwurf","category":"invoice","offer":"","client":"1","project":"00001"}' && jr.app.parse( '#neu-invoice-p00001' ).screen === 'uebersicht' && jr.app.parse( '#neu-invoice-k1-p' ).screen === 'uebersicht' && jr.app.parse( '#kunde-1-projekte' ).tab === 'projekte' );
+	check( '...and the rail marks Projekte on the list, the new project and the card', await ( async function() {
+		const marks = [];
+		for( const hash of [ '#projekte', '#projekte-neu', '#projekt-00001' ] )
+			marks.push( all( ( await jopen( hash ) ).nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).map( function( a ) { return a.getAttribute( 'data-r' ) } ).join() );
+		return marks.join( '|' ) === 'projekte|projekte|projekte';
+	} )() );
+
+	// --- the list
+	check( 'the list asks crm-projekte/list once and nothing else; the head says Projekte, how many of how many, the search, the switch and Neues Projekt', jr.all( 'crm-projekte/list' ).length === 1 && JSON.stringify( jr.last( 'crm-projekte/list' ).data ) === '{}' && textOf( all( jr.main, 'h1' )[0] ) === 'Projekte' && textOf( all( jr.main, '.sub' )[0] ) === '2 von 3'
+		&& jf( jr, 'q' ) !== undefined && jf( jr, 'p-all' ).type === 'checkbox' && jf( jr, 'p-all' ).getAttribute( 'role' ) === 'switch' && jf( jr, 'p-all' ).checked === false && textOf( jf( jr, 'projects-new' ) ) === texts['projects.new'] && jf( jr, 'projects-new' ).getAttribute( 'href' ) === '#projekte-neu' && jf( jr, 'projects-new' ).classList.contains( 'primary' ) === true );
+	check( '...the table has the columns Projekt, Kunde, Beginn, Belege, Dateien and Status; the done projects are not in it unless the switch is on - the newest first', all( jf( jr, 'projects' ), 'thead th' ).map( textOf ).join( '|' ) === [ texts['projects.column-project'], texts['column.client'], texts['projects.column-started'], texts['projects.column-documents'], texts['projects.column-files'], texts['column.state'] ].join( '|' ) && jrows( jr ).map( function( tr ) { return tr.dataset.id } ).join() === '00003,00001' );
+	const j1 = jrows( jr )[1];
+	check( '...a row has the title as the link to the card, the client as the link to its card, the day, the documents with the offers that wait, the files and the state', all( j1, 'a' )[0].getAttribute( 'href' ) === '#projekt-00001' && textOf( all( j1, 'a' )[0] ) === 'Album 2027' && all( j1, 'a' )[1].getAttribute( 'href' ) === '#kunde-1' && textOf( all( j1, 'a' )[1] ) === 'Nordlicht Records GmbH'
+		&& j1.children.map( textOf ).slice( 2 ).join( '|' ) === '01.10.2026|3 · '+ texts['projects.open-offers'].replace( '%s', '1' )+ '|1|'+ texts['projects.running'] && textOf( jrows( jr )[0].children[3] ) === '–' && textOf( jrows( jr )[0].children[2] ) === '' );
+	jtoggle( jf( jr, 'p-all' ), true );
+	check( '...the switch Abgeschlossene zeigen draws the done ones too - greyed, with their state - without asking the server again', jrows( jr ).map( function( tr ) { return tr.dataset.id } ).join() === '00003,00002,00001' && jrows( jr )[1].classList.contains( 'dim' ) === true && textOf( jrows( jr )[1].children[5] ) === texts['projects.done'] && jr.all( 'crm-projekte/list' ).length === 1 && textOf( all( jr.main, '.sub' )[0] ) === '3 von 3' );
+	type( jf( jr, 'q' ), 'richter', false );
+	check( '...the search finds by the title, the client and its number, and says so when nothing is found', jrows( jr ).map( function( tr ) { return tr.dataset.id } ).join() === '00003' && ( type( jf( jr, 'q' ), 'K-0001', false ), jrows( jr ).length === 2 ) && ( type( jf( jr, 'q' ), 'zzz', false ), textOf( jrows( jr )[0] ) === texts['projects.none'] ) );
+	type( jf( jr, 'q' ), '', false );
+	click( jr, jrows( jr )[0] );
+	check( '...a click on a row opens the card, and a click on the client\'s link does not', jr.location.hash === '#projekt-00003' );
+	jr.location.hash = '#projekte';
+	await settle();
+	click( jr, all( jrows( jr )[0], 'a' )[1] );
+	check( '...(the click on the link of the client goes to the client\'s card and not to the project\'s)', jr.location.hash !== '#projekt-00003' );
+	const jnofiles = await jopen( '#projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { files : false, projects : jprojects.map( function( one ) { return Object.assign( {}, one, { files : null } ) } ) } ) ] } } );
+	check( 'where the feature Files is off the column Dateien has no count: a dash', jrows( jnofiles ).map( function( tr ) { return textOf( tr.children[4] ) } ).join() === '–,–' );
+	const jview = await jopen( '#projekte', {}, { crm : true, pdf : false, elements : false } );
+	check( 'without the permission of the Elements panel the list is for looking: no Neues Projekt, the rows keep their links', jf( jview, 'projects-new' ) === undefined && jrows( jview ).length === 2 && all( jrows( jview )[0], 'a' )[0].getAttribute( 'href' ) === '#projekt-00003' && textOf( all( jview.main, '.state-note' ).pop() ) === texts['projects.note'] );
+	const jmissing = await jopen( '#projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { missing : true, projects : [] } ) ] } } );
+	check( 'where the element type is not there the screen says so, points to the settings and offers nothing: no table, no search, no switch, no Neues Projekt', jf( jmissing, 'projects' ) === undefined && jf( jmissing, 'q' ) === undefined && jf( jmissing, 'p-all' ) === undefined && jf( jmissing, 'projects-new' ) === undefined
+		&& textOf( all( jmissing.main, '.note' )[0] ).indexOf( texts['projects.missing'] ) === 0 && all( all( jmissing.main, '.note' )[0], 'a' )[0].getAttribute( 'href' ) === '#einstellungen' );
+	const jfail = await jopen( '#projekte', { 'crm-projekte/list' : function() { return [ 500, { error : 'x', code : 'crm_documents_database' } ] } } );
+	check( 'a list that fails says the sentence of its code and offers to try again', textOf( jfail.main ).indexOf( texts['error.crm_documents_database'] ) !== -1 && all( jfail.main, 'button' ).map( textOf ).indexOf( 'Noch einmal versuchen' ) !== -1 );
+
+	// --- a new project
+	const jn = await jopen( '#projekte-neu-k2' );
+	check( 'a new project asks for the clients and for the type: the form has the title, the client (the active ones, the one named by the address chosen), the note, the day and - with the permission of the Files panel - the box that makes the folder, on', jn.all( 'crm-clients/list' ).length === 1 && jn.all( 'crm-projekte/list' ).length === 1
+		&& jf( jn, 'f-title' ) !== undefined && jf( jn, 'f-client' ).value === '2' && all( jf( jn, 'f-client' ), 'option' ).map( function( o ) { return o.value } ).join() === ',1,2,3,5' && jf( jn, 'f-description' ).tagName === 'TEXTAREA' && jf( jn, 'f-started' ).type === 'date'
+		&& jf( jn, 'f-folder' ).checked === true && jf( jn, 'f-folder' ).getAttribute( 'role' ) === 'switch' && textOf( all( jn.main, 'h1' )[0] ) === texts['projects.new'] && jf( jn, 'project-create' ).title === 'Strg+S' && textOf( jf( jn, 'project-create' ) ) === texts['projects.create'] );
+	const jstale = await jopen( '#projekte-neu', { 'crm-projekte/list' : function() { return [ 200, jlist( { allowed : true } ) ] } }, { crm : true, pdf : false, elements : true, text : false, files : false } );
+	const jstale2 = await jopen( '#projekte-neu', { 'crm-projekte/list' : function() { return [ 200, jlist( { allowed : false } ) ] } } );
+	check( 'whether the box is offered is what the answer of the server says now, not the data block of the page - which is old once a setup switched the feature on under it: allowed true makes the box, allowed false takes it away', jf( jstale, 'f-folder' ) !== undefined && jf( jstale2, 'f-folder' ) === undefined );
+	const jnb = await jopen( '#projekte-neu', {}, { crm : true, pdf : false, elements : true, text : false, files : false } );
+	check( '...without the permission of the Files panel there is no box, and with no client in the address none is chosen; without the permission of the Elements panel the screen says so', jf( jnb, 'f-folder' ) === undefined && jf( jnb, 'f-client' ).value === '' && jf( await jopen( '#projekte-neu', {}, { crm : true, pdf : false, elements : false } ), 'f-title' ) === undefined
+		&& textOf( all( ( await jopen( '#projekte-neu', {}, { crm : true, pdf : false, elements : false } ) ).main, '.note' )[0] ) === texts['projects.forbidden'] );
+	check( '...where the feature Files is off (the list says so) there is no box either, and where the type is missing the form is not offered', jf( await jopen( '#projekte-neu', { 'crm-projekte/list' : function() { return [ 200, jlist( { files : false } ) ] } } ), 'f-folder' ) === undefined
+		&& jf( await jopen( '#projekte-neu', { 'crm-projekte/list' : function() { return [ 200, jlist( { missing : true } ) ] } } ), 'f-title' ) === undefined );
+	jsubmit( jf( jn, 'project-form' ) );
+	await settle();
+	check( 'a title that is missing is said at the field, a client that is missing the same, and nothing is posted', jposts.length === 0 && textOf( jf( jn, 'f-title' ).parentNode.children.pop() ) === texts['projects.err-title'] && jf( jn, 'f-title' ).classList.contains( 'err' ) === true );
+	type( jf( jn, 'f-title' ), '  Neues Album  ', false );
+	jf( jn, 'f-client' ).value = '';
+	jsubmit( jf( jn, 'project-form' ) );
+	check( '...the client: the sentence at its field', jposts.length === 0 && textOf( all( jf( jn, 'f-client' ).parentNode, '.state-note.bad' )[0] ) === texts['projects.err-client'] && jf( jn, 'f-title' ).classList.contains( 'err' ) === false );
+	jf( jn, 'f-client' ).value = '2';
+	type( jf( jn, 'f-description' ), 'Zeile 1\nZeile 2', false );
+	type( jf( jn, 'f-started' ), '2026-12-01', false );
+	jsubmit( jf( jn, 'project-form' ) );
+	await settle();
+	check( 'Projekt anlegen saves the element through the Elements panel\'s action: the type, no uri (the type numbers its projects), the native language, isNew, and the fields - the title trimmed, the client\'s number, the note and the day', JSON.stringify( jposts[0] ) === JSON.stringify( [ 'elements/save', { type : 'projekte', uri : '', locale : 'de_DE', isNew : true, fields : { title : 'Neues Album', client : 'K-0002', description : 'Zeile 1\nZeile 2', started : '2026-12-01' } } ] ) );
+	check( '...then the folder through the Files panel\'s action, in the group of the client\'s number and named as the project', JSON.stringify( jposts[1] ) === JSON.stringify( [ 'files/folder/add', { group : 'k-0002', name : 'Neues Album' } ] ) );
+	check( '...and the id of the folder into the project, by the number the type gave it - then the card of the project opens, and the toast says that the folder is made', JSON.stringify( jposts[2] ) === JSON.stringify( [ 'elements/save', { type : 'projekte', uri : '00005', locale : 'de_DE', isNew : false, fields : { folder : 'f00000000099' } } ] ) && jposts.length === 3 && jn.location.hash === '#projekt-00005' && jn.toast.textContent === texts['projects.made-folder'].replace( '%s', 'Neues Album' ) );
+	const jn2 = await jopen( '#projekte-neu' );
+	type( jf( jn2, 'f-title' ), 'Ohne Ordner', false );
+	jf( jn2, 'f-client' ).value = '1';
+	jtoggle( jf( jn2, 'f-folder' ), false );
+	jsubmit( jf( jn2, 'project-form' ) );
+	await settle();
+	check( 'with the box off no folder is made: one post, the fields without the empty ones (no note, no day, no folder), and the card opens', JSON.stringify( jposts ) === JSON.stringify( [ [ 'elements/save', { type : 'projekte', uri : '', locale : 'de_DE', isNew : true, fields : { title : 'Ohne Ordner', client : 'K-0001' } } ] ] ) && jn2.location.hash === '#projekt-00005' );
+	const jn3 = await jopen( '#projekte-neu-k1', { 'files/folder/add' : function() { return [ 400, { error : 'x', code : 'files_group', params : [], field : 'group' } ] } } );
+	type( jf( jn3, 'f-title' ), 'X'.repeat( 150 ), false );
+	jsubmit( jf( jn3, 'project-form' ) );
+	await settle();
+	check( 'a folder the Files panel refuses leaves the project made and says so in the toast, with the sentence of the refusal; no second save, and the card opens', jposts.length === 1 && jn3.location.hash === '#projekt-00005' && jn3.toast.classList.contains( 'bad' ) === true && jn3.toast.textContent === texts['projects.made-no-folder'].replace( '%s', 'X'.repeat( 150 ) ).replace( '%s', texts['error.files_group'] ) );
+	const jn4 = await jopen( '#projekte-neu-k1' );
+	type( jf( jn4, 'f-title' ), 'Y'.repeat( 150 ), false );
+	jsubmit( jf( jn4, 'project-form' ) );
+	await settle();
+	check( '...the name of the folder is the title cut to what the folder takes (80)', jposts[1][0] === 'files/folder/add' && jposts[1][1].name === 'Y'.repeat( 80 ) && jposts[0][1].fields.title === 'Y'.repeat( 150 ) );
+	const jn5 = await jopen( '#projekte-neu-k1', { 'elements/save' : function( data ) { jposts.push( [ 'elements/save', data ] ); return [ 400, { error : 'x', code : 'crm_project_client_unknown', params : [], field : 'client' } ] } } );
+	type( jf( jn5, 'f-title' ), 'Z', false );
+	jsubmit( jf( jn5, 'project-form' ) );
+	await settle();
+	check( 'a refusal of the save is said beside the field it names, in the toast, and the form stays: nothing else is posted and the button is on again', jn5.location.hash === '#projekte-neu-k1' && jposts.length === 1 && textOf( all( jf( jn5, 'f-client' ).parentNode, '.state-note.bad' )[0] ) === texts['error.crm_project_client_unknown'] && jf( jn5, 'f-client' ).classList.contains( 'err' ) === true && jf( jn5, 'project-create' ).disabled === false );
+	const jhold = hold();
+	const jn6 = await jopen( '#projekte-neu-k1', { 'elements/save' : function( data ) { jposts.push( [ 'elements/save', data ] ); return jhold.promise } } );
+	type( jf( jn6, 'f-title' ), 'Doppelt', false );
+	jsubmit( jf( jn6, 'project-form' ) );
+	jsubmit( jf( jn6, 'project-form' ) );
+	check( 'a second press while the first is on its way posts nothing, and the button is off', jposts.length === 1 && jf( jn6, 'project-create' ).disabled === true );
+	jn6.location.hash = '#kunden';
+	await settle();
+	check( '...a way out of the screen waits for the posts (the screen that was asked for is drawn once they are through)', all( jn6.main, 'table' ).length === 0 );
+	jhold.release( [ 200, { element : { '.uri' : '/projekte/00007' } } ] );
+	await settle();
+	check( '...and then the screen that was asked for is there, and the project is not announced over it by a hash', jn6.location.hash === '#kunden' && all( jn6.main, 'table' ).length === 1 && jposts.filter( function( post ) { return post[0] === 'files/folder/add' } ).length === 1 );
+
+	// --- the shortcut and the guard of the form
+	const jk = await jopen( '#projekte-neu-k1' );
+	type( jf( jk, 'f-title' ), 'Per Tastatur', false );
+	check( 'Strg+S in the form of a new project makes the project, as the button does', press( jk, 's', null, { ctrlKey : true } ) === true && ( await settle(), jposts.length === 3 && jposts[0][1].fields.title === 'Per Tastatur' ) );
+	const jg = await jopen( '#projekte-neu-k1' );
+	type( jf( jg, 'f-title' ), 'Angefangen', false );
+	click( jg, all( jg.main, '.crumb a' )[0] );
+	check( 'a form with something typed asks before a link takes the person away: the question, and the screen stays until it is answered yes', jg.dialogs.length === 1 && jg.location.hash === '#projekte-neu-k1' && ( jyes( jg, 0 ), true ) && ( await settle(), jg.location.hash === '#projekte' ) );
+	const jg2 = await jopen( '#projekte-neu-k1' );
+	click( jg2, all( jg2.main, '.crumb a' )[0] );
+	check( '...and one with nothing typed does not ask', jg2.dialogs.length === 0 );
+
+	// --- the card
+	const jc = await jopen( '#projekt-00001' );
+	check( 'the card asks crm-projekte/get with the id as a string; the head has the title, the state, the client as a link and since when, the menu Neuer Beleg and ⋯', JSON.stringify( jc.last( 'crm-projekte/get' ).data ) === '{"id":"00001"}' && textOf( all( jc.main, 'h1' )[0] ) === 'Album 2027' && textOf( all( jc.main, '.head .badge' )[0] ) === texts['projects.running']
+		&& all( all( jc.main, '.head .sub' )[0], 'a' )[0].getAttribute( 'href' ) === '#kunde-1' && textOf( all( jc.main, '.head .sub' )[0] ).indexOf( 'seit 01.10.2026' ) !== -1 && all( jc.main, '.crumb a' )[0].getAttribute( 'href' ) === '#projekte' && jmenu( jc, texts['card.document-new'] ) !== undefined && jmenu( jc, '⋯' ) !== undefined );
+	check( '...the menu ⋯ has Bearbeiten, Abschließen and Löschen (the last one in red); a done project offers Wieder öffnen', all( jmenu( jc, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === [ texts['projects.edit'], texts['projects.finish'], texts['projects.delete'] ].join( '|' ) && jitem( jc, texts['projects.delete'] ).classList.contains( 'danger' ) === true
+		&& all( jmenu( await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { done : true } ) } ) ] } } ), '⋯' ), '[role="menuitem"]' ).map( textOf )[1] === texts['projects.reopen'] );
+	const jcn = await jopen( '#projekt-00001' );
+	click( jcn, all( jmenu( jcn, texts['card.document-new'] ), '[role="menuitem"]' ).find( function( one ) { return textOf( one ) === 'Rechnung' } ) );
+	check( '...Neuer Beleg opens the editor for the client with the project chosen: the address carries both', jcn.location.hash === '#neu-invoice-k1-p00001' );
+	check( '...a client that is off gets no Neuer Beleg, and a card without the permission of the Elements panel no menu ⋯', jmenu( await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { client : Object.assign( {}, jclient1, { active : false } ) } ) ] } } ), texts['card.document-new'] ) === undefined && jmenu( await jopen( '#projekt-00001', {}, { crm : true, pdf : false, elements : false, files : true } ), '⋯' ) === undefined );
+	const jinfo = jf( jc, 'project-info' );
+	check( 'the card shows the facts: the client as a link, the day, the note on two lines, the documents with the offers that wait, the folder - and nothing that is empty', all( jinfo, 'dt' ).map( textOf ).join( '|' ) === [ texts['projects.f-client'], texts['projects.f-started'], texts['projects.f-description'], texts['projects.column-documents'], texts['projects.folder'] ].join( '|' ) && all( jinfo, 'dd' ).map( textOf ).join( '|' ).indexOf( 'Nordlicht Records GmbH · K-0001|01.10.2026|Aufnahmeund Mix|3 · '+ texts['projects.open-offers'].replace( '%s', '1' )+ '|Album 2027' ) === 0
+		&& all( jinfo, 'br' ).length === 1 );
+	check( '...the tabs are Belege and Dateien, each with its count, and the first is open', all( jc.main, '.tabs button' ).map( textOf ).join( '|' ) === 'Belege3|Dateien1' && jtab( jc, 'belege' ).getAttribute( 'aria-selected' ) === 'true' );
+	check( '...the tab Belege asks crm-documents/list for the project, and shows the table of the documents with links to them, their kind, day, amount and state', JSON.stringify( jc.last( 'crm-documents/list' ).data ) === '{"project":"00001"}' && all( jf( jc, 'project-documents' ), 'tbody tr' ).length === 2
+		&& all( all( jf( jc, 'project-documents' ), 'tbody tr' )[0], 'a' )[0].getAttribute( 'href' ) === '#beleg-11' && textOf( all( jf( jc, 'project-documents' ), 'tbody tr' )[1].children[1] ) === 'Angebot' );
+	check( '...a project with no document says so; the address #projekt-00001-dateien opens the other tab', textOf( jf( await jopen( '#projekt-00001', { 'crm-documents/list' : function() { return [ 200, { documents : [], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } ), 'project-documents' ) ).indexOf( texts['projects.docs-empty'] ) !== -1 && jtab( await jopen( '#projekt-00001-dateien' ), 'dateien' ).classList.contains( 'on' ) === true );
+	const jgone = await jopen( '#projekt-00099' );
+	check( 'a project that is not there says so and leads back to the list', all( jgone.main, '.note.bad' ).length === 1 && textOf( all( jgone.main, '.note' )[0] ).indexOf( texts['error.crm_projekte_unknown'] ) === 0 && all( all( jgone.main, '.note' )[0], 'a' )[0].getAttribute( 'href' ) === '#projekte' );
+
+	// --- editing
+	click( jc, jitem( jc, texts['projects.edit'] ) );
+	check( 'Bearbeiten makes the facts a form: the title, the note and the day with what they hold - the client is not a field - and Speichern carries the shortcut; a second press of the menu item makes no second form', jf( jc, 'project-info' ).tagName === 'FORM' && jf( jc, 'f-title' ).value === 'Album 2027' && jf( jc, 'f-description' ).value === 'Aufnahme\nund Mix' && jf( jc, 'f-started' ).value === '2026-10-01' && jf( jc, 'f-client' ) === undefined
+		&& jf( jc, 'project-save' ).title === 'Strg+S' && ( click( jc, jitem( jc, texts['projects.edit'] ) ), all( jc.main, '#project-save' ).length === 1 ) );
+	click( jc, jf( jc, 'project-cancel' ) );
+	check( '...Abbrechen puts the facts back and drops the guard', jf( jc, 'project-info' ).tagName === 'DIV' && jc.app.state.draft === null && jposts.length === 0 );
+	click( jc, jitem( jc, texts['projects.edit'] ) );
+	jsubmit( jf( jc, 'project-info' ) );
+	await settle();
+	check( '...saved with nothing changed it posts nothing and closes', jposts.length === 0 && jf( jc, 'project-info' ).tagName === 'DIV' );
+	click( jc, jitem( jc, texts['projects.edit'] ) );
+	type( jf( jc, 'f-title' ), '  ', false );
+	jsubmit( jf( jc, 'project-info' ) );
+	check( '...a title that is empty is said at the field and posts nothing', jposts.length === 0 && textOf( jf( jc, 'f-title' ).parentNode.children.pop() ) === texts['projects.err-title'] );
+	type( jf( jc, 'f-title' ), 'Album 2027 (Mix)', false );
+	check( 'Strg+S saves the form: only what changed is posted - the title - as a change of the project by its number', press( jc, 's', null, { ctrlKey : true } ) === true && ( await settle(), jposts[0] !== undefined && JSON.stringify( jposts[0] ) === JSON.stringify( [ 'elements/save', { type : 'projekte', uri : '00001', locale : 'de_DE', isNew : false, fields : { title : 'Album 2027 (Mix)' } } ] ) ) );
+	check( '...the folder is renamed with it, by the Files panel\'s action, to the new title; the toast says it is saved, and the card is read again', JSON.stringify( jposts[1] ) === JSON.stringify( [ 'files/folder/save', { id : 'f00000000001', name : 'Album 2027 (Mix)' } ] ) && jc.toast.textContent === texts['projects.saved'] && jc.all( 'crm-projekte/get' ).length === 2 && jf( jc, 'project-info' ).tagName === 'DIV' );
+	const jc2 = await jopen( '#projekt-00001', { 'files/folder/save' : function() { return [ 400, { error : 'x', code : 'files_long', params : [ 80 ], field : 'name' } ] } } );
+	click( jc2, jitem( jc2, texts['projects.edit'] ) );
+	type( jf( jc2, 'f-title' ), 'Neu', false );
+	type( jf( jc2, 'f-description' ), 'Anders', false );
+	type( jf( jc2, 'f-started' ), '2026-11-01', false );
+	jsubmit( jf( jc2, 'project-info' ) );
+	await settle();
+	check( 'the note and the day are posted with it; a refusal of the folder\'s new name is said (the project is saved all the same, the folder keeps its name)', JSON.stringify( jposts[0][1].fields ) === '{"title":"Neu","description":"Anders","started":"2026-11-01"}' && jc2.toast.classList.contains( 'bad' ) === true && jc2.toast.textContent === texts['projects.saved-no-rename'].replace( '%s', texts['error.files_long'].replace( '%s', '80' ) ) );
+	const jc3 = await jopen( '#projekt-00001', {}, { crm : true, pdf : false, elements : true, text : false, files : false } );
+	click( jc3, jitem( jc3, texts['projects.edit'] ) );
+	type( jf( jc3, 'f-title' ), 'Ohne Recht', false );
+	jsubmit( jf( jc3, 'project-info' ) );
+	await settle();
+	check( '...without the permission of the Files panel no rename is tried', jposts.length === 1 && jposts[0][0] === 'elements/save' );
+	const jc4 = await jopen( '#projekt-00001', { 'elements/save' : function() { return [ 400, { error : 'Missing required element key' } ] } } );
+	click( jc4, jitem( jc4, texts['projects.edit'] ) );
+	type( jf( jc4, 'f-title' ), 'Neu', false );
+	jsubmit( jf( jc4, 'project-info' ) );
+	await settle();
+	check( 'a refusal of the save keeps the form with what was typed, says the sentence, and the button is on again', jf( jc4, 'project-info' ).tagName === 'FORM' && jf( jc4, 'f-title' ).value === 'Neu' && jc4.toast.textContent === texts['projects.error-save'] && jf( jc4, 'project-save' ).disabled === false && jc4.app.state.draft.dirty === true );
+	click( jc4, all( jc4.main, '.crumb a' )[0] );
+	check( '...and the guard asks before a link takes the form away', jc4.dialogs.length === 1 && jc4.location.hash === '#projekt-00001' );
+
+	// --- the switch Abgeschlossen, and the delete
+	const jd = await jopen( '#projekt-00001' );
+	click( jd, jitem( jd, texts['projects.finish'] ) );
+	await settle();
+	check( 'Abschließen is a change of the field done by the Elements panel\'s action - done true, nothing else -, the toast says so and the card is read again', JSON.stringify( jposts[0] ) === JSON.stringify( [ 'elements/save', { type : 'projekte', uri : '00001', locale : 'de_DE', isNew : false, fields : { done : true } } ] ) && jd.toast.textContent === texts['projects.finished'] && jd.all( 'crm-projekte/get' ).length === 2 );
+	const jfin = await jopen( '#projekt-00001', { 'elements/save' : function( data ) { jposts.push( [ 'elements/save', data ] ); return [ 403, { error : 'x', code : 'elements_fields_not_allowed', params : [ 'done' ], field : 'done' } ] } } );
+	click( jfin, jitem( jfin, texts['projects.finish'] ) );
+	await settle();
+	check( '...a change the panel refuses says its sentence and not that the project is done: the card is not read again, and nothing is announced', jfin.toast.classList.contains( 'bad' ) === true && jfin.toast.textContent !== texts['projects.finished'] && jfin.all( 'crm-projekte/get' ).length === 1 && textOf( all( jfin.main, '.head .badge' )[0] ) === texts['projects.running'] );
+	const jdone = await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { done : true } ) } ) ] } } );
+	click( jdone, jitem( jdone, texts['projects.reopen'] ) );
+	await settle();
+	check( '...Wieder öffnen posts done false; a done project says so in the head', jposts[0][1].fields.done === false && jdone.toast.textContent === texts['projects.reopened'] && textOf( all( jdone.main, '.head .badge' )[0] ) === texts['projects.done'] );
+	click( jd, jitem( jd, texts['projects.delete'] ) );
+	check( 'Löschen asks first, with the title and with the sentence that the folder and its files stay in Files; nothing is posted before the yes', jd.dialogs.length === 1 && jposts.length === 1 && textOf( all( jd.dialogs[0], 'p' )[0] ) === texts['projects.delete-text-folder'].replace( '%s', 'Album 2027' ) && all( jd.dialogs[0], 'button' ).pop().classList.contains( 'danger' ) === true );
+	jyes( jd, 0 );
+	await settle();
+	check( '...the yes deletes through the Elements panel\'s action, for the type and the number, and leaves for the list', JSON.stringify( jposts[1] ) === JSON.stringify( [ 'elements/delete', { type : 'projekte', uri : '00001' } ] ) && jd.location.hash === '#projekte' && jd.toast.textContent === texts['projects.deleted'] );
+	const jnf = await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { folder : null, list : [] } ) ] } } );
+	click( jnf, jitem( jnf, texts['projects.delete'] ) );
+	check( '...a project with no folder has the shorter sentence', textOf( all( jnf.dialogs[0], 'p' )[0] ) === texts['projects.delete-text'].replace( '%s', 'Album 2027' ) );
+	const jrefused = await jopen( '#projekt-00001', { 'elements/delete' : function() { return [ 409, { error : 'x', code : 'crm_project_documents', params : [ 3 ] } ] } } );
+	click( jrefused, jitem( jrefused, texts['projects.delete'] ) );
+	jyes( jrefused, 0 );
+	await settle();
+	check( 'a delete the endpoint refuses because documents name the project is said with the count, and the card stays', jrefused.location.hash === '#projekt-00001' && jrefused.toast.classList.contains( 'bad' ) === true && jrefused.toast.textContent === texts['error.crm_project_documents'].replace( '%s', '3' ) && textOf( all( jrefused.main, 'h1' )[0] ) === 'Album 2027' );
+
+	// --- the tab Dateien
+	const jdf = await jopen( '#projekt-00001-dateien' );
+	const jfrows = function( w ) { return all( jf( w, 'project-file-table' ), 'tbody tr' ) };
+	check( 'the tab Dateien lists the files of the folder: the name as the link to the download, the size, the day, who put it there (Du, or the member by name) and a switch for whether the members see it; a name that is markup is text', all( jf( jdf, 'project-file-table' ), 'thead th' ).map( textOf ).join( '|' ) === [ texts['projects.file-name'], texts['projects.file-size'], texts['projects.file-day'], texts['projects.file-by'], texts['projects.file-visible'] ].join( '|' )+ '|' && jfrows( jdf ).length === 2
+		&& all( jfrows( jdf )[0], 'a' )[0].getAttribute( 'href' ) === '/.files/a00000000001' && textOf( jfrows( jdf )[0].children[0] ) === 'Notizen.txt' && textOf( jfrows( jdf )[0].children[1] ) === '1,1 MB' && textOf( jfrows( jdf )[0].children[2] ) === '03.11.2026' && textOf( jfrows( jdf )[0].children[3] ) === texts['projects.by-owner']
+		&& textOf( jfrows( jdf )[1].children[3] ) === 'Lena Brandt' && textOf( jfrows( jdf )[1].children[1] ) === '51 KB' && textOf( jfrows( jdf )[1].children[0] ) === '<b>Cover</b>.png' && findAll( jf( jdf, 'project-file-table' ), function( n ) { return n.tagName === 'B' } ).length === 0
+		&& all( jfrows( jdf )[0], 'input' )[0].checked === true && all( jfrows( jdf )[1], 'input' )[0].checked === false && all( jfrows( jdf )[0], 'input' )[0].getAttribute( 'role' ) === 'switch' );
+	jtoggle( all( jfrows( jdf )[1], 'input' )[0], true );
+	await settle();
+	check( 'the switch sichtbar posts the Files panel\'s action files/save with the id and the value; a refusal puts the switch back and says the sentence', JSON.stringify( jposts[0] ) === JSON.stringify( [ 'files/save', { id : 'a00000000002', visible : true } ] ) && all( jfrows( jdf )[1], 'input' )[0].checked === true && all( jfrows( jdf )[1], 'input' )[0].disabled === false );
+	const jdf2 = await jopen( '#projekt-00001-dateien', { 'files/save' : function() { return [ 404, { error : 'x', code : 'files_unknown' } ] } } );
+	jtoggle( all( jfrows( jdf2 )[1], 'input' )[0], true );
+	await settle();
+	check( '...(the file was gone: the switch is as it was)', all( jfrows( jdf2 )[1], 'input' )[0].checked === false && jdf2.toast.textContent === texts['error.files_unknown'] );
+	const jdel = await jopen( '#projekt-00001-dateien' );
+	click( jdel, all( jfrows( jdel )[0], 'button' )[0] );
+	check( 'Löschen of a file asks first, with its name; nothing is posted before the yes', jdel.dialogs.length === 1 && jposts.length === 0 && textOf( all( jdel.dialogs[0], 'p' )[0] ).indexOf( 'Notizen.txt' ) !== -1 && all( jdel.dialogs[0], 'button' ).pop().classList.contains( 'danger' ) === true );
+	jyes( jdel, 0 );
+	await settle();
+	check( '...the yes posts files/delete with the id, and the card is read again', JSON.stringify( jposts[0] ) === JSON.stringify( [ 'files/delete', { id : 'a00000000001' } ] ) && jdel.all( 'crm-projekte/get' ).length === 2 && jdel.toast.textContent === texts['projects.file-deleted'] );
+	const jdr = await jopen( '#projekt-00001-dateien', {}, { crm : true, pdf : false, elements : true, text : false, files : false } );
+	check( 'without the permission of the Files panel the files are read-only: the names are text - no download link, which the route would refuse -, the switches are off, there is no Löschen and no upload, and the sentence says why', all( jfrows( jdr )[0], 'a' ).length === 0 && all( jfrows( jdr )[0], 'input' )[0].disabled === true && all( jf( jdr, 'project-file-table' ), 'button' ).length === 0 && jf( jdr, 'project-upload' ) === undefined && jf( jdr, 'up-input' ) === undefined
+		&& textOf( jf( jdr, 'project-files' ) ).indexOf( texts['projects.files-forbidden'] ) !== -1 && jdr.all( 'files/list' ).length === 0 );
+	const joff = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { files : null } ), files : false, folder : null, list : null } ) ] } } );
+	check( 'where the feature is off the tab says so and has nothing else', jf( joff, 'project-file-table' ) === undefined && textOf( jf( joff, 'project-files' ) ) === texts['projects.files-off'] && all( jtab( joff, 'dateien' ), '.n' ).length === 0 );
+	const jedStale = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { allowed : true } ) ] } }, { crm : true, pdf : false, elements : true, text : false, files : false } );
+	const jedStale2 = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { allowed : false } ) ] } } );
+	check( '...so are the files of the card: what the answer says now decides whether they can be changed and uploaded', jf( jedStale, 'up-input' ) !== undefined && all( jf( jedStale, 'project-file-table' ), 'button' ).length === 2 && jf( jedStale2, 'up-input' ) === undefined && all( jf( jedStale2, 'project-file-table' ), 'button' ).length === 0 );
+	const jrenStale = await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { allowed : false } ) ] } } );
+	click( jrenStale, jitem( jrenStale, texts['projects.edit'] ) );
+	type( jf( jrenStale, 'f-title' ), 'Neu', false );
+	jsubmit( jf( jrenStale, 'project-info' ) );
+	await settle();
+	check( '...and so is the rename of the folder: an answer that says no permission renames nothing', jposts.length === 1 && jposts[0][0] === 'elements/save' );
+	const jnoel = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { folder : '', files : null } ), folder : null, list : [] } ) ] } }, { crm : true, pdf : false, elements : false, text : false, files : true } );
+	click( jnoel, jf( jnoel, 'folder-make' ) || all( jnoel.main, 'h1' )[0] );
+	await settle();
+	check( 'Ordner anlegen is offered only to an account that can write the folder\'s id into the project as well - the Elements permission: without it no button (a folder would be made and be nobody\'s), the sentence says what is needed, and nothing is posted', jf( jnoel, 'folder-make' ) === undefined && textOf( jf( jnoel, 'project-files' ) ).indexOf( texts['projects.folder-elements'] ) !== -1 && jnoel.all( 'files/folder/add' ).length === 0 );
+	const jnofolder = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { folder : '', files : null } ), folder : null, list : [] } ) ] } } );
+	check( 'a project with no folder says so and offers Ordner anlegen - without the permission of the Files panel only the sentences', textOf( jf( jnofolder, 'project-files' ) ).indexOf( texts['projects.folder-none'] ) !== -1 && textOf( jf( jnofolder, 'folder-make' ) ) === texts['projects.folder-make'] && jf( jnofolder, 'project-file-table' ) === undefined
+		&& jf( await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { folder : null, list : [] } ) ] } }, { crm : true, pdf : false, elements : true, text : false, files : false } ), 'folder-make' ) === undefined );
+	click( jnofolder, jf( jnofolder, 'folder-make' ) );
+	await settle();
+	check( '...the button makes the folder in the group of the client\'s number, named as the project, and writes its id into the project; the card is read again', JSON.stringify( jposts ) === JSON.stringify( [ [ 'files/folder/add', { group : 'k-0001', name : 'Album 2027' } ], [ 'elements/save', { type : 'projekte', uri : '00001', locale : 'de_DE', isNew : false, fields : { folder : 'f00000000099' } } ] ] ) && jnofolder.all( 'crm-projekte/get' ).length === 2 && jnofolder.toast.textContent === texts['projects.folder-made'] );
+	const jgone2 = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { folder : null, list : [] } ) ] } } );
+	check( 'a folder id that Files does not have any more is told apart from none: its own sentence, and the button makes a new one', textOf( jf( jgone2, 'project-files' ) ).indexOf( texts['projects.folder-gone'] ) !== -1 && jf( jgone2, 'folder-make' ) !== undefined );
+	const jbad = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { folder : '' } ), folder : null, list : [] } ) ] } , 'files/folder/add' : function() { return [ 400, { error : 'x', code : 'files_group' } ] } } );
+	click( jbad, jf( jbad, 'folder-make' ) );
+	await settle();
+	check( '...a folder the panel refuses is said with its sentence, and the button is on again - the project is untouched', jbad.toast.classList.contains( 'bad' ) === true && jbad.toast.textContent.indexOf( texts['error.files_group'] ) !== -1 && jf( jbad, 'folder-make' ).disabled === false && jbad.all( 'elements/save' ).length === 0 );
+
+	// --- the upload, in chunks
+	const jup = await jopen( '#projekt-00001-dateien' );
+	const jfile = function( name, size ) { return { name : name, size : size, slice : function( from, to ) { return { size : to - from, from : from, to : to } } } };
+	check( 'the upload block asks the Files panel for the limits once, in the group of the client, and has a file input that takes several files and the button Hochladen', jup.all( 'files/list' ).length === 1 && JSON.stringify( jup.last( 'files/list' ).data ) === '{"group":"k-0001"}' && jf( jup, 'up-input' ).type === 'file' && jf( jup, 'up-input' ).getAttribute( 'multiple' ) === 'multiple' && textOf( jf( jup, 'up-send' ) ) === texts['projects.up-send'] );
+	click( jup, jf( jup, 'up-send' ) );
+	check( '...nothing chosen says so and posts nothing', jup.all( 'files/upload' ).length === 0 && jup.toast.textContent === texts['projects.up-none'] );
+	jf( jup, 'up-input' ).files = [ jfile( 'lang.wav', 2500 ), jfile( 'klein.txt', 400 ), jfile( 'leer.txt', 0 ), jfile( 'gross.zip', 9000 ) ];
+	click( jup, jf( jup, 'up-send' ) );
+	await settle();
+	const jchunks = jup.all( 'files/upload' );
+	check( 'a file is cut into chunks of the size the panel says, sent one after the other to the Files panel\'s upload as a multipart post with the bytes as the part chunk: 2500 bytes in chunks of 1000 are three posts', jchunks.length === 4 && jchunks.slice( 0, 3 ).map( function( c ) { return c.data.index+ '/'+ c.data.count } ).join() === '0/3,1/3,2/3' && jchunks.every( function( c ) { return c.form === true && c.part === 'chunk' } )
+		&& jchunks.slice( 0, 3 ).map( function( c ) { return c.file.from+ '-'+ c.file.to } ).join() === '0-1000,1000-2000,2000-2500' );
+	check( '...each carries the folder of the project, the name and the size, the upload id the first answer gave (none for the first chunk) and visible', jchunks[0].data.folder === 'f00000000001' && jchunks[0].data.name === 'lang.wav' && jchunks[0].data.size === 2500 && jchunks[0].data.upload === '' && jchunks[1].data.upload === '0123456789abcdef' && jchunks[2].data.upload === '0123456789abcdef' && jchunks[0].data.visible === true
+		&& jchunks[3].data.name === 'klein.txt' && jchunks[3].data.index === 0 && jchunks[3].data.count === 1 && jchunks[3].data.upload === '' && jchunks.every( function( c ) { return c.init.headers['X-CSRF-Token'] === 'token-1' && c.init.headers['Content-Type'] === undefined } ) );
+	check( '...an empty file and a file over the largest size (5000) are refused before a byte is sent, each in its row, and the others go on', jchunks.filter( function( c ) { return c.data.name === 'leer.txt' || c.data.name === 'gross.zip' } ).length === 0 && all( jf( jup, 'up-list' ), 'li' ).map( function( li ) { return li.dataset.state } ).join() === 'done,done,failed,failed' );
+	check( '...the progress is drawn per file: a row with the name, the state in words and a bar that reached 100; the failed rows say why', all( jf( jup, 'up-list' ), 'li' ).length === 4 && Number( all( all( jf( jup, 'up-list' ), 'li' )[0], 'progress' )[0].value ) === 100 && textOf( all( all( jf( jup, 'up-list' ), 'li' )[0], 'small' )[0] ) === texts['projects.up-done'] && textOf( all( all( jf( jup, 'up-list' ), 'li' )[2], 'small' )[0] ) === texts['projects.up-empty']
+		&& textOf( all( all( jf( jup, 'up-list' ), 'li' )[3], 'small' )[0] ) === texts['projects.up-large'].replace( '%s', '4,9 KB' ) && jf( jup, 'up-send' ).disabled === false && jf( jup, 'up-input' ).value === '' );
+	check( '...when all are through the toast counts the files that went in and the card is read again', jup.toast.textContent === texts['projects.uploaded'].replace( '%s', '2' ) && jup.all( 'crm-projekte/get' ).length === 2 );
+	const jup4 = await jopen( '#projekt-00001-dateien' );
+	jf( jup4, 'up-input' ).files = [ jfile( 'genau.txt', 2000 ) ];
+	click( jup4, jf( jup4, 'up-send' ) );
+	await settle();
+	check( 'a file that is a whole number of chunks long is that many posts and no empty one after them: 2000 bytes in chunks of 1000 are two', jup4.all( 'files/upload' ).map( function( c ) { return c.data.index+ '/'+ c.data.count+ ':'+ ( c.file.to - c.file.from ) } ).join() === '0/2:1000,1/2:1000' );
+	const jup2 = await jopen( '#projekt-00001-dateien', { 'files/upload' : function( data ) { return data.name === 'voll.txt' ? [ 400, { error : 'x', code : 'files_quota', params : [ 10 ] } ] : [ 200, { id : 'b00000000002', name : data.name, size : data.size } ] } } );
+	jf( jup2, 'up-input' ).files = [ jfile( 'voll.txt', 3000 ), jfile( 'danach.txt', 10 ) ];
+	click( jup2, jf( jup2, 'up-send' ) );
+	await settle();
+	check( 'a chunk the panel refuses stops that file with the sentence of its code (the other chunks of it are not sent); the next file goes on', jup2.all( 'files/upload' ).map( function( c ) { return c.data.name+ c.data.index } ).join() === 'voll.txt0,danach.txt0' && all( jf( jup2, 'up-list' ), 'li' ).map( function( li ) { return li.dataset.state } ).join() === 'failed,done'
+		&& textOf( all( all( jf( jup2, 'up-list' ), 'li' )[0], 'small' )[0] ) === texts['error.files_quota'].replace( '%s', '10' ) && jup2.toast.textContent === texts['projects.uploaded-one'] );
+	const jholdup = hold();
+	const jup3 = await jopen( '#projekt-00001-dateien', { 'files/upload' : function() { return jholdup.promise } } );
+	jf( jup3, 'up-input' ).files = [ jfile( 'warten.txt', 10 ) ];
+	click( jup3, jf( jup3, 'up-send' ) );
+	check( 'while a file is on its way the button is off and the bar is not full', jf( jup3, 'up-send' ).disabled === true && Number( all( jf( jup3, 'up-list' ), 'progress' )[0].value ) === 0 && all( jf( jup3, 'up-list' ), 'li' )[0].dataset.state === 'sending' );
+	jup3.location.hash = '#projekte';
+	await settle();
+	jholdup.release( [ 200, { id : 'b00000000003', name : 'warten.txt', size : 10 } ] );
+	await settle();
+	check( '...a person who has left the screen keeps what is on its way: the file arrives and the toast says so, but the card is not read again over the screen they are on', jup3.toast.textContent === texts['projects.uploaded-one'] && jup3.all( 'crm-projekte/get' ).length === 1 && jup3.location.hash === '#projekte' );
+
+	// --- the Kundenkarte: the tab Projekte
+	const jkc = await jopen( '#kunde-1', { 'crm-clients/get' : function() { return [ 200, { client : kclient, accounts : kaccounts } ] }, 'crm-documents/list' : function() { return [ 200, { documents : kdocs, years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } );
+	check( 'the card of a client asks crm-projekte/list for the client\'s projects, by its id; the tabs are Belege, Projekte (with the count), Portal and Notizen', JSON.stringify( jkc.last( 'crm-projekte/list' ).data ) === '{"client":"1"}' && all( jkc.main, '.tabs button' ).map( textOf ).join( '|' ) === [ texts['ctab.belege']+ '7', texts['ctab.projekte']+ '2', texts['ctab.portal'], texts['ctab.notizen'] ].join( '|' ) );
+	click( jkc, jtab( jkc, 'projekte' ) );
+	const jkrows = all( jf( jkc, 'client-projects' ), 'tbody tr' );
+	check( '...the tab lists them, the newest first as the server has them, with the day, the documents and the state - the done ones greyed - and the title as the link to the card', jkrows.length === 2 && jkrows.map( function( tr ) { return tr.dataset.id } ).join() === '00002,00001' && jkrows[0].classList.contains( 'dim' ) === true && jkrows[1].classList.contains( 'dim' ) === false
+		&& all( jkrows[1], 'a' )[0].getAttribute( 'href' ) === '#projekt-00001' && jkrows[1].children.map( textOf ).join( '|' ) === 'Album 2027|01.10.2026|3|'+ texts['projects.running'] && jkrows[0].children.map( textOf )[3] === texts['projects.done'] );
+	check( '...Neues Projekt starts one with the client chosen; a client that is off, or an account without the permission of the Elements panel, has no such button', textOf( jf( jkc, 'client-project-new' ) ) === texts['projects.new'] && jf( jkc, 'client-project-new' ).getAttribute( 'href' ) === '#projekte-neu-k1'
+		&& jf( ( await ( async function() { const w = await jopen( '#kunde-4-projekte', { 'crm-clients/get' : function() { return [ 200, { client : Object.assign( {}, kclient, { id : 4, active : false } ), accounts : [] } ] }, 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [] } ) ] } } ); return w } )() ), 'client-project-new' ) === undefined
+		&& jf( await jopen( '#kunde-1-projekte', {}, { crm : true, pdf : false, elements : false } ), 'client-project-new' ) === undefined );
+	check( '...a client with no project says so; where the type is missing the tab points to the settings and has no count', textOf( jf( await jopen( '#kunde-1-projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [] } ) ] } } ), 'client-projects' ) ).indexOf( texts['projects.client-empty'] ) !== -1
+		&& ( function( w ) { return all( w.main, '.tabs button' ).map( textOf ).join( '|' ) === [ texts['ctab.belege']+ '7', texts['ctab.projekte'], texts['ctab.portal'], texts['ctab.notizen'] ].join( '|' ) && all( w.main, '.note a' )[0].getAttribute( 'href' ) === '#einstellungen' } )( await jopen( '#kunde-1-projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { missing : true, projects : [] } ) ] } } ) ) );
+	check( '...a card whose projects cannot be read is still the card: the other tabs are there', ( function( w ) { return all( w.main, '.tabs button' ).length === 4 && textOf( all( w.main, 'h1' )[0] ) === 'Nordlicht Records GmbH' } )( await jopen( '#kunde-1', { 'crm-projekte/list' : function() { return [ 500, { error : 'x', code : 'crm_documents_database' } ] } } ) ) );
+
+	// --- the Entwurf: the field Projekt
+	const jprojs = [ { id : '00001', title : 'Album 2027', done : false }, { id : '00002', title : 'Webseite', done : true } ];
+	const jopts = function( w ) { return all( jf( w, 'f-project' ), 'option' ).map( function( o ) { return o.value+ ':'+ textOf( o ) } ).join() };
+	let je = await editing( { project : '00001', project_title : 'Album 2027' }, { 'crm-documents/get' : function() { return [ 200, view( Object.assign( {}, draftDoc, { project : '00001', project_title : 'Album 2027' } ), { projects : jprojs } ) ] }, 'crm-projekte/list' : function( data ) { return [ 200, jlist( { projects : jprojects.filter( function( one ) { return String( one.client_id ) === data.client } ) } ) ] } } );
+	check( 'the draft has the field Projekt beside the client: a select with kein Projekt first, then the open projects of the client - the done one is not offered - and the one the draft names is chosen', field( je, 'f-project' ).tagName === 'SELECT' && jopts( je ) === ':'+ texts['field.project-none']+ ',00001:Album 2027' && field( je, 'f-project' ).value === '00001' && je.app.state.draft.project === '00001'
+		&& je.all( 'crm-projekte/list' ).length === 1 && JSON.stringify( je.last( 'crm-projekte/list' ).data ) === '{"client":"1"}' );
+	type( field( je, 'f-project' ), '', false );
+	check( '...a project chosen is part of what Speichern posts: project as the id of the project, an empty one takes the draft out of it', je.app.state.draft.project === '' && je.app.model.payloadOf( je.app.state.draft ).project === '' && je.app.state.draft.dirty === true );
+	type( field( je, 'f-project' ), '00001', false );
+	click( je, field( je, 'save' ) );
+	await settle();
+	check( '...Speichern posts it', je.saves.length === 1 && je.saves[0].project === '00001' && je.saves[0].client_id === '1' );
+	type( field( je, 'f-client_id' ), '2' );
+	const jnamedAtOnce = je.app.state.draft.project;
+	await settle();
+	check( 'another client has other projects: the draft names none at once - not only when the list of the new client is there - the field is read for the new client (crm-projekte/list with its id) and offers its projects', jnamedAtOnce === '' && je.app.state.draft.project === '' && JSON.stringify( je.last( 'crm-projekte/list' ).data ) === '{"client":"2"}' && jopts( je ) === ':'+ texts['field.project-none']+ ',00003:Podcast' && field( je, 'f-project' ).value === '' );
+	const jdoneP = await editing( { project : '00002', project_title : 'Webseite' }, { 'crm-documents/get' : function() { return [ 200, view( Object.assign( {}, draftDoc, { project : '00002', project_title : 'Webseite' } ), { projects : jprojs } ) ] }, 'crm-projekte/list' : function() { return [ 200, jlist( { projects : jprojects.filter( function( one ) { return one.client_id === 1 } ) } ) ] } } );
+	check( '...a draft that names a project that is done keeps it in the select, so that saving does not take it away', jopts( jdoneP ) === ':'+ texts['field.project-none']+ ',00002:Webseite,00001:Album 2027' && field( jdoneP, 'f-project' ).value === '00002' );
+	const jgoneP = await editing( { project : '00009', project_title : '' }, { 'crm-documents/get' : function() { return [ 200, view( Object.assign( {}, draftDoc, { project : '00009', project_title : '' } ), { projects : [] } ) ] }, 'crm-projekte/list' : function() { return [ 200, jlist( { projects : jprojects.filter( function( one ) { return one.client_id === 1 } ) } ) ] } } );
+	check( '...a project that is gone from the client\'s list is no project of the draft any more: the select shows none and so does the draft', field( jgoneP, 'f-project' ).value === '' && jgoneP.app.state.draft.project === '' );
+	const jnew = await editing( {}, { 'crm-documents/list' : function( data ) { return [ 200, { documents : [], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] }, 'crm-projekte/list' : function( data ) { return [ 200, jlist( { projects : jprojects.filter( function( one ) { return String( one.client_id ) === data.client } ) } ) ] } }, '#neu-invoice-k1-p00001' );
+	check( 'a new draft from the card of a project has the client and the project chosen: the address #neu-invoice-k1-p00001 - the select has the project once the list of the client is there; a project that is not the client\'s is no choice', field( jnew, 'f-client_id' ).value === '1' && field( jnew, 'f-project' ).value === '00001' && jnew.app.state.draft.project === '00001'
+		&& field( await editing( {}, { 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [] } ) ] } }, '#neu-invoice-k1-p00001' ), 'f-project' ).value === '' );
+	const jrefuse = await editing( { project : '00001', project_title : 'Album 2027' }, { 'crm-documents/save' : function() { return [ 409, { error : 'x', code : 'crm_project_client', params : [], field : 'project' } ] }, 'crm-documents/get' : function() { return [ 200, view( Object.assign( {}, draftDoc, { project : '00001', project_title : 'Album 2027' } ), { projects : jprojs } ) ] }, 'crm-projekte/list' : function() { return [ 200, jlist( { projects : jprojects.filter( function( one ) { return one.client_id === 1 } ) } ) ] } } );
+	click( jrefuse, field( jrefuse, 'save' ) );
+	await settle();
+	check( 'a refusal at the field project is said at the field: the sentence in the message, the select marked', textOf( field( jrefuse, 'message' ) ).indexOf( texts['error.crm_project_client'] ) !== -1 && field( jrefuse, 'f-project' ).classList.contains( 'err' ) === true );
+	// the lists of two clients that answer in the wrong order: the one that was asked for first comes last
+	const jheld = { 2 : hold(), 1 : hold() };
+	let jarmed = false;
+	const jorder = await editing( {}, { 'crm-projekte/list' : function( data ) { return jarmed === true ? jheld[data.client].promise : [ 200, jlist( { projects : jprojects.filter( function( one ) { return String( one.client_id ) === data.client } ) } ) ] } } );
+	jarmed = true;
+	type( field( jorder, 'f-client_id' ), '2' );
+	type( field( jorder, 'f-client_id' ), '1' );
+	jheld[1].release( [ 200, jlist( { projects : jprojects.filter( function( one ) { return one.client_id === 1 } ) } ) ] );
+	await settle();
+	jheld[2].release( [ 200, jlist( { projects : jprojects.filter( function( one ) { return one.client_id === 2 } ) } ) ] );
+	await settle();
+	check( 'the projects of a client that was left again are not offered under the client that is chosen: the list of client 2 comes after the one of client 1, and the field still has the projects of client 1', field( jorder, 'f-client_id' ).value === '1' && jopts( jorder ).indexOf( '00003:Podcast' ) === -1 && jopts( jorder ).indexOf( '00001:Album 2027' ) !== -1 );
+	// a contract follows its offer: another offer, and the draft names no project
+	const joffers = [ { id : 13, number : 'A-2026-0011', date : '2026-10-28', client_id : 1, client_title : 'Nordlicht Records GmbH' }, { id : 14, number : 'A-2026-0012', date : '2026-10-29', client_id : 2, client_title : 'Jonas Richter' } ];
+	const jcontract = await editing( { id : 18, category : 'contract', parent_id : 13, client_id : 1, title : 'V', lines : [], project : '00001', project_title : 'Album 2027' }, { 'crm-documents/get' : function() { return [ 200, view( Object.assign( {}, draftDoc, { id : 18, category : 'contract', parent_id : 13, client_id : 1, title : 'V', lines : [], project : '00001', project_title : 'Album 2027' } ), { offers : joffers, projects : jprojs } ) ] }, 'crm-projekte/list' : function( data ) { return [ 200, jlist( { projects : jprojects.filter( function( one ) { return String( one.client_id ) === data.client } ) } ) ] } }, '#entwurf-18' );
+	const jstays = jcontract.app.state.draft.project;
+	type( field( jcontract, 'f-parent_id' ), '14' );
+	const jnamedAtOnceC = jcontract.app.state.draft.project;
+	await settle();
+	check( 'a contract takes the client of its offer, so another offer is another client: the draft names no project from that moment, and the field offers the projects of the other client', jstays === '00001' && jnamedAtOnceC === '' && JSON.stringify( jcontract.last( 'crm-projekte/list' ).data ) === '{"client":"2"}' && jopts( jcontract ) === ':'+ texts['field.project-none']+ ',00003:Podcast' );
+	const jlate = hold();
+	const jelate = await editing( {}, { 'crm-projekte/list' : function() { return jlate.promise } } );
+	jelate.location.hash = '#kunden';
+	await settle();
+	jlate.release( [ 200, jlist() ] );
+	await settle();
+	check( 'the projects that arrive after the editor was left are not drawn into anything', all( jelate.main, 'select' ).length === 0 );
+
+	// --- the Beleg: the project in the head, and Projekt ändern
+	const jb = await opened( { project : '00001', project_title : 'Album 2027' }, { projects : jprojs }, { 'crm-documents/project' : function( data ) { jposts.push( [ 'crm-documents/project', data ] ); return [ 200, { document : full( { project : data.project } ) } ] } } );
+	jposts.length = 0;
+	check( 'a document in a project shows it in the head - the link to the card - and in the block Beleg; one without a project shows nothing', textOf( all( jb.main, '.head .sub' )[0] ).indexOf( 'Album 2027' ) !== -1 && jf( jb, 'doc-project' ).getAttribute( 'href' ) === '#projekt-00001' && textOf( all( jb.main, '.cols-3 .card' )[1] ).indexOf( texts['document.project']+ 'Album 2027' ) !== -1
+		&& jf( await opened( {} ), 'doc-project' ) === undefined && textOf( all( ( await opened( {} ) ).main, '.cols-3 .card' )[1] ).indexOf( 'Projekt' ) === -1 );
+	check( '...a project that is gone shows its id instead of a title', textOf( jf( await opened( { project : '00009', project_title : '' } ), 'doc-project' ) ) === '00009' );
+	check( '...the menu ⋯ has Projekt ändern before Notizen', menuOf( jb ).slice( -2 ).join( '|' ) === [ texts['menu.project'], texts['menu.notes'] ].join( '|' ) );
+	click( jb, all( all( jb.main, '.menu' )[0], '[role="menuitem"]' ).find( function( one ) { return textOf( one ) === texts['menu.project'] } ) );
+	const jdlg = jb.dialogs[0];
+	check( 'Projekt ändern asks in a dialog: a select with kein Projekt and the projects of the client (the open ones and the document\'s own), the document\'s project chosen; nothing is posted before the yes', jb.dialogs.length === 1 && all( jdlg, 'select' ).length === 1 && all( all( jdlg, 'select' )[0], 'option' ).map( function( o ) { return o.value+ ':'+ textOf( o ) } ).join() === ':'+ texts['field.project-none']+ ',00001:Album 2027' && all( jdlg, 'select' )[0].value === '00001' && jposts.length === 0 );
+	all( jdlg, 'select' )[0].value = '';
+	click( jb, all( jdlg, 'button' ).pop() );
+	await settle();
+	check( '...the yes posts crm-documents/project with the id and the project - for a finalised document too - and draws the document again from the server', JSON.stringify( jposts[0] ) === JSON.stringify( [ 'crm-documents/project', { id : '11', project : '' } ] ) && jb.all( 'crm-documents/get' ).length === 2 && jb.toast.textContent === texts['project.changed'] );
+	const jbd = await opened( { project : '00002', project_title : 'Webseite' }, { projects : jprojs } );
+	click( jbd, all( all( jbd.main, '.menu' )[0], '[role="menuitem"]' ).find( function( one ) { return textOf( one ) === texts['menu.project'] } ) );
+	check( '...a project that is done is no choice - unless it is the document\'s own, which the dialog keeps so that a click on Ändern does not take the document out of it', all( all( jbd.dialogs[0], 'select' )[0], 'option' ).map( function( o ) { return o.value } ).join() === ',00001,00002' && all( jbd.dialogs[0], 'select' )[0].value === '00002' );
+	const jb2 = await opened( { project : '00001', project_title : 'Album 2027' }, { projects : jprojs }, { 'crm-documents/project' : function( data ) { jposts.push( [ 'crm-documents/project', data ] ); return [ 200, { document : full() } ] } } );
+	jposts.length = 0;
+	click( jb2, all( all( jb2.main, '.menu' )[0], '[role="menuitem"]' ).find( function( one ) { return textOf( one ) === texts['menu.project'] } ) );
+	click( jb2, all( jb2.dialogs[0], 'button' ).pop() );
+	await settle();
+	check( '...the same project chosen again posts nothing; the no posts nothing either', jposts.length === 0 && ( click( jb2, all( all( jb2.main, '.menu' )[0], '[role="menuitem"]' ).find( function( one ) { return textOf( one ) === texts['menu.project'] } ) ), click( jb2, all( jb2.dialogs[1], 'button' )[0] ), await settle(), jposts.length === 0 ) );
+	const jb3 = await opened( { project : '' }, { projects : jprojs }, { 'crm-documents/project' : function() { return [ 409, { error : 'x', code : 'crm_project_client', params : [], field : 'project' } ] } } );
+	click( jb3, all( all( jb3.main, '.menu' )[0], '[role="menuitem"]' ).find( function( one ) { return textOf( one ) === texts['menu.project'] } ) );
+	all( jb3.dialogs[0], 'select' )[0].value = '00001';
+	click( jb3, all( jb3.dialogs[0], 'button' ).pop() );
+	await settle();
+	check( '...a refusal is said with its sentence, and the document stays as it was', jb3.toast.classList.contains( 'bad' ) === true && jb3.toast.textContent === texts['error.crm_project_client'] && jb3.all( 'crm-documents/get' ).length === 1 );
+
+	// --- the list of the Belege: the column Projekt
+	const jl = world( { hash : '#belege', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] }, 'crm-documents/list' : function() { return [ 200, { documents : [ row( { id : 11, number : 'R-2026-0007', project : '00001', project_title : 'Album 2027' } ), row( { id : 12, number : 'R-2026-0008', project : '00003', project_title : 'Zebra' } ), row( { id : 13, number : 'R-2026-0009', project : '00009', project_title : '' } ), row( { id : 14, number : 'R-2026-0010' } ) ], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+	jl.boot();
+	await settle();
+	const jlr = function() { return all( jl.main, 'tbody tr' ) };
+	check( 'the Belege list has the column Projekt after Kunde: the title as the link to the card, a dash for a document with none, the id for a project that is gone - and a click on the link does not open the document', all( jl.main, 'thead th' ).map( textOf ).slice( 2, 4 ).join( '|' ) === [ texts['column.client'], texts['column.project'] ].join( '|' ) && textOf( jlr().find( function( tr ) { return tr.dataset.id === '11' } ).children[3] ) === 'Album 2027'
+		&& all( jlr().find( function( tr ) { return tr.dataset.id === '11' } ).children[3], 'a' )[0].getAttribute( 'href' ) === '#projekt-00001' && textOf( jlr().find( function( tr ) { return tr.dataset.id === '14' } ).children[3] ) === '–' && textOf( jlr().find( function( tr ) { return tr.dataset.id === '12' } ).children[3] ) === 'Zebra' && textOf( jlr().find( function( tr ) { return tr.dataset.id === '13' } ).children[3] ) === '00009' );
+	type( all( jl.main, '#q' )[0], 'album', false );
+	check( '...the search finds a document by the title of its project', jlr().map( function( tr ) { return tr.dataset.id } ).join() === '11' );
+	type( all( jl.main, '#q' )[0], '', false );
+	click( jl, all( all( jl.main, 'thead th' )[3], 'button' )[0] );
+	check( '...and the column sorts by it', all( all( jl.main, 'thead th' )[3], 'button' ).length === 1 && jlr().map( function( tr ) { return tr.dataset.id } ).join() === '14,13,11,12' );
+
+	// --- an answer that arrives after the screen was left draws nothing
+	const lateList = await lateScreen( '#projekte', 'crm-projekte/list', [ 200, jlist() ] );
+	check( 'the answer of the list of the projects that arrives after the screen was left draws nothing: the screen the address names stays', onNew( lateList ) && all( lateList.main, 'table' ).length === 0 );
+	const lateCard = await lateScreen( '#projekt-00001', 'crm-projekte/get', [ 200, jget() ] );
+	check( '...so does the answer of the card', onNew( lateCard ) && all( lateCard.main, '#project-info' ).length === 0 );
+	const lateNew = await lateScreen( '#projekte-neu', 'crm-projekte/list', [ 200, jlist() ] );
+	check( '...and that of the form of a new project', onNew( lateNew ) && all( lateNew.main, '#project-form' ).length === 0 );
+	const lateCardEdit = hold();
+	const jlc = await jopen( '#projekt-00001', { 'elements/save' : function() { return lateCardEdit.promise } } );
+	click( jlc, jitem( jlc, texts['projects.finish'] ) );
+	jlc.location.hash = '#kunden';
+	await settle();
+	const jlcGets = jlc.all( 'crm-projekte/get' ).length;
+	lateCardEdit.release( [ 200, { element : {} } ] );
+	await settle();
+	check( 'a change that is answered after the screen was left says nothing over the screen that is there and reads nothing again', jlc.all( 'crm-projekte/get' ).length === jlcGets && all( jlc.main, 'table' ).length === 1 );
+
+	check( 'the waiting offers of a project are told with their number in a form that is right for every count: the word has a place for the number, and the number does not stand before a singular noun', texts['projects.open-offers'].indexOf( '%s' ) !== -1 && /%s Angebot\b/.test( texts['projects.open-offers'] ) === false );
+
+	// --- the script
+	check( 'the script posts a file to the Files panel\'s upload only as chunks, with the part named chunk, and keeps no folder of its own: the actions it names of that panel are the six of the endpoint', [ ...script.matchAll( /(?:api|call|upload)\( '(files\/[a-z/]+)'/g ) ].map( function( found ) { return found[1] } ).sort().join() === 'files/delete,files/folder/add,files/folder/save,files/list,files/save,files/upload' && /upload\( 'files\/upload', \{[^}]*\}, file\.slice\([^)]*\), 'chunk' \)/.test( script ) === true );
+	check( '...every word the screens ask for is a word of the page', [ ...script.matchAll( /\bt\( '(projects\.[a-z-]+|project\.[a-z-]+|ptab\.[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return typeof texts[key] !== 'string' || texts[key] === '' } ).length === 0 && typeof texts['nav.projects'] === 'string' );
 	}
 
 

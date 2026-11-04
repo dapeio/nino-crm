@@ -273,7 +273,7 @@ class Admin {
 	 *	  module   ok, off (the class is not in /nino/modules)
 	 *	  data     ok, unwritable (the data directory)
 	 *	  members, files, review, sign, pdf, events     ok, off (installed, not active), missing (not installed), problem
-	 *	  portal   ok (routes, templates, words, the element types, the protected path and the start page are there), partial, none - and what it lacks: lacks lists routes, templates, texts, types, paths and start
+	 *	  portal   ok (routes, templates, words, the element types, the protected path and the start page are there), partial, none - and what it lacks: lacks lists routes, templates, texts, type-<name> (one for each element type that is missing), paths and start
 	 *	  pdf-templates   ok (every template of the seed is there), partial, none - and lacks lists the keys that are not
 	 *	  home     ok (the start page of the site is the door of the portal), own (a page the owner made: left as it is, and no lack), other (none, or the wizard's own)
 	 *	The answer is whole when every item is ok or - the start page - own; it is first_run while it is not whole and no run of the setup went through (the day of
@@ -319,10 +319,14 @@ class Admin {
 			'routes'    => [ count( array_filter( $wanted, static fn( string $key ): bool => isset( $routes[$key] ) === true ) ), count( $wanted ) ],
 			'templates' => [ count( array_filter( (array) ( $manifest['templates'] ?? [] ), static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/templates/'. $file ) ) ), count( (array) ( $manifest['templates'] ?? [] ) ) ],
 			'texts'     => [ count( array_filter( $words, static fn( mixed $key ): bool => array_key_exists( $key, $had ) === true ) ), count( $words ) ],
-			'types'     => [ count( array_filter( (array) ( $manifest['elementTypes'] ?? [] ), static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/elements/'. $file ) ) ), count( (array) ( $manifest['elementTypes'] ?? [] ) ) ],
 			'paths'     => [ in_array( '/portal', (array) \Nino\Features::setting( $appData, 'members', 'paths', [] ), true ) === true ? 1 : 0, 1 ],
 			'start'     => [ in_array( \Nino\Features::setting( $appData, 'members', 'start', '/' ), [ '', '/' ], true ) === true ? 0 : 1, 1 ],
 		];
+
+		// Each element type is a kind of its own, so that the status names the one that is missing and not the one that is there
+		foreach( (array) ( $manifest['elementTypes'] ?? [] ) as $file )
+			$kinds['type-'. basename( (string) $file, '.php' )] = [ \Nino\Filesystem::fileExists( $appData, '/elements/'. $file ) === true ? 1 : 0, 1 ];
+
 		$present = array_sum( array_column( $kinds, 0 ) );
 		$total = array_sum( array_column( $kinds, 1 ) );
 		$lacks = array_keys( array_filter( $kinds, static fn( array $count ): bool => $count[0] < $count[1] ) );

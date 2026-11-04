@@ -71,6 +71,12 @@ class Crm {
 		$appData['/nino/http/routes']['GET://.crm/pdf/*'] = [ 'uri' => '/.crm/pdf/*' ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.crm/pdf/*', [ \Crm\Documents\Render::class, 'callbackDownload' ] );
 
+		// The projects: a project that a document names is not deleted, and its client is a client that is there and stays - the kernel's vetoes, so that
+		// the Elements panel of the workbench refuses as the endpoint of the surface does
+		\Nino\Callbacks::registerCallback( $appData, '/nino/elements/delete'. Projekte::TYPE, [ Projekte::class, 'callbackDelete' ] );
+		\Nino\Callbacks::registerCallback( $appData, '/nino/elements'. Projekte::TYPE. '/insert', [ Projekte::class, 'callbackWrite' ] );
+		\Nino\Callbacks::registerCallback( $appData, '/nino/elements'. Projekte::TYPE. '/update', [ Projekte::class, 'callbackWrite' ] );
+
 		// The surface: one page of the project, its endpoint, its assets and the preview of a draft
 		\Crm\Surface::init( $appData );
 	}

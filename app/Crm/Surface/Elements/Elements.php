@@ -1,11 +1,15 @@
 <?php
 declare(strict_types=1);
 /**
- *	Crm\Surface\Elements		What the screen Positionen of the surface takes from the Elements panel of the workbench: its actions
+ *	Crm\Surface\Elements		What the screens Positionen and Projekte of the surface take from the Elements panel of the workbench: its actions
  *													elements/list, elements/get, elements/save and elements/delete go through the endpoint as the panel has them, under the
  *													permission of the panel, and the sentences of their codes are the panel's own. One thing only the surface adds: every one
- *													of them is for the element type /positionen and for no other. A post that names another type (or none) is refused before
+ *													of them is for the element types /positionen and /projekte and for no other. A post that names another type (or none) is refused before
  *													the panel is asked - 404 crm_positionen_type -, so that the endpoint never becomes an editor for the elements of the site.
+ *													For the type projekte two things more are the surface's, because the panel does not know the documents: a project that a
+ *													document names is not deleted (409 crm_project_documents, with the count), and the client of a project is the number of a
+ *													client that is there (400 crm_project_client_unknown) and does not change while a document names the project (409
+ *													crm_project_client_locked) - the documents of a project are the client's.
  *
  *													The panel is used as it is: what a save posts (type, uri, locale, isNew, fields), what it answers and the line of the
  *													activity log are its. The panel saves one language per post; the editor of the screen posts the native language with the
@@ -19,8 +23,10 @@ class Elements {
 	// The permission of the panel: the one the actions of elements/* ask for
 	public const string PERM = '/_admin/elements/manage';
 
-	// The one type the actions are for: the name the panel posts, which is the element type /positionen without its slash
+	// The types the actions are for: the names the panel posts, which are the element types /positionen and /projekte without their slash
 	public const string TYPE = 'positionen';
+	public const string PROJECTS = 'projekte';
+	public const array TYPES = [ self::TYPE, self::PROJECTS ];
 
 	// The actions of the panel that the surface offers, and the method of this class that answers each
 	private const array ACTIONS = [ 'elements/list' => 'apiList', 'elements/get' => 'apiGet', 'elements/save' => 'apiSave', 'elements/delete' => 'apiDelete' ];
@@ -92,8 +98,8 @@ class Elements {
 		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::PERM ) === false )
 			return false;
 
-		if( \Nino\Admin\Admin::postString( \Nino\Admin\Admin::postData(), 'type' ) !== self::TYPE ) {
-			\Nino\Http::fail( $request, 404, 'these actions are for the element type '. self::TYPE, 'crm_positionen_type' );
+		if( in_array( \Nino\Admin\Admin::postString( \Nino\Admin\Admin::postData(), 'type' ), self::TYPES, true ) === false ) {
+			\Nino\Http::fail( $request, 404, 'these actions are for the element types '. implode( ' and ', self::TYPES ), 'crm_positionen_type' );
 			return false;
 		}
 
@@ -132,7 +138,7 @@ class Elements {
 	 */
 	public static function apiSave( array &$appData, array &$request ): void {
 
-		if( self::guard( $appData, $request ) === true )
+		if( self::guard( $appData, $request ) === true && self::projectSaved( $appData, $request ) === true )
 			\Nino\Modules\Elements\Admin::apiSave( $appData, $request );
 	}
 
@@ -144,7 +150,80 @@ class Elements {
 	 */
 	public static function apiDelete( array &$appData, array &$request ): void {
 
-		if( self::guard( $appData, $request ) === true )
+		if( self::guard( $appData, $request ) === true && self::projectDeleted( $appData, $request ) === true )
 			\Nino\Modules\Elements\Admin::apiDelete( $appData, $request );
+	}
+
+	/**
+	 *	What a save of a project must hold to: the client it names is a client, and it is the client it was while a document names the project
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	bool											Whether the panel may be asked
+	 */
+	private static function projectSaved( array &$appData, array &$request ): bool {
+
+		$data = \Nino\Admin\Admin::postData();
+
+		if( \Nino\Admin\Admin::postString( $data, 'type' ) !== self::PROJECTS || is_array( $data['fields'] ?? null ) === false || array_key_exists( 'client', $data['fields'] ) === false )
+			return true;
+
+		$number = is_string( $data['fields']['client'] ) === true ? $data['fields']['client'] : '';
+		$allowed = false;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request, $data, $number, &$allowed ): void {
+
+			if( $number === '' || \Crm\Clients::byNumber( $appData, $number ) === null ) {
+				\Nino\Http::fail( $request, 400, 'the client is none', 'crm_project_client_unknown', [], 'client' );
+				return;
+			}
+
+			$id = \Nino\Admin\Admin::postString( $data, 'uri' );
+			$before = ( $data['isNew'] ?? false ) === true ? null : \Crm\Projekte::get( $appData, $id );
+			$count = $before !== null && $before['client'] !== $number ? \Crm\Projekte::documentsOf( $appData, $id ) : 0;
+
+			if( $count > 0 ) {
+				\Nino\Http::fail( $request, 409, 'documents name this project', 'crm_project_client_locked', [ $count ], 'client' );
+				return;
+			}
+
+			$allowed = true;
+		} );
+
+		return $allowed;
+	}
+
+	/**
+	 *	A project that a document names is not deleted: the document would name a project nobody can find (the folder of the project in Files stays in any case)
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	bool											Whether the panel may be asked
+	 */
+	private static function projectDeleted( array &$appData, array &$request ): bool {
+
+		$data = \Nino\Admin\Admin::postData();
+
+		if( \Nino\Admin\Admin::postString( $data, 'type' ) !== self::PROJECTS )
+			return true;
+
+		$count = null;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, $data, &$count ): void {
+			$count = \Crm\Projekte::documentsOf( $appData, \Nino\Admin\Admin::postString( $data, 'uri' ) );
+		} );
+
+		// The database failed, and the answer says so
+		if( $count === null )
+			return false;
+
+		if( $count > 0 ) {
+			\Nino\Http::fail( $request, 409, 'documents name this project', 'crm_project_documents', [ $count ] );
+			return false;
+		}
+
+		return true;
 	}
 }

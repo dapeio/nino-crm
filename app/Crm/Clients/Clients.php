@@ -70,6 +70,21 @@ class Clients {
 	}
 
 	/**
+	 *	The client with a number
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$number				K-0001
+	 *
+	 *	@return 	array|null								As get() has it; null for a number nobody has
+	 */
+	public static function byNumber( array &$appData, string $number ): ?array {
+
+		$row = Db::row( $appData, 'SELECT c.id FROM clients c WHERE c.number = :number', [ 'number' => $number ] );
+
+		return $row === null ? null : self::get( $appData, (int) $row['id'] );
+	}
+
+	/**
 	 *	How many clients are active
 	 *
 	 *	@param		array 		&$appData

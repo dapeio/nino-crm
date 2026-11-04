@@ -86,4 +86,13 @@ return [
 	'[[/_admin/elements/field/positionen/hidden]]' => 'Hidden',
 	'[[/_admin/elements/field/positionen/sort]]' => 'Order',
 	'[[/_admin/elements/type/positionen/hint]]' => 'What you sell: the texts are per language, price and VAT rate are the same for all. Hidden takes an item out of the editor of the documents and off the page; with Hidden at No it is offered.',
+
+	// The Elements panel's own words for the type Projekte - the workbench's, not the site's (listed in the unit's blacklist)
+	'[[/_admin/elements/field/projekte/title]]' => 'Title',
+	'[[/_admin/elements/field/projekte/client]]' => 'Client',
+	'[[/_admin/elements/field/projekte/description]]' => 'Description',
+	'[[/_admin/elements/field/projekte/started]]' => 'Start',
+	'[[/_admin/elements/field/projekte/done]]' => 'Done',
+	'[[/_admin/elements/field/projekte/folder]]' => 'Folder',
+	'[[/_admin/elements/type/projekte/hint]]' => 'A project belongs to a client. The client is its number (K-0001), the folder the id of its folder in the Files panel. Done at No means the project is under way. Documents name a project; while one does, it cannot be deleted.',
 ];

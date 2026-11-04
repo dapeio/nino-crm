@@ -20,6 +20,7 @@
 				<a href="#uebersicht" data-r="uebersicht">[[t.nav.overview]]</a>
 				<a href="#belege" data-r="belege">[[t.nav.documents]] <span class="n" id="n-belege"></span></a>
 				<a href="#kunden" data-r="kunden">[[t.nav.clients]] <span class="n" id="n-kunden"></span></a>
+				<a href="#projekte" data-r="projekte">[[t.nav.projects]]</a>
 				<a href="#positionen" data-r="positionen">[[t.nav.items]]</a>
 				<a href="#pdf" data-r="pdf" id="nav-pdf" hidden>[[t.nav.pdf]]</a>
 				<a href="#einstellungen" data-r="einstellungen">[[t.nav.settings]]</a>

@@ -33,7 +33,7 @@ return [
 		'page-portal-account.tpl',
 		'page-door.tpl',
 	],
-	'elementTypes'    => [ 'positionen.php' ],
+	'elementTypes'    => [ 'positionen.php', 'projekte.php' ],
 	'blacklist'       => [
 		'/_admin/elements/field/positionen/title',
 		'/_admin/elements/field/positionen/description',
@@ -43,5 +43,12 @@ return [
 		'/_admin/elements/field/positionen/hidden',
 		'/_admin/elements/field/positionen/sort',
 		'/_admin/elements/type/positionen/hint',
+		'/_admin/elements/field/projekte/title',
+		'/_admin/elements/field/projekte/client',
+		'/_admin/elements/field/projekte/description',
+		'/_admin/elements/field/projekte/started',
+		'/_admin/elements/field/projekte/done',
+		'/_admin/elements/field/projekte/folder',
+		'/_admin/elements/type/projekte/hint',
 	],
 ];

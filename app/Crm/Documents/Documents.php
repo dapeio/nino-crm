@@ -77,7 +77,7 @@ class Documents {
 	 *	The documents, the newest first
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$filter				category, state (or expired), year, client_id
+	 *	@param		array 		$filter				category, state (or expired), year, client_id, project (the id of a project)
 	 *	@param		bool			$sync					Whether the state of the requests waiting in Sign is read first; a caller that needs no state leaves it out
 	 *
 	 *	@return 	array											Each with its client's title as the document shows it, and whether it is expired (an offer) or overdue (an invoice)
@@ -118,10 +118,17 @@ class Documents {
 			$params['client'] = $filter['client_id'];
 		}
 
-		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.parent_id, d.client_json, d.released, d.sign_id, d.sign_state, c.company AS live_company, c.name AS live_name
+		if( is_string( $filter['project'] ?? null ) === true && $filter['project'] !== '' ) {
+			$where[] = 'd.project = :project';
+			$params['project'] = $filter['project'];
+		}
+
+		$titles = Projekte::titles( $appData );
+
+		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.parent_id, d.project, d.client_json, d.released, d.sign_id, d.sign_state, c.company AS live_company, c.name AS live_name
 			FROM documents d JOIN clients c ON c.id = d.client_id'. ( $where === [] ? '' : ' WHERE '. implode( ' AND ', $where ) ). ' ORDER BY d.date DESC, d.id DESC', $params );
 
-		return array_map( static function( array $row ) use ( $today ): array {
+		return array_map( static function( array $row ) use ( $today, $titles ): array {
 
 			$frozen = json_decode( (string) $row['client_json'], true );
 			$frozen = is_array( $frozen ) === true ? $frozen : [];
@@ -145,6 +152,8 @@ class Documents {
 				'client_id'    => (int) $row['client_id'],
 				'client_title' => $company !== '' ? $company : $name,
 				'parent_id'    => $row['parent_id'] === null ? null : (int) $row['parent_id'],
+				'project'      => (string) $row['project'],
+				'project_title' => $titles[(string) $row['project']] ?? '',
 			];
 		}, $rows );
 	}
@@ -179,6 +188,7 @@ class Documents {
 			return null;
 
 		$document = self::shape( $row );
+		$document['project_title'] = $document['project'] === '' ? '' : (string) ( Projekte::get( $appData, $document['project'] )['title'] ?? '' );
 		$document['lines'] = array_map( [ self::class, 'shapeLine' ], Db::rows( $appData, 'SELECT * FROM document_lines WHERE document_id = :id ORDER BY sort, id', [ 'id' => $id ] ) );
 		$document['client'] = $document['state'] === 'draft' ? Clients::get( $appData, $document['client_id'] ) : $document['client_frozen'];
 		$parent = $document['parent_id'] === null ? null : Db::row( $appData, 'SELECT id, number, title, category, state FROM documents WHERE id = :id', [ 'id' => $document['parent_id'] ] );
@@ -233,7 +243,7 @@ class Documents {
 		$date = $input['date'] ?? date( 'Y-m-d' );
 		$base = [
 			'category' => $category, 'client_id' => $clientId, 'parent_id' => $parentId, 'vat_mode' => Settings::get( $appData, 'vat_mode' ), 'reverse_charge' => false, 'date' => $date, 'notes' => '', 'title' => '',
-			'template_key' => '', 'inputs' => [], 'period_from' => null, 'period_to' => null, 'due_date' => null, 'valid_until' => null, 'lines' => [],
+			'template_key' => '', 'inputs' => [], 'period_from' => null, 'period_to' => null, 'due_date' => null, 'valid_until' => null, 'lines' => [], 'project' => '',
 		];
 
 		if( is_string( $date ) === true && self::validDate( $date ) === true && in_array( $category, self::PLAIN, true ) === false ) {
@@ -312,7 +322,7 @@ class Documents {
 			}
 
 			$pdo->prepare( 'UPDATE documents SET client_id = :client_id, parent_id = :parent_id, title = :title, date = :date, due_date = :due_date, valid_until = :valid_until, period_from = :period_from, period_to = :period_to,
-				reverse_charge = :reverse_charge, net = :net, vat = :vat, gross = :gross, template_key = :template_key, inputs_json = :inputs_json, notes = :notes, updated = :now WHERE id = :id' )
+				reverse_charge = :reverse_charge, net = :net, vat = :vat, gross = :gross, template_key = :template_key, inputs_json = :inputs_json, notes = :notes, project = :project, updated = :now WHERE id = :id' )
 				->execute( [ 'id' => $id, 'now' => gmdate( self::TIME ) ] + self::columns( $values ) );
 
 			self::writeLines( $pdo, $id, $values['lines'], $values['amounts'] );
@@ -324,6 +334,75 @@ class Documents {
 		}
 
 		return (array) self::get( $appData, $id );
+	}
+
+	/**
+	 *	The project of a document of any state, a finalised one included: the relation is no part of the finalised content - the PDF and its hash do not
+	 *	read it - and so it may be moved
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *	@param		string		$project			The id of a project of the document's client; '' for none
+	 *
+	 *	@return 	array|string							The document as get() has it; or unknown, format:project, project (there is no such project), project_client (it is another client's)
+	 */
+	public static function setProject( array &$appData, int $id, string $project ): array|string {
+
+		$document = Db::row( $appData, 'SELECT client_id FROM documents WHERE id = :id', [ 'id' => $id ] );
+
+		if( $document === null )
+			return 'unknown';
+
+		if( $project !== '' && preg_match( Projekte::ID, $project ) !== 1 )
+			return 'format:project';
+
+		$refused = self::projectError( $appData, $project, (int) $document['client_id'] );
+
+		if( $refused !== null )
+			return $refused;
+
+		Db::exec( $appData, 'UPDATE documents SET project = :project, updated = :now WHERE id = :id', [ 'project' => $project, 'now' => gmdate( self::TIME ), 'id' => $id ] );
+
+		return (array) self::get( $appData, $id );
+	}
+
+	/**
+	 *	Why a project is not one a document of the client may name
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$project
+	 *	@param		int				$clientId
+	 *
+	 *	@return 	string|null								null where it is none or the project exists and is the client's; project (it does not exist); project_client (it is another client's)
+	 */
+	private static function projectError( array &$appData, string $project, int $clientId ): ?string {
+
+		if( $project === '' )
+			return null;
+
+		$found = Projekte::get( $appData, $project );
+
+		if( $found === null )
+			return 'project';
+
+		$client = Clients::get( $appData, $clientId );
+
+		return $client !== null && $client['number'] === $found['client'] ? null : 'project_client';
+	}
+
+	/**
+	 *	The project a document made from another keeps: its source's, where that is still one of the client's - a project that is gone or
+	 *	moved on takes nothing with it, and the new document has none
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$project
+	 *	@param		int				$clientId
+	 *
+	 *	@return 	string
+	 */
+	private static function projectKept( array &$appData, string $project, int $clientId ): string {
+
+		return self::projectError( $appData, $project, $clientId ) === null ? $project : '';
 	}
 
 	/**
@@ -640,7 +719,7 @@ class Documents {
 
 		$tag = Render::tag( $source['category'] );
 		$keeps = $source['template_key'] !== '' && Crm::featureOn( $appData, 'pdf' ) === true && isset( \Nino\Modules\Pdf::templates( $appData, $tag )[$source['template_key']] ) === true;
-		$input = [ 'template_key' => $keeps === true ? $source['template_key'] : '', 'inputs' => $keeps === true ? $source['inputs'] : [] ];
+		$input = [ 'template_key' => $keeps === true ? $source['template_key'] : '', 'inputs' => $keeps === true ? $source['inputs'] : [], 'project' => self::projectKept( $appData, (string) $source['project'], $source['client_id'] ) ];
 
 		if( in_array( $source['category'], self::PLAIN, true ) === true )
 			return self::add( $appData, $source['category'], $source['category'] === 'contract' ? 0 : $source['client_id'], $input + [ 'title' => $source['title'] ] + ( $source['category'] === 'contract' ? [ 'parent_id' => $source['parent_id'] ] : [] ) );
@@ -1359,7 +1438,7 @@ class Documents {
 		$values = [
 			'category' => $category, 'client_id' => $source['client_id'], 'parent_id' => $source['id'], 'title' => '', 'vat_mode' => $vatMode, 'reverse_charge' => $reverse,
 			'date' => $date, 'due_date' => $category === 'invoice' ? self::addDays( $date, (int) Settings::get( $appData, 'payment_days' ) ) : null, 'valid_until' => null, 'period_from' => $source['period_from'], 'period_to' => $source['period_to'],
-			'template_key' => '', 'inputs' => [], 'notes' => '', 'lines' => $lines, 'amounts' => $totals['amounts'],
+			'template_key' => '', 'inputs' => [], 'notes' => '', 'lines' => $lines, 'amounts' => $totals['amounts'], 'project' => self::projectKept( $appData, (string) $source['project'], $source['client_id'] ),
 		] + $totals;
 
 		return (array) self::get( $appData, self::insert( $appData, $values, 'draft', $joined ) );
@@ -1454,6 +1533,18 @@ class Documents {
 			return 'long:notes';
 
 		$values['notes'] = $notes;
+
+		$project = $input['project'] ?? $current['project'] ?? '';
+
+		if( is_string( $project ) === false || ( $project !== '' && preg_match( Projekte::ID, $project ) !== 1 ) )
+			return 'format:project';
+
+		$refused = self::projectError( $appData, $project, (int) $values['client_id'] );
+
+		if( $refused !== null )
+			return $refused;
+
+		$values['project'] = $project;
 
 		$key = $input['template_key'] ?? $current['template_key'];
 
@@ -1557,8 +1648,8 @@ class Documents {
 			$pdo->exec( 'BEGIN IMMEDIATE' );
 
 		try {
-			$pdo->prepare( 'INSERT INTO documents ( category, client_id, parent_id, title, state, date, due_date, valid_until, period_from, period_to, vat_mode, reverse_charge, net, vat, gross, template_key, inputs_json, notes, created, updated )
-				VALUES ( :category, :client_id, :parent_id, :title, :state, :date, :due_date, :valid_until, :period_from, :period_to, :vat_mode, :reverse_charge, :net, :vat, :gross, :template_key, :inputs_json, :notes, :now, :now )' )
+			$pdo->prepare( 'INSERT INTO documents ( category, client_id, parent_id, title, state, date, due_date, valid_until, period_from, period_to, vat_mode, reverse_charge, net, vat, gross, template_key, inputs_json, notes, project, created, updated )
+				VALUES ( :category, :client_id, :parent_id, :title, :state, :date, :due_date, :valid_until, :period_from, :period_to, :vat_mode, :reverse_charge, :net, :vat, :gross, :template_key, :inputs_json, :notes, :project, :now, :now )' )
 				->execute( [ 'category' => $values['category'], 'vat_mode' => $values['vat_mode'], 'state' => $state, 'now' => $now ] + self::columns( $values ) );
 
 			$id = (int) $pdo->lastInsertId();
@@ -1590,7 +1681,7 @@ class Documents {
 			'client_id' => $values['client_id'], 'parent_id' => $values['parent_id'], 'title' => $values['title'], 'date' => $values['date'], 'due_date' => $values['due_date'], 'valid_until' => $values['valid_until'],
 			'period_from' => $values['period_from'], 'period_to' => $values['period_to'], 'reverse_charge' => $values['reverse_charge'] === true ? 1 : 0,
 			'net' => $values['net'], 'vat' => $values['vat'], 'gross' => $values['gross'], 'template_key' => $values['template_key'],
-			'inputs_json' => json_encode( $values['inputs'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_FORCE_OBJECT | JSON_THROW_ON_ERROR ), 'notes' => $values['notes'],
+			'inputs_json' => json_encode( $values['inputs'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_FORCE_OBJECT | JSON_THROW_ON_ERROR ), 'notes' => $values['notes'], 'project' => $values['project'],
 		];
 	}
 

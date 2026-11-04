@@ -14,9 +14,10 @@ declare(strict_types=1);
  *																					status, body, code, params and field exactly as the workbench gives them. The kernel checks the
  *																					token (the route says csrf, the page sends it in X-CSRF-Token); a refused token is the 403 with
  *																					the code csrf, no session the 401 with the code session, an action the table does not hold the
- *																					404 with the code action; the four actions of the Elements panel (elements/list, get, save, delete) are for the type positionen alone, any
+ *																					404 with the code action; the four actions of the Elements panel (elements/list, get, save, delete) are for the types positionen and projekte alone, any
  *																					other type is the 404 with the code crm_positionen_type; the two of the Text panel (text/keys, text/savebatch) are for the keys below /project/company/
- *																					alone, a batch with another key is the 404 with the code crm_texts_key. The upload of a picture (pdf/layout/image) comes as a multipart post with the action and the
+ *																					alone, a batch with another key is the 404 with the code crm_texts_key, and the six of the Files panel (files/list, folder/add, folder/save,
+ *																					upload, save, delete) are for the folders of the clients alone, any other is the 404 with the code crm_files_group. The upload of a picture (pdf/layout/image) comes as a multipart post with the action and the
  *																					data as fields and the file, which the method reads from $_FILES; no other action takes a file
  *								GET  /crm/assets/<hash>-<name>		a file of ASSETS whose content hash is the one in the name, for a year
  *								GET  /crm/preview/<id>		the PDF of a draft as its template makes it now, inline, nothing stored
@@ -44,7 +45,7 @@ class Surface {
 
 	// The pages of the workbench the surface links: name => the hash behind /_admin/#. The element type of the items is edited in the screen Positionen and, as the second place, in the Elements panel, the
 	// templates in the panel of Pdf, the accounts of the portal in Members, the permission of the CRM in Users
-	private const array PANELS = [ 'items' => 'elements/positionen', 'pdf' => 'pdf', 'members' => 'members', 'users' => 'users' ];
+	private const array PANELS = [ 'items' => 'elements/positionen', 'projects' => 'elements/projekte', 'files' => 'files', 'pdf' => 'pdf', 'members' => 'members', 'users' => 'users' ];
 
 	// The policy of the page: its own files and nothing inline; data: for an image of the markup's own (the pictures of the layout)
 	private const string POLICY = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
@@ -86,7 +87,7 @@ class Surface {
 	 */
 	public static function actions(): array {
 
-		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions(), Surface\Texts::actions() );
+		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), \Crm\Projekte\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions(), Surface\Texts::actions(), Surface\Files::actions() );
 	}
 
 	/**
@@ -118,6 +119,10 @@ class Surface {
 			// ...and those of the Text panel, whose actions edit the texts of the company
 			if( Surface\Texts::textFile() !== '' )
 				$files[] = Surface\Texts::textFile();
+
+			// ...and those of the Files panel, whose actions keep the files of a project
+			if( Surface\Files::textFile() !== '' )
+				$files[] = Surface\Files::textFile();
 
 			foreach( $files as $file )
 				foreach( (array) require $file as $key => $text )
@@ -194,7 +199,7 @@ class Surface {
 			'csrf'  => \Nino\Csrf::getToken( $appData ),
 			'user'  => [ 'name' => (string) $user['mail'] ],
 			'perm'  => \Crm\Crm::MANAGE_PERM,
-			'perms' => [ 'crm' => true, 'pdf' => Surface\Pdf::allowed( $appData ), 'elements' => Surface\Elements::allowed( $appData ), 'text' => Surface\Texts::allowed( $appData ) ],
+			'perms' => [ 'crm' => true, 'pdf' => Surface\Pdf::allowed( $appData ), 'elements' => Surface\Elements::allowed( $appData ), 'text' => Surface\Texts::allowed( $appData ), 'files' => Surface\Files::allowed( $appData ) ],
 			'pdf_available' => Surface\Pdf::available(),
 			'texts' => self::texts(),
 			'links' => $links + array_map( static fn( string $panel ): string => $dir. '/_admin/#'. $panel, self::PANELS ),
@@ -272,7 +277,7 @@ class Surface {
 
 		// A picture comes as a multipart post, whose fields PHP has read already: the action and the data are the fields, the file is in $_FILES. Only the
 		// actions that take a file are read that way; the body of a post of any other kind is the JSON of the others
-		if( is_array( $body ) === false && in_array( $_POST['action'] ?? null, Surface\Pdf::FILE_ACTIONS, true ) === true )
+		if( is_array( $body ) === false && in_array( $_POST['action'] ?? null, array_merge( Surface\Pdf::FILE_ACTIONS, Surface\Files::FILE_ACTIONS ), true ) === true )
 			$body = [ 'action' => $_POST['action'], 'data' => json_decode( is_string( $_POST['data'] ?? null ) === true ? $_POST['data'] : '', true, 16 ) ];
 
 		$action = is_array( $body ) === true && is_string( $body['action'] ?? null ) === true ? $body['action'] : '';
@@ -287,6 +292,12 @@ class Surface {
 		// The screens PDF-Vorlagen need the feature to be on; the panel's methods do not ask
 		if( Surface\Pdf::owns( $action ) === true && \Crm\Crm::featureOn( $appData, 'pdf' ) === false ) {
 			\Nino\Http::fail( $request, 409, 'the feature Pdf is not active', 'pdf_off' );
+			return;
+		}
+
+		// The tab Dateien of a project needs the feature to be on, too
+		if( Surface\Files::owns( $action ) === true && \Crm\Crm::featureOn( $appData, 'files' ) === false ) {
+			\Nino\Http::fail( $request, 409, 'the feature Files is not active', 'files_off' );
 			return;
 		}
 

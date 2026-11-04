@@ -54,4 +54,6 @@ return [
 	'[[/_admin/error/crm_documents_sign_write]]' => 'Die Anfrage konnte nicht gespeichert werden. Es wurde nichts angefordert.',
 	'[[/_admin/error/crm_documents_released]]' => 'Gib den Beleg zuerst im Portal frei, sonst kann Dein Kunde ihn dort nicht finden.',
 	'[[/_admin/error/crm_documents_sign_mail]]' => 'Die Mail kam nicht an. Der Link ist so, wie er war.',
+	'[[/_admin/error/crm_project]]' => 'Dieses Projekt gibt es nicht.',
+	'[[/_admin/error/crm_project_client]]' => 'Das Projekt gehört zu einem anderen Kunden. Wähle ein Projekt dieses Kunden oder keins.',
 ];

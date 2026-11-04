@@ -8,10 +8,11 @@
  *								what it posts, the totals it shows
  *				  the shell		the element helper (every element is made from data, no markup is written), the toast, the menus, the dialogs
  *								(<dialog>), the keys (/ finds the search, Esc closes), the router (#uebersicht, #belege, #beleg-12,
- *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #positionen, #positionen-neu, #position-<uri>, #einstellungen, #einrichtung, and
+ *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #projekte, #projekte-neu, #projekt-<id>, #positionen, #positionen-neu, #position-<uri>, #einstellungen, #einrichtung, and
  *								for PDF-Vorlagen #pdf, #pdf-bausteine, #pdf-layout, #pdf-design, #pdf-vorlage-<key>, #pdf-neue-vorlage-<tag>, #pdf-baustein-<key>,
  *								#pdf-neuer-baustein) and the answers of the endpoint (the session that ended, the token that is stale)
- *				  the screens	Übersicht, Belege, Beleg and Entwurf, then Kunden, Kundenkarte, Neuer Kunde, Positionen (for an account with the permission of the
+ *				  the screens	Übersicht, Belege, Beleg and Entwurf, then Kunden, Kundenkarte (with the tab Projekte), Neuer Kunde, Projekte (the list, Neues Projekt and the Projektkarte with its tabs
+ *								Belege and Dateien, which drives the Elements panel's actions for the type projekte and the Files panel's for the project's folder), Positionen (for an account with the permission of the
  *								Elements panel with the editor of an item, Position, which edits the elements of the type positionen through the panel's actions) and Einstellungen, the
  *								Einrichtung of the first run (the page starts there while crm/status says the product is not whole) and - for an account
  *								with the permission of the Pdf panel - PDF-Vorlagen: Vorlagen with the editor of a template, Bausteine with the editor of a
@@ -33,7 +34,7 @@
 	const PAGE_SIZE = 50;
 	const NEW_KINDS = [ 'invoice', 'offer', 'contract', 'privacy', 'information' ];
 	const CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id' ];
-	const CLIENT_TABS = [ 'belege', 'portal', 'notizen' ];
+	const CLIENT_TABS = [ 'belege', 'projekte', 'portal', 'notizen' ];
 	const RELOAD_KEY = 'crm-reloaded';
 	const AUTOSAVE_MS = 800;
 
@@ -53,12 +54,12 @@
 		Object.keys( state ).forEach( function( key ) { delete state[key] } );
 
 		Object.assign( state, {
-			base : '', csrf : '', perm : '', perms : { crm : true, pdf : false, elements : false, text : false }, user : '', texts : {}, links : {},
+			base : '', csrf : '', perm : '', perms : { crm : true, pdf : false, elements : false, text : false, files : false }, user : '', texts : {}, links : {},
 			settings : { currency : '', vat_mode : 'small_business', rates : [], payment_days : '14', offer_days : '30' },
 			clients : [], items : [], offers : [], years : [], docs : [], summary : null, people : [], owed : {},
 			filter : { chip : 'all', q : '', sort : 'date', dir : -1, year : 0, page : 1 },
 			cfilter : { q : '', sort : 'number', dir : 1, page : 1 },
-			pfilter : { q : '', sort : 'name', dir : 1 }, ifilter : { q : '', sort : 'sort', dir : 1, page : 1 }, pbody : null, busy : null, pdf : { site : [] }, saver : {}, company : null,
+			pfilter : { q : '', sort : 'name', dir : 1 }, ifilter : { q : '', sort : 'sort', dir : 1, page : 1 }, pbody : null, jfilter : { q : '', all : false, page : 1 }, jbody : null, busy : null, pdf : { site : [] }, saver : {}, company : null,
 			view : 0, entered : false, seen : null, tab : '', draft : null, saving : false, queued : false, pending : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
 		} );
 	};
@@ -270,6 +271,7 @@
 	const sortKeys = {
 		number : function( doc ) { return docName( doc ).toLowerCase() },
 		client : function( doc ) { return String( doc.client_title ).toLowerCase() },
+		project : function( doc ) { return String( doc.project_title ).toLowerCase() },
 		date : function( doc ) { return doc.date },
 		due : function( doc ) { return doc.due_date || doc.valid_until || '' },
 		gross : function( doc ) { return doc.gross },
@@ -290,7 +292,7 @@
 		const key = sortKeys[filter.sort] || sortKeys.date;
 
 		const rows = docs.filter( chip.test ).filter( function( doc ) {
-			return query === '' || ( docName( doc )+ ' '+ doc.title+ ' '+ doc.client_title+ ' '+ t( 'category.'+ doc.category ) ).toLowerCase().includes( query );
+			return query === '' || ( docName( doc )+ ' '+ doc.title+ ' '+ doc.client_title+ ' '+ doc.project_title+ ' '+ t( 'category.'+ doc.category ) ).toLowerCase().includes( query );
 		} );
 
 		rows.sort( function( a, b ) {
@@ -357,7 +359,7 @@
 		return {
 			id : doc.id, category : doc.category, vat_mode : doc.vat_mode, client_id : String( doc.client_id ), parent_id : doc.parent_id === null ? '' : String( doc.parent_id ),
 			date : doc.date, due_date : doc.due_date || '', valid_until : doc.valid_until || '', period_from : doc.period_from || '', period_to : doc.period_to || '',
-			template_key : doc.template_key, inputs : Object.assign( {}, doc.inputs ), reverse_charge : doc.reverse_charge === true, title : doc.title, notes : doc.notes,
+			template_key : doc.template_key, inputs : Object.assign( {}, doc.inputs ), reverse_charge : doc.reverse_charge === true, title : doc.title, notes : doc.notes, project : doc.project || '',
 			lines : doc.lines.map( function( line ) { return lineOf( line ) } ), updated : doc.updated, dirty : false, templates : [],
 		};
 	};
@@ -378,7 +380,7 @@
 		return {
 			id : 0, category : category, vat_mode : settings.vat_mode, client_id : '', parent_id : offer || '', date : day,
 			due_date : category === 'invoice' ? addDays( day, Number( settings.payment_days ) ) : '', valid_until : category === 'offer' ? addDays( day, Number( settings.offer_days ) ) : '',
-			period_from : '', period_to : '', template_key : '', inputs : {}, reverse_charge : false, title : '', notes : '',
+			period_from : '', period_to : '', template_key : '', inputs : {}, reverse_charge : false, title : '', notes : '', project : '',
 			lines : [], updated : '', dirty : false, templates : [],
 		};
 	};
@@ -398,7 +400,7 @@
 
 		names.forEach( function( name ) { inputs[name] = draft.inputs[name] ?? '' } );
 
-		const data = { date : draft.date, template_key : draft.template_key, inputs : inputs };
+		const data = { date : draft.date, template_key : draft.template_key, inputs : inputs, project : draft.project };
 
 		if( draft.id !== 0 )
 			data.id = String( draft.id );
@@ -697,17 +699,18 @@
 	 *
 	 *	@param		{string}	action
 	 *	@param		{Object}	data
-	 *	@param		{Object}	file						A File
+	 *	@param		{Object}	file						A File, or a piece of one
+	 *	@param		{string}	[part]					The name of the part the file comes in: file, and chunk for the Files panel's upload
 	 *
 	 *	@return		{Promise}									See post()
 	 */
-	const upload = function( action, data, file ) {
+	const upload = function( action, data, file, part ) {
 
 		const form = new wn.FormData();
 
 		form.append( 'action', action );
 		form.append( 'data', JSON.stringify( data || {} ) );
-		form.append( 'file', file );
+		form.append( part || 'file', file );
 
 		return post( { headers : { 'X-CSRF-Token' : state.csrf }, body : form } );
 	};
@@ -764,10 +767,11 @@
 	 *
 	 *	@param		{string}	label
 	 *	@param		{number}	[client]				The client the document is for: it is chosen in the editor, and a contract - which follows its offer - is not offered
+	 *	@param		{string}	[project]				The project the document is for, which the editor starts with
 	 *
 	 *	@return		{Object}
 	 */
-	const newMenu = function( label, client ) {
+	const newMenu = function( label, client, project ) {
 
 		const items = [];
 
@@ -779,7 +783,7 @@
 			if( client === undefined && kind === 'contract' )
 				items.push( 'sep' );
 
-			items.push( { label : t( 'new.'+ kind ), run : function() { wn.location.hash = '#neu-'+ kind+ ( client === undefined ? '' : '-k'+ client ) } } );
+			items.push( { label : t( 'new.'+ kind ), run : function() { wn.location.hash = '#neu-'+ kind+ ( client === undefined ? '' : '-k'+ client+ ( project === undefined ? '' : '-p'+ project ) ) } } );
 		} );
 
 		return menu( { label : label, button : 'primary', items : items } );
@@ -1284,7 +1288,7 @@
 		const heading = function( key, label, right ) { return sortHead( filter, key, label, right, redraw, key === 'date' ? -1 : 1 ) };
 
 		const body = el( 'tbody', {}, shown.length === 0
-			? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '8', class: 'muted', text: state.docs.length === 0 ? t( 'list.empty' ) : t( 'list.none' ) } ) )
+			? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '9', class: 'muted', text: state.docs.length === 0 ? t( 'list.empty' ) : t( 'list.none' ) } ) )
 			: shown.map( function( doc ) {
 
 				const pdf = doc.state === 'draft' ? state.base+ '/crm/preview/'+ doc.id : pdfUrl( doc );
@@ -1293,6 +1297,7 @@
 					el( 'td', { class: 'num' }, link( hashOf( doc ), docName( doc ) ) ),
 					el( 'td', { text: t( 'category.'+ doc.category ) } ),
 					el( 'td', { text: doc.client_title } ),
+					el( 'td', {}, doc.project === '' ? el( 'span', { class: 'muted', text: '–' } ) : link( '#projekt-'+ doc.project, doc.project_title !== '' ? doc.project_title : doc.project, { on: { click: function( event ) { event.stopPropagation() } } } ) ),
 					el( 'td', { text: dmy( doc.date ) } ),
 					el( 'td', { class: doc.overdue === true ? 'bad' : 'muted', text: dmy( doc.due_date || doc.valid_until ) } ),
 					el( 'td', { class: 'r num' }, isPlain( doc ) ? el( 'span', { class: 'muted', text: '–' } ) : cash( doc.gross ) ),
@@ -1301,9 +1306,9 @@
 			} ) );
 
 		const table = el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl' },
-			el( 'thead', {}, el( 'tr', {}, heading( 'number', t( 'column.number' ) ), el( 'th', { scope: 'col', text: t( 'column.category' ) } ), heading( 'client', t( 'column.client' ) ), heading( 'date', t( 'column.date' ) ), heading( 'due', t( 'column.due' ) ), heading( 'gross', t( 'column.gross' ), true ), el( 'th', { scope: 'col', text: t( 'column.state' ) } ), el( 'th', { scope: 'col' } ) ) ),
+			el( 'thead', {}, el( 'tr', {}, heading( 'number', t( 'column.number' ) ), el( 'th', { scope: 'col', text: t( 'column.category' ) } ), heading( 'client', t( 'column.client' ) ), heading( 'project', t( 'column.project' ) ), heading( 'date', t( 'column.date' ) ), heading( 'due', t( 'column.due' ) ), heading( 'gross', t( 'column.gross' ), true ), el( 'th', { scope: 'col', text: t( 'column.state' ) } ), el( 'th', { scope: 'col' } ) ) ),
 			body,
-			el( 'tfoot', {}, el( 'tr', {}, el( 'td', { colspan: '5', text: t( 'list.sum' ) } ), el( 'td', { class: 'r num', id: 'sum', text: cash( sum ) } ), el( 'td', { colspan: '2' } ) ) ) ) );
+			el( 'tfoot', {}, el( 'tr', {}, el( 'td', { colspan: '6', text: t( 'list.sum' ) } ), el( 'td', { class: 'r num', id: 'sum', text: cash( sum ) } ), el( 'td', { colspan: '2' } ) ) ) ) );
 
 		const pager = pagerOf( filter, pages, redraw );
 
@@ -1598,9 +1603,30 @@
 		if( doc.released === true )
 			items.push( 'sep', { label : t( 'menu.unrelease' ), run : function() { move( view, 'crm-documents/unrelease', {}, 'error.unrelease', function() { return t( 'release.undone' ) } ) } } );
 
-		items.push( 'sep', { label : t( 'menu.notes' ), run : function() { state.tab = 'notes'; drawBeleg( view ) } } );
+		items.push( 'sep', { label : t( 'menu.project' ), run : function() { changeProject( view ) } }, { label : t( 'menu.notes' ), run : function() { state.tab = 'notes'; drawBeleg( view ) } } );
 
 		return menu( { label : '⋯', items : items } );
+	};
+
+	/**
+	 *	The project of a document of any state, a finalised one included: the question with the projects of its client, and the step
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{void}
+	 */
+	const changeProject = function( view ) {
+
+		const doc = view.document;
+		const options = [ { value : '', label : t( 'field.project-none' ) } ].concat( ( view.projects || [] ).filter( function( one ) { return one.done !== true || one.id === doc.project } ).map( function( one ) { return { value : one.id, label : one.title } } ) );
+
+		dialog( { title : t( 'menu.project' ), text : t( 'project.change-text' ), yes : t( 'project.change-yes' ), fields : [ { name : 'project', label : t( 'field.project' ), options : options, value : doc.project } ] } ).then( function( values ) {
+
+			if( values === null || values.project === doc.project || state.view !== view.mine )
+				return;
+
+			move( view, 'crm-documents/project', { project : values.project }, 'error.project', function() { return t( 'project.changed' ) } );
+		} );
 	};
 
 	const remind = function( view ) {
@@ -1820,6 +1846,7 @@
 		const mine = state.view;
 
 		state.tab = start;
+		view.mine = mine;
 
 		const primaryButton = primary === null ? null : el( 'button', { type: 'button', class: 'btn primary', id: 'primary', dataset: { action: primary }, text: t( 'primary.'+ primary ), on: { click: function() {
 			if( primary === 'send' )
@@ -1838,7 +1865,7 @@
 
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#belege', t( 'list.title' ) ), ' › '+ t( 'category.'+ doc.category ) ) );
 		state.main.appendChild( head( docName( doc ), stateBadge( doc ), marks( doc ),
-			el( 'span', { class: 'sub' }, link( '#kunde-'+ doc.client_id, client.company || client.name ), ' · '+ dmy( doc.date )+ ( doc.due_date ? ' · '+ t( 'head.due', dmy( doc.due_date ) ) : doc.valid_until ? ' · '+ t( 'head.valid', dmy( doc.valid_until ) ) : '' ) ),
+			el( 'span', { class: 'sub' }, link( '#kunde-'+ doc.client_id, client.company || client.name ), ' · '+ dmy( doc.date )+ ( doc.due_date ? ' · '+ t( 'head.due', dmy( doc.due_date ) ) : doc.valid_until ? ' · '+ t( 'head.valid', dmy( doc.valid_until ) ) : '' ), doc.project === '' ? null : [ ' · ', link( '#projekt-'+ doc.project, doc.project_title !== '' ? doc.project_title : doc.project, { id: 'doc-project' } ) ] ),
 			el( 'span', { class: 'grow' } ), isPlain( doc ) ? null : el( 'span', { class: 'big num', id: 'gross', text: cash( doc.gross ) } ), primaryButton, menuOf( view ) ) );
 
 		if( doc.overdue === true )
@@ -1864,6 +1891,7 @@
 				[ t( 'document.due' ), dmy( doc.due_date ) ],
 				[ t( 'document.valid' ), dmy( doc.valid_until ) ],
 				[ t( 'document.period' ), doc.period_from && doc.period_to ? dmy( doc.period_from )+ ' – '+ dmy( doc.period_to ) : '' ],
+				[ t( 'document.project' ), doc.project === '' ? '' : link( '#projekt-'+ doc.project, doc.project_title !== '' ? doc.project_title : doc.project ) ],
 				[ t( 'document.from' ), doc.parent === null ? '' : link( '#beleg-'+ doc.parent.id, doc.parent.number || doc.parent.title ) ],
 				[ t( 'document.children' ), doc.children.length === 0 ? '' : el( 'span', {}, doc.children.map( function( child, index ) { return [ index === 0 ? null : ', ', link( hashOf( child ), docName( child ) ) ] } ) ) ],
 				[ t( 'document.pdf' ), doc.pdf_path === '' ? '' : external( pdfUrl( doc ), docFile( doc ) ) ],
@@ -1943,8 +1971,10 @@
 
 			const draft = draftNew( where.category, state.settings, where.offer );
 
-			if( where.client !== '' && state.clients.some( function( one ) { return String( one.id ) === where.client && one.active === true } ) === true )
+			if( where.client !== '' && state.clients.some( function( one ) { return String( one.id ) === where.client && one.active === true } ) === true ) {
 				draft.client_id = where.client;
+				draft.project = where.project || '';
+			}
 
 			draft.templates = answers[1].body.templates;
 			state.offers = answers[1].body.offers;
@@ -2199,6 +2229,7 @@
 
 		// --- the block Beleg
 		const clientOptions = state.clients.filter( function( one ) { return one.active === true || String( one.id ) === draft.client_id } );
+		const projectSelect = el( 'select', { id: 'f-project', value: draft.project } );
 		const clientSelect = el( 'select', { id: 'f-client_id', value: draft.client_id }, el( 'option', { value: '', text: t( 'field.client-choose' ) } ), clientOptions.map( function( one ) { return el( 'option', { value: String( one.id ), text: one.number+ ' · '+ one.title } ) } ) );
 		const offerSelect = el( 'select', { id: 'f-parent_id', value: draft.parent_id }, el( 'option', { value: '', text: t( 'field.offer-choose' ) } ), state.offers.map( function( one ) { return el( 'option', { value: String( one.id ), text: one.number+ ' · '+ one.client_title } ) } ) );
 		const templateSelect = el( 'select', { id: 'f-template_key', value: draft.template_key }, el( 'option', { value: '', text: t( 'field.template-choose' ) } ), draft.templates.map( function( one ) { return el( 'option', { value: one.key, text: one.name } ) } ) );
@@ -2227,19 +2258,54 @@
 			} );
 		};
 
+		/**
+		 *	The projects the select offers: the client's open ones and the one the draft names. A list that came from the server is the last word - a project that is not in it
+		 *	is no project of this client, and the draft names none
+		 *
+		 *	@param		{Array}			projects
+		 *	@param		{boolean}		[settled]
+		 *
+		 *	@return		{void}
+		 */
+		const fillProjects = function( projects, settled ) {
+
+			const found = projects.some( function( one ) { return one.id === draft.project } );
+
+			if( settled === true && found === false )
+				draft.project = '';
+
+			clear( projectSelect );
+			projectSelect.appendChild( el( 'option', { value: '', text: t( 'field.project-none' ) } ) );
+			projects.filter( function( one ) { return one.done !== true || one.id === draft.project } ).forEach( function( one ) { projectSelect.appendChild( el( 'option', { value: one.id, text: one.title } ) ) } );
+			projectSelect.value = draft.project;
+		};
+
+		fillProjects( view.document === null ? [] : ( view.projects || [] ) );
 		bind( 'client_id', 'client_id', clientSelect );
+		bind( 'project', 'project', projectSelect );
 		bind( 'parent_id', 'parent_id', offerSelect );
 		bind( 'template_key', 'template_key', templateSelect );
 		templateSelect.addEventListener( 'change', drawInputs );
+
+		/**
+		 *	The client the draft is for now: the chosen one, for a contract the one of its offer
+		 *
+		 *	@return		{string}									Its id; '' for none
+		 */
+		const chosenClient = function() {
+
+			const chosen = draft.category === 'contract'
+				? state.offers.find( function( one ) { return String( one.id ) === draft.parent_id } )
+				: null;
+
+			return chosen === undefined || chosen === null ? draft.client_id : String( chosen.client_id );
+		};
 
 		const drawClient = function() {
 
 			clear( clientBox );
 
-			const chosen = draft.category === 'contract'
-				? state.offers.find( function( one ) { return String( one.id ) === draft.parent_id } )
-				: null;
-			const id = chosen === undefined || chosen === null ? draft.client_id : String( chosen.client_id );
+			const id = chosenClient();
 			const known = state.clients.find( function( one ) { return String( one.id ) === id } );
 			const owed = el( 'span', { id: 'client-open', text: '…' } );
 			const where = el( 'span', { id: 'client-address', text: '…' } );
@@ -2248,9 +2314,17 @@
 			clientBox.appendChild( el( 'h3', { text: t( 'block.client' ) } ) );
 
 			if( known === undefined ) {
+				fillProjects( [], true );
 				clientBox.appendChild( el( 'p', { class: 'state-note', text: t( 'client.none' ) } ) );
 				return;
 			}
+
+			// The projects of the client are the field Projekt's options
+			api( 'crm-projekte/list', { client : id } ).then( function( answer ) {
+				// The answer of a client that was left again, before it came, is for nobody: the list of the client chosen now is the one that is drawn
+				if( answer.ok === true && state.view === mine && projectSelect.parentNode !== null && chosenClient() === id )
+					fillProjects( answer.body.projects, true );
+			} );
 
 			clientBox.appendChild( kv( [
 				[ t( 'client.name' ), known.title ],
@@ -2285,12 +2359,19 @@
 			} );
 		};
 
-		clientSelect.addEventListener( 'change', drawClient );
-		offerSelect.addEventListener( 'change', drawClient );
+		// Another client has other projects: the draft names none until one is chosen
+		const clientChanged = function() {
+			draft.project = '';
+			drawClient();
+		};
+
+		clientSelect.addEventListener( 'change', clientChanged );
+		offerSelect.addEventListener( 'change', clientChanged );
 
 		const rows = [
 			[ t( 'document.kind' ), t( 'category.'+ draft.category ) ],
 			draft.category === 'contract' ? [ t( 'field.offer' ), el( 'span', {}, offerSelect, el( 'span', { class: 'state-note', text: t( 'field.offer-follow' ) } ) ) ] : [ t( 'field.client' ), clientSelect ],
+			[ t( 'field.project' ), projectSelect ],
 		];
 
 		const dl = el( 'dl', { class: 'kv' }, rows.map( function( row ) { return [ el( 'dt', { text: row[0] } ), el( 'dd', {}, row[1] ) ] } ) );
@@ -2783,12 +2864,13 @@
 
 		loading();
 
-		Promise.all( [ api( 'crm-clients/get', { id : String( where.id ) } ), api( 'crm-documents/list', { client : String( where.id ) } ) ] ).then( function( answers ) {
+		Promise.all( [ api( 'crm-clients/get', { id : String( where.id ) } ), api( 'crm-documents/list', { client : String( where.id ) } ), api( 'crm-projekte/list', { client : String( where.id ) } ) ] ).then( function( answers ) {
 
 			if( state.view !== mine )
 				return;
 
-			const failure = answers.find( function( answer ) { return answer.ok !== true } );
+			// The projects are a tab of their own: where they cannot be read the card has the others
+			const failure = answers.slice( 0, 2 ).find( function( answer ) { return answer.ok !== true } );
 
 			if( failure !== undefined ) {
 				loadFailed( failure, 'error.load', function() { route() } );
@@ -2800,7 +2882,7 @@
 			// The link "einladen" of the Übersicht leads to the invitation: the tab Portal, the form open
 			state.tab = where.tab === 'einladen' ? 'portal' : where.tab;
 
-			drawKunde( { client : answers[0].body.client, accounts : answers[0].body.accounts, documents : answers[1].body.documents, portal : null, editing : false, inviting : where.tab === 'einladen', invite : null, box : null, master : null } );
+			drawKunde( { client : answers[0].body.client, accounts : answers[0].body.accounts, documents : answers[1].body.documents, projects : answers[2].ok === true && answers[2].body.missing !== true ? answers[2].body.projects : null, portal : null, editing : false, inviting : where.tab === 'einladen', invite : null, box : null, master : null } );
 		} );
 	};
 
@@ -3143,12 +3225,12 @@
 	 *
 	 *	@return		{Object}
 	 */
-	const tabClientDocuments = function( view ) {
+	const tabClientDocuments = function( view, empty ) {
 
 		return el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl' },
 			el( 'thead', {}, el( 'tr', {}, el( 'th', { text: t( 'column.number' ) } ), el( 'th', { text: t( 'column.category' ) } ), el( 'th', { text: t( 'column.date' ) } ), el( 'th', { class: 'r', text: t( 'column.gross' ) } ), el( 'th', { text: t( 'column.state' ) } ) ) ),
 			el( 'tbody', {}, view.documents.length === 0
-				? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '5', class: 'muted', text: t( 'cdocs.empty' ) } ) )
+				? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '5', class: 'muted', text: t( empty || 'cdocs.empty' ) } ) )
 				: view.documents.map( function( doc ) {
 					return el( 'tr', { dataset: { id: doc.id }, on: { click: function() { wn.location.hash = hashOf( doc ) } } },
 						el( 'td', { class: 'num' }, link( hashOf( doc ), docName( doc ) ) ),
@@ -3157,6 +3239,35 @@
 						el( 'td', { class: 'r num' }, isPlain( doc ) ? el( 'span', { class: 'muted', text: '–' } ) : cash( doc.gross ) ),
 						el( 'td', {}, badges( doc ) ) );
 				} ) ) ) );
+	};
+
+	/**
+	 *	The projects of the client, the newest first, the done ones greyed; Neues Projekt starts one for the client
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const tabClientProjects = function( view ) {
+
+		const client = view.client;
+
+		if( view.projects === null )
+			return note( '', t( 'projects.missing' ), ' ', link( '#einstellungen', t( 'items.missing-link' ) ) );
+
+		return el( 'div', { id: 'client-projects' },
+			state.perms.elements === true && client.active === true ? el( 'div', { class: 'actions top' }, link( '#projekte-neu-k'+ client.id, t( 'projects.new' ), { class: 'btn primary', id: 'client-project-new' } ) ) : null,
+			el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl' },
+				el( 'thead', {}, el( 'tr', {}, el( 'th', { text: t( 'projects.column-project' ) } ), el( 'th', { text: t( 'projects.column-started' ) } ), el( 'th', { class: 'r', text: t( 'projects.column-documents' ) } ), el( 'th', { text: t( 'column.state' ) } ) ) ),
+				el( 'tbody', {}, view.projects.length === 0
+					? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '4', class: 'muted', text: t( 'projects.client-empty' ) } ) )
+					: view.projects.map( function( project ) {
+						return el( 'tr', { dataset: { id: project.id }, class: project.done === true ? 'dim' : null, on: { click: function() { wn.location.hash = '#projekt-'+ project.id } } },
+							el( 'td', { class: 'wrap' }, projectLink( project ) ),
+							el( 'td', { text: dmy( project.started ) } ),
+							el( 'td', { class: 'r num', text: String( project.documents ) } ),
+							el( 'td', {}, projectBadge( project ) ) );
+					} ) ) ) ) );
 	};
 
 	const tabClientPortal = function( view ) {
@@ -3302,7 +3413,7 @@
 			} );
 			clear( body );
 			unsaver( 'tab' );
-			body.appendChild( { belege : tabClientDocuments, portal : tabClientPortal, notizen : tabClientNotes }[key]( view ) );
+			body.appendChild( { belege : tabClientDocuments, projekte : tabClientProjects, portal : tabClientPortal, notizen : tabClientNotes }[key]( view ) );
 		};
 
 		const strip = el( 'div', { class: 'tabs', role: 'tablist' }, tabs.map( function( key ) {
@@ -3310,7 +3421,7 @@
 			const button = el( 'button', { type: 'button', role: 'tab', 'aria-selected': key === start ? 'true' : 'false', class: key === start ? 'on' : '', dataset: { tab: key }, on: { click: function() {
 				if( state.view === view.mine )
 					show( key );
-			} } }, t( 'ctab.'+ key ), key === 'belege' ? el( 'span', { class: 'n', text: String( view.documents.length ) } ) : null );
+			} } }, t( 'ctab.'+ key ), key === 'belege' ? el( 'span', { class: 'n', text: String( view.documents.length ) } ) : null, key === 'projekte' && view.projects !== null ? el( 'span', { class: 'n', text: String( view.projects.length ) } ) : null );
 
 			buttons.push( button );
 
@@ -4018,6 +4129,984 @@
 
 		state.main.appendChild( box );
 		submitter( 'position', box, save );
+	};
+
+
+	// --- Projekte ----------------------------------------------------------------------------------------------------
+	// A project is an element of the type projekte. The surface drives the Elements panel's own actions for it (elements/save makes one - the uri of a
+	// new one is the number the type gives it, so none is posted - and changes it, elements/delete removes it) and the Files panel's for its folder
+	// (files/folder/add, files/folder/save, files/upload ...); crm-projekte/list and crm-projekte/get read it with its counts and its files.
+
+	const PROJECT_TYPE = 'projekte';
+	const PROJECT_TABS = [ 'belege', 'dateien' ];
+	const FOLDER_NAME = 80;
+
+	/**
+	 *	The group of a client in Members, as Clients::group() writes it: its number as a slug
+	 *
+	 *	@param		{string}	number					K-0001
+	 *
+	 *	@return		{string}									k-0001
+	 */
+	const groupOf = function( number ) {
+		return String( number ).toLowerCase().replace( /[^a-z0-9]+/g, '-' ).replace( /^-+|-+$/g, '' );
+	};
+
+	/**
+	 *	The cut of a file: the chunks a size is divided into, every one but the last exactly a chunk long. As the Files panel's own script cuts
+	 *
+	 *	@param		{number}	size
+	 *	@param		{number}	chunk						The bytes of a chunk
+	 *
+	 *	@return		{Array}										[ [ start, end ], ... ], end not included - none for a size or a chunk that is no whole number above 0
+	 */
+	const chunksOf = function( size, chunk ) {
+
+		const parts = [];
+
+		if( Number.isInteger( size ) === false || Number.isInteger( chunk ) === false || size < 1 || chunk < 1 )
+			return parts;
+
+		for( let start = 0; start < size; start += chunk )
+			parts.push( [ start, Math.min( start + chunk, size ) ] );
+
+		return parts;
+	};
+
+	/**
+	 *	@param		{number}	bytes
+	 *
+	 *	@return		{string}									1,5 MB
+	 */
+	const sizeText = function( bytes ) {
+
+		const units = [ 'B', 'KB', 'MB', 'GB' ];
+		let value = bytes;
+		let at = 0;
+
+		while( value >= 1024 && at < units.length - 1 ) {
+			value /= 1024;
+			at++;
+		}
+
+		return ( at === 0 || value >= 10 ? String( Math.round( value ) ) : String( Math.round( value * 10 ) / 10 ).replace( '.', ',' ) )+ ' '+ units[at];
+	};
+
+	/**
+	 *	The projects the list shows: the done ones only where the switch is on, then the search over the title, the client and its number
+	 *
+	 *	@param		{Array}		projects				As crm-projekte/list has them, the newest first
+	 *	@param		{Object}	filter					q, all (the done ones too)
+	 *
+	 *	@return		{Array}
+	 */
+	const visibleProjects = function( projects, filter ) {
+
+		const query = filter.q.trim().toLowerCase();
+
+		return projects.filter( function( project ) {
+			return ( filter.all === true || project.done === false ) && ( query === '' || ( project.title+ ' '+ project.client_title+ ' '+ project.client ).toLowerCase().includes( query ) );
+		} );
+	};
+
+	const projectBadge = function( project ) {
+		return project.done === true ? badge( 'draft', t( 'projects.done' ) ) : badge( 'open', t( 'projects.running' ) );
+	};
+
+	const projectName = function( project ) {
+		return project.title !== '' ? project.title : project.id;
+	};
+
+	const projectLink = function( project ) {
+		return link( '#projekt-'+ project.id, projectName( project ) );
+	};
+
+	/**
+	 *	Save fields of a project through the Elements panel's own action; a new one is posted without a uri and gets the next number of the type
+	 *
+	 *	@param		{string}	uri							'' for a new project
+	 *	@param		{string}	native					The language the site is written in
+	 *	@param		{Object}	fields
+	 *
+	 *	@return		{Promise}
+	 */
+	const projectSave = function( uri, native, fields ) {
+		return api( 'elements/save', { type : PROJECT_TYPE, uri : uri, locale : native, isNew : uri === '', fields : fields } );
+	};
+
+	const projekte = function( where, mine ) {
+
+		loading();
+
+		api( 'crm-projekte/list' ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answer.ok !== true ) {
+				loadFailed( answer, 'error.load', function() { route() } );
+				return;
+			}
+
+			state.jbody = answer.body;
+			drawProjekte();
+		} );
+	};
+
+	const drawProjekte = function() {
+
+		const body = state.jbody;
+		const filter = state.jfilter;
+		const edits = state.perms.elements === true;
+		const rows = body.missing === true ? [] : visibleProjects( body.projects, filter );
+		const pages = Math.max( 1, Math.ceil( rows.length / PAGE_SIZE ) );
+
+		filter.page = Math.min( Math.max( 1, filter.page ), pages );
+
+		const shown = rows.slice( ( filter.page - 1 ) * PAGE_SIZE, filter.page * PAGE_SIZE );
+		const again = function() { drawProjekte() };
+
+		reveal();
+
+		state.main.appendChild( head( t( 'projects.title' ), el( 'span', { class: 'sub', text: t( 'projects.count', rows.length, body.projects.length ) } ), el( 'span', { class: 'grow' } ),
+			body.missing === true ? null : search( t( 'projects.search' ), filter.q, { input: function( event ) {
+				filter.q = event.target.value;
+				filter.page = 1;
+				keepSearch( drawProjekte, true );
+			} } ),
+			body.missing === true ? null : el( 'label', { class: 'sw', for: 'p-all' }, el( 'input', { type: 'checkbox', role: 'switch', id: 'p-all', checked: filter.all, on: { change: function( event ) {
+				filter.all = event.target.checked;
+				filter.page = 1;
+				again();
+			} } } ), el( 'span', { text: t( 'projects.show-done' ) } ) ),
+			edits === true && body.missing !== true ? link( '#projekte-neu', t( 'projects.new' ), { class: 'btn primary', id: 'projects-new' } ) : null ) );
+
+		if( body.missing === true ) {
+			state.main.appendChild( note( '', t( 'projects.missing' ), ' ', link( '#einstellungen', t( 'items.missing-link' ) ) ) );
+			return;
+		}
+
+		state.main.appendChild( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl', id: 'projects' },
+			el( 'thead', {}, el( 'tr', {}, el( 'th', { scope: 'col', text: t( 'projects.column-project' ) } ), el( 'th', { scope: 'col', text: t( 'column.client' ) } ), el( 'th', { scope: 'col', text: t( 'projects.column-started' ) } ),
+				el( 'th', { scope: 'col', class: 'r', text: t( 'projects.column-documents' ) } ), el( 'th', { scope: 'col', class: 'r', text: t( 'projects.column-files' ) } ), el( 'th', { scope: 'col', text: t( 'column.state' ) } ) ) ),
+			el( 'tbody', {}, shown.length === 0
+				? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '6', class: 'muted', text: t( body.projects.length === 0 ? 'projects.empty' : 'projects.none' ) } ) )
+				: shown.map( function( project ) {
+					return el( 'tr', { dataset: { id: project.id }, class: project.done === true ? 'dim' : null, on: { click: function() { wn.location.hash = '#projekt-'+ project.id } } },
+						el( 'td', { class: 'wrap' }, projectLink( project ) ),
+						el( 'td', {}, project.client_id === 0 ? project.client : link( '#kunde-'+ project.client_id, project.client_title, { on: { click: function( event ) { event.stopPropagation() } } } ) ),
+						el( 'td', { text: dmy( project.started ) } ),
+						el( 'td', { class: 'r num' }, project.documents === 0 ? el( 'span', { class: 'muted', text: '–' } ) : project.documents+ '', project.open > 0 ? el( 'span', { class: 'muted', text: ' · '+ t( 'projects.open-offers', project.open ) } ) : null ),
+						el( 'td', { class: 'r num' }, project.files === null ? el( 'span', { class: 'muted', text: '–' } ) : String( project.files ) ),
+						el( 'td', {}, projectBadge( project ) ) );
+				} ) ) ) ) );
+		append( state.main, [ pagerOf( filter, pages, again ), el( 'p', { class: 'state-note top', text: t( edits === true ? 'projects.note-edit' : 'projects.note' ) } ) ] );
+	};
+
+	/**
+	 *	The screen of a new project: #projekte-neu, or #projekte-neu-k<id> with the client chosen
+	 *
+	 *	@param		{Object}	where						client (the id of the client), absent or '' for none
+	 *	@param		{number}	mine
+	 *
+	 *	@return		{void}
+	 */
+	const projektNeu = function( where, mine ) {
+
+		if( state.perms.elements !== true ) {
+			reveal();
+			state.main.appendChild( head( t( 'projects.title' ) ) );
+			state.main.appendChild( note( 'bad', t( 'projects.forbidden' ) ) );
+			return;
+		}
+
+		loading();
+
+		Promise.all( [ api( 'crm-clients/list' ), api( 'crm-projekte/list', { open : true } ) ] ).then( function( answers ) {
+
+			if( state.view !== mine )
+				return;
+
+			const failure = answers.find( function( answer ) { return answer.ok !== true } );
+
+			if( failure !== undefined ) {
+				loadFailed( failure, 'error.load', function() { route() } );
+				return;
+			}
+
+			if( answers[1].body.missing === true ) {
+				reveal();
+				state.main.appendChild( head( t( 'projects.title' ) ) );
+				state.main.appendChild( note( '', t( 'projects.missing' ), ' ', link( '#einstellungen', t( 'items.missing-link' ) ) ) );
+				return;
+			}
+
+			drawProjektNeu( answers[0].body.clients.filter( function( client ) { return client.active === true } ), answers[1].body, where.client || '', mine );
+		} );
+	};
+
+	/**
+	 *	Make a folder for a project in Files and write its id into the project. Both steps are the panels' own actions; each says whether it went through
+	 *
+	 *	@param		{string}	id							The project
+	 *	@param		{string}	title
+	 *	@param		{string}	number					The number of its client
+	 *	@param		{string}	native
+	 *
+	 *	@return		{Promise}									{ ok, folder (the id), text (the sentence that says why not) }
+	 */
+	const makeFolder = function( id, title, number, native ) {
+
+		return api( 'files/folder/add', { group : groupOf( number ), name : title.slice( 0, FOLDER_NAME ) } ).then( function( made ) {
+
+			if( made.ok !== true )
+				return { ok : false, folder : '', text : errorText( made, 'projects.error-folder' ) };
+
+			const folder = made.body.folder.id;
+
+			return projectSave( id, native, { folder : folder } ).then( function( saved ) {
+				return saved.ok === true ? { ok : true, folder : folder, text : '' } : { ok : false, folder : folder, text : errorText( saved, 'projects.error-save' ) };
+			} );
+		} );
+	};
+
+	const drawProjektNeu = function( clients, list, preset, mine ) {
+
+		const form = formOf();
+		const files = list.allowed === true && list.files === true;
+		const known = clients.some( function( client ) { return String( client.id ) === preset } );
+		const clientSelect = el( 'select', { id: 'f-client', value: known ? preset : '' }, el( 'option', { value: '', text: t( 'field.client-choose' ) } ), clients.map( function( client ) { return el( 'option', { value: String( client.id ), text: client.number+ ' · '+ clientTitle( client ) } ) } ) );
+		const folder = files ? el( 'input', { type: 'checkbox', role: 'switch', id: 'f-folder', checked: true } ) : null;
+		const create = el( 'button', { type: 'submit', class: 'btn primary', id: 'project-create', title: t( 'save.shortcut' ), text: t( 'projects.create' ) } );
+		const rows = [
+			{ name : 'title', label : t( 'projects.f-title' ), control : el( 'input', { id: 'f-title', type: 'text', maxlength: '200', autocomplete: 'off' } ) },
+			{ name : 'client', label : t( 'projects.f-client' ), control : clientSelect },
+			{ name : 'description', label : t( 'projects.f-description' ), control : el( 'textarea', { id: 'f-description', rows: 4, maxlength: '2000' } ), hint : t( 'form.optional' ) },
+			{ name : 'started', label : t( 'projects.f-started' ), control : el( 'input', { id: 'f-started', type: 'date' } ), hint : t( 'form.optional' ) },
+		];
+
+		if( folder !== null )
+			rows.push( { name : 'folder', label : t( 'projects.f-folder' ), control : folder, hint : t( 'projects.hint-folder' ) } );
+
+		let creating = false;
+
+		const submit = function( event ) {
+
+			event.preventDefault();
+
+			if( creating === true )
+				return;
+
+			Object.keys( form.controls ).forEach( function( name ) {
+				form.controls[name].classList.remove( 'err' );
+				form.controls[name].removeAttribute( 'aria-invalid' );
+				form.notes[name].textContent = '';
+			} );
+
+			const title = form.controls.title.value.trim();
+			const client = clients.find( function( one ) { return String( one.id ) === form.controls.client.value } );
+			const problem = title === '' ? [ 'title', 'projects.err-title' ] : ( client === undefined ? [ 'client', 'projects.err-client' ] : null );
+
+			if( problem !== null ) {
+				form.controls[problem[0]].classList.add( 'err' );
+				form.controls[problem[0]].setAttribute( 'aria-invalid', 'true' );
+				form.notes[problem[0]].textContent = t( problem[1] );
+				form.controls[problem[0]].focus();
+				toast( t( problem[1] ), true );
+				return;
+			}
+
+			const fields = { title : title, client : client.number };
+
+			if( form.controls.description.value.trim() !== '' )
+				fields.description = form.controls.description.value;
+
+			if( form.controls.started.value !== '' )
+				fields.started = form.controls.started.value;
+
+			const withFolder = folder !== null && folder.checked === true;
+			let release = function() {};
+
+			// While the posts go out, a way out of the screen waits for them (see route())
+			state.busy = new Promise( function( resolve ) { release = resolve } );
+			creating = true;
+			create.disabled = true;
+
+			const over = function() {
+				creating = false;
+				create.disabled = false;
+				state.busy = null;
+				release();
+			};
+
+			// The project is made; what is left to say is said in the toast, the folder with it
+			const made = function( id, sentence, bad ) {
+
+				over();
+				toast( sentence, bad );
+
+				if( state.view === mine ) {
+					form.dirty = false;
+					state.draft = null;
+					wn.location.hash = '#projekt-'+ id;
+				}
+			};
+
+			projectSave( '', list.native, fields ).then( function( answer ) {
+
+				if( answer.ok !== true ) {
+					over();
+					refuseAt( form, answer, 'projects.error-save' );
+					return;
+				}
+
+				const id = String( answer.body.element['.uri'] ).split( '/' ).pop();
+
+				if( withFolder === false ) {
+					made( id, t( 'projects.made', title ), false );
+					return;
+				}
+
+				makeFolder( id, title, client.number, list.native ).then( function( result ) {
+					made( id, result.ok === true ? t( 'projects.made-folder', title ) : t( 'projects.made-no-folder', title, result.text ), result.ok !== true );
+				} );
+			} );
+		};
+
+		reveal();
+
+		const box = el( 'form', { id: 'project-form', novalidate: 'novalidate', on: { submit: submit } },
+			head( t( 'projects.new-title' ), el( 'span', { class: 'grow' } ), link( '#projekte', t( 'form.cancel' ), { class: 'btn', id: 'project-abort' } ), create ),
+			el( 'div', { class: 'card pad' }, formList( rows, form ) ) );
+
+		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#projekte', t( 'projects.title' ) ), ' › '+ t( 'projects.new-title' ).toLowerCase() ) );
+		state.main.appendChild( box );
+		submitter( 'new-project', box, create, function() { return form.dirty === true } );
+		form.controls.title.focus();
+	};
+
+	// --- Projektkarte ------------------------------------------------------------------------------------------------
+
+	const projekt = function( where, mine ) {
+
+		loading();
+
+		api( 'crm-projekte/get', { id : where.id } ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answer.status === 404 ) {
+				reveal();
+				state.main.appendChild( head( t( 'projects.title' ) ) );
+				state.main.appendChild( note( answer.body !== null && answer.body.code === 'crm_projekte_missing' ? '' : 'bad', el( 'span', { text: errorText( answer, 'projects.gone' ) } ), ' ', link( '#projekte', t( 'projects.back' ) ) ) );
+				return;
+			}
+
+			if( answer.ok !== true ) {
+				loadFailed( answer, 'error.load', function() { route() } );
+				return;
+			}
+
+			state.tab = where.tab;
+			drawProjekt( Object.assign( {}, answer.body, { documents : null, limits : null, editing : false, info : null, mine : mine } ) );
+		} );
+	};
+
+	/**
+	 *	Read the project again and draw its card, on the tab that was open
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{void}
+	 */
+	const reloadProjekt = function( view ) {
+
+		const mine = state.view;
+
+		api( 'crm-projekte/get', { id : view.project.id } ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answer.ok !== true ) {
+				failed( answer, 'error.load' );
+				return;
+			}
+
+			drawProjekt( Object.assign( {}, answer.body, { documents : view.documents, limits : view.limits, editing : false, info : null, mine : mine } ) );
+		} );
+	};
+
+	/**
+	 *	The facts of the project, or - after Bearbeiten - the form that changes the title, the note and the day
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const projectCard = function( view ) {
+
+		const project = view.project;
+
+		if( view.editing === false ) {
+
+			unsaver( 'project' );
+
+			return el( 'div', { class: 'card pad', id: 'project-info' }, el( 'h3', { text: t( 'projects.card' ) } ), kv( [
+				[ t( 'projects.f-client' ), view.client === null ? project.client : link( '#kunde-'+ view.client.id, view.client.title+ ' · '+ view.client.number ) ],
+				[ t( 'projects.f-started' ), dmy( project.started ) ],
+				[ t( 'projects.f-description' ), project.description === '' ? '' : stacked( project.description.split( '\n' ) ) ],
+				[ t( 'projects.column-documents' ), String( project.documents )+ ( project.open > 0 ? ' · '+ t( 'projects.open-offers', project.open ) : '' ) ],
+				[ t( 'projects.folder' ), view.folder === null ? '' : view.folder.name ],
+			] ) );
+		}
+
+		const form = formOf();
+		const save = el( 'button', { type: 'submit', class: 'btn sm primary', id: 'project-save', title: t( 'save.shortcut' ), text: t( 'form.save' ) } );
+		const rows = [
+			{ name : 'title', label : t( 'projects.f-title' ), control : el( 'input', { id: 'f-title', type: 'text', value: project.title, maxlength: '200', autocomplete: 'off' } ) },
+			{ name : 'description', label : t( 'projects.f-description' ), control : el( 'textarea', { id: 'f-description', rows: 4, maxlength: '2000', value: project.description } ) },
+			{ name : 'started', label : t( 'projects.f-started' ), control : el( 'input', { id: 'f-started', type: 'date', value: project.started } ) },
+		];
+		let saving = false;
+
+		const box = el( 'form', { class: 'card pad', id: 'project-info', novalidate: 'novalidate', on: { submit: function( event ) {
+
+			event.preventDefault();
+
+			if( saving === true )
+				return;
+
+			Object.keys( form.controls ).forEach( function( name ) {
+				form.controls[name].classList.remove( 'err' );
+				form.controls[name].removeAttribute( 'aria-invalid' );
+				form.notes[name].textContent = '';
+			} );
+
+			const typed = { title : form.controls.title.value.trim(), description : form.controls.description.value, started : form.controls.started.value };
+
+			if( typed.title === '' ) {
+				form.controls.title.classList.add( 'err' );
+				form.controls.title.setAttribute( 'aria-invalid', 'true' );
+				form.notes.title.textContent = t( 'projects.err-title' );
+				form.controls.title.focus();
+				toast( t( 'projects.err-title' ), true );
+				return;
+			}
+
+			// Only what changed is posted
+			const fields = {};
+
+			Object.keys( typed ).forEach( function( name ) {
+				if( typed[name] !== project[name] )
+					fields[name] = typed[name];
+			} );
+
+			if( Object.keys( fields ).length === 0 ) {
+				form.dirty = false;
+				view.editing = false;
+				view.info.replaceWith( view.info = projectCard( view ) );
+				return;
+			}
+
+			let release = function() {};
+
+			state.busy = new Promise( function( resolve ) { release = resolve } );
+			saving = true;
+			save.disabled = true;
+
+			const over = function() {
+				saving = false;
+				save.disabled = false;
+				state.busy = null;
+				release();
+			};
+
+			projectSave( project.id, view.native, fields ).then( function( answer ) {
+
+				if( answer.ok !== true ) {
+					over();
+					refuseAt( form, answer, 'projects.error-save' );
+					return null;
+				}
+
+				// A new title renames the folder, as well as it can: the project is saved whatever the folder says
+				if( fields.title === undefined || view.folder === null || view.allowed !== true )
+					return { ok : true, text : '' };
+
+				return api( 'files/folder/save', { id : view.folder.id, name : fields.title.slice( 0, FOLDER_NAME ) } ).then( function( renamed ) {
+					return renamed.ok === true ? { ok : true, text : '' } : { ok : false, text : errorText( renamed, 'projects.error-rename' ) };
+				} );
+			} ).then( function( result ) {
+
+				if( result === null )
+					return;
+
+				over();
+				form.dirty = false;
+				toast( result.ok === true ? t( 'projects.saved' ) : t( 'projects.saved-no-rename', result.text ), result.ok !== true );
+
+				if( state.view === view.mine )
+					reloadProjekt( view );
+			} );
+		} } },
+		el( 'h3', { text: t( 'projects.card' ) } ), formList( rows, form ),
+		el( 'div', { class: 'actions top' }, save, el( 'button', { type: 'button', class: 'btn sm', id: 'project-cancel', text: t( 'form.cancel' ), on: { click: function() {
+			view.editing = false;
+			state.draft = null;
+			view.info.replaceWith( view.info = projectCard( view ) );
+		} } } ) ) );
+
+		submitter( 'project', box, save, function() { return form.dirty === true } );
+
+		return box;
+	};
+
+	/**
+	 *	The documents of a project: the same table as the card of a client, the documents of the project and nothing else
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const tabProjectDocuments = function( view ) {
+
+		const holder = el( 'div', { id: 'project-documents' } );
+		const mine = state.view;
+		const draw = function() {
+			clear( holder );
+			holder.appendChild( tabClientDocuments( { documents : view.documents }, 'projects.docs-empty' ) );
+		};
+
+		if( view.documents !== null )
+			draw();
+		else {
+			holder.appendChild( el( 'p', { class: 'state-note', role: 'status', text: t( 'loading' ) } ) );
+
+			call( 'crm-documents/list', { project : view.project.id }, 'error.load' ).then( function( answer ) {
+
+				if( state.view !== mine || answer.ok !== true )
+					return;
+
+				adopt( answer.body );
+				view.documents = answer.body.documents;
+				draw();
+			} );
+		}
+
+		return holder;
+	};
+
+	/**
+	 *	Send the files a person chose, one after the other and each in chunks, as the Files panel's own script sends them: a post with the action files/upload,
+	 *	the fields of the chunk as the data and the bytes as the part chunk. The progress is drawn per file. A file over the largest size and an empty one are
+	 *	refused before a byte is sent
+	 *
+	 *	@param		{Object}		view
+	 *	@param		{Array}			chosen					The File objects
+	 *	@param		{Element}		list						Where the progress is drawn
+	 *	@param		{Element}		button					The button, which is off while this runs
+	 *	@param		{Element}		input						The file input, which is emptied when this is over
+	 *
+	 *	@return		{void}
+	 */
+	const sendFiles = function( view, chosen, list, button, input ) {
+
+		const mine = state.view;
+		const limits = view.limits;
+		let sent = 0;
+
+		button.disabled = true;
+		list.hidden = false;
+		clear( list );
+
+		const finish = function() {
+
+			button.disabled = false;
+			input.value = '';
+
+			if( sent === 0 )
+				return;
+
+			toast( t( sent === 1 ? 'projects.uploaded-one' : 'projects.uploaded', sent ) );
+
+			if( state.view !== mine )
+				return;
+
+			// The files are read again and the table is drawn anew; the list of the progress stays, with the reasons of the files that did not go in
+			api( 'crm-projekte/get', { id : view.project.id } ).then( function( answer ) {
+
+				if( answer.ok !== true || state.view !== mine )
+					return;
+
+				view.project = answer.body.project;
+				view.list = answer.body.list;
+				view.redraw();
+			} );
+		};
+
+		// Every file has its row from the start - the ones that are not at their turn yet wait in it
+		const lines = chosen.map( function( file ) {
+
+			const status = el( 'small', { text: t( 'projects.waiting' ) } );
+			const bar = el( 'progress', { max: '100', value: 0 } );
+			const row = el( 'li', { class: 'up-row', dataset: { state: 'waiting' } }, el( 'strong', { text: file.name } ), status, bar );
+
+			list.appendChild( row );
+
+			return { row : row, status : status, bar : bar };
+		} );
+
+		const go = function( at ) {
+
+			if( at === chosen.length ) {
+				finish();
+				return;
+			}
+
+			const file = chosen[at];
+			const line = lines[at];
+			const fail = function( text ) {
+				line.row.dataset.state = 'failed';
+				line.status.textContent = text;
+				go( at + 1 );
+			};
+
+			if( file.size < 1 )
+				return fail( t( 'projects.up-empty' ) );
+
+			if( limits.max > 0 && file.size > limits.max )
+				return fail( t( 'projects.up-large', sizeText( limits.max ) ) );
+
+			const parts = chunksOf( file.size, limits.chunk );
+			let id = '';
+
+			if( parts.length === 0 )
+				return fail( t( 'projects.up-failed' ) );
+
+			line.row.dataset.state = 'sending';
+			line.status.textContent = t( 'projects.sending' );
+
+			const next = function( index ) {
+
+				upload( 'files/upload', { folder : view.folder.id, name : file.name, size : file.size, upload : id, index : index, count : parts.length, visible : true }, file.slice( parts[index][0], parts[index][1] ), 'chunk' ).then( function( answer ) {
+
+					if( answer.ok !== true )
+						return fail( errorText( answer, 'projects.up-failed' ) );
+
+					if( answer.body !== null && typeof answer.body.upload === 'string' )
+						id = answer.body.upload;
+
+					line.bar.value = Math.floor( parts[index][1] * 100 / file.size );
+
+					if( index + 1 < parts.length ) {
+						next( index + 1 );
+						return;
+					}
+
+					line.row.dataset.state = 'done';
+					line.status.textContent = t( 'projects.up-done' );
+					sent++;
+					go( at + 1 );
+				} );
+			};
+
+			next( 0 );
+		};
+
+		go( 0 );
+	};
+
+	/**
+	 *	The upload block of the tab Dateien: the file input, the button and the list of the progress
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const uploadCard = function( view ) {
+
+		const input = el( 'input', { type: 'file', id: 'up-input', multiple: 'multiple', 'aria-label': t( 'projects.up-choose' ) } );
+		const list = el( 'ul', { class: 'up-list', id: 'up-list', hidden: true } );
+		const send = el( 'button', { type: 'button', class: 'btn sm primary', id: 'up-send', text: t( 'projects.up-send' ), on: { click: function() {
+
+			const chosen = Array.from( input.files || [] );
+
+			if( chosen.length === 0 ) {
+				toast( t( 'projects.up-none' ), true );
+				return;
+			}
+
+			sendFiles( view, chosen, list, send, input );
+		} } } );
+
+		const box = card( t( 'projects.up-title' ), el( 'div', { class: 'actions' }, input, send ), list );
+
+		box.id = 'project-upload';
+
+		return box;
+	};
+
+	/**
+	 *	The tab Dateien: the files of the project's folder, and - for an account that holds the permission of the Files panel - what changes them
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const tabProjectFiles = function( view ) {
+
+		const project = view.project;
+		const holder = el( 'div', { id: 'project-files' } );
+		const editable = view.allowed === true;
+		const mine = state.view;
+
+		if( view.files !== true ) {
+			holder.appendChild( note( '', t( 'projects.files-off' ) ) );
+			return holder;
+		}
+
+		if( view.folder === null ) {
+
+			holder.appendChild( note( '', t( project.folder === '' ? 'projects.folder-none' : 'projects.folder-gone' ) ) );
+
+			if( editable === true && state.perms.elements === true && view.client !== null ) {
+
+				const make = el( 'button', { type: 'button', class: 'btn', id: 'folder-make', text: t( 'projects.folder-make' ), on: { click: function() {
+
+					make.disabled = true;
+
+					makeFolder( project.id, project.title, view.client.number, view.native ).then( function( result ) {
+
+						make.disabled = false;
+
+						if( result.ok !== true )
+							toast( t( 'projects.error-folder-text', result.text ), true );
+						else
+							toast( t( 'projects.folder-made' ) );
+
+						if( state.view === mine && result.folder !== '' )
+							reloadProjekt( view );
+					} );
+				} } } );
+
+				holder.appendChild( el( 'div', { class: 'actions top' }, make ) );
+			}
+			else
+				holder.appendChild( note( '', t( editable === false ? 'projects.files-forbidden' : 'projects.folder-elements' ) ) );
+
+			return holder;
+		}
+
+		if( editable === false )
+			holder.appendChild( note( '', t( 'projects.files-forbidden' ) ) );
+
+		const tableBox = el( 'div', { id: 'project-file-box' } );
+
+		holder.appendChild( tableBox );
+
+		const filesTable = function() {
+
+			const files = view.list || [];
+
+			return el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static', id: 'project-file-table' },
+				el( 'thead', {}, el( 'tr', {}, el( 'th', { text: t( 'projects.file-name' ) } ), el( 'th', { class: 'r', text: t( 'projects.file-size' ) } ), el( 'th', { text: t( 'projects.file-day' ) } ), el( 'th', { text: t( 'projects.file-by' ) } ),
+					el( 'th', { text: t( 'projects.file-visible' ) } ), el( 'th' ) ) ),
+				el( 'tbody', {}, files.length === 0
+					? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '6', class: 'muted', text: t( 'projects.files-empty' ) } ) )
+					: files.map( function( file ) {
+
+						const visibleBox = el( 'input', { type: 'checkbox', role: 'switch', checked: file.visible, disabled: editable === false, 'aria-label': t( 'projects.file-visible' ), dataset: { id: file.id }, on: { change: function( event ) {
+
+							const box = event.target;
+							const wanted = box.checked;
+
+							box.disabled = true;
+
+							call( 'files/save', { id : file.id, visible : wanted }, 'projects.error-file' ).then( function( answer ) {
+
+								box.disabled = false;
+
+								if( answer.ok === true )
+									file.visible = wanted;
+								else
+									box.checked = file.visible;
+							} );
+						} } } );
+
+						return el( 'tr', { dataset: { id: file.id } },
+							el( 'td', { class: 'wrap' }, editable === true && file.url !== '' ? link( file.url, file.name, { target: '_blank', rel: 'noopener' } ) : file.name ),
+							el( 'td', { class: 'r num', text: sizeText( file.size ) } ),
+							el( 'td', { text: dmy( file.created ) } ),
+							el( 'td', { text: file.by.kind === 'owner' ? t( 'projects.by-owner' ) : ( file.by.label !== '' ? file.by.label : t( 'projects.by-member' ) ) } ),
+							el( 'td', {}, visibleBox ),
+							el( 'td', { class: 'r' }, editable === true ? el( 'button', { type: 'button', class: 'btn sm quiet danger', text: t( 'projects.file-delete' ), dataset: { del: file.id }, on: { click: function() {
+
+								ask( { title : t( 'projects.file-delete' ), text : t( 'projects.file-delete-text', file.name ), yes : t( 'projects.file-delete' ), danger : true } ).then( function( yes ) {
+
+									if( yes !== true || state.view !== mine )
+										return;
+
+									call( 'files/delete', { id : file.id }, 'projects.error-file' ).then( function( answer ) {
+										if( answer.ok === true && state.view === mine ) {
+											toast( t( 'projects.file-deleted' ) );
+											reloadProjekt( view );
+										}
+									} );
+								} );
+							} } } ) : null ) );
+					} ) ) ) );
+		};
+
+		// The table is drawn again where the files changed under it (an upload); the rest of the tab stays as it is
+		view.redraw = function() {
+
+			clear( tableBox );
+			tableBox.appendChild( filesTable() );
+
+			if( view.countNode !== null && view.countNode !== undefined )
+				view.countNode.textContent = String( view.project.files );
+		};
+
+		tableBox.appendChild( filesTable() );
+
+		if( editable === true ) {
+
+			const box = el( 'div', { id: 'project-upload-holder', class: 'gap' }, el( 'p', { class: 'state-note', role: 'status', text: t( 'loading' ) } ) );
+
+			holder.appendChild( box );
+
+			// The sizes the uploads run into are the panel's: the chunk and the largest file
+			const drawUpload = function() {
+				clear( box );
+				box.appendChild( uploadCard( view ) );
+			};
+
+			if( view.limits !== null )
+				drawUpload();
+			else
+				call( 'files/list', { group : groupOf( view.client === null ? '' : view.client.number ) }, 'projects.error-limits' ).then( function( answer ) {
+
+					if( state.view !== mine )
+						return;
+
+					if( answer.ok !== true ) {
+						clear( box );
+						box.appendChild( note( 'bad', t( 'projects.error-limits' ) ) );
+						return;
+					}
+
+					view.limits = answer.body.limits;
+					drawUpload();
+				} );
+		}
+
+		return holder;
+	};
+
+	/**
+	 *	Delete a project, after the question: the Elements panel's own delete. The folder in Files stays
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{void}
+	 */
+	const removeProjekt = function( view ) {
+
+		const project = view.project;
+
+		ask( { title : t( 'projects.delete' ), text : t( view.folder === null ? 'projects.delete-text' : 'projects.delete-text-folder', projectName( project ) ), yes : t( 'projects.delete' ), danger : true } ).then( function( yes ) {
+
+			if( yes !== true || state.view !== view.mine )
+				return;
+
+			call( 'elements/delete', { type : PROJECT_TYPE, uri : project.id }, 'projects.error-delete' ).then( function( answer ) {
+				if( answer.ok === true && state.view === view.mine ) {
+					toast( t( 'projects.deleted' ) );
+					wn.location.hash = '#projekte';
+				}
+			} );
+		} );
+	};
+
+	const drawProjekt = function( view ) {
+
+		const project = view.project;
+		const edits = state.perms.elements === true;
+		const start = PROJECT_TABS.includes( state.tab ) === true ? state.tab : PROJECT_TABS[0];
+
+		view.mine = state.view;
+		state.tab = start;
+		state.draft = null;
+		reveal();
+
+		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#projekte', t( 'projects.title' ) ), ' › '+ projectName( project ) ) );
+		state.main.appendChild( head( el( 'h1', { text: projectName( project ) } ), projectBadge( project ),
+			el( 'span', { class: 'sub' }, view.client === null ? project.client : link( '#kunde-'+ view.client.id, view.client.title ), project.started === '' ? null : ' · '+ t( 'projects.since', dmy( project.started ) ) ),
+			el( 'span', { class: 'grow' } ),
+			view.client !== null && view.client.active === true ? newMenu( t( 'card.document-new' ), view.client.id, project.id ) : null,
+			edits === false ? null : menu( { label : '⋯', aria : t( 'items.more' ), items : [
+				{ label : t( 'projects.edit' ), run : function() {
+					if( view.editing === true )
+						return;
+					view.editing = true;
+					view.info.replaceWith( view.info = projectCard( view ) );
+				} },
+				{ label : t( project.done === true ? 'projects.reopen' : 'projects.finish' ), run : function() {
+					projectSave( project.id, view.native, { done : project.done !== true } ).then( function( answer ) {
+						if( answer.ok !== true ) {
+							failed( answer, 'projects.error-save' );
+							return;
+						}
+
+						toast( t( project.done === true ? 'projects.reopened' : 'projects.finished' ) );
+
+						if( state.view === view.mine )
+							reloadProjekt( view );
+					} );
+				} },
+				'sep',
+				{ label : t( 'projects.delete' ), danger : true, run : function() { removeProjekt( view ) } },
+			] } ) ) );
+
+		view.info = projectCard( view );
+		state.main.appendChild( view.info );
+
+		const body = el( 'div', { id: 'tab' } );
+		const buttons = [];
+
+		const show = function( key ) {
+
+			state.tab = key;
+			buttons.forEach( function( button ) {
+				button.setAttribute( 'aria-selected', button.dataset.tab === key ? 'true' : 'false' );
+				button.classList.toggle( 'on', button.dataset.tab === key );
+			} );
+			clear( body );
+			body.appendChild( { belege : tabProjectDocuments, dateien : tabProjectFiles }[key]( view ) );
+		};
+
+		const strip = el( 'div', { class: 'tabs', role: 'tablist' }, PROJECT_TABS.map( function( key ) {
+
+			const count = key === 'belege' ? project.documents : project.files;
+			const badge = count === null ? null : el( 'span', { class: 'n', text: String( count ) } );
+			const button = el( 'button', { type: 'button', role: 'tab', 'aria-selected': key === start ? 'true' : 'false', class: key === start ? 'on' : '', dataset: { tab: key }, on: { click: function() {
+				if( state.view === view.mine )
+					show( key );
+			} } }, t( 'ptab.'+ key ), badge );
+
+			if( key === 'dateien' )
+				view.countNode = badge;
+
+			buttons.push( button );
+
+			return button;
+		} ) );
+
+		state.main.appendChild( strip );
+		state.main.appendChild( body );
+		show( start );
 	};
 
 
@@ -5897,10 +6986,10 @@
 		if( found !== null )
 			return { screen : 'entwurf', id : Number( found[1] ) };
 
-		found = /^neu-(invoice|offer|contract|privacy|information)(?:-([1-9][0-9]{0,9}))?(?:-k([1-9][0-9]{0,9}))?$/.exec( text );
+		found = /^neu-(invoice|offer|contract|privacy|information)(?:-([1-9][0-9]{0,9}))?(?:-k([1-9][0-9]{0,9})(?:-p([A-Za-z0-9_]{1,40}))?)?$/.exec( text );
 
 		if( found !== null )
-			return { screen : 'entwurf', category : found[1], offer : found[2] === undefined ? '' : found[2], client : found[3] === undefined ? '' : found[3] };
+			return { screen : 'entwurf', category : found[1], offer : found[2] === undefined ? '' : found[2], client : found[3] === undefined ? '' : found[3], project : found[4] === undefined ? '' : found[4] };
 
 		if( text === 'kunden' )
 			return { screen : 'kunden' };
@@ -5908,10 +6997,23 @@
 		if( text === 'kunde-neu' )
 			return { screen : 'kundeneu' };
 
-		found = /^kunde-([1-9][0-9]{0,9})(?:-(belege|portal|notizen|einladen))?$/.exec( text );
+		found = /^kunde-([1-9][0-9]{0,9})(?:-(belege|projekte|portal|notizen|einladen))?$/.exec( text );
 
 		if( found !== null )
 			return { screen : 'kunde', id : Number( found[1] ), tab : found[2] === undefined ? '' : found[2] };
+
+		if( text === 'projekte' )
+			return { screen : 'projekte' };
+
+		found = /^projekte-neu(?:-k([1-9][0-9]{0,9}))?$/.exec( text );
+
+		if( found !== null )
+			return { screen : 'projektneu', client : found[1] === undefined ? '' : found[1] };
+
+		found = /^projekt-([A-Za-z0-9_]{1,40})(?:-(belege|dateien))?$/.exec( text );
+
+		if( found !== null )
+			return { screen : 'projekt', id : found[1], tab : found[2] === undefined ? '' : found[2] };
 
 		if( text === 'positionen' )
 			return { screen : 'positionen' };
@@ -5963,9 +7065,9 @@
 		return { screen : 'uebersicht' };
 	};
 
-	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, positionen : positionen, position : position, einstellungen : einstellungen, einrichtung : einrichtung,
+	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, projekte : projekte, projektneu : projektNeu, projekt : projekt, positionen : positionen, position : position, einstellungen : einstellungen, einrichtung : einrichtung,
 		pdfvorlagen : pdfVorlagen, pdfvorlage : pdfVorlage, pdfbausteine : pdfBausteine, pdfbaustein : pdfBaustein, pdflayout : pdfLayout, pdfdesign : pdfDesign };
-	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', positionen : 'positionen', position : 'positionen', einstellungen : 'einstellungen', einrichtung : '',
+	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', projekte : 'projekte', projektneu : 'projekte', projekt : 'projekte', positionen : 'positionen', position : 'positionen', einstellungen : 'einstellungen', einrichtung : '',
 		pdfvorlagen : 'pdf', pdfvorlage : 'pdf', pdfbausteine : 'pdf', pdfbaustein : 'pdf', pdflayout : 'pdf', pdfdesign : 'pdf' };
 
 	const route = function() {
@@ -6045,7 +7147,7 @@
 		state.base = data.base;
 		state.csrf = data.csrf;
 		state.perm = data.perm;
-		state.perms = Object.assign( { crm : true, pdf : false, elements : false, text : false }, data.perms );
+		state.perms = Object.assign( { crm : true, pdf : false, elements : false, text : false, files : false }, data.perms );
 		state.pdfAvailable = data.pdf_available !== false;
 		state.user = data.user.name;
 		state.texts = data.texts;

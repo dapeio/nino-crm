@@ -86,4 +86,13 @@ return [
 	'[[/_admin/elements/field/positionen/hidden]]' => 'Ausgeblendet',
 	'[[/_admin/elements/field/positionen/sort]]' => 'Reihenfolge',
 	'[[/_admin/elements/type/positionen/hint]]' => 'Was Du verkaufst: Die Texte gelten je Sprache, Preis und Steuersatz für alle. Ausgeblendet nimmt eine Position aus dem Editor der Belege und von der Seite; steht Ausgeblendet auf Nein, ist sie angeboten.',
+
+	// The Elements panel's own words for the type Projekte - the workbench's, not the site's (listed in the unit's blacklist)
+	'[[/_admin/elements/field/projekte/title]]' => 'Titel',
+	'[[/_admin/elements/field/projekte/client]]' => 'Kunde',
+	'[[/_admin/elements/field/projekte/description]]' => 'Beschreibung',
+	'[[/_admin/elements/field/projekte/started]]' => 'Beginn',
+	'[[/_admin/elements/field/projekte/done]]' => 'Abgeschlossen',
+	'[[/_admin/elements/field/projekte/folder]]' => 'Ordner',
+	'[[/_admin/elements/type/projekte/hint]]' => 'Ein Projekt gehört zu einem Kunden. Der Kunde ist seine Nummer (K-0001), der Ordner die Kennung seines Ordners im Panel Dateien. Abgeschlossen auf Nein heißt: das Projekt läuft. Belege nennen ein Projekt; solange das so ist, lässt es sich nicht löschen.',
 ];

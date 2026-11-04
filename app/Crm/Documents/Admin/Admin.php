@@ -48,6 +48,8 @@ class Admin {
 		'sign'     => [ 409, 'crm_documents_sign', '' ],
 		'released' => [ 409, 'crm_documents_released', '' ],
 		'mail'     => [ 409, 'crm_documents_sign_mail', '' ],
+		'project'  => [ 400, 'crm_project', 'project' ],
+		'project_client' => [ 409, 'crm_project_client', 'project' ],
 	];
 
 	// What Sign refuses a request with, as the status and the code a person is answered
@@ -62,7 +64,7 @@ class Admin {
 	];
 
 	// The fields of a draft a post may carry
-	private const array FIELDS = [ 'date', 'due_date', 'valid_until', 'period_from', 'period_to', 'template_key', 'inputs', 'reverse_charge', 'lines', 'title' ];
+	private const array FIELDS = [ 'date', 'due_date', 'valid_until', 'period_from', 'period_to', 'template_key', 'inputs', 'reverse_charge', 'lines', 'title', 'project' ];
 
 	// What an action made or touched, by action: written by the action, read by log() in the same request
 	private static array $_made = [];
@@ -73,6 +75,7 @@ class Admin {
 			'crm-documents/get'           => [ self::class, 'apiGet' ],
 			'crm-documents/save'          => [ self::class, 'apiSave' ],
 			'crm-documents/remove'        => [ self::class, 'apiRemove' ],
+			'crm-documents/project'       => [ self::class, 'apiProject' ],
 			'crm-documents/finalise'      => [ self::class, 'apiFinalise' ],
 			'crm-documents/state'         => [ self::class, 'apiState' ],
 			'crm-documents/from-offer'    => [ self::class, 'apiFromOffer' ],
@@ -108,6 +111,7 @@ class Admin {
 		return match( $action ) {
 			'crm-documents/save'          => ( isset( $data['id'] ) === true && $data['id'] !== '' ? 'Changed document ' : 'Added draft ' ). $of,
 			'crm-documents/remove'        => 'Deleted draft '. $of,
+			'crm-documents/project'       => 'Changed the project of document '. $of,
 			'crm-documents/finalise'      => 'Finalised document '. $of,
 			'crm-documents/state'         => 'Moved document '. $of,
 			'crm-documents/from-offer'    => 'Made an invoice draft from offer '. $of,
@@ -150,6 +154,16 @@ class Admin {
 			if( $value !== '' )
 				$filter[$key] = (int) $value;
 		}
+
+		$project = \Nino\Admin\Admin::postString( $data, 'project' );
+
+		if( $project !== '' && preg_match( \Crm\Projekte::ID, $project ) !== 1 ) {
+			\Nino\Http::fail( $request, 400, 'the filter is not valid', 'crm_documents_format', [], 'project' );
+			return;
+		}
+
+		if( $project !== '' )
+			$filter['project'] = $project;
 
 		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request, $filter ): void {
 
@@ -331,6 +345,43 @@ class Admin {
 			self::$_made['crm-documents/remove'] = (string) $document['id'];
 
 			\Nino\Http::ok( $request, [ 'removed' => true ] );
+		} );
+	}
+
+	/**
+	 *	Set the project of a document of any state, a finalised one included: id and project (the id of a project of the document's client, '' for none).
+	 *	The relation is no part of the finalised content, the PDF and its hash stay. Answers the document as save does
+	 */
+	public static function apiProject( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
+
+			$data = \Nino\Admin\Admin::postData();
+			$document = self::_document( $appData, $request, $data );
+
+			if( $document === null )
+				return;
+
+			$project = is_string( $data['project'] ?? null ) === true ? $data['project'] : null;
+
+			if( $project === null ) {
+				\Nino\Http::fail( $request, 400, 'the value has a wrong format', 'crm_documents_format', [], 'project' );
+				return;
+			}
+
+			$moved = Documents::setProject( $appData, $document['id'], $project );
+
+			if( is_string( $moved ) === true ) {
+				self::_refused( $request, $moved );
+				return;
+			}
+
+			self::$_made['crm-documents/project'] = Render::name( $moved ). ' to '. ( $moved['project'] === '' ? 'none' : 'project '. $moved['project'] );
+
+			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $moved ) ] );
 		} );
 	}
 
@@ -628,6 +679,7 @@ class Admin {
 	 *	  templates-offer, templates-invoice     ok, none (Pdf has no template of the tag) - only while Pdf is active
 	 *	  pdf-dir          ok, unwritable (the directory the PDF files are kept in, or the one above it where it is not made yet)
 	 *	  positionen       ok, missing (the element type /positionen, which the button Portal einrichten brings, in the panel CRM and in the settings of the surface)
+	 *	  projekte         ok, missing (the element type /projekte, which the same button brings)
 	 */
 	public static function apiStatus( array &$appData, array &$request ): void {
 
@@ -664,6 +716,7 @@ class Admin {
 
 		$items[] = [ 'key' => 'pdf-dir', 'state' => is_dir( $dir ) === true && is_writable( $dir ) === true ? 'ok' : 'unwritable' ];
 		$items[] = [ 'key' => 'positionen', 'state' => \Crm\Positionen::missing( $appData ) === true ? 'missing' : 'ok' ];
+		$items[] = [ 'key' => 'projekte', 'state' => \Crm\Projekte::missing( $appData ) === true ? 'missing' : 'ok' ];
 
 		\Nino\Http::ok( $request, [ 'items' => $items ] );
 	}
@@ -765,6 +818,7 @@ class Admin {
 			'settings'  => self::_settings( $appData ),
 			'items'     => self::_catalogue( $appData ),
 			'offers'    => self::_offers( $appData ),
+			'projects'  => self::_projects( $appData, $document['client_id'] ),
 			'accounts'  => $document['state'] !== 'draft' ? self::_accounts( $appData, $document['client_id'] ) : [],
 			'sign_days' => max( 1, min( 90, (int) \Nino\Features::setting( $appData, 'sign', 'days', 14 ) ) ),
 		];
@@ -792,6 +846,21 @@ class Admin {
 			'active'      => $item['active'],
 			'sort'        => $item['sort'],
 		], \Crm\Positionen::list( $appData ) );
+	}
+
+	/**
+	 *	The projects of a client, the newest first, the done ones included (the screen offers the open ones and the one the document names)
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$clientId
+	 *
+	 *	@return 	array											id, title and done of each
+	 */
+	private static function _projects( array &$appData, int $clientId ): array {
+
+		$client = \Crm\Clients::get( $appData, $clientId );
+
+		return $client === null ? [] : array_map( static fn( array $project ): array => [ 'id' => $project['id'], 'title' => $project['title'], 'done' => $project['done'] ], \Crm\Projekte::ofClient( $appData, $client['number'] ) );
 	}
 
 	/**

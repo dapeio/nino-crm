@@ -122,8 +122,10 @@ $thirdFile->exec( 'INSERT INTO client_accounts ( client_id, member_id ) VALUES (
 $thirdFile = null;
 $migrated = \Crm\Db::pdo( $third );
 $rows = \Crm\Db::rows( $third, 'SELECT client_id, member_id FROM client_accounts ORDER BY rowid' );
-check( 'migrations 0004 and 0005 on a database of the third schema run once: version 5, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 2 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 5
+check( 'migrations 0004 to 0006 on a database of the third schema run once: version 6, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 3 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 6
 	&& array_map( 'json_encode', $rows ) === [ '{"client_id":2,"member_id":"aaaaaaaaaaaa"}', '{"client_id":1,"member_id":"bbbbbbbbbbbb"}' ] );
+check( '...migration 0006 gave the documents the column project, empty for every row there is, and the index on it', in_array( 'project', array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( documents )' ), 'name' ), true ) === true
+	&& (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'documents_project\' AND tbl_name = \'documents\'' )['n'] === 1 && \Crm\Db::rows( $third, 'SELECT id FROM documents WHERE project <> \'\'' ) === [] );
 check( '...and the index that keeps an account on one client is unique', (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'client_accounts_member_unique\' AND sql LIKE \'%UNIQUE%\'' )['n'] === 1 );
 \Crm\Db::close();
 \Crm\Db::pdo( $third );
@@ -320,7 +322,7 @@ $clientWords = [ 'de_DE' => require $root. '/app/Crm/Clients/Admin/text/de_DE.ph
 check( 'every code the API of the clients and the panel answer has its text in both languages (the clients\' in their own files, the panel\'s in its own)', array_filter( array_unique( $codes[1] ), static fn( string $code ): bool => isset( ( $words['de_DE'] + $clientWords['de_DE'] )['[[/_admin/error/'. $code. ']]'], ( $words['en_US'] + $clientWords['en_US'] )['[[/_admin/error/'. $code. ']]'] ) === false ) === []
 	&& count( array_unique( $codes[1] ) ) >= 10 && array_keys( $clientWords['de_DE'] ) === array_keys( $clientWords['en_US'] ) && array_filter( array_keys( $clientWords['de_DE'] ), static fn( string $key ): bool => str_starts_with( $key, '[[/_admin/error/crm_clients_' ) === false ) === [] );
 check( 'every fill key the script of the panel asks for whole has its text', array_filter( array_unique( $keys[0] ), static fn( string $key ): bool => str_ends_with( $key, '/' ) === false && str_ends_with( $key, '-' ) === false && isset( $words['de_DE']['[['. $key. ']]'] ) === false ) === []
-	&& array_filter( [ 'routes', 'templates', 'types', 'paths' ], static fn( string $kind ): bool => isset( $words['de_DE']['[[/_admin/crm/status/lacks-'. $kind. ']]'], $words['en_US']['[[/_admin/crm/status/lacks-'. $kind. ']]'] ) === false ) === [] );
+	&& array_filter( [ 'routes', 'templates', 'type-positionen', 'type-projekte', 'paths' ], static fn( string $kind ): bool => isset( $words['de_DE']['[[/_admin/crm/status/lacks-'. $kind. ']]'], $words['en_US']['[[/_admin/crm/status/lacks-'. $kind. ']]'] ) === false ) === [] );
 $called = [];
 
 foreach( [ 'members', 'files', 'review', 'sign', 'pdf' ] as $key ) {
@@ -479,8 +481,8 @@ check( 'init registers the callback of the door and writes no route: the start p
 $manifest = \Nino\Features::readUnitManifest( $root. '/app/Crm/Crm/install' );
 check( 'setup applies the unit and says what it added', $status === 200 && count( $body['added']['routes'] ) === 6 && count( $body['added']['templates'] ) === 7 && $body['added']['texts'] > 20 && $body['added']['paths'] === true
 	&& $body['existed']['routes'] === [] && $body['existed']['templates'] === [] );
-check( '...and the element type of the items: it is among what was added, the file is there, and the unit names it', $body['added']['types'] === [ 'positionen.php' ] && $body['existed']['types'] === [] && \Crm\Positionen::missing( $appData ) === false
-	&& ( $manifest['elementTypes'] ?? [] ) === [ 'positionen.php' ] && is_file( $root. '/app/Crm/Crm/install/positionen.php' ) === true );
+check( '...and the element type of the items: it is among what was added, the file is there, and the unit names it', $body['added']['types'] === [ 'positionen.php', 'projekte.php' ] && $body['existed']['types'] === [] && \Crm\Positionen::missing( $appData ) === false && \Crm\Projekte::missing( $appData ) === false
+	&& ( $manifest['elementTypes'] ?? [] ) === [ 'positionen.php', 'projekte.php' ] && is_file( $root. '/app/Crm/Crm/install/positionen.php' ) === true && is_file( $root. '/app/Crm/Crm/install/projekte.php' ) === true );
 check( 'the routes are in the persisted routes and in the live ones', array_diff( array_keys( $manifest['routes'] ), array_keys( \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) ) ) === [] && array_diff( array_keys( $manifest['routes'] ), array_keys( $appData['/nino/http/routes'] ) ) === [] );
 check( 'the unit has the page /portal/dokumente: its route, its template and its words in both languages', ( $manifest['routes']['GET://portal/dokumente']['body'] ?? '' ) === '[template /templates/page-portal-documents]' && in_array( 'page-portal-documents.tpl', $manifest['templates'], true ) === true
 	&& isset( \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://portal/dokumente'] ) === true
@@ -532,7 +534,7 @@ $textFile['[[/template/page-portal/intro/title]]'] = 'Mein eigener Titel';
 $routesAfter = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/setup' );
 check( 'a second setup adds nothing and says what was there', $status === 200 && $body['added']['routes'] === [] && $body['added']['templates'] === [] && $body['added']['texts'] === 0 && $body['added']['paths'] === false && $body['added']['start'] === false
-	&& $body['added']['types'] === [] && count( $body['existed']['routes'] ) === 6 && count( $body['existed']['templates'] ) === 7 && $body['existed']['types'] === [ 'positionen.php' ] );
+	&& $body['added']['types'] === [] && count( $body['existed']['routes'] ) === 6 && count( $body['existed']['templates'] ) === 7 && $body['existed']['types'] === [ 'positionen.php', 'projekte.php' ] );
 check( '...a template the project changed survives it', (string) file_get_contents( $pageFile ) === $changed );
 check( '...so does a word the project changed', \Nino\Filesystem::getFileContent( $appData, '/text/de_DE.php', [] )['[[/template/page-portal/intro/title]]'] === 'Mein eigener Titel' );
 check( '...and the routes are the same, a route the project changed is not written again', \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) === $routesAfter && \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://portal']['body'] === '[template /templates/page-own]' );
@@ -543,9 +545,17 @@ check( '...and the routes are the same, a route the project changed is not writt
 
 // The element type is a part of the portal: without it the status says so, and the button brings it again
 unlink( \Nino\Filesystem::path( $appData, '/elements/positionen.php' ) );
-check( 'a portal whose element type is gone is only partly there and says what it lacks, and the button is offered', $stateOf( ninoCall( $appData, $workbench, [], 'crm/status' )[1], 'portal' ) === 'partial' && array_column( ninoCall( $appData, $workbench, [], 'crm/status' )[1]['items'], 'lacks', 'key' )['portal'] === [ 'types' ] && \Crm\Positionen::missing( $appData ) === true );
+check( 'a portal whose element type is gone is only partly there and says what it lacks, and the button is offered', $stateOf( ninoCall( $appData, $workbench, [], 'crm/status' )[1], 'portal' ) === 'partial' && array_column( ninoCall( $appData, $workbench, [], 'crm/status' )[1]['items'], 'lacks', 'key' )['portal'] === [ 'type-positionen' ] && \Crm\Positionen::missing( $appData ) === true );
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/setup' );
 check( '...the setup adds the type and nothing else, and the portal is ok again', $status === 200 && $body['added']['types'] === [ 'positionen.php' ] && $body['added']['routes'] === [] && $body['added']['templates'] === [] && $body['added']['texts'] === 0
+	&& $stateOf( ninoCall( $appData, $workbench, [], 'crm/status' )[1], 'portal' ) === 'ok' );
+
+// ...and so is the type of the projects, in the same word of the status: the one type that is gone is named, the other stays
+unlink( \Nino\Filesystem::path( $appData, '/elements/projekte.php' ) );
+check( 'a portal without the type of the projects is only partly there as well, it lacks that type and only that one - the status does not name the type that is there - and the screen Projekte has nothing to read until the setup brings it', $stateOf( ninoCall( $appData, $workbench, [], 'crm/status' )[1], 'portal' ) === 'partial' && array_column( ninoCall( $appData, $workbench, [], 'crm/status' )[1]['items'], 'lacks', 'key' )['portal'] === [ 'type-projekte' ]
+	&& \Crm\Projekte::missing( $appData ) === true && \Crm\Positionen::missing( $appData ) === false && \Crm\Projekte::list( $appData ) === [] && \Crm\Projekte::get( $appData, '00001' ) === null );
+[ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/setup' );
+check( '...the setup adds that type and nothing else - add-only, the type of the items is as it was - and the portal is ok again', $status === 200 && $body['added']['types'] === [ 'projekte.php' ] && $body['existed']['types'] === [ 'positionen.php' ] && $body['added']['routes'] === [] && $body['added']['templates'] === [] && \Crm\Projekte::missing( $appData ) === false
 	&& $stateOf( ninoCall( $appData, $workbench, [], 'crm/status' )[1], 'portal' ) === 'ok' );
 
 // A project that protects paths and has a start page already keeps them
@@ -1062,7 +1072,7 @@ $keys = [ 'angebot', 'rechnung', 'stornorechnung', 'vertrag', 'datenschutz', 'in
 check( 'the setup does it all in one press: the six features on (the one that was on already is said to have been there), Members\' paths and start page, the PDF templates, the blocks and the layout, the start page', $status === 200
 	&& $body['added']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['features'] === [] && $body['added']['paths'] === true && $body['added']['start'] === true && $body['added']['home'] === 'starter'
 	&& $body['added']['pdf']['templates'] === $keys && $body['added']['pdf']['blocks'] === [ 'zahlungsbedingungen', 'gueltigkeit', 'unterschrift', 'kontakt' ] && $body['added']['pdf']['layout'] === [ 'header', 'footer' ]
-	&& $body['added']['routes'] === [] && $body['existed']['routes'] !== [] && $body['existed']['types'] === [ 'positionen.php' ] );
+	&& $body['added']['routes'] === [] && $body['existed']['routes'] !== [] && $body['existed']['types'] === [ 'positionen.php', 'projekte.php' ] );
 check( '...every feature is on and listed, Members protects /portal and sends a member there', array_map( static fn( string $key ): bool => \Crm\Crm::featureOn( $fresh, $key ), [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] ) === [ true, true, true, true, true, true ]
 	&& \Nino\Features::setting( $fresh, 'members', 'paths', [] ) === [ '/portal' ] && \Nino\Features::setting( $fresh, 'members', 'start', '' ) === '/portal' );
 $seeded = (array) \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] );
