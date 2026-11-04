@@ -336,9 +336,19 @@ check( '...the status of Belege names the type, and the editor has no items', $p
 \Nino\Filesystem::mutate( $appData, '/text/blacklist.php', static fn( array $list ): array => array_values( array_unique( array_merge( $list, [ '/_admin/elements/field/other/title' ] ) ) ) );
 $foreignBefore = count( (array) \Nino\Filesystem::getFileContent( $appData, '/text/blacklist.php', [] ) );
 
+// The setup switches on every feature of the product; the rest of this suite works with Members and Pdf alone
+$restore = static function() use ( &$appData ): void {
+	foreach( [ 'sign', 'review', 'files', 'events' ] as $key )
+		\Nino\Features::deactivate( $appData, $key );
+
+	// ...and with the templates it made itself: the ones the setup seeds besides them are taken away
+	foreach( [ 'stornorechnung', 'datenschutz', 'information' ] as $key )
+		@unlink( \Nino\Filesystem::path( $appData, '/data/pdf/templates/'. $key. '.php' ) );
+};
+
 [ $status, $body ] = $post( 'crm/setup' );
 check( 'the setup of Kunden brings the type: it is among what was added, and the file is the unit\'s own', $status === 200 && $body['added']['types'] === [ 'positionen.php' ] && $body['existed']['types'] === [] && Positionen::missing( $appData ) === false
-	&& \Nino\Filesystem::getFileContent( $appData, '/elements/positionen.php', [] ) === include $root. '/app/Crm/unit/positionen.php' );
+	&& \Nino\Filesystem::getFileContent( $appData, '/elements/positionen.php', [] ) === include $root. '/app/Crm/Crm/install/positionen.php' );
 
 $model = \Nino\Elements::getElementModel( $appData, '/positionen' );
 check( 'the model has the seven fields of the plan: the words per language, the numbers for all', array_keys( $model ) === [ 'title', 'description', 'unit', 'price', 'vat', 'hidden', 'sort' ]
@@ -353,7 +363,7 @@ $blacklisted = (array) \Nino\Filesystem::getFileContent( $appData, '/text/blackl
 check( 'the setup brings the words of the Elements form for the type: the labels of the seven fields and the hint, in both languages, and not empty', array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => array_filter( $keys, static fn( string $key ): bool => trim( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/_admin/elements/'. $key. ']]'] ?? '' ) ) === '' ) !== [] ) === []
 	&& \Nino\Filesystem::getFileContent( $appData, '/text/de_DE.php', [] )['[[/_admin/elements/field/positionen/hidden]]'] === 'Ausgeblendet' && \Nino\Filesystem::getFileContent( $appData, '/text/en_US.php', [] )['[[/_admin/elements/field/positionen/hidden]]'] === 'Hidden' );
 check( '...and they are on the blacklist of the texts, as the words of the workbench are, and the unit lists exactly those', array_diff( array_map( static fn( string $key ): string => '/_admin/elements/'. $key, $keys ), $blacklisted ) === []
-	&& ( \Nino\Features::readUnitManifest( $root. '/app/Crm/unit' )['blacklist'] ?? [] ) === array_map( static fn( string $key ): string => '/_admin/elements/'. $key, $keys ) );
+	&& ( \Nino\Features::readUnitManifest( $root. '/app/Crm/Crm/install' )['blacklist'] ?? [] ) === array_map( static fn( string $key ): string => '/_admin/elements/'. $key, $keys ) );
 check( '...added to the blacklist, not written over it: the key that was there before is still there, and the list grew by the unit\'s eight', in_array( '/_admin/elements/field/other/title', $blacklisted, true ) === true && count( $blacklisted ) === $foreignBefore + count( $keys ) );
 
 $own = (array) \Nino\Filesystem::getFileContent( $appData, '/elements/positionen.php', [] );
@@ -366,6 +376,7 @@ $blacklisted = (array) \Nino\Filesystem::getFileContent( $appData, '/text/blackl
 check( '...and the second press leaves the blacklist as it was: no key twice, the foreign one still there', count( $blacklisted ) === $foreignBefore + count( $keys ) && count( array_unique( $blacklisted ) ) === count( $blacklisted ) && in_array( '/_admin/elements/field/other/title', $blacklisted, true ) === true );
 $own['model']['price']['suffix'] = '€';
 \Nino\Filesystem::putFileContent( $appData, '/elements/positionen.php', $own );
+$restore();
 
 // What the owner enters in the Elements panel: the words per language, the numbers for all. Workshop has a text in English only
 $made = [
@@ -924,7 +935,7 @@ Documents::remove( $appData, $periodContract['id'] );
 check( 'an offer with a period carries it as /offer/period, formatted as the invoice\'s is, and no /invoice/period; a contract on that offer carries the offer\'s; an invoice carries no /offer/period, and an offer with none has an empty one',
 	$periodOffer['/offer/period'] === '01.02.2026 - 28.02.2026' && array_key_exists( '/invoice/period', $periodOffer ) === false && is_array( $periodContract )
 	&& $periodContractPeriod === '01.02.2026 - 28.02.2026' && array_key_exists( '/offer/period', $periodInvoice ) === false && $periodInvoice['/invoice/period'] === '01.02.2026 - 28.02.2026'
-	&& Render::data( $appData, $offerFinal, $offerFinal['lines'], $offerFinal['client_frozen'] )['tokens']['/offer/period'] === '' );
+	&& Render::data( $appData, $offerFinal, $offerFinal['lines'], $offerFinal['client_frozen'] )['tokens']['/offer/period'] === Render::text( 'period.none-offer' ) && Render::text( 'period.none-offer' ) !== '' );
 check( '...making it accepts the offer that was open', $state( $smallOffer['id'] ) === 'accepted' && $derived['parent_id'] === $smallOffer['id'] );
 Documents::fromOffer( $appData, $smallOffer['id'] );
 check( '...an offer that is accepted stays accepted', $state( $smallOffer['id'] ) === 'accepted' );
@@ -1697,17 +1708,17 @@ $contractFull = (array) Documents::get( $appData, $contract['id'] );
 $contractData = Documents::dataOf( $appData, $contractFull );
 check( 'the tokens of a contract: its own title, date and the number of its offer; the client as it was frozen', array_intersect_key( $contractData['tokens'], array_flip( preg_grep( '~^/document/~', array_keys( $contractData['tokens'] ) ) ) ) === [ '/document/title' => 'Vertrag neu', '/document/date' => Render::day( $today ), '/document/parent' => $offerFinal['number'] ] && $contractData['tokens']['/customer/company'] === 'Studio Nord GmbH' );
 check( '...and the offer\'s number, day, validity and totals with the currency', array_intersect_key( $contractData['tokens'], array_flip( preg_grep( '~^/offer/~', array_keys( $contractData['tokens'] ) ) ) ) === [ '/offer/number' => $offerNow['number'], '/offer/date' => Render::day( $offerNow['date'] ), '/offer/valid' => Render::day( (string) $offerNow['valid_until'] ),
-	'/offer/gross' => Money::format( $offerNow['gross'], '€' ), '/offer/period' => '' ] && $offerNow['gross'] > 0 );
+	'/offer/gross' => Money::format( $offerNow['gross'], '€' ), '/offer/period' => Render::text( 'period.none-offer' ) ] && $offerNow['gross'] > 0 );
 check( '...the slots address, lines (the offer\'s lines) and totals (the offer\'s) so that a contract can quote them', array_keys( $contractData['slots'] ) === [ 'address', 'lines', 'totals' ] && $contractData['slots']['lines'] === Render::lines( $offerNow['lines'], Money::totals( $offerNow['lines'], $offerNow['vat_mode'], $offerNow['reverse_charge'] ), $offerNow['vat_mode'] === 'regular', '€' )
 	&& str_contains( $contractData['slots']['lines'], 'Webdesign' ) === true && str_contains( $contractData['slots']['totals'], 'Gesamtbetrag' ) === true && $contractData['inputs'] === [ 'zusatz' => 'Laufzeit ein Jahr' ] );
-check( '.../site/portal and /site/login are the absolute addresses of the site\'s pages', array_intersect_key( $contractData['tokens'], [ '/site/portal' => 0, '/site/login' => 0 ] ) === [ '/site/portal' => 'https://example.org/portal', '/site/login' => 'https://example.org/login' ] );
+check( '.../site/portal and /site/login are the absolute addresses of the portal and of the site (whose start page is the login)', array_intersect_key( $contractData['tokens'], [ '/site/portal' => 0, '/site/login' => 0 ] ) === [ '/site/portal' => 'https://example.org/portal', '/site/login' => 'https://example.org' ] );
 $privacyData = Documents::dataOf( $appData, (array) Documents::get( $appData, $privacyFinal['id'] ) );
 check( 'a privacy document has no offer: the tokens /document/title, /date and /parent (empty), /customer/* and /site/*, and the slot address alone', array_intersect_key( $privacyData['tokens'], array_flip( preg_grep( '~^/document/~', array_keys( $privacyData['tokens'] ) ) ) ) === [ '/document/title' => 'Datenschutz', '/document/date' => Render::day( $today ), '/document/parent' => '' ] && preg_grep( '~^/offer/~', array_keys( $privacyData['tokens'] ) ) === []
 	&& array_keys( $privacyData['slots'] ) === [ 'address' ] && $privacyData['tokens']['/site/portal'] === 'https://example.org/portal' );
 Db::exec( $appData, 'UPDATE documents SET parent_id = :offer WHERE id = :id', [ 'offer' => $offerFinal['id'], 'id' => $privacyFinal['id'] ] );
 check( 'only a contract quotes an offer: a privacy document that hangs on one by accident has no offer tokens', preg_grep( '~^/offer/~', array_keys( Documents::dataOf( $appData, (array) Documents::get( $appData, $privacyFinal['id'] ) )['tokens'] ) ) === [] );
 Db::exec( $appData, 'UPDATE documents SET parent_id = NULL WHERE id = :id', [ 'id' => $privacyFinal['id'] ] );
-check( 'an invoice has the site tokens too, for a letter that quotes the portal', array_intersect_key( Render::data( $appData, $secondInvoice, $secondInvoice['lines'], $secondInvoice['client_frozen'] )['tokens'], [ '/site/portal' => 0, '/site/login' => 0 ] ) === [ '/site/portal' => 'https://example.org/portal', '/site/login' => 'https://example.org/login' ] );
+check( 'an invoice has the site tokens too, for a letter that quotes the portal', array_intersect_key( Render::data( $appData, $secondInvoice, $secondInvoice['lines'], $secondInvoice['client_frozen'] )['tokens'], [ '/site/portal' => 0, '/site/login' => 0 ] ) === [ '/site/portal' => 'https://example.org/portal', '/site/login' => 'https://example.org' ] );
 $addressless = $appData;
 \Nino\Html::addFills( $addressless, [ '[[/project/website/general/url]]' => '' ], '*' );
 check( 'a site with no address has empty site tokens', array_intersect_key( Render::data( $addressless, $secondInvoice, [], [] )['tokens'], [ '/site/portal' => 0, '/site/login' => 0 ] ) === [ '/site/portal' => '', '/site/login' => '' ] );
@@ -1719,7 +1730,7 @@ if( trim( (string) @shell_exec( 'command -v pdftotext 2>/dev/null' ) ) !== '' ) 
 	$contractText = $pdfText( \Nino\Filesystem::path( $appData, $sealed['pdf_path'] ) );
 	check( 'the PDF of the contract says its title, the offer\'s number and totals, the lines of the offer, the free field and the addresses of the site', str_contains( $contractText, 'Vertrag neu' ) === true && str_contains( $contractText, $offerNow['number'] ) === true && str_contains( $contractText, '237,00' ) === true
 		&& str_contains( $contractText, 'Webdesign' ) === true && str_contains( $contractText, 'Gesamtbetrag' ) === true && str_contains( $contractText, 'Laufzeit ein Jahr' ) === true && str_contains( $contractText, 'https://example.org/portal' ) === true && str_contains( $contractText, 'Studio Nord GmbH' ) === true );
-	check( '...the PDF of an information document says the addresses to the portal and the login, for the name of the client', str_contains( $pdfText( \Nino\Filesystem::path( $appData, $infoFinal['pdf_path'] ) ), 'Ben Süd: https://example.org/portal und https://example.org/login' ) === true );
+	check( '...the PDF of an information document says the addresses to the portal and the login, for the name of the client', str_contains( $pdfText( \Nino\Filesystem::path( $appData, $infoFinal['pdf_path'] ) ), 'Ben Süd: https://example.org/portal und https://example.org' ) === true );
 }
 
 // the route for the workbench: the name of the file is the one of the file

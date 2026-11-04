@@ -13,9 +13,9 @@ declare(strict_types=1);
  *													may use:
  *													  /document/number, /title, /date, /net, /vat, /gross, /vatnote, /parent
  *													  /invoice/due, /period (an invoice and a credit note)
- *													  /offer/number, /date, /valid, /gross, /period (an offer: its own; /period is empty where it has none)
+ *													  /offer/number, /date, /valid, /gross, /period (an offer: its own; /period says "nach Absprache" where it has none, as an invoice's says its own sentence)
  *													  /customer/number, /company, /name, /street, /zip, /city, /country, /email, /vat
- *													  /site/portal, /login (the absolute addresses of /portal and /login; empty where the site has none)
+ *													  /site/portal, /site/login (the absolute addresses of /portal and of the site, whose start page is the login; empty where the site has none)
  *													Slots: address, lines, totals. Inputs: the ones the template declares.
  *
  *													A template of the tags contract, privacy and information (a document without lines and without a
@@ -136,7 +136,7 @@ class Render {
 		$category = (string) $document['category'];
 		$plain = in_array( $category, Documents::PLAIN, true );
 
-		$tokens = [ '/site/portal' => \Nino\Html::absoluteUrl( $appData, '/portal' ), '/site/login' => \Nino\Html::absoluteUrl( $appData, '/login' ) ];
+		$tokens = [ '/site/portal' => \Nino\Html::absoluteUrl( $appData, '/portal' ), '/site/login' => \Nino\Html::absoluteUrl( $appData ) ];
 
 		// The client's field vat_id is the token /customer/vat
 		foreach( [ 'number', 'company', 'name', 'street', 'zip', 'city', 'country', 'email' ] as $field )
@@ -166,7 +166,8 @@ class Render {
 				$data['tokens']['/offer/date'] = self::day( (string) $offer['date'] );
 				$data['tokens']['/offer/valid'] = self::day( (string) ( $offer['valid_until'] ?? '' ) );
 				$data['tokens']['/offer/gross'] = Money::format( $totals['gross'], $currency );
-				$data['tokens']['/offer/period'] = self::period( (string) ( $offer['period_from'] ?? '' ), (string) ( $offer['period_to'] ?? '' ) );
+				$offerPeriod = self::period( (string) ( $offer['period_from'] ?? '' ), (string) ( $offer['period_to'] ?? '' ) );
+				$data['tokens']['/offer/period'] = $offerPeriod === '' ? self::text( 'period.none-offer' ) : $offerPeriod;
 				$data['slots']['lines'] = self::lines( $offer['lines'], $totals, $regular, $currency );
 				$data['slots']['totals'] = self::totals( $totals, $regular, $currency );
 			}
@@ -186,8 +187,8 @@ class Render {
 
 		$period = self::period( (string) ( $document['period_from'] ?? '' ), (string) ( $document['period_to'] ?? '' ) );
 
-		if( $period === '' && $category !== 'offer' )
-			$period = self::text( 'period.none' );
+		if( $period === '' )
+			$period = self::text( $category === 'offer' ? 'period.none-offer' : 'period.none' );
 
 		$data['tokens']['/document/title'] = self::text( 'title.'. $category );
 		$data['tokens']['/document/number'] = (string) $document['number'];

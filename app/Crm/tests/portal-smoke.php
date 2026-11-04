@@ -197,6 +197,13 @@ $reset = static function() use ( &$appData ): void {
 [ $status, $body ] = $post( 'crm/setup' );
 check( 'the portal pages are set up, the page Dokumente among them', $status === 200 && in_array( 'GET://portal/dokumente', $body['added']['routes'], true ) === true && in_array( 'page-portal-documents.tpl', $body['added']['templates'], true ) === true );
 
+// The setup switches on every feature of the product and seeds the templates of Pdf; this suite starts with Review and Events off and makes its own templates
+foreach( [ 'review', 'events' ] as $key )
+	\Nino\Features::deactivate( $appData, $key );
+
+foreach( [ 'angebot', 'rechnung', 'stornorechnung', 'vertrag', 'datenschutz', 'information' ] as $key )
+	@unlink( \Nino\Filesystem::path( $appData, '/data/pdf/templates/'. $key. '.php' ) );
+
 // --- Clients, accounts, templates, documents -----------------------------------------------------------------------------
 
 $blocksOf = static fn( array $extra ): array => array_merge( [ [ 'type' => 'html', 'html' => '<h1>[[/document/title]] [[/document/number]]</h1><p>[[/customer/company]] [[/site/portal]]</p>' ], [ 'type' => 'slot', 'name' => 'lines' ] ], $extra );

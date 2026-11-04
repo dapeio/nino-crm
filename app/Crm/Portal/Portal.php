@@ -138,7 +138,7 @@ class Portal {
 	 */
 	public static function overview( array &$appData ): array {
 
-		$manifest = \Nino\Features::readUnitManifest( dirname( __DIR__ ). '/unit' ) ?? [];
+		$manifest = \Nino\Features::readUnitManifest( dirname( __DIR__ ). '/Crm/install' ) ?? [];
 		$routes = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 		$routes = is_array( $routes ) === true ? $routes : [];
 		$pages = [];
@@ -177,6 +177,25 @@ class Portal {
 	public static function callbackSession( array &$appData, array &$account ): void {
 
 		unset( $appData[self::CACHE] );
+	}
+
+	/**
+	 *	'/nino/http/response/GET://': the door of the portal. The start page of the site is the template page-door, which draws the login form
+	 *	for a visitor; a member who is signed in is sent on to /portal before the page is rendered. A start page that is not the door - the
+	 *	owner put a page of his own there - is left as it is
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackDoor( array &$appData, array &$request ): void {
+
+		if( ( $request['/nino/http/response']['body'] ?? null ) !== \Crm\Crm::DOOR || \Crm\Crm::featureOn( $appData, 'members' ) === false )
+			return;
+
+		if( \Nino\Modules\Members::current( $appData ) !== null )
+			\Nino\Http::redirect( $appData, $request, '/portal', 302 );
 	}
 
 	/**

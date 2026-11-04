@@ -9,6 +9,7 @@ return [
 	'title.invoice' => 'Rechnung',
 	'title.credit' => 'Stornorechnung',
 	'period.none' => 'Leistungsdatum entspricht dem Rechnungsdatum',
+	'period.none-offer' => 'nach Absprache',
 	'vatnote.small_business' => 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.',
 	'vatnote.reverse' => 'Steuerschuldnerschaft des Leistungsempfängers.',
 	'head.pos' => 'Pos.',

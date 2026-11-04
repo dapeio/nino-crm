@@ -8,9 +8,10 @@
  *								what it posts, the totals it shows
  *				  the shell		the element helper (every element is made from data, no markup is written), the toast, the menus, the dialogs
  *								(<dialog>), the keys (/ finds the search, Esc closes), the router (#uebersicht, #belege, #beleg-12,
- *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #positionen, #einstellungen) and the
+ *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #positionen, #einstellungen, #einrichtung) and the
  *								answers of the endpoint (the session that ended, the token that is stale)
- *				  the screens	Übersicht, Belege, Beleg and Entwurf, then Kunden, Kundenkarte, Neuer Kunde, Positionen and Einstellungen
+ *				  the screens	Übersicht, Belege, Beleg and Entwurf, then Kunden, Kundenkarte, Neuer Kunde, Positionen and Einstellungen, and the
+ *								Einrichtung of the first run (the page starts there while crm/status says the product is not whole)
  *
  *				Every string that comes from the server or from a person enters the page as textContent or as a property of an
  *				element; nothing here builds HTML.
@@ -53,7 +54,7 @@
 			clients : [], items : [], offers : [], years : [], docs : [], summary : null, people : [], owed : {},
 			filter : { chip : 'all', q : '', sort : 'date', dir : -1, year : 0, page : 1 },
 			cfilter : { q : '', sort : 'number', dir : 1, page : 1 },
-			view : 0, tab : '', draft : null, saving : false, queued : false, pending : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
+			view : 0, entered : false, seen : null, tab : '', draft : null, saving : false, queued : false, pending : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
 		} );
 	};
 
@@ -3297,6 +3298,103 @@
 	};
 
 
+	// --- Einrichtung -------------------------------------------------------------------------------------------------
+
+	/**
+	 *	The checklist of the first run: a row for each thing the status names, its word, whether it is there and - where it is not - the sentence
+	 *	that says what is missing; the one button runs crm/setup and the screen is drawn again from the status it brought about. A whole product
+	 *	says "Fertig." with the way on to the Übersicht
+	 *
+	 *	@param		{Array}		items						The items of the status
+	 *	@param		{string}	said						What the setup said, kept over the screen that is drawn again
+	 *	@param		{number}	mine						The view that draws it
+	 *
+	 *	@return		{void}
+	 */
+	const drawEinrichtung = function( items, said, mine ) {
+
+		const whole = items.every( complete );
+
+		const run = el( 'button', { type: 'button', class: 'btn primary', id: 'einrichtung-run', hidden: whole, text: t( 'einrichtung.run' ), on: { click: function() {
+
+			run.disabled = true;
+
+			call( 'crm/setup', {}, 'error.setup' ).then( function( answer ) {
+
+				run.disabled = false;
+
+				if( state.view !== mine )
+					return;
+
+				// A run that was refused went part of the way: the rows show what it did, and the refusal stays in the toast
+				call( 'crm/status', {}, 'error.load' ).then( function( again ) {
+					if( again.ok === true && state.view === mine )
+						drawEinrichtung( again.body.items, answer.ok === true ? setupSentence( answer.body ) : '', mine );
+				} );
+			} );
+		} } } );
+
+		reveal();
+		state.main.appendChild( head( t( 'einrichtung.title' ) ) );
+		state.main.appendChild( el( 'div', { class: 'card pad' },
+			el( 'p', { class: 'state-note', text: t( 'einrichtung.intro' ) } ),
+			el( 'h3', { text: t( 'einrichtung.rows' ) } ),
+			el( 'ul', { class: 'list-mini', id: 'einrichtung-rows' }, items.map( function( item ) {
+
+				const word = 'einrichtung.row-'+ item.key;
+
+				return el( 'li', { 'data-key': item.key, 'data-state': complete( item ) ? 'ok' : 'todo' },
+					el( 'span', {}, el( 'b', { text: typeof state.texts[word] === 'string' ? t( word ) : item.key } ), item.state === 'ok' ? null : el( 'span', { class: 'state-note block', text: statusLine( item ) } ) ),
+					badge( complete( item ) ? 'signed' : 'portal', t( complete( item ) ? 'einrichtung.state-ok' : 'einrichtung.state-todo' ) ) );
+			} ) ),
+			el( 'div', { class: 'actions top' }, run ),
+			whole ? el( 'p', { class: 'state-note', id: 'einrichtung-done' }, el( 'b', { text: t( 'einrichtung.done' ) } ), ' ', link( '#uebersicht', t( 'einrichtung.next' ) ) ) : null,
+			whole ? el( 'p', { class: 'state-note', id: 'einrichtung-after', text: t( 'einrichtung.after' ) } ) : null,
+			el( 'p', { class: 'state-note', id: 'einrichtung-said', role: 'status', text: said } ) ) );
+	};
+
+	/**
+	 *	The first run: the status is read, and a product that is whole has no use for this screen
+	 *
+	 *	@param		{Object}	where
+	 *	@param		{number}	mine
+	 *
+	 *	@return		{void}
+	 */
+	const einrichtung = function( where, mine ) {
+
+		state.entered = true;
+
+		if( state.seen !== null ) {
+			const items = state.seen;
+
+			state.seen = null;
+			drawEinrichtung( items, '', mine );
+			return;
+		}
+
+		loading();
+
+		api( 'crm/status' ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answer.ok !== true ) {
+				loadFailed( answer, 'error.load', function() { route() } );
+				return;
+			}
+
+			if( answer.body.whole === true ) {
+				wn.location.hash = '#uebersicht';
+				return;
+			}
+
+			drawEinrichtung( answer.body.items, '', mine );
+		} );
+	};
+
+
 	// --- Einstellungen -----------------------------------------------------------------------------------------------
 
 	/**
@@ -3312,7 +3410,11 @@
 
 		loading();
 
-		Promise.all( [ api( 'crm-documents/settings-get' ), api( 'crm/status' ) ] ).then( function( answers ) {
+		const seen = state.seen;
+
+		state.seen = null;
+
+		Promise.all( [ api( 'crm-documents/settings-get' ), seen !== null ? Promise.resolve( { ok : true, status : 200, body : { items : seen }, handled : false } ) : api( 'crm/status' ) ] ).then( function( answers ) {
 
 			if( state.view !== mine )
 				return;
@@ -3335,12 +3437,18 @@
 	 *
 	 *	@return		{string}
 	 */
+	// An item that needs nothing done: in order, or - the start page - the owner's own
+	const complete = function( item ) {
+		return item.state === 'ok' || item.state === 'own';
+	};
+
 	const statusLine = function( item ) {
 
 		const key = 'status.'+ item.key+ '-'+ item.state;
 
+		// What a portal lacks is a kind with a word; what the PDF templates lack are their keys
 		if( item.state === 'partial' && Array.isArray( item.lacks ) === true )
-			return t( key, item.lacks.map( function( kind ) { return t( 'status.lacks-'+ kind ) } ).join( ', ' ) );
+			return t( key, item.lacks.map( function( kind ) { return item.key === 'pdf-templates' ? kind : t( 'status.lacks-'+ kind ) } ).join( ', ' ) );
 
 		return t( key );
 	};
@@ -3354,10 +3462,14 @@
 	 */
 	const setupSentence = function( answer ) {
 
-		const added = answer.added || { routes : [], templates : [], types : [], texts : 0 };
-		const existed = answer.existed || { routes : [], templates : [], types : [] };
+		const none = { features : [], routes : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false };
+		const added = Object.assign( {}, none, answer.added );
+		const existed = Object.assign( {}, none, answer.existed );
+		const there = existed.features.length+ existed.routes.length+ existed.templates.length+ existed.types.length+ existed.pdf.templates.length;
+		const sentence = t( 'setup.done', added.features.length, added.routes.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
 
-		return t( 'setup.done', added.routes.length, added.templates.length, added.types.length, added.texts, existed.routes.length+ existed.templates.length+ existed.types.length );
+		// What became of the start page, said in the answer: made the door where there was none or the wizard's page, or kept where it is the owner's
+		return typeof added.home === 'string' ? sentence+ ' '+ t( 'setup.home-'+ added.home ) : ( existed.home === 'own' ? sentence+ ' '+ t( 'setup.home-own' ) : sentence );
 	};
 
 	/**
@@ -3373,8 +3485,8 @@
 	 */
 	const portalCard = function( portal, items, said, mine ) {
 
-		const missing = items.filter( function( item ) { return item.state !== 'ok' } );
-		const ready = items.some( function( item ) { return item.key === 'portal' && item.state === 'ok' } );
+		const missing = items.filter( function( item ) { return item.state !== 'ok' && item.state !== 'own' } );
+		const ready = missing.length === 0;
 		const pages = portal.pages.map( function( page ) { return page.present === true ? page.uri : t( 'settings.portal-page-missing', page.uri ) } ).join( ' · ' );
 		const setup = el( 'button', { type: 'button', class: 'btn sm', id: 'portal-setup', hidden: ready, text: t( 'settings.portal-setup' ), on: { click: function() {
 
@@ -3534,11 +3646,14 @@
 		if( text === 'einstellungen' )
 			return { screen : 'einstellungen' };
 
+		if( text === 'einrichtung' )
+			return { screen : 'einrichtung' };
+
 		return { screen : 'uebersicht' };
 	};
 
-	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, positionen : positionen, einstellungen : einstellungen };
-	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', positionen : 'positionen', einstellungen : 'einstellungen' };
+	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, positionen : positionen, einstellungen : einstellungen, einrichtung : einrichtung };
+	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', positionen : 'positionen', einstellungen : 'einstellungen', einrichtung : '' };
 
 	const route = function() {
 
@@ -3559,6 +3674,35 @@
 			else
 				anchor.removeAttribute( 'aria-current' );
 		} );
+
+		// The first showing of the page, whichever screen the address names, once per page: a product that was never set up starts on the Einrichtung.
+		// A status that cannot be read lets the screen draw
+		if( where.screen !== 'einrichtung' && state.entered === false ) {
+
+			const mine = state.view;
+
+			state.entered = true;
+			loading();
+
+			api( 'crm/status' ).then( function( answer ) {
+
+				if( state.view !== mine )
+					return;
+
+				// The answer is handed on: the Einrichtung draws from it and does not ask again
+				if( answer.ok === true && answer.body.first_run === true ) {
+					state.seen = answer.body.items;
+					wn.location.hash = '#einrichtung';
+				}
+				else {
+					// ...and so is it to the Einstellungen, which read the status as well
+					state.seen = answer.ok === true && where.screen === 'einstellungen' ? answer.body.items : null;
+					screens[where.screen]( where, mine );
+				}
+			} );
+
+			return;
+		}
 
 		screens[where.screen]( where, state.view );
 	};
@@ -3640,7 +3784,7 @@
 		route();
 
 		// The count in the rail: the first screen reads the books itself when it is the Übersicht
-		if( parse( wn.location.hash ).screen !== 'uebersicht' )
+		if( [ 'uebersicht', 'einrichtung' ].includes( parse( wn.location.hash ).screen ) === false )
 			refresh();
 	};
 

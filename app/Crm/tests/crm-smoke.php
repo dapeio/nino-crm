@@ -457,7 +457,7 @@ $stateOf = static function( array $body, string $key ): string {
 };
 
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/status' );
-check( 'status names the module, the data directory, the five features and the portal', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'portal' ] );
+check( 'status names the module, the data directory, the six features, the portal, the PDF templates and the start page', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home' ] );
 check( 'the module and the features are ok, the portal is not set up yet', $stateOf( $body, 'module' ) === 'ok' && $stateOf( $body, 'data' ) === 'ok' && $stateOf( $body, 'members' ) === 'ok' && $stateOf( $body, 'sign' ) === 'ok' && $stateOf( $body, 'portal' ) === 'none' );
 
 $modulesNow = $appData['/nino/modules'];
@@ -473,12 +473,14 @@ $routesBefore = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 check( 'nothing of the portal exists before the button: no route, no template, no protected path', isset( $routesBefore['GET://portal'] ) === false && isset( $appData['/nino/http/routes']['GET://portal'] ) === false
 	&& is_file( \Nino\Filesystem::path( $appData, '/templates/page-portal.tpl' ) ) === false && \Nino\Features::setting( $appData, 'members', 'paths', [] ) === [] && \Crm\Positionen::missing( $appData ) === true );
 
+check( 'init registers the callback of the door and writes no route: the start page is not a route of the project before the setup, nor in the live routes', count( \Nino\Callbacks::registered( $appData, '/nino/http/response/GET://' ) ) === 1 && isset( $routesBefore['GET://'] ) === false && isset( $appData['/nino/http/routes']['GET://'] ) === false );
+
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/setup' );
-$manifest = \Nino\Features::readUnitManifest( $root. '/app/Crm/unit' );
-check( 'setup applies the unit and says what it added', $status === 200 && count( $body['added']['routes'] ) === 7 && count( $body['added']['templates'] ) === 7 && $body['added']['texts'] > 20 && $body['added']['paths'] === true
+$manifest = \Nino\Features::readUnitManifest( $root. '/app/Crm/Crm/install' );
+check( 'setup applies the unit and says what it added', $status === 200 && count( $body['added']['routes'] ) === 6 && count( $body['added']['templates'] ) === 7 && $body['added']['texts'] > 20 && $body['added']['paths'] === true
 	&& $body['existed']['routes'] === [] && $body['existed']['templates'] === [] );
 check( '...and the element type of the items: it is among what was added, the file is there, and the unit names it', $body['added']['types'] === [ 'positionen.php' ] && $body['existed']['types'] === [] && \Crm\Positionen::missing( $appData ) === false
-	&& ( $manifest['elementTypes'] ?? [] ) === [ 'positionen.php' ] && is_file( $root. '/app/Crm/unit/positionen.php' ) === true );
+	&& ( $manifest['elementTypes'] ?? [] ) === [ 'positionen.php' ] && is_file( $root. '/app/Crm/Crm/install/positionen.php' ) === true );
 check( 'the routes are in the persisted routes and in the live ones', array_diff( array_keys( $manifest['routes'] ), array_keys( \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) ) ) === [] && array_diff( array_keys( $manifest['routes'] ), array_keys( $appData['/nino/http/routes'] ) ) === [] );
 check( 'the unit has the page /portal/dokumente: its route, its template and its words in both languages', ( $manifest['routes']['GET://portal/dokumente']['body'] ?? '' ) === '[template /templates/page-portal-documents]' && in_array( 'page-portal-documents.tpl', $manifest['templates'], true ) === true
 	&& isset( \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://portal/dokumente'] ) === true
@@ -486,7 +488,7 @@ check( 'the unit has the page /portal/dokumente: its route, its template and its
 $introWords = [ 'de_DE' => 'Verträge', 'en_US' => 'contracts' ];
 check( 'the intro of the page names the contracts and the privacy documents that are signed there, in both languages', array_filter( $introWords, static fn( string $word, string $locale ): bool => str_contains( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/template/page-portal-documents/intro/text]]'] ?? '' ), $word ) === false
 	|| stripos( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/template/page-portal-documents/intro/text]]'] ?? '' ), 'privacy' ) === false && stripos( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/template/page-portal-documents/intro/text]]'] ?? '' ), 'Datenschutz' ) === false, ARRAY_FILTER_USE_BOTH ) === [] );
-check( 'the templates are copied byte for byte', array_filter( $manifest['templates'], static fn( string $file ): bool => file_get_contents( \Nino\Filesystem::path( $appData, '/templates/'. $file ) ) !== file_get_contents( $root. '/app/Crm/unit/templates/'. $file ) ) === [] );
+check( 'the templates are copied byte for byte', array_filter( $manifest['templates'], static fn( string $file ): bool => file_get_contents( \Nino\Filesystem::path( $appData, '/templates/'. $file ) ) !== file_get_contents( $root. '/app/Crm/Crm/install/templates/'. $file ) ) === [] );
 check( 'the words are in both languages', array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => trim( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/template/page-portal/intro/title]]'] ?? '' ) ) === '' ) === [] );
 check( 'Members sends a member who signs in to /portal', $body['added']['start'] === true && \Nino\Features::setting( $appData, 'members', 'start', '' ) === '/portal' );
 check( 'Members protects /portal afterwards', \Nino\Features::setting( $appData, 'members', 'paths', [] ) === [ '/portal' ] && \Nino\Modules\Members::protects( $appData, '/portal/dateien' ) === true );
@@ -496,7 +498,7 @@ $registry = \Nino\Modules\Builder\Document::schemas( $appData );
 $unread = [];
 
 foreach( $manifest['templates'] as $file ) {
-	$blocks = \Nino\Modules\Builder\Reader::read( (string) file_get_contents( $root. '/app/Crm/unit/templates/'. $file ), $registry )['blocks'];
+	$blocks = \Nino\Modules\Builder\Reader::read( (string) file_get_contents( $root. '/app/Crm/Crm/install/templates/'. $file ), $registry )['blocks'];
 
 	if( $blocks === [] || array_unique( array_column( $blocks, 'kind' ) ) !== [ 'section' ] )
 		$unread[] = $file;
@@ -507,7 +509,7 @@ $styles = (string) file_get_contents( $root. '/_nino/Nino.css' );
 $classes = [];
 
 foreach( $manifest['templates'] as $file )
-	if( preg_match_all( '~class="([^"]*)"~', (string) file_get_contents( $root. '/app/Crm/unit/templates/'. $file ), $found ) > 0 )
+	if( preg_match_all( '~class="([^"]*)"~', (string) file_get_contents( $root. '/app/Crm/Crm/install/templates/'. $file ), $found ) > 0 )
 		foreach( $found[1] as $list )
 			foreach( preg_split( '/\s+/', $list ) ?: [] as $class )
 				if( $class !== '' && str_contains( $styles, '.'. $class ) === false )
@@ -530,7 +532,7 @@ $textFile['[[/template/page-portal/intro/title]]'] = 'Mein eigener Titel';
 $routesAfter = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/setup' );
 check( 'a second setup adds nothing and says what was there', $status === 200 && $body['added']['routes'] === [] && $body['added']['templates'] === [] && $body['added']['texts'] === 0 && $body['added']['paths'] === false && $body['added']['start'] === false
-	&& $body['added']['types'] === [] && count( $body['existed']['routes'] ) === 7 && count( $body['existed']['templates'] ) === 7 && $body['existed']['types'] === [ 'positionen.php' ] );
+	&& $body['added']['types'] === [] && count( $body['existed']['routes'] ) === 6 && count( $body['existed']['templates'] ) === 7 && $body['existed']['types'] === [ 'positionen.php' ] );
 check( '...a template the project changed survives it', (string) file_get_contents( $pageFile ) === $changed );
 check( '...so does a word the project changed', \Nino\Filesystem::getFileContent( $appData, '/text/de_DE.php', [] )['[[/template/page-portal/intro/title]]'] === 'Mein eigener Titel' );
 check( '...and the routes are the same, a route the project changed is not written again', \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) === $routesAfter && \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://portal']['body'] === '[template /templates/page-own]' );
@@ -604,11 +606,14 @@ $_SESSION = [];
 
 check( 'a visitor asking for the portal is shown the login page of Members: 401', crmServe( $appData, '/portal' )[0] === 401 && crmServe( $appData, '/portal' )[2] === '[template /templates/page-members-login]' );
 check( '...and so on every page below it', array_unique( array_map( static fn( string $path ): int => crmServe( $appData, $path )[0], [ '/portal/dateien', '/portal/review', '/portal/unterschriften', '/portal/dokumente', '/portal/konto' ] ) ) === [ 401 ] );
-check( 'the login page has its own address', crmServe( $appData, '/login' )[0] === 200 && crmServe( $appData, '/login' )[2] === '[template /templates/page-login]' );
-$loginHtml = \Nino\Html::renderHtml( $appData, crmServe( $appData, '/login' )[2] );
-check( '...and carries the login form', str_contains( $loginHtml, '[members-login]' ) === false && str_contains( $loginHtml, '<form class="members-login' ) === true && str_contains( $loginHtml, 'Anmelden' ) === true );
-$loginPage = crmPage( $appData, '/login' );
-check( 'the head of /login holds its title and its description and no key of the page details', str_contains( $loginPage, '[[/_nino/' ) === false && str_contains( $loginPage, '<title>Anmelden | ' ) === true && str_contains( $loginPage, 'content="Melde Dich mit dem Link an' ) === true );
+check( 'the start page is the door: the route GET:// is written by the setup, a visitor is served the template of the door', crmServe( $appData, '/' )[0] === 200 && crmServe( $appData, '/' )[2] === \Crm\Crm::DOOR
+	&& ( \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://'] ?? null ) === [ 'uri' => '/', 'body' => '[template /templates/page-door]' ] );
+$doorHtml = \Nino\Html::renderHtml( $appData, crmServe( $appData, '/' )[2] );
+check( '...and the door carries the login form of Members', str_contains( $doorHtml, '[members-login]' ) === false && str_contains( $doorHtml, '<form class="members-login' ) === true && str_contains( $doorHtml, 'Anmelden' ) === true );
+check( '/login is no route any more: 404, like any path nobody knows', crmServe( $appData, '/login' )[0] === 404 && isset( \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://login'] ) === false && is_file( $root. '/app/Crm/Crm/install/templates/page-login.tpl' ) === false );
+// The head of the door reads the details of the page at the Element-URI '/' - the keys the wizard writes for a start page - and the unit brings them
+$doorPage = crmPage( $appData, '/' );
+check( 'the head of the door holds its title and its description and no key of the page details: the unit has the words of the start page', str_contains( $doorPage, '[[/_nino/' ) === false && str_contains( $doorPage, '<title>Anmelden | ' ) === true && str_contains( $doorPage, 'content="Melde Dich mit dem Link an' ) === true );
 check( 'a visitor gets nothing from [crm-client]', trim( \Nino\Html::renderHtml( $appData, '[crm-client]' ) ) === '' );
 
 // The invited member follows the link of the mail and presses the button
@@ -619,6 +624,12 @@ $rendered = \Nino\Html::renderHtml( $appData, '[crm-client]' );
 check( '[crm-client] answers the company of the client of the member', trim( $rendered ) === '<span class="crm-client">Studio Nord AG</span>' );
 check( '...with a class of its own where the shortcode gives one', str_contains( \Nino\Html::renderHtml( $appData, '[crm-client class="big"]' ), 'class="crm-client big"' ) === true );
 
+$door = crmServe( $appData, '/' );
+check( 'the door sends a member who is signed in on to /portal: 302, before the page is rendered - no body, and the redirect is not cached', $door[0] === 302 && $door[1] === '/portal' && $door[2] === '' );
+$ownHome = $appData['/nino/http/routes']['GET://'];
+$appData['/nino/http/routes']['GET://']['body'] = '<p>Mein eigener Start</p>';
+check( '...a start page that is not the door is left as it is: the member is served it', crmServe( $appData, '/' )[0] === 200 && crmServe( $appData, '/' )[2] === '<p>Mein eigener Start</p>' );
+$appData['/nino/http/routes']['GET://'] = $ownHome;
 $page = crmServe( $appData, '/portal' );
 check( 'the member is served the portal: 200', $page[0] === 200 && $page[2] === '[template /templates/page-portal]' );
 $html = \Nino\Html::renderHtml( $appData, $page[2] );
@@ -941,9 +952,6 @@ check( 'status names the features that are off, and the rest stays ok', $stateOf
 check( 'status names Members when it is off', $stateOf( $body, 'members' ) === 'off' );
 check( 'with Members off, the portal knows no client, however the session stands', \Crm\Portal::client( $appData ) === null );
 $mailsBefore = count( $mails );
-$routesNow = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
-[ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/setup' );
-check( 'setup without Members is 409 crm_setup_members and writes nothing', $status === 409 && $body['code'] === 'crm_setup_members' && \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) === $routesNow );
 [ $status, $body ] = ninoCall( $appData, $panel, [ 'id' => (string) $first['id'], 'email' => 'late@example.org' ], 'crm-clients/invite' );
 $mailsAfter = count( $mails );
 check( 'an invitation without Members is 409 crm_clients_members', $status === 409 && $body['code'] === 'crm_clients_members' && $mailsAfter === $mailsBefore && count( \Nino\Modules\Members::accounts( $appData ) ) === 3 );
@@ -1003,6 +1011,247 @@ foreach( [ 'page-members-login.tpl', 'page-members-confirm.tpl' ] as $name ) {
 check( 'the two pages of Members name classes the kernel owns: the narrow row is a row, not a section', array_keys( $classes ) === [ 'page-members-login.tpl', 'page-members-confirm.tpl' ] && count( $owned ) > 500
 	&& array_filter( array_merge( ...array_values( $classes ) ), static fn( string $class ): bool => isset( $owned[$class] ) === false ) === [] && in_array( 'nino-grid-row--narrow', $classes['page-members-login.tpl'], true ) === true && in_array( 'nino-grid-row--narrow', $classes['page-members-confirm.tpl'], true ) === true );
 
+// --- The first run ---------------------------------------------------------------------------------------------------------
+
+echo "\nThe first run (Einrichtung)\n";
+
+// The wizard offers the install unit of the module: the kernel finds it below app/, pre-checked, with its class
+require_once $root. '/_admin/install/Install.php';
+$units = \Nino\Install\Setup::units();
+$unit = (array) \Nino\Features::readUnitManifest( (string) ( $units['crm'] ?? '' ) );
+check( 'the kernel\'s wizard finds the unit of the module below app/ with the key crm: install/ beside the module, with its label, preset and class', ( $units['crm'] ?? '' ) === $root. '/app/Crm/Crm/install' && ( $unit['key'] ?? '' ) === 'crm' && ( $unit['label'] ?? '' ) === 'CRM & Kundenportal' && ( $unit['preset'] ?? false ) === true && ( $unit['moduleClass'] ?? '' ) === '\\Crm\\Crm' && class_exists( ltrim( (string) $unit['moduleClass'], '\\' ) ) === true );
+check( '...the unit brings the portal pages and the door, not the login page, and no route for the start page - that is the Einrichtung\'s', array_keys( (array) ( $unit['routes'] ?? [] ) ) === [ 'GET://portal', 'GET://portal/dateien', 'GET://portal/review', 'GET://portal/unterschriften', 'GET://portal/dokumente', 'GET://portal/konto' ]
+	&& in_array( 'page-door.tpl', (array) ( $unit['templates'] ?? [] ), true ) === true && in_array( 'page-login.tpl', (array) ( $unit['templates'] ?? [] ), true ) === false && is_dir( $root. '/app/Crm/unit' ) === false );
+check( '...its texts are in both languages, and there is none for the login page any more', is_file( $root. '/app/Crm/Crm/install/text/de_DE.php' ) && is_file( $root. '/app/Crm/Crm/install/text/en_US.php' ) && str_contains( (string) file_get_contents( $root. '/app/Crm/Crm/install/text/de_DE.php' ), 'page-login' ) === false && str_contains( (string) file_get_contents( $root. '/app/Crm/Crm/install/text/en_US.php' ), '/webpage/login/' ) === false );
+
+// A site the way the wizard leaves it: the unit applied with the unit winning, the module listed, the wizard's start page /home - and no feature on
+$fresh = ninoSandbox( 'crm-first' );
+$fresh['/nino/dir'] = '';
+\Nino\Html::addFills( $fresh, [ '[[/nino/dir]]' => '', '[[/project/website/general/url]]' => 'example.org', '[[/project/company/general/name]]' => 'Studio Nord' ], '*' );
+$fresh['/nino/modules'] = [ '\\Nino\\Modules\\Components', '\\Nino\\Modules\\Csrf', '\\Nino\\Modules\\Template', '\\Crm\\Crm' ];
+\Nino\AppData::writeContentData( $fresh, [ '/nino/modules', '/nino/locales/available', '/nino/locales/native' ] );
+\Nino\Csrf::init( $fresh );
+ninoUser( $fresh, 'admin@example.com' );
+$wizardRoutes = \Nino\AppData::DEFAULTS['/nino/http/routes'];
+$wizardBlacklist = [];
+$wizardConfig = [];
+\Nino\Features::applyUnit( $fresh, $root. '/app/Crm/Crm/install', [ 'de_DE', 'en_US' ], $wizardRoutes, $wizardBlacklist, $wizardConfig, true );
+$wizardRoutes['GET://'] = [ 'uri' => '/', 'body' => '[template /templates/page-home]', 'navs' => [ 'main' => 5, 'footer' => 5 ] ];
+\Nino\Filesystem::putFileContent( $fresh, '/templates/page-home.tpl', "<p>Das Haus des Assistenten</p>\n" );
+\Nino\Filesystem::mutate( $fresh, '/config.php', static function( array $content ) use ( $wizardRoutes ): array {
+	$content['/nino/http/routes'] = $wizardRoutes;
+	return $content;
+} );
+\Nino\Filesystem::mutate( $fresh, '/text/blacklist.php', static fn( array $list ): array => array_values( array_unique( array_merge( $list, $wizardBlacklist ) ) ) );
+$fresh['/nino/http/routes'] = $wizardRoutes;
+
+$run = static function( string $action ) use ( &$fresh ): array {
+	return ninoCall( $fresh, [ \Crm\Crm\Admin::class, $action === 'crm/setup' ? 'apiSetup' : 'apiStatus' ], [], $action );
+};
+$itemsOf = static fn( array $body ): array => array_column( $body['items'], 'state', 'key' );
+
+[ $status, $body ] = $run( 'crm/status' );
+$items = $itemsOf( $body );
+check( 'right after the wizard the product is not whole: the status says whole false, the six features are off, the unit is in (its routes, templates, words, type) but not Members\' paths and start page, the PDF has no templates, the start page is the wizard\'s', $status === 200 && $body['whole'] === false
+	&& array_slice( $items, 2, 6 ) === [ 'members' => 'off', 'files' => 'off', 'review' => 'off', 'sign' => 'off', 'pdf' => 'off', 'events' => 'off' ] && $items['module'] === 'ok' && $items['portal'] === 'partial' && array_column( $body['items'], 'lacks', 'key' )['portal'] === [ 'paths', 'start' ]
+	&& $items['pdf-templates'] === 'none' && array_column( $body['items'], 'lacks', 'key' )['pdf-templates'] === [ 'Angebot', 'Rechnung', 'Stornorechnung', 'Vertrag', 'Datenschutz', 'Information' ] && $items['home'] === 'other' );
+check( '...the PDF templates that are missing are named by their titles, not by their keys; and a product never set up is a first run', $body['first_run'] === true && \Crm\Settings::setupDone( $fresh ) === '' );
+
+[ $status, $body ] = $run( 'crm/setup' );
+$keys = [ 'angebot', 'rechnung', 'stornorechnung', 'vertrag', 'datenschutz', 'information' ];
+check( 'the setup does it all in one press: the six features on (the one that was on already is said to have been there), Members\' paths and start page, the PDF templates, the blocks and the layout, the start page', $status === 200
+	&& $body['added']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['features'] === [] && $body['added']['paths'] === true && $body['added']['start'] === true && $body['added']['home'] === 'starter'
+	&& $body['added']['pdf']['templates'] === $keys && $body['added']['pdf']['blocks'] === [ 'zahlungsbedingungen', 'gueltigkeit', 'unterschrift', 'kontakt' ] && $body['added']['pdf']['layout'] === [ 'header', 'footer' ]
+	&& $body['added']['routes'] === [] && $body['existed']['routes'] !== [] && $body['existed']['types'] === [ 'positionen.php' ] );
+check( '...every feature is on and listed, Members protects /portal and sends a member there', array_map( static fn( string $key ): bool => \Crm\Crm::featureOn( $fresh, $key ), [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] ) === [ true, true, true, true, true, true ]
+	&& \Nino\Features::setting( $fresh, 'members', 'paths', [] ) === [ '/portal' ] && \Nino\Features::setting( $fresh, 'members', 'start', '' ) === '/portal' );
+$seeded = (array) \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] );
+check( '...the start page is the door in config.php and in the live routes, the wizard\'s page keeps its template file and has no route', ( $seeded['/nino/http/routes']['GET://'] ?? null ) === [ 'uri' => '/', 'body' => '[template /templates/page-door]' ] && $fresh['/nino/http/routes']['GET://'] === [ 'uri' => '/', 'body' => '[template /templates/page-door]' ]
+	&& is_file( \Nino\Filesystem::path( $fresh, '/templates/page-home.tpl' ) ) === true && array_filter( $seeded['/nino/http/routes'], static fn( array $route ): bool => str_contains( (string) ( $route['body'] ?? '' ), 'page-home' ) === true ) === [] );
+
+$vocabulary = [ '/document/number', '/document/title', '/document/date', '/document/gross', '/invoice/due', '/invoice/period', '/offer/valid', '/offer/number', '/customer/number', '/document/parent' ];
+$bodies = [];
+
+foreach( $keys as $key )
+	$bodies[$key] = json_encode( \Nino\Modules\Pdf::template( $fresh, $key ) );
+
+check( 'Pdf has the six templates, German, with the tags offer, invoice, invoice, contract, privacy, information, and their names', \Nino\Modules\Pdf::keys( $fresh ) !== [] && array_map( static fn( string $key ): string => (string) ( \Nino\Modules\Pdf::template( $fresh, $key )['tag'] ?? '' ), $keys ) === [ 'offer', 'invoice', 'invoice', 'contract', 'privacy', 'information' ]
+	&& array_map( static fn( string $key ): string => (string) ( \Nino\Modules\Pdf::template( $fresh, $key )['name'] ?? '' ), $keys ) === [ 'Angebot', 'Rechnung', 'Stornorechnung', 'Vertrag', 'Datenschutz', 'Information' ] );
+check( '...the bodies carry the vocabulary of Render: the number and the block of the payment terms on the invoice, the period and the block of the validity on the offer, the offer and the signature fields on the contract, the customer on all', str_contains( $bodies['rechnung'], '[[\/document\/number]]' ) && str_contains( $bodies['rechnung'], '[[\/invoice\/period]]' ) && str_contains( $bodies['rechnung'], 'zahlungsbedingungen' )
+	&& str_contains( $bodies['angebot'], '[[\/offer\/period]]' ) && str_contains( $bodies['angebot'], 'gueltigkeit' ) && str_contains( $bodies['stornorechnung'], '[[\/document\/parent]]' ) && str_contains( $bodies['vertrag'], '[[\/offer\/number]]' )
+	&& substr_count( $bodies['vertrag'], '"type":"signature"' ) === 2 && substr_count( $bodies['datenschutz'], '"type":"signature"' ) === 2 && str_contains( $bodies['information'], '[[\/site\/portal]]' ) && array_filter( $bodies, static fn( string $body ): bool => str_contains( $body, '[[\/customer\/number]]' ) === false ) === [] );
+check( '...the member of the contract and the privacy document can sign: Sign finds the field of a member, and no template names a token that Render does not hand a document', array_filter( [ 'vertrag', 'datenschutz' ], static fn( string $key ): bool => count( array_filter( \Nino\Modules\Pdf::fields( $fresh, $key ), static fn( array $field ): bool => $field['party'] === 'member' ) ) === 1 ) === [ 'vertrag', 'datenschutz' ]
+	&& array_filter( $keys, static function( string $key ) use ( $fresh ): bool {
+		$used = [];
+		$all = (string) ( json_encode( \Nino\Modules\Pdf::template( $fresh, $key ) ) );
+		foreach( \Nino\Modules\Pdf::template( $fresh, $key )['blocks'] as $block )
+			if( isset( $block['block'] ) === true )
+				$all .= (string) json_encode( \Nino\Modules\Pdf::blocks( $fresh )[$block['block']] ?? [] );
+		preg_match_all( '~\[\[(/(?:document|invoice|offer|customer|site)/[a-z]+)\]\]~', str_replace( '\/', '/', $all ), $used );
+		return array_diff( $used[1], [ '/document/title', '/document/number', '/document/date', '/document/parent', '/document/vatnote', '/document/net', '/document/vat', '/document/gross', '/invoice/due', '/invoice/period', '/offer/number', '/offer/date', '/offer/valid', '/offer/gross', '/offer/period', '/customer/number', '/customer/company', '/customer/name', '/customer/street', '/customer/zip', '/customer/city', '/customer/country', '/customer/email', '/customer/vat', '/site/portal', '/site/login' ] ) !== [];
+	} ) === [] );
+$layout = \Nino\Modules\Pdf::layout( $fresh );
+$blocks = \Nino\Modules\Pdf::blocks( $fresh );
+check( '...the layout has the header (company name, address, contact) and the footer (name, email, phone) from the texts of the site, and the four blocks are in the library', str_contains( $layout['header'], '[[/project/company/general/name]]' ) && str_contains( $layout['header'], '[[/project/company/contact/address]]' ) && str_contains( $layout['header'], '[[/project/company/contact/email]]' ) && str_contains( $layout['header'], '[[/project/company/contact/phone]]' )
+	&& str_contains( $layout['footer'], '[[/project/company/general/name]]' ) && str_contains( $layout['footer'], '[[/project/company/contact/email]]' ) && str_contains( $layout['footer'], '[[/project/company/contact/phone]]' ) && array_keys( $blocks ) === [ 'zahlungsbedingungen', 'gueltigkeit', 'unterschrift', 'kontakt' ] );
+
+[ $status, $body ] = $run( 'crm/status' );
+check( 'after the run the product is whole, and the run is written down: first_run false, the day in the setting setup_done - which is no setting of the screen Einstellungen', $status === 200 && $body['whole'] === true && $body['first_run'] === false && preg_match( '/^\d{4}-\d{2}-\d{2}$/D', \Crm\Settings::setupDone( $fresh ) ) === 1 && isset( \Crm\Settings::all( $fresh )[\Crm\Settings::SETUP_KEY] ) === false );
+check( 'after the run the product is whole: every item ok, whole true', $status === 200 && $body['whole'] === true && array_unique( array_values( $itemsOf( $body ) ) ) === [ 'ok' ] && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home' ] );
+
+// A second press adds nothing; what the owner changed stays
+$own = \Nino\Modules\Pdf::template( $fresh, 'rechnung' );
+$own['name'] = 'Meine Rechnung';
+\Nino\Filesystem::putFileContent( $fresh, '/data/pdf/templates/rechnung.php', $own );
+\Nino\Filesystem::putFileContent( $fresh, '/data/pdf/layout.php', array_merge( \Nino\Modules\Pdf::layout( $fresh ), [ 'header' => '<p>Mein Kopf</p>' ] ) );
+$routesBeforeTwice = \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'];
+[ $status, $body ] = $run( 'crm/setup' );
+check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false ]
+	&& $body['existed']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['pdf']['templates'] === $keys && $body['existed']['home'] === 'door' && count( $body['existed']['routes'] ) === 6 );
+check( '...the template the owner changed is the owner\'s still, so is the header; the routes are as they were', ( \Nino\Modules\Pdf::template( $fresh, 'rechnung' )['name'] ?? '' ) === 'Meine Rechnung' && \Nino\Modules\Pdf::layout( $fresh )['header'] === '<p>Mein Kopf</p>' && \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'] === $routesBeforeTwice );
+check( '...and the status is still whole', $run( 'crm/status' )[1]['whole'] === true );
+
+// A word the owner took away is brought back as a missing word, the template he edited is not touched
+$wording = (array) \Nino\Filesystem::getFileContent( $fresh, '/text/de_DE.php', [] );
+unset( $wording['[[/template/page-portal/intro/title]]'] );
+\Nino\Filesystem::putFileContent( $fresh, '/text/de_DE.php', $wording );
+[ $status, $body ] = $run( 'crm/status' );
+check( 'a word of the pages that is gone makes the portal partly there, with the kind of what is missing: texts - and the run brings that word back and nothing else', array_column( $body['items'], 'lacks', 'key' )['portal'] === [ 'texts' ] && $body['whole'] === false && $run( 'crm/setup' )[1]['added']['texts'] === 1 && $run( 'crm/status' )[1]['whole'] === true );
+
+// A feature that cannot be switched on stops the step, and names itself: the last of the six, so that the start page and the PDF - which come after the features - stay as they were
+$wizardHome = $wizardRoutes['GET://'];
+$eventsVersion = (string) ( \Nino\Features::get( $fresh, 'events' )['version'] ?? '' );
+\Nino\Filesystem::mutate( $fresh, '/config.php', static function( array $content ) use ( $wizardHome ): array {
+	$content['/nino/http/routes']['GET://'] = $wizardHome;
+	$content['/nino/features']['events'] = [ 'version' => '0.0.1', 'settings' => [] ];
+	return $content;
+} );
+$fresh['/nino/http/routes']['GET://'] = $wizardHome;
+$fresh['/nino/features']['events'] = [ 'version' => '0.0.1', 'settings' => [] ];
+$fresh['./nino/features/replaced']['events'] = true;
+unset( $fresh['./nino/features/all'] );
+
+foreach( $keys as $key )
+	@unlink( \Nino\Filesystem::path( $fresh, '/data/pdf/templates/'. $key. '.php' ) );
+
+[ $status, $body ] = $run( 'crm/setup' );
+check( 'a feature that refuses is 409 crm_setup_feature with its name, and the step stops there: the start page is the wizard\'s still and the PDF has no template', $status === 409 && $body['code'] === 'crm_setup_feature' && $body['params'] === [ 'Termine' ]
+	&& ( \Nino\AppData::stored( $fresh, '/nino/http/routes', [] )['GET://']['body'] ?? '' ) === '[template /templates/page-home]' && \Nino\Modules\Pdf::keys( $fresh ) === [] );
+unset( $fresh['./nino/features/replaced'] );
+\Nino\Filesystem::mutate( $fresh, '/config.php', static function( array $content ) use ( $eventsVersion ): array {
+	$content['/nino/features']['events'] = [ 'version' => $eventsVersion, 'settings' => [] ];
+	return $content;
+} );
+$fresh['/nino/features']['events'] = [ 'version' => $eventsVersion, 'settings' => [] ];
+unset( $fresh['./nino/features/all'] );
+[ $status, $body ] = $run( 'crm/setup' );
+check( '...and a second press goes on from there: the start page is the door, the templates are there, nothing else is added', $status === 200 && $body['added']['home'] === 'starter' && $body['added']['pdf']['templates'] === $keys && $body['added']['features'] === [] && $run( 'crm/status' )[1]['whole'] === true );
+
+// The three cases of the start page. The wizard's own page was replaced above ('starter'); where there is none the door is made ('new'); a page the owner made is kept
+$setHome = static function( ?array $route ) use ( &$fresh ): void {
+	\Nino\Filesystem::mutate( $fresh, '/config.php', static function( array $content ) use ( $route ): array {
+		if( $route === null )
+			unset( $content['/nino/http/routes']['GET://'] );
+		else
+			$content['/nino/http/routes']['GET://'] = $route;
+		return $content;
+	} );
+	unset( $fresh['/nino/http/routes']['GET://'] );
+	if( $route !== null )
+		$fresh['/nino/http/routes']['GET://'] = $route;
+};
+$homeOf = static fn(): ?array => \Nino\AppData::stored( $fresh, '/nino/http/routes', [] )['GET://'] ?? null;
+
+$setHome( null );
+[ , $body ] = $run( 'crm/status' );
+check( 'with no start page at all the status says home: other, and the product is not whole', array_column( $body['items'], 'state', 'key' )['home'] === 'other' && $body['whole'] === false );
+[ $status, $body ] = $run( 'crm/setup' );
+check( '...the setup makes the door and says it was new: added.home new, nothing existed', $status === 200 && $body['added']['home'] === 'new' && $body['existed']['home'] === false && ( $homeOf() ?? [] )['body'] === \Crm\Crm::DOOR );
+
+$ownRoute = [ 'uri' => '/', 'body' => '<p>Mein Start</p>', 'navs' => [ 'main' => 1 ] ];
+$setHome( $ownRoute );
+[ , $body ] = $run( 'crm/status' );
+check( 'a start page the owner made is home: own - not a lack: the product is whole with it', array_column( $body['items'], 'state', 'key' )['home'] === 'own' && $body['whole'] === true );
+[ $status, $body ] = $run( 'crm/setup' );
+check( '...the setup leaves it exactly as it is, in config.php and in the live routes, and says so: added.home false, existed.home own', $status === 200 && $body['added']['home'] === false && $body['existed']['home'] === 'own' && $homeOf() === $ownRoute && $fresh['/nino/http/routes']['GET://'] === $ownRoute );
+
+$setHome( [ 'uri' => '/', 'body' => '[template /templates/page-home]' ] );
+[ $status, $body ] = $run( 'crm/setup' );
+check( 'the wizard\'s page, whatever menus it had, is replaced: added.home starter', $status === 200 && $body['added']['home'] === 'starter' && ( $homeOf() ?? [] )['body'] === \Crm\Crm::DOOR && isset( ( $homeOf() ?? [] )['navs'] ) === false );
+
+// A template the owner deleted afterwards: the product is not whole, and it is no first run - the screen of the first run does not come back
+@unlink( \Nino\Filesystem::path( $fresh, '/data/pdf/templates/information.php' ) );
+[ , $body ] = $run( 'crm/status' );
+check( 'a deleted PDF template makes the product not whole - and the status names it - but it is not a first run: the redirect to the Einrichtung does not come back', $body['whole'] === false && $body['first_run'] === false && array_column( $body['items'], 'lacks', 'key' )['pdf-templates'] === [ 'Information' ] );
+[ , $body ] = $run( 'crm/setup' );
+check( '...a press seeds it again, and only it', $body['added']['pdf']['templates'] === [ 'information' ] && $run( 'crm/status' )[1]['whole'] === true );
+
+// A seed the Pdf feature refuses: 500 crm_setup_pdf naming it, and the start page is not written
+$setHome( [ 'uri' => '/', 'body' => '[template /templates/page-home]' ] );
+@unlink( \Nino\Filesystem::path( $fresh, '/data/pdf/templates/datenschutz.php' ) );
+\Nino\Features::saveSettings( $fresh, 'pdf', [ 'tags' => [ 'offer', 'invoice', 'contract', 'information' ] ] );
+[ $status, $body ] = $run( 'crm/setup' );
+check( 'a template that Pdf refuses (its tag is not one of the project\'s) is 500 crm_setup_pdf and names it, and the start page is still the wizard\'s', $status === 500 && $body['code'] === 'crm_setup_pdf' && str_contains( (string) ( $body['params'][0] ?? '' ), 'datenschutz' ) === true && ( $homeOf() ?? [] )['body'] === '[template /templates/page-home]' );
+\Nino\Features::saveSettings( $fresh, 'pdf', [ 'tags' => [ 'offer', 'invoice', 'contract', 'privacy', 'information' ] ] );
+check( '...and with the tag back the press goes through', $run( 'crm/setup' )[0] === 200 && ( $homeOf() ?? [] )['body'] === \Crm\Crm::DOOR );
+
+// The feature that refuses is named in the language of the workbench session: its label as feature.php has it
+$eventsVersion2 = (string) ( \Nino\Features::get( $fresh, 'events' )['version'] ?? '' );
+\Nino\Runtime::setSessionValue( $fresh, './admin/locale', 'en_US' );
+\Nino\Filesystem::mutate( $fresh, '/config.php', static function( array $content ): array {
+	$content['/nino/features']['events'] = [ 'version' => '0.0.1', 'settings' => [] ];
+	return $content;
+} );
+$fresh['/nino/features']['events'] = [ 'version' => '0.0.1', 'settings' => [] ];
+$fresh['./nino/features/replaced']['events'] = true;
+unset( $fresh['./nino/features/all'] );
+[ $status, $body ] = $run( 'crm/setup' );
+check( 'the refusal names the feature in the language of the session: Events in English, as the Features panel shows it', $status === 409 && $body['code'] === 'crm_setup_feature' && $body['params'] === [ 'Events' ] );
+\Nino\Runtime::setSessionValue( $fresh, './admin/locale', 'de_DE' );
+[ $status, $body ] = $run( 'crm/setup' );
+check( '...and in German in a German one', $status === 409 && $body['params'] === [ 'Termine' ] );
+unset( $fresh['./nino/features/replaced'] );
+\Nino\Filesystem::mutate( $fresh, '/config.php', static function( array $content ) use ( $eventsVersion2 ): array {
+	$content['/nino/features']['events'] = [ 'version' => $eventsVersion2, 'settings' => [] ];
+	return $content;
+} );
+$fresh['/nino/features']['events'] = [ 'version' => $eventsVersion2, 'settings' => [] ];
+unset( $fresh['./nino/features/all'] );
+
+// A feature that is not installed - its directory is missing: the refusal names it by its name, not by its key
+$allFeatures = \Nino\Features::all( $fresh );
+unset( $allFeatures['sign'] );
+$fresh['./nino/features/all'] = $allFeatures;
+\Nino\Runtime::setSessionValue( $fresh, './admin/locale', 'de_DE' );
+[ $status, $body ] = $run( 'crm/setup' );
+$missingDe = $body['params'] ?? [];
+\Nino\Runtime::setSessionValue( $fresh, './admin/locale', 'en_US' );
+$fresh['./nino/features/all'] = $allFeatures;
+[ , $bodyEn ] = $run( 'crm/setup' );
+check( 'the refusal of a feature whose directory is missing names it in the language of the session - Unterschrift, Sign - and never by its key', $status === 409 && $body['code'] === 'crm_setup_feature' && $missingDe === [ 'Unterschrift' ] && ( $bodyEn['params'] ?? [] ) === [ 'Sign' ] );
+\Nino\Runtime::setSessionValue( $fresh, './admin/locale', 'de_DE' );
+unset( $fresh['./nino/features/all'] );
+
+// The record of a run that cannot be written: 500, and the run is not marked done
+\Crm\Db::exec( $fresh, 'DELETE FROM settings WHERE key = :k', [ 'k' => \Crm\Settings::SETUP_KEY ] );
+\Crm\Db::exec( $fresh, 'ALTER TABLE settings RENAME TO settings_away' );
+[ $status, $body ] = $run( 'crm/setup' );
+\Crm\Db::exec( $fresh, 'ALTER TABLE settings_away RENAME TO settings' );
+check( 'a run whose record cannot be written is 500, and it is not marked done: first_run stays what it was', $status === 500 && \Crm\Settings::setupDone( $fresh ) === '' );
+$run( 'crm/setup' );
+check( '...a press that can write it marks it', \Crm\Settings::setupDone( $fresh ) !== '' );
+
+// A read creates no database: a project that never opened one has none after the status either
+$nodb = ninoSandbox( 'crm-nodb' );
+$nodbFile = \Nino\Filesystem::path( $nodb, \Crm\Db::FILE );
+check( 'setupDone() on a project without /data/crm.sqlite answers nothing and leaves no file', \Crm\Settings::setupDone( $nodb ) === '' && is_file( $nodbFile ) === false && is_dir( dirname( $nodbFile ) ) === false );
+
+// The permission: a visitor and an account without it get nothing from the run
+unset( $fresh['./nino/auth/current'] );
+\Nino\Auth::insertUser( $fresh, 'plain2@example.com', 'plain password', [] );
+\Nino\Auth::loginUser( $fresh, 'plain2@example.com', 'plain password' );
+check( 'an account without the permission of the CRM gets 403 from the status and from the run', $run( 'crm/status' )[0] === 403 && $run( 'crm/setup' )[0] === 403 );
+
 // --- The README -----------------------------------------------------------------------------------------------------------
 
 echo "\nThe README\n";
@@ -1014,6 +1263,7 @@ check( 'the README calls the buttons of an account by the words they have: Einla
 check( '...the section on the items names the element type, the Elements panel, the loop of the Builder and the table that is gone', str_contains( $readme, '/positionen' ) === true && str_contains( $readme, 'Panel **Elemente**' ) === true && str_contains( $readme, '[elements /positionen sort="sort" query="hidden=0"]' ) === true
 	&& str_contains( $readme, '`items` ist weg' ) === true && str_contains( $readme, 'nicht übernommen' ) === true && str_contains( $readme, 'noch einmal' ) === true && str_contains( $readme, 'schreibt die Zeile des Belegs 0' ) === true );
 
+check( 'the README says the three steps and the fourth by hand - the tax number and the bank details in the footer of the layout - and no longer names the patches that are done', str_contains( $readme, 'Vierter Schritt' ) === true && str_contains( $readme, 'USt-IdNr.' ) === true && str_contains( $readme, '(C10)' ) === false && str_contains( $readme, 'Nach diesem Patch' ) === false );
 check( 'the screens say Status and not Zustand, in the words of the surface and of the panel', array_filter( [ 'Clients/Admin', 'Documents/Admin', 'Crm/Admin', 'Surface' ], static fn( string $dir ): bool => str_contains( (string) file_get_contents( $root. '/app/Crm/'. $dir. '/text/de_DE.php' ), 'Zustand' ) === true ) === [] );
 
 ninoDone( $appData );

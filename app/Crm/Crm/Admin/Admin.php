@@ -2,16 +2,29 @@
 declare(strict_types=1);
 /**
  *	Crm\Crm\Admin		The one panel of the CRM in the workbench: a link to the surface at /crm, the status of the module - what it
- *									misses - and the button that applies the install unit, the portal pages. The work with clients and documents is
+ *									misses - and the button that makes the product whole (the features, the portal pages, the PDF templates, the start page). The work with clients and documents is
  *									the surface's; the panels Kunden and Belege are gone, their classes stay as the API the surface's endpoint
- *									reaches. The panel validates nothing it is posted: both actions take no input.
+ *									reaches. The panel validates nothing it is posted: both actions take no input. The two actions are the
+ *									surface's screen Einrichtung as well: crm/status is what it checks, crm/setup is its one button.
  */
 namespace Crm\Crm;
 
 class Admin {
 
-	// The features the portal draws its pages with, in the order the status names them
-	private const array FEATURES = [ 'members', 'files', 'review', 'sign', 'pdf' ];
+	// The features the product is made of, in the order the status names them, and their labels, in the language of the workbench session, are named in the sentence of a refusal
+	private const array FEATURES = [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ];
+
+	// The route of the site's start page, and the directory of the templates of the Pdf feature (Pdf::TEMPLATES; the feature may be off or absent)
+	private const array LABELS = [
+		'members' => [ 'de_DE' => 'Mitglieder', 'en_US' => 'Members' ], 'files' => [ 'de_DE' => 'Dateien', 'en_US' => 'Files' ], 'review' => [ 'de_DE' => 'Review', 'en_US' => 'Review' ],
+		'sign' => [ 'de_DE' => 'Unterschrift', 'en_US' => 'Sign' ], 'pdf' => [ 'de_DE' => 'PDF', 'en_US' => 'PDF' ], 'events' => [ 'de_DE' => 'Termine', 'en_US' => 'Events' ],
+	];
+
+	private const string HOME = 'GET://';
+
+	// The body of the start page the wizard proposes: the one page the setup may replace; a start page of any other body is the owner's
+	private const string STARTER = '[template /templates/page-home]';
+	private const string PDF_TEMPLATES = '/data/pdf/templates';
 
 	public static function perm(): string {
 		return \Crm\Crm::MANAGE_PERM;
@@ -59,28 +72,80 @@ class Admin {
 	 */
 	public static function log( string $action, array $data ): string {
 
-		return $action === 'crm/setup' ? 'Applied the portal unit' : '';
+		return $action === 'crm/setup' ? 'Set the CRM up' : '';
 	}
 
 	/**
-	 *	Apply the install unit of the module - the portal pages: routes, templates and words, each only where the
-	 *	project has none, and /portal among the protected paths of Members, and as its start page, where the project has none of its own.
-	 *	Answers what was added and what was there
+	 *	Make the product whole - the one button of the screen Einrichtung. Idempotent and add-only, in this order, and a step that fails
+	 *	stops the ones after it (what was done stays, a second press goes on from there):
+	 *	  1. the six features are switched on (Features::activate(), each answer checked; the one that fails names itself),
+	 *	  2. Members' settings: /portal among the protected paths and as the start page, each where the project has none of its own,
+	 *	  3. the install unit: the portal pages (routes, templates, words), the element type, the blacklist - what the project has stays,
+	 *	  4. the PDF: the templates, the text blocks and the header and footer of the layout, through Pdf::install() - what the owner has stays,
+	 *	  5. the start page: the route GET:// becomes the door of the portal where there is none or the wizard's page /home; the door that is there and
+	 *	     a start page of the owner's stay.
+	 *	Answers what was added and what existed
 	 */
 	public static function apiSetup( array &$appData, array &$request ): void {
 
 		if( \Nino\Admin\Admin::guardPerm( $appData, $request, \Crm\Crm::MANAGE_PERM ) === false )
 			return;
 
-		if( \Crm\Crm::featureOn( $appData, 'members' ) === false ) {
-			\Nino\Http::fail( $request, 409, 'the Members feature is not active', 'crm_setup_members' );
-			return;
+		$added = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false ];
+		$existed = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false ];
+
+		// 1. The features. One is on when it is active at its version and nothing is wrong with it; what is on before the first step is "there
+		// already", even where a feature that was switched on before it - Sign takes PDF with it - did the work
+		$on = static function( string $key ) use ( &$appData ): bool {
+
+			$have = \Nino\Features::get( $appData, $key );
+
+			return $have !== null && $have['active'] === true && $have['problems'] === [] && $have['installed'] === $have['version'];
+		};
+		$was = array_filter( self::FEATURES, static fn( string $key ): bool => $on( $key ) === true );
+
+		foreach( self::FEATURES as $key ) {
+
+			if( in_array( $key, $was, true ) === true ) {
+				$existed['features'][] = $key;
+				continue;
+			}
+
+			$done = \Nino\Features::get( $appData, $key ) === null ? 'it is not installed' : ( $on( $key ) === true ? true : \Nino\Features::activate( $appData, $key ) );
+
+			if( $done !== true ) {
+				\Nino\Http::fail( $request, 409, 'the feature "'. $key. '" could not be switched on: '. $done, 'crm_setup_feature', [ self::label( $appData, $key ) ] );
+				return;
+			}
+
+			$added['features'][] = $key;
 		}
 
 		$unit = self::unitDir();
 		$manifest = \Nino\Features::readUnitManifest( $unit ) ?? [];
 		$native = (string) $appData['/nino/locales/native'];
 
+		// 2. The settings of Members - the unit's config cannot write the setting of a feature, so the paths and the start page are set here,
+		// each only where the project has nothing yet: no protected path, and the start page the site's root (the setting's own default)
+		$posted = [];
+
+		if( array_filter( (array) \Nino\Features::setting( $appData, 'members', 'paths', [] ), 'is_string' ) === [] )
+			$posted['paths'] = [ '/portal' ];
+
+		if( in_array( \Nino\Features::setting( $appData, 'members', 'start', '/' ), [ '', '/' ], true ) === true )
+			$posted['start'] = '/portal';
+
+		if( $posted !== [] && \Nino\Features::saveSettings( $appData, 'members', $posted ) !== [] ) {
+			\Nino\Http::fail( $request, 500, 'the settings of Members could not be written' );
+			return;
+		}
+
+		$added['paths'] = isset( $posted['paths'] );
+		$added['start'] = isset( $posted['start'] );
+		$existed['paths'] = $added['paths'] === false;
+		$existed['start'] = $added['start'] === false;
+
+		// 3. The install unit
 		$routes = \Nino\AppData::stored( $appData, '/nino/http/routes', \Nino\AppData::DEFAULTS['/nino/http/routes'] );
 		$routes = is_array( $routes ) ? $routes : \Nino\AppData::DEFAULTS['/nino/http/routes'];
 		$before = $routes;
@@ -138,49 +203,81 @@ class Admin {
 			$appData['/nino/http/routes'] = $live + $routes;
 		}
 
-		// A unit's config cannot write the setting of a feature, so the paths and the start page are set here - each only where
-		// the project has nothing yet: no protected path, and the start page the site's root (the setting's own default)
-		$posted = [];
+		$added['routes'] = array_keys( $addedRoutes );
+		$added['templates'] = array_values( array_diff( $templates, $hadTemplates ) );
+		$added['types'] = array_values( array_diff( $types, $hadTypes ) );
+		$added['texts'] = count( (array) \Nino\Filesystem::getFileContent( $appData, '/text/'. $native. '.php', [] ) ) - $textsBefore;
+		$existed['routes'] = array_values( array_diff( array_keys( (array) ( $manifest['routes'] ?? [] ) ), array_keys( $addedRoutes ) ) );
+		$existed['templates'] = $hadTemplates;
+		$existed['types'] = $hadTypes;
 
-		if( array_filter( (array) \Nino\Features::setting( $appData, 'members', 'paths', [] ), 'is_string' ) === [] )
-			$posted['paths'] = [ '/portal' ];
+		// 4. The PDF
+		$seed = self::seed();
+		$pdf = \Nino\Modules\Pdf::install( $appData, $seed['templates'], $seed['blocks'], $seed['layout'], false );
+		$refused = [];
 
-		if( in_array( \Nino\Features::setting( $appData, 'members', 'start', '/' ), [ '', '/' ], true ) === true )
-			$posted['start'] = '/portal';
+		foreach( $pdf['refused'] as $kind => $codes )
+			foreach( $codes as $key => $code )
+				$refused[] = $kind. ' '. $key. ' ('. $code. ')';
 
-		if( $posted !== [] && \Nino\Features::saveSettings( $appData, 'members', $posted ) !== [] ) {
-			\Nino\Http::fail( $request, 500, 'the settings of Members could not be written' );
+		if( $refused !== [] ) {
+			\Nino\Http::fail( $request, 500, 'the PDF could not be seeded: '. implode( ', ', $refused ), 'crm_setup_pdf', [ implode( ', ', $refused ) ] );
 			return;
 		}
 
-		$paths = isset( $posted['paths'] );
-		$start = isset( $posted['start'] );
+		$added['pdf'] = $pdf['added'];
+		$existed['pdf'] = $pdf['existing'];
 
-		\Nino\Http::ok( $request, [
-			'added' => [
-				'routes'    => array_keys( $addedRoutes ),
-				'templates' => array_values( array_diff( $templates, $hadTemplates ) ),
-				'types'     => array_values( array_diff( $types, $hadTypes ) ),
-				'texts'     => count( (array) \Nino\Filesystem::getFileContent( $appData, '/text/'. $native. '.php', [] ) ) - $textsBefore,
-				'paths'     => $paths,
-				'start'     => $start,
-			],
-			'existed' => [
-				'routes'    => array_values( array_diff( array_keys( (array) ( $manifest['routes'] ?? [] ) ), array_keys( $addedRoutes ) ) ),
-				'templates' => $hadTemplates,
-				'types'     => $hadTypes,
-				'paths'     => $paths === false,
-				'start'     => $start === false,
-			],
-		] );
+		// 5. The start page: the door of the portal. Written where there is none and where the wizard's own page is (/home, which keeps its template
+		// file and no route); a start page the owner made is kept, and a door that is there stays
+		$stored = \Nino\AppData::stored( $appData, '/nino/http/routes', \Nino\AppData::DEFAULTS['/nino/http/routes'] );
+		$stored = is_array( $stored ) ? $stored : [];
+		$home = self::homeState( $stored );
+
+		if( $home === 'ok' )
+			$existed['home'] = 'door';
+		else if( $home === 'own' )
+			$existed['home'] = 'own';
+		else {
+
+			$written = \Nino\Filesystem::mutate( $appData, '/config.php', static function( array $content ): array {
+
+				$content['/nino/http/routes'] = array_merge( is_array( $content['/nino/http/routes'] ?? null ) ? $content['/nino/http/routes'] : \Nino\AppData::DEFAULTS['/nino/http/routes'], [ self::HOME => [ 'uri' => '/', 'body' => \Crm\Crm::DOOR ] ] );
+
+				return $content;
+			} );
+
+			if( $written === false ) {
+				\Nino\Http::fail( $request, 500, 'the start page could not be written' );
+				return;
+			}
+
+			$appData['/nino/http/routes'][self::HOME] = [ 'uri' => '/', 'body' => \Crm\Crm::DOOR ];
+			$added['home'] = isset( $stored[self::HOME] ) === true ? 'starter' : 'new';
+		}
+
+		// A run that went through is written down: the screen of the first run is for a product that was never set up
+		try {
+			\Crm\Settings::markSetupDone( $appData );
+		}
+		catch( \PDOException $e ) {
+			\Nino\Http::fail( $request, 500, 'the setup could not be recorded' );
+			return;
+		}
+
+		\Nino\Http::ok( $request, [ 'added' => $added, 'existed' => $existed ] );
 	}
 
 	/**
 	 *	What the module misses: each item has a key and a state
 	 *	  module   ok, off (the class is not in /nino/modules)
 	 *	  data     ok, unwritable (the data directory)
-	 *	  members, files, review, sign, pdf     ok, off (installed, not active), missing (not installed), problem
-	 *	  portal   ok (routes, templates, the element types and the protected path are there), partial, none - and what it lacks: lacks lists routes, templates, types and paths
+	 *	  members, files, review, sign, pdf, events     ok, off (installed, not active), missing (not installed), problem
+	 *	  portal   ok (routes, templates, words, the element types, the protected path and the start page are there), partial, none - and what it lacks: lacks lists routes, templates, texts, types, paths and start
+	 *	  pdf-templates   ok (every template of the seed is there), partial, none - and lacks lists the keys that are not
+	 *	  home     ok (the start page of the site is the door of the portal), own (a page the owner made: left as it is, and no lack), other (none, or the wizard's own)
+	 *	The answer is whole when every item is ok or - the start page - own; it is first_run while it is not whole and no run of the setup went through (the day of
+	 *	the last one is the CRM's setting setup_done): a template deleted afterwards makes it not whole, and not a first run - the screen Einrichtung is shown while it is not
 	 */
 	public static function apiStatus( array &$appData, array &$request ): void {
 
@@ -213,11 +310,18 @@ class Admin {
 		$routes = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 		$routes = is_array( $routes ) ? $routes : [];
 		$wanted = array_keys( (array) ( $manifest['routes'] ?? [] ) );
+		$native = (string) $appData['/nino/locales/native'];
+		$fragment = self::unitDir(). '/text/'. $native. '.php';
+		$words = is_file( $fragment ) === true ? array_keys( (array) include $fragment ) : [];
+		$had = \Nino\Filesystem::getFileContent( $appData, '/text/'. $native. '.php', [] );
+		$had = is_array( $had ) === true ? $had : [];
 		$kinds = [
 			'routes'    => [ count( array_filter( $wanted, static fn( string $key ): bool => isset( $routes[$key] ) === true ) ), count( $wanted ) ],
 			'templates' => [ count( array_filter( (array) ( $manifest['templates'] ?? [] ), static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/templates/'. $file ) ) ), count( (array) ( $manifest['templates'] ?? [] ) ) ],
+			'texts'     => [ count( array_filter( $words, static fn( mixed $key ): bool => array_key_exists( $key, $had ) === true ) ), count( $words ) ],
 			'types'     => [ count( array_filter( (array) ( $manifest['elementTypes'] ?? [] ), static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/elements/'. $file ) ) ), count( (array) ( $manifest['elementTypes'] ?? [] ) ) ],
 			'paths'     => [ in_array( '/portal', (array) \Nino\Features::setting( $appData, 'members', 'paths', [] ), true ) === true ? 1 : 0, 1 ],
+			'start'     => [ in_array( \Nino\Features::setting( $appData, 'members', 'start', '/' ), [ '', '/' ], true ) === true ? 0 : 1, 1 ],
 		];
 		$present = array_sum( array_column( $kinds, 0 ) );
 		$total = array_sum( array_column( $kinds, 1 ) );
@@ -225,7 +329,63 @@ class Admin {
 
 		$items[] = [ 'key' => 'portal', 'state' => $present === $total ? 'ok' : ( $present === 0 ? 'none' : 'partial' ), 'lacks' => $lacks ];
 
-		\Nino\Http::ok( $request, [ 'items' => $items ] );
+		$seeded = self::seed()['templates'];
+		$keys = array_keys( $seeded );
+		$missing = array_values( array_filter( $keys, static fn( string $key ): bool => \Nino\Filesystem::fileExists( $appData, self::PDF_TEMPLATES. '/'. $key. '.php' ) === false ) );
+		$absent = array_map( static fn( string $key ): string => (string) $seeded[$key]['name'], $missing );
+
+		$items[] = [ 'key' => 'pdf-templates', 'state' => $missing === [] ? 'ok' : ( count( $missing ) === count( $keys ) ? 'none' : 'partial' ), 'lacks' => $absent ];
+		$items[] = [ 'key' => 'home', 'state' => self::homeState( $routes ) ];
+
+		$whole = array_filter( $items, static fn( array $item ): bool => in_array( $item['state'], [ 'ok', 'own' ], true ) === false ) === [];
+
+		\Nino\Http::ok( $request, [ 'items' => $items, 'whole' => $whole, 'first_run' => $whole === false && \Crm\Settings::setupDone( $appData ) === '' ] );
+	}
+
+	/**
+	 *	The name of a feature as the Features panel shows it, in the interface language of the session; for a feature that is not installed the module's own name for it
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$key
+	 *
+	 *	@return 	string
+	 */
+	private static function label( array &$appData, string $key ): string {
+
+		$locale = \Nino\Admin\Admin::sessionLocale( $appData );
+		$feature = \Nino\Features::get( $appData, $key );
+		$label = $feature === null ? '' : \Nino\Features::localized( $feature['name'] ?? '', $locale );
+
+		// A feature that is not installed has no manifest to ask: the module's own names for its six
+		return $label !== '' ? $label : ( self::LABELS[$key][$locale] ?? self::LABELS[$key]['en_US'] ?? $key );
+	}
+
+	/**
+	 *	What the start page of the site is, from the persisted routes
+	 *
+	 *	@param		array 		$routes
+	 *
+	 *	@return 	string										ok (the door), own (a body of the owner's), other (no start page, or the one of the wizard)
+	 */
+	private static function homeState( array $routes ): string {
+
+		$body = is_array( $routes[self::HOME] ?? null ) === true ? (string) ( $routes[self::HOME]['body'] ?? '' ) : null;
+
+		return match( true ) {
+			$body === \Crm\Crm::DOOR => 'ok',
+			$body === null || $body === self::STARTER => 'other',
+			default => 'own',
+		};
+	}
+
+	/**
+	 *	What the Einrichtung seeds into the Pdf feature: templates, blocks and layout (install/pdf.php)
+	 *
+	 *	@return 	array											templates, blocks, layout
+	 */
+	public static function seed(): array {
+
+		return (array) include self::unitDir(). '/pdf.php';
 	}
 
 	/**
@@ -235,7 +395,7 @@ class Admin {
 	 */
 	public static function unitDir(): string {
 
-		return dirname( __DIR__, 2 ). '/unit';
+		return dirname( __DIR__ ). '/install';
 	}
 
 }

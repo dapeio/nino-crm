@@ -257,3 +257,4 @@ dialog.dlg .actions { margin-top: 14px }
 .kv dd { overflow-wrap: anywhere }
 .cols > *, .cols-3 > * { min-width: 0 }
 .kv input, .kv select { min-width: 0 }
+.list-mini .state-note.block { display: block; margin-top: 2px }

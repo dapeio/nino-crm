@@ -1,16 +1,21 @@
 <?php
 declare(strict_types=1);
 
-// The install unit of the CRM module: the pages of the customer portal and the login page. The panel CRM and the settings of the surface apply it
-// with the button Portal einrichten (Crm\Crm\Admin::apiSetup(), through \Nino\Features::applyUnit(), add-only: a
-// route, a template or a text the project has stays as it is). It lies in unit/ and not in install/ on purpose: the
-// kernel's wizard offers every install/manifest.php below app/ and expects the module it names to be a \Nino\Modules
-// class, which a project module is not (tests/install-smoke.php holds the kernel to that). The element type of the items is
-// copied where the project has none (elementTypes, add-only). No config: a unit's config
-// writes top-level keys of config.php and cannot write the setting paths of the Members feature - the panel sets it
-// with Features::saveSettings(), where the project protects no path yet. The blacklist is the Elements panel's own words for
-// the type (workbench, not site), so the Text panel does not offer them; the words of the pages are the site's and stay editable
+// The install unit of the CRM module, found by the kernel's setup wizard (\Nino\Install\Setup::units() scans app/ for
+// install/manifest.php; tests/install-smoke.php of the kernel holds it to that): the wizard offers it pre-checked, lists the
+// module class in /nino/modules and applies the unit with overwrite on - the pages of the customer portal, their words, the
+// element type of the items. The door of the portal (the start page of the site) is no part of it: the screen Einrichtung of the
+// surface writes the route GET:// when the owner presses Einrichten, and the same step applies this unit again, add-only (the
+// panel CRM and the settings of the surface keep the button Portal einrichten, through \Nino\Features::applyUnit(): a route,
+// a template or a text the project has stays as it is). No config: a unit's config writes top-level keys of config.php and cannot
+// write the setting paths of the Members feature - the Einrichtung sets it with Features::saveSettings(). The blacklist is the
+// Elements panel's own words for the type (workbench, not site), so the Text panel does not offer them; the words of the pages are
+// the site's and stay editable
 return [
+	'key'             => 'crm',
+	'label'           => 'CRM & Kundenportal',
+	'preset'          => true,
+	'moduleClass'     => '\\Crm\\Crm',
 	'routes'          => [
 		'GET://portal'               => [ 'uri' => '/portal', 'body' => '[template /templates/page-portal]' ],
 		'GET://portal/dateien'       => [ 'uri' => '/portal/dateien', 'body' => '[template /templates/page-portal-files]' ],
@@ -18,7 +23,6 @@ return [
 		'GET://portal/unterschriften' => [ 'uri' => '/portal/unterschriften', 'body' => '[template /templates/page-portal-sign]' ],
 		'GET://portal/dokumente'     => [ 'uri' => '/portal/dokumente', 'body' => '[template /templates/page-portal-documents]' ],
 		'GET://portal/konto'         => [ 'uri' => '/portal/konto', 'body' => '[template /templates/page-portal-account]' ],
-		'GET://login'                => [ 'uri' => '/login', 'body' => '[template /templates/page-login]' ],
 	],
 	'templates'       => [
 		'page-portal.tpl',
@@ -27,7 +31,7 @@ return [
 		'page-portal-sign.tpl',
 		'page-portal-documents.tpl',
 		'page-portal-account.tpl',
-		'page-login.tpl',
+		'page-door.tpl',
 	],
 	'elementTypes'    => [ 'positionen.php' ],
 	'blacklist'       => [

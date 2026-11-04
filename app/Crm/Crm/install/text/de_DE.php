@@ -24,9 +24,10 @@ return [
 	'[[/_nino/webpage/portal/konto/name]]' => 'Mein Konto',
 	'[[/_nino/webpage/portal/konto/title]]' => 'Mein Konto',
 	'[[/_nino/webpage/portal/konto/description]]' => 'Dein Konto im Kundenportal.',
-	'[[/_nino/webpage/login/name]]' => 'Anmelden',
-	'[[/_nino/webpage/login/title]]' => 'Anmelden',
-	'[[/_nino/webpage/login/description]]' => 'Melde Dich mit dem Link an, den wir Dir per E-Mail schicken.',
+	// Die Angaben der Startseite, des Tors (der Element-URI ist '/', wie ihn der Assistent für die Startseite schreibt): der Kopf liest sie
+	'[[/_nino/webpage//name]]' => 'Anmelden',
+	'[[/_nino/webpage//title]]' => 'Anmelden',
+	'[[/_nino/webpage//description]]' => 'Melde Dich mit dem Link an, den wir Dir per E-Mail schicken.',
 
 	// Die Startseite des Portals, page-portal.tpl
 	'[[/template/page-portal/intro/title]]'              => 'Willkommen im Kundenportal',
@@ -72,9 +73,9 @@ return [
 	'[[/template/page-portal-account/back/label]]'       => 'Zurück zum Portal',
 	'[[/template/page-portal-account/back/href]]'        => '/portal',
 
-	// Die Anmeldeseite, page-login.tpl
-	'[[/template/page-login/intro/title]]'               => 'Anmelden',
-	'[[/template/page-login/intro/text]]'                => 'Gib die E-Mail-Adresse Deines Kontos ein. Wir schicken Dir einen Link per E-Mail - damit meldest Du Dich an, ganz ohne Passwort.',
+	// Das Tor des Portals - die Startseite der Website, page-door.tpl
+	'[[/template/page-door/intro/title]]'               => 'Anmelden',
+	'[[/template/page-door/intro/text]]'                => 'Gib die E-Mail-Adresse Deines Kontos ein. Wir schicken Dir einen Link per E-Mail - damit meldest Du Dich an, ganz ohne Passwort.',
 
 	// Die Worte des Elemente-Panels für den Typ Positionen - die der Workbench, nicht der Website (in der Blacklist der Einheit)
 	'[[/_admin/elements/field/positionen/title]]' => 'Titel',

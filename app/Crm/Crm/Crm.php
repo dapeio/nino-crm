@@ -1,13 +1,13 @@
 <?php
 declare(strict_types=1);
 /**
- *	Crm\Crm		The project module of the CRM. Listed in /nino/modules by the owner (one line in private/config.php);
+ *	Crm\Crm		The project module of the CRM. Listed in /nino/modules by the setup wizard, which finds its install unit (install/);
  *						init() registers behaviour and writes nothing: the panel CRM (adminPanels()), the
  *						components [crm-client] and [crm-documents], the callbacks that keep the portal's lookup true when a member signs in or
  *						out and the ones that let a document follow its request in Sign, the style sheet of the portal's list, and the route
  *						/.crm/pdf/<id> that answers the PDF of a finalised document; and the surface at /crm, one page of the project with its
  *						endpoint and assets (Surface::init()). The database is opened on first use, the portal pages come with the install unit
- *						the panel applies.
+ *						the wizard applies, and the screen Einrichtung of the surface completes the product (see Admin::apiSetup()).
  */
 namespace Crm;
 
@@ -15,6 +15,9 @@ class Crm {
 
 	// The one permission of the CRM: the surface at /crm, the panel CRM of the workbench and the API behind both
 	public const string MANAGE_PERM = '/_admin/crm/manage';
+
+	// The body of the route GET:// once the site's front is the portal's door (written by the Einrichtung, answered by Portal::callbackDoor())
+	public const string DOOR = '[template /templates/page-door]';
 
 	/**
 	 *	@param		array 		&$appData			(reference) Array with current app data
@@ -56,6 +59,9 @@ class Crm {
 
 		\Nino\Callbacks::registerCallback( $appData, '/members/login', [ Portal::class, 'callbackSession' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/members/logout', [ Portal::class, 'callbackSession' ] );
+
+		// The start page of the site is the door of the portal: a member who is signed in goes on to /portal
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://', [ Portal::class, 'callbackDoor' ] );
 
 		// A document follows the request for its signature: signed or declined by the member in Sign
 		\Nino\Callbacks::registerCallback( $appData, '/sign/signed', [ Documents::class, 'callbackSigned' ] );

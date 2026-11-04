@@ -51,6 +51,41 @@ class Settings {
 		return $all;
 	}
 
+	// The day a run of the setup went through (the screen Einrichtung): in the table, and no setting of the screen Einstellungen
+	public const string SETUP_KEY = 'setup_done';
+
+	/**
+	 *	The day the setup last went through, '' where it never did. A read: where there is no database yet, there was no setup
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	string
+	 */
+	public static function setupDone( array &$appData ): string {
+
+		if( is_file( \Nino\Filesystem::path( $appData, Db::FILE ) ) === false )
+			return '';
+
+		try {
+			return (string) ( Db::row( $appData, 'SELECT value FROM settings WHERE key = :k', [ 'k' => self::SETUP_KEY ] )['value'] ?? '' );
+		}
+		catch( \PDOException $e ) {
+			return '';
+		}
+	}
+
+	/**
+	 *	Write down that the setup went through, today
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	void
+	 */
+	public static function markSetupDone( array &$appData ): void {
+
+		Db::exec( $appData, 'INSERT INTO settings ( key, value ) VALUES ( :k, :v ) ON CONFLICT( key ) DO UPDATE SET value = excluded.value', [ 'k' => self::SETUP_KEY, 'v' => gmdate( 'Y-m-d' ) ] );
+	}
+
 	/**
 	 *	@param		array 		&$appData
 	 *	@param		string		$key					One of DEFAULTS

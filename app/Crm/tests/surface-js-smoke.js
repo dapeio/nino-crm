@@ -418,8 +418,8 @@ function press( w, key, target ) {
 	await settle();
 
 	check( 'the first screen is the Übersicht: it asks for the overview, and the rail marks it', router.last( 'crm-documents/overview' ) !== undefined && all( router.nav, '[data-r]' )[0].classList.contains( 'on' ) === true && all( router.nav, '[data-r]' )[1].classList.contains( 'on' ) === false );
-	check( '...every post is JSON with the token in X-CSRF-Token, to /crm/api, with the cookie of the session', router.calls[0].url === '/crm/api' && router.calls[0].init.method === 'POST' && router.calls[0].init.headers['X-CSRF-Token'] === 'token-1' && router.calls[0].init.headers['Content-Type'] === 'application/json'
-		&& router.calls[0].init.credentials === 'same-origin' && JSON.parse( router.calls[0].init.body ).action === 'crm-documents/overview' );
+	check( '...every post is JSON with the token in X-CSRF-Token, to /crm/api, with the cookie of the session', router.calls.length > 0 && router.calls.every( function( call ) { return call.url === '/crm/api' && call.init.method === 'POST' && call.init.headers['X-CSRF-Token'] === 'token-1' && call.init.headers['Content-Type'] === 'application/json' } )
+		&& router.calls.every( function( call ) { return call.init.credentials === 'same-origin' } ) && JSON.parse( router.calls[0].init.body ).action === 'crm/status' && JSON.parse( router.calls[1].init.body ).action === 'crm-documents/overview' );
 	check( '...the rail counts the open invoices', router.count.textContent === '3' );
 
 	const routes = [
@@ -495,7 +495,7 @@ function press( w, key, target ) {
 	const recentLines = lists[1].children;
 	check( '"Zuletzt" lists the latest documents: a draft opens in the editor, the others as a document, each with its kind, client and day', recentLines.length === 3 && all( recentLines[0], 'a' )[0].getAttribute( 'href' ) === '#beleg-11' && all( recentLines[1], 'a' )[0].getAttribute( 'href' ) === '#entwurf-16'
 		&& textOf( recentLines[1] ).indexOf( 'Entwurf' ) === 0 && textOf( recentLines[1] ).indexOf( 'Rechnung · Podcast Süd' ) !== -1 && textOf( recentLines[1] ).indexOf( '03.11.2026' ) !== -1 && textOf( recentLines[2] ).indexOf( 'Vertrag Album 2027' ) === 0 );
-	check( '...everything came from one call', overview.sent().join() === 'crm-documents/overview' );
+	check( '...everything came from two calls: the status of the first run, then the overview', overview.sent().join() === 'crm/status,crm-documents/overview' );
 	check( 'the head has the search and the menu of the new documents', all( overview.main, '#q' ).length === 1 && all( all( overview.main, '.menu' )[0], 'button' ).length === 6 && all( all( overview.main, '.menu' )[0], 'button' ).slice( 1 ).map( textOf ).join( '|' ) === 'Rechnung|Angebot|Vertrag (aus Angebot)|Datenschutz|Information' );
 
 	const empty = world( { hash : '#uebersicht', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : Object.assign( {}, summary, { count : 0, overdue_count : 0, overdue_gross : 0, overdue_oldest : '', drafts_count : 0, drafts_last : '' } ), needs : [], recent : [], settings : settings } ] } } } );
@@ -1418,7 +1418,7 @@ function press( w, key, target ) {
 	const stale = world( { hash : '#belege', answers : { 'crm-documents/overview' : function() { return [ 403, { error : 'x', code : 'csrf' } ] }, 'crm-documents/list' : function() { return [ 403, { error : 'the session token is no longer valid - reload the page', code : 'csrf' } ] } } } );
 	stale.boot();
 	await settle();
-	check( 'a 403 with the code csrf reloads the page, once: the flag is set, no toast', stale.reloads.length === 1 && stale.storage['crm-reloaded'] === '1' && stale.toast.textContent === '' );
+	check( 'a 403 with the code csrf reloads the page, once: the flag is set - the second refusal of the same page, which the browser has already left, says the sentence of the code and reloads nothing', stale.reloads.length === 1 && stale.storage['crm-reloaded'] === '1' && stale.toast.textContent === texts['error.csrf'] );
 	stale.location.hash = '#belege';
 	await settle();
 	check( '...the second time it does not reload again and says the sentence of the code', stale.reloads.length === 1 && stale.toast.textContent === 'Das Sitzungs-Token dieser Seite gilt nicht mehr. Lade die Seite neu.' );
@@ -2113,21 +2113,114 @@ function press( w, key, target ) {
 		'crm/setup' : function() { setups++; return [ 200, { added : { routes : [ 'a', 'b', 'c' ], templates : [ 'x' ], types : [ 'positionen.php' ], texts : 12, paths : false, start : false }, existed : { routes : [ 'd' ], templates : [ 'y', 'z' ], types : [], paths : true, start : true } } ] },
 	} );
 	check( 'a module that misses something says it line by line, in the words of the state - a portal that is partly there names what it lacks, in the words of the parts - and the button Portal einrichten is there', all( all( est.main, '#status-missing' )[0], 'li' ).map( textOf ).join( '|' ) === [
-		'Das Verzeichnis data/ ist nicht beschreibbar, die Datenbank kann nicht angelegt werden.', 'Das Feature Unterschrift ist installiert, aber nicht aktiv. Schalte es im Panel Features ein.', 'Das Feature PDF ist nicht installiert.',
-		'Das Portal ist nur zum Teil eingerichtet, es fehlt: Routen, der Elementtyp Positionen. Drück auf Portal einrichten, es ergänzt, was fehlt.' ].join( '|' ) && all( est.main, '#portal-setup' )[0].hidden === false && textOf( all( est.main, '#portal-setup' )[0] ) === 'Portal einrichten' );
+		'Das Verzeichnis data/ ist nicht beschreibbar, die Datenbank kann nicht angelegt werden.', texts['status.sign-off'], 'Das Feature PDF ist nicht installiert.',
+		texts['status.portal-partial'].replace( '%s', 'Routen, der Elementtyp Positionen' ) ].join( '|' ) && all( est.main, '#portal-setup' )[0].hidden === false && textOf( all( est.main, '#portal-setup' )[0] ) === 'Portal einrichten' );
 	type( efield( est, 'currency' ), 'CHF', false );
 	statusItems = eok;
 	click( est, all( est.main, '#portal-setup' )[0] );
 	check( 'the button posts crm/setup with nothing, and is off while the request is out', est.last( 'crm/setup' ) !== undefined && JSON.stringify( est.last( 'crm/setup' ).data ) === '{}' && all( est.main, '#portal-setup' )[0].disabled === true );
 	await settle();
-	check( '...the status is asked for again and drawn: all is well, the button is gone, and what the setup did stands in one sentence with a place for each of the five numbers - what a person typed in the form above stays where it is', setups === 1 && est.all( 'crm/status' ).length === 2 && all( est.main, '#status-ok' ).length === 1 && all( est.main, '#portal-setup' )[0].hidden === true
-		&& textOf( all( est.main, '#setup-said' )[0] ) === 'Eingerichtet. Neu: Routen 3, Vorlagen 1, Elementtypen 1, Worte 12. Schon da: 3.' && efield( est, 'currency' ).value === 'CHF' );
-	const emembers = await eopen( {}, pitemsStatus, { 'crm/setup' : function() { return [ 409, { error : 'x', code : 'crm_setup_members' } ] } } );
+	check( '...the status is asked for again and drawn: all is well, the button is gone, and what the setup did stands in one sentence with a place for each of the seven numbers - what a person typed in the form above stays where it is', setups === 1 && est.all( 'crm/status' ).length === 2 && all( est.main, '#status-ok' ).length === 1 && all( est.main, '#portal-setup' )[0].hidden === true
+		&& textOf( all( est.main, '#setup-said' )[0] ) === 'Eingerichtet. Neu: Features 0, Routen 3, Vorlagen 1, Elementtypen 1, Worte 12, PDF-Vorlagen 0. Schon da: 3.' && efield( est, 'currency' ).value === 'CHF' );
+	const ehome = await eopen( {}, eok.concat( [ { key : 'pdf-templates', state : 'none', lacks : [ 'rechnung' ] }, { key : 'home', state : 'other' } ] ) );
+	check( 'the card of the portal offers the button while anything of the product is missing, the portal itself being in order: the PDF templates and the start page are lines of the status as well', all( ehome.main, '#portal-setup' )[0].hidden === false && all( all( ehome.main, '#status-missing' )[0], 'li' ).map( textOf ).join( '|' ) === texts['status.pdf-templates-none']+ '|'+ texts['status.home-other'] );
+	const eown = await eopen( {}, eok.concat( [ { key : 'pdf-templates', state : 'ok' }, { key : 'home', state : 'own' } ] ) );
+	check( 'a start page of the owner\'s is no line of what is missing in the card of the portal: all is well, and the button is hidden', all( eown.main, '#status-ok' ).length === 1 && all( eown.main, '#status-missing' ).length === 0 && all( eown.main, '#portal-setup' )[0].hidden === true );
+	const emembers = await eopen( {}, pitemsStatus, { 'crm/setup' : function() { return [ 409, { error : 'x', code : 'crm_setup_feature', params : [ 'Mitglieder' ] } ] } } );
 	click( emembers, all( emembers.main, '#portal-setup' )[0] );
 	await settle();
-	check( 'a setup that is refused says the sentence of its code, the button is back and the status is as it was', emembers.toast.textContent === 'Das Feature Mitglieder ist nicht aktiv. Schalte es im Panel Features ein.' && all( emembers.main, '#portal-setup' )[0].disabled === false && all( emembers.main, '#status-missing' ).length === 1 && emembers.all( 'crm/status' ).length === 1 );
+	check( 'a setup that is refused says the sentence of its code, the button is back and the status is as it was', emembers.toast.textContent === 'Das Feature Mitglieder konnte nicht eingeschaltet werden. Das Panel Features nennt den Grund.' && all( emembers.main, '#portal-setup' )[0].disabled === false && all( emembers.main, '#status-missing' ).length === 1 && emembers.all( 'crm/status' ).length === 1 );
 	const efailed = await eopen( {}, undefined, { 'crm/status' : function() { return [ 500, { error : 'x', code : 'crm_clients_database' } ] } } );
 	check( 'a status that cannot be read fails the screen with its sentence and a way to try again', textOf( efailed.main ).indexOf( 'Die Datenbank hat die Anfrage nicht angenommen.' ) !== -1 && all( efailed.main, '#settings-form' ).length === 0 );
+
+	// --- Einrichtung: the screen of the first run, from a status fixture
+	const pdfKeys = [ 'angebot', 'rechnung', 'stornorechnung', 'vertrag', 'datenschutz', 'information' ];
+	const ifresh = [ { key : 'module', state : 'ok' }, { key : 'data', state : 'ok' }, { key : 'members', state : 'off' }, { key : 'files', state : 'off' }, { key : 'review', state : 'off' }, { key : 'sign', state : 'off' }, { key : 'pdf', state : 'off' }, { key : 'events', state : 'missing' },
+		{ key : 'portal', state : 'partial', lacks : [ 'paths', 'start' ] }, { key : 'pdf-templates', state : 'partial', lacks : [ 'Rechnung', 'Vertrag' ] }, { key : 'home', state : 'other' } ];
+	const idone = ifresh.map( function( item ) { return { key : item.key, state : 'ok' } } );
+	let iran = 0;
+	let iwhole = false;
+	const ianswers = function( over ) {
+		return Object.assign( {
+			'crm/status' : function() { return [ 200, { items : iwhole === true ? idone : ifresh, whole : iwhole, first_run : iwhole === false } ] },
+			'crm/setup' : function() { iran++; iwhole = true; return [ 200, { added : { features : [ 'members', 'files' ], routes : [], templates : [], types : [], texts : 3, paths : true, start : true, pdf : { templates : pdfKeys, blocks : [], layout : [] }, home : 'starter' }, existed : { features : [], routes : [ 'a' ], templates : [ 'b' ], types : [], pdf : { templates : [] }, home : false } } ] },
+			'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+		}, over || {} );
+	};
+	const iopen = async function( hash, over ) {
+		const w = world( { hash : hash, answers : ianswers( over ) } );
+		w.boot();
+		await settle();
+		return w;
+	};
+	const irows = function( w ) { return all( w.main, '#einrichtung-rows' )[0].children };
+
+	const first = await iopen( '' );
+	check( 'the first showing of the page asks for the status before it draws the Übersicht, and a module that is not whole sends it to the Einrichtung: the overview is not asked for', first.sent().join() === 'crm/status' && first.location.hash === '#einrichtung' && first.all( 'crm-documents/overview' ).length === 0 && all( first.main, '#einrichtung-rows' ).length === 1 );
+	check( '...the rail has its five entries and none is marked: the Einrichtung is no entry of it', all( first.nav, '[data-r]' ).length === 5 && all( first.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).length === 0 );
+	check( '...a row for each item of the status, its word and its state: done for the module and the data directory, to do for the rest', irows( first ).length === ifresh.length && Array.from( irows( first ) ).map( function( li ) { return li.getAttribute( 'data-key' )+ ':'+ li.getAttribute( 'data-state' ) } ).join() === 'module:ok,data:ok,members:todo,files:todo,review:todo,sign:todo,pdf:todo,events:todo,portal:todo,pdf-templates:todo,home:todo'
+		&& textOf( irows( first )[2] ).indexOf( texts['einrichtung.row-members'] ) === 0 && textOf( irows( first )[2] ).indexOf( texts['status.members-off'] ) !== -1 && textOf( irows( first )[2] ).indexOf( texts['einrichtung.state-todo'] ) !== -1 && textOf( irows( first )[0] ).indexOf( texts['status.allok'] ) === -1 );
+	check( '...what is missing is said in one sentence of the status: the portal names what it lacks, the PDF templates their keys, the start page that it is not the door yet', textOf( irows( first )[8] ).indexOf( texts['status.portal-partial'].replace( '%s', texts['status.lacks-paths']+ ', '+ texts['status.lacks-start'] ) ) !== -1
+		&& textOf( irows( first )[9] ).indexOf( texts['status.pdf-templates-partial'].replace( '%s', 'Rechnung, Vertrag' ) ) !== -1 && textOf( irows( first )[10] ).indexOf( texts['status.home-other'] ) !== -1 );
+	check( '...one button Einrichten, there, and no Fertig. while it is not whole', all( first.main, '#einrichtung-run' ).length === 1 && all( first.main, '#einrichtung-run' )[0].hidden === false && textOf( all( first.main, '#einrichtung-run' )[0] ) === 'Einrichten' && all( first.main, '#einrichtung-done' ).length === 0 && all( first.main, '#einrichtung-after' ).length === 0 );
+	click( first, all( first.main, '#einrichtung-run' )[0] );
+	check( 'the button posts crm/setup with nothing, and is off while the request is out', first.last( 'crm/setup' ) !== undefined && JSON.stringify( first.last( 'crm/setup' ).data ) === '{}' && all( first.main, '#einrichtung-run' )[0].disabled === true );
+	await settle();
+	check( '...the status is asked for again and drawn: every row done, the button gone, Fertig. with the way on to the Übersicht, and what the run did in a sentence - and the start page said once', iran === 1 && first.all( 'crm/status' ).length === 2 && Array.from( irows( first ) ).every( function( li ) { return li.getAttribute( 'data-state' ) === 'ok' } )
+		&& all( first.main, '#einrichtung-run' )[0].hidden === true && textOf( all( first.main, '#einrichtung-done' )[0] ).indexOf( 'Fertig.' ) === 0 && all( all( first.main, '#einrichtung-done' )[0], 'a' )[0].getAttribute( 'href' ) === '#uebersicht' && textOf( all( first.main, '#einrichtung-after' )[0] ) === texts['einrichtung.after']
+		&& textOf( all( first.main, '#einrichtung-said' )[0] ) === 'Eingerichtet. Neu: Features 2, Routen 0, Vorlagen 0, Elementtypen 0, Worte 3, PDF-Vorlagen 6. Schon da: 2. '+ texts['setup.home-starter'] );
+
+	// The start page of the owner's own: no lack, kept - the row says what it is, the answer says that it stays
+	let ownRun = false;
+	const ownItems = function( items ) { return items.map( function( item ) { return item.key === 'home' ? { key : 'home', state : 'own' } : item } ) };
+	const ownScreen = await iopen( '#einrichtung', {
+		'crm/status' : function() { return [ 200, { items : ownItems( ownRun === true ? idone : ifresh ), whole : false } ] },
+		'crm/setup' : function() { ownRun = true; return [ 200, { added : { features : [], routes : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false }, existed : { features : [], routes : [], templates : [], types : [], pdf : { templates : [] }, home : 'own' } } ] },
+	} );
+	check( 'a start page of the owner\'s is no lack: its row is done, and says what it is - not Fehlt', irows( ownScreen )[10].getAttribute( 'data-state' ) === 'ok' && textOf( irows( ownScreen )[10] ).indexOf( texts['status.home-own'] ) !== -1 && textOf( irows( ownScreen )[10] ).indexOf( texts['einrichtung.state-todo'] ) === -1 );
+	click( ownScreen, all( ownScreen.main, '#einrichtung-run' )[0] );
+	await settle();
+	check( '...after the run the product is whole with it - Fertig. - and the answer says that the start page stays and where the door is, the sentence of the words file', all( ownScreen.main, '#einrichtung-done' ).length === 1 && textOf( all( ownScreen.main, '#einrichtung-said' )[0] ).slice( -texts['setup.home-own'].length ) === texts['setup.home-own'] && texts['setup.home-own'] === 'Deine Startseite bleibt; das Tor des Portals liegt unter /portal.' );
+	let newRun = false;
+	const newScreen = await iopen( '#einrichtung', { 'crm/status' : function() { return [ 200, { items : newRun === true ? idone : ifresh, whole : false } ] }, 'crm/setup' : function() { newRun = true; return [ 200, { added : { features : [], routes : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : 'new' }, existed : { features : [], routes : [], templates : [], types : [], pdf : { templates : [] }, home : false } } ] } } );
+	click( newScreen, all( newScreen.main, '#einrichtung-run' )[0] );
+	await settle();
+	check( 'where there was no start page the answer says the door is the start page now, in the sentence of the words file, without the page of the wizard', all( newScreen.main, '#einrichtung-done' ).length === 1 && textOf( all( newScreen.main, '#einrichtung-said' )[0] ).slice( -texts['setup.home-new'].length ) === texts['setup.home-new'] && texts['setup.home-new'] === 'Die Startseite ist jetzt das Tor des Portals.' && textOf( all( newScreen.main, '#einrichtung-said' )[0] ).indexOf( '/home' ) === -1 );
+	iwhole = false;
+
+	const unfinished = await iopen( '', { 'crm/status' : function() { return [ 200, { items : ifresh, whole : false, first_run : false } ] } } );
+	check( 'a product that is not whole but was set up once (first_run false) is not sent to the Einrichtung: a template that was deleted does not bring the screen back on every load', unfinished.all( 'crm-documents/overview' ).length === 1 && unfinished.location.hash === '' && all( unfinished.main, '#einrichtung-rows' ).length === 0 );
+	const reached = await iopen( '#einrichtung', { 'crm/status' : function() { return [ 200, { items : ifresh, whole : false, first_run : false } ] } } );
+	check( '...and the screen is there for the one who opens it by its address: it lists what is missing', all( reached.main, '#einrichtung-rows' ).length === 1 && Array.from( irows( reached ) ).filter( function( li ) { return li.getAttribute( 'data-state' ) === 'todo' } ).length === 9 );
+	check( 'no sentence of the status names the button by a label of its own - the screen\'s button is Einrichten, the card\'s Portal einrichten -: the sentences speak of das Einrichten', Object.keys( texts ).filter( function( key ) { return /^status\./.test( key ) && /Drück|Portal einrichten/.test( texts[key] ) } ).length === 0 && /^status\.portal-/.test( 'status.portal-none' ) );
+	iwhole = true;
+	const whole = await iopen( '' );
+	check( 'a module that is whole starts on the Übersicht: the status is asked once, then the overview, and the Einrichtung is not shown', whole.sent().join() === 'crm/status,crm-documents/overview' && whole.location.hash === '' && all( whole.main, '#einrichtung-rows' ).length === 0 && all( whole.nav, '[data-r]' )[0].classList.contains( 'on' ) === true );
+	const direct = await iopen( '#einrichtung' );
+	check( 'the router sends #einrichtung to the Übersicht when the status is whole', direct.location.hash === '#uebersicht' && direct.all( 'crm-documents/overview' ).length === 1 && all( direct.main, '#einrichtung-rows' ).length === 0 );
+	const unreadable = await iopen( '', { 'crm/status' : function() { return [ 500, { error : 'x', code : 'crm_clients_database' } ] } } );
+	check( 'a status that cannot be read does not hold the page back: the Übersicht is drawn', unreadable.all( 'crm-documents/overview' ).length === 1 && all( unreadable.main, '#einrichtung-rows' ).length === 0 );
+	const elsewhere = await iopen( '#belege', { 'crm-documents/list' : function() { return [ 200, { documents : [ row( {} ) ], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } );
+	check( 'the first showing of ANY screen asks for the status, once: a deep link to Belege of a product that is whole is drawn as it is named, and the status is not asked again by the next screen', elsewhere.all( 'crm/status' ).length === 1 && elsewhere.location.hash === '#belege' && elsewhere.all( 'crm-documents/list' ).length === 1 && all( elsewhere.main, '#einrichtung-rows' ).length === 0 );
+	iwhole = false;
+	const deep = await iopen( '#kunden' );
+	check( '...and a deep link of a product that was never set up goes to the Einrichtung all the same: the screen of the address is not drawn', deep.all( 'crm/status' ).length === 1 && deep.all( 'crm-clients/list' ).length === 0 && deep.location.hash === '#einrichtung' && all( deep.main, '#einrichtung-rows' ).length === 1 );
+	const refused = await iopen( '#einrichtung', { 'crm/setup' : function() { return [ 409, { error : 'x', code : 'crm_setup_feature', params : [ 'Termine' ] } ] } } );
+	click( refused, all( refused.main, '#einrichtung-run' )[0] );
+	await settle();
+	check( 'a run that is refused names the feature in the sentence of its code, the button is back, the status is read again and the rows are drawn from it, the said-line is empty - no sentence of a run that did not go through - and the refusal stays in the toast', textOf( all( refused.main, '#einrichtung-said' )[0] ) === '' && refused.toast.textContent === 'Das Feature Termine konnte nicht eingeschaltet werden. Das Panel Features nennt den Grund.' && all( refused.main, '#einrichtung-run' )[0].disabled === false && all( refused.main, '#einrichtung-run' )[0].hidden === false && refused.all( 'crm/status' ).length === 2 && irows( refused ).length === ifresh.length );
+	const stopped = await iopen( '#einrichtung', { 'crm/status' : function() { return [ 500, { error : 'x', code : 'crm_clients_database' } ] } } );
+	check( 'a status that cannot be read fails the Einrichtung with its sentence and a way to try again', textOf( stopped.main ).indexOf( 'Die Datenbank hat die Anfrage nicht angenommen.' ) !== -1 && all( stopped.main, '#einrichtung-rows' ).length === 0 );
+	let releaseRun = null;
+	const lateRun = await iopen( '#einrichtung', { 'crm/setup' : function() { return new Promise( function( resolve ) { releaseRun = resolve } ) } } );
+	click( lateRun, all( lateRun.main, '#einrichtung-run' )[0] );
+	lateRun.location.hash = '#kunden';
+	await settle();
+	const statusBefore = lateRun.all( 'crm/status' ).length;
+	releaseRun( [ 200, { added : {}, existed : {} } ] );
+	await settle();
+	check( 'the answer of a run that arrives after the screen was left changes nothing: no second status, the screen of the clients stays', lateRun.all( 'crm/status' ).length === statusBefore && all( lateRun.main, '#einrichtung-rows' ).length === 0 );
+	check( 'every word the Einrichtung asks for is a word of the page: the title, the intro, the states, the button, Fertig., the way on, and a word for every item of the status', [ 'title', 'intro', 'rows', 'state-ok', 'state-todo', 'run', 'done', 'next', 'after' ].concat( ifresh.map( function( item ) { return 'row-'+ item.key } ) ).every( function( key ) { return typeof texts['einrichtung.'+ key] === 'string' && texts['einrichtung.'+ key] !== '' } ) );
 
 	// --- the words of the new screens: every key the script names is a word, and so is every one of the families it builds
 	const kwords = new Set();
@@ -2137,8 +2230,8 @@ function press( w, key, target ) {
 	while( ( kfound = kpattern.exec( script ) ) )
 		kwords.add( kfound[1] );
 
-	const kfamilies = { 'acc.state-' : [ 'signed', 'invited', 'off', 'gone' ], 'status.lacks-' : [ 'routes', 'templates', 'types', 'paths' ], 'ctab.' : [ 'belege', 'portal', 'notizen' ], 'tag.' : [ 'offer', 'invoice', 'contract', 'privacy', 'information' ], 'settings.number-' : [ 'offer', 'invoice', 'credit' ],
-		'clientfield.' : [ 'company', 'name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id', 'account_email', 'account_name' ], 'status.' : [ 'allok', 'module-off', 'data-unwritable', 'portal-none', 'portal-partial', 'members-missing', 'members-off', 'members-problem', 'files-off', 'review-off', 'sign-off', 'pdf-missing', 'pdf-problem' ],
+	const kfamilies = { 'acc.state-' : [ 'signed', 'invited', 'off', 'gone' ], 'status.lacks-' : [ 'routes', 'templates', 'texts', 'types', 'paths', 'start' ], 'ctab.' : [ 'belege', 'portal', 'notizen' ], 'tag.' : [ 'offer', 'invoice', 'contract', 'privacy', 'information' ], 'settings.number-' : [ 'offer', 'invoice', 'credit' ],
+		'clientfield.' : [ 'company', 'name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id', 'account_email', 'account_name' ], 'status.' : [ 'allok', 'module-off', 'data-unwritable', 'portal-none', 'portal-partial', 'members-missing', 'members-off', 'members-problem', 'files-off', 'review-off', 'sign-off', 'pdf-missing', 'pdf-problem', 'events-off', 'pdf-templates-none', 'pdf-templates-partial', 'home-other' ],
 		'acc.resend-' : [ 'invite', 'login' ], 'acc.resent-' : [ 'invite', 'login' ], 'acc.switch-' : [ 'off', 'on' ], 'acc.switched-' : [ 'off', 'on' ], 'newclient.done-' : [ 'invited', 'unmailed' ], 'error.' : [ 'client-save', 'client-active', 'client-portal', 'account-invite', 'account-resend', 'account-active', 'account-name', 'account-remove', 'account-link', 'unlinked', 'settings', 'setup' ] };
 
 	Object.keys( kfamilies ).forEach( function( stem ) { kfamilies[stem].forEach( function( one ) { kwords.add( stem+ one ) } ) } );
@@ -2299,6 +2392,10 @@ function press( w, key, target ) {
 	check( '...a module that misses nothing says so, and the button Portal einrichten is hidden', pw.texts().indexOf( pw.words['/_admin/crm/status/allok'] ) !== -1 && pw.find( function( node ) { return node.id === 'crm-setup' } ).hidden === true );
 	check( '...and the script of the panel asks for no word the text files do not have', pw.missing.length === 0 );
 
+	const po = panelWorld( 'de_DE' );
+	po.panel.showCurrent();
+	po.answer( 200, { items : eok.concat( [ { key : 'pdf-templates', state : 'ok' }, { key : 'home', state : 'own' } ] ) } );
+	check( 'the panel does not count a start page of the owner\'s as missing: all is well, the button is hidden', po.texts().indexOf( po.words['/_admin/crm/status/allok'] ) !== -1 && po.find( function( node ) { return node.id === 'crm-setup' } ).hidden === true && po.missing.length === 0 );
 	const pm = panelWorld( 'de_DE' );
 	pm.panel.showCurrent();
 	pm.answer( 200, { items : pitemsStatus } );
@@ -2311,14 +2408,14 @@ function press( w, key, target ) {
 	pm.answer( 200, { added : { routes : [ 'a', 'b', 'c' ], templates : [ 'x' ], types : [ 'positionen.php' ], texts : 12, paths : false, start : false }, existed : { routes : [ 'd' ], templates : [ 'y', 'z' ], types : [], paths : true, start : true } } );
 	check( '...the status is asked for again after it', pm.last().action === 'crm/status' && pm.requests.length === 3 );
 	pm.answer( 200, { items : eok } );
-	check( '...and what the setup did stays on the screen after the box is drawn again: one sentence with a place for each of the five numbers', pm.texts().indexOf( 'Eingerichtet. Neu: Routen 3, Vorlagen 1, Elementtypen 1, Worte 12. Schon da: 3.' ) !== -1 && pm.words['/_admin/crm/setup/done'].split( '%s' ).length === 6
+	check( '...and what the setup did stays on the screen after the box is drawn again: one sentence with a place for each of the seven numbers', pm.texts().indexOf( 'Eingerichtet. Neu: Features 0, Routen 3, Vorlagen 1, Elementtypen 1, Worte 12, PDF-Vorlagen 0. Schon da: 3.' ) !== -1 && pm.words['/_admin/crm/setup/done'].split( '%s' ).length === 8
 		&& pm.find( function( node ) { return node.id === 'crm-setup' } ).hidden === true );
 	const pr = panelWorld( 'de_DE' );
 	pr.panel.showCurrent();
 	pr.answer( 200, { items : pitemsStatus } );
 	pr.find( function( node ) { return node.id === 'crm-setup' } ).click();
-	pr.answer( 409, { error : 'x', code : 'crm_setup_members' } );
-	check( 'a refusal of the setup says its sentence in the line, and the button is back', pr.texts().indexOf( pr.words['/_admin/error/crm_setup_members'] ) !== -1 && pr.find( function( node ) { return node.id === 'crm-setup' } ).disabled === false && pr.requests.length === 2 );
+	pr.answer( 409, { error : 'x', code : 'crm_setup_feature', params : [ 'Mitglieder' ] } );
+	check( 'a refusal of the setup says its sentence in the line, and the button is back', pr.texts().indexOf( pr.said( '/_admin/error/crm_setup_feature', 'Mitglieder' ) ) !== -1 && pr.find( function( node ) { return node.id === 'crm-setup' } ).disabled === false && pr.requests.length === 2 );
 	const pf = panelWorld( 'en_US' );
 	pf.panel.showCurrent();
 	pf.answer( 200, { items : pitemsStatus } );

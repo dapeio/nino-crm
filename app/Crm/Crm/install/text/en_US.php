@@ -24,9 +24,10 @@ return [
 	'[[/_nino/webpage/portal/konto/name]]' => 'My account',
 	'[[/_nino/webpage/portal/konto/title]]' => 'My account',
 	'[[/_nino/webpage/portal/konto/description]]' => 'Your account in the client portal.',
-	'[[/_nino/webpage/login/name]]' => 'Sign in',
-	'[[/_nino/webpage/login/title]]' => 'Sign in',
-	'[[/_nino/webpage/login/description]]' => 'Sign in with the link we send you by email.',
+	// The details of the start page, the door (its Element-URI is '/', as the wizard writes it for a start page): the head reads them
+	'[[/_nino/webpage//name]]' => 'Sign in',
+	'[[/_nino/webpage//title]]' => 'Sign in',
+	'[[/_nino/webpage//description]]' => 'Sign in with the link we send you by email.',
 
 	// The portal's start page, page-portal.tpl
 	'[[/template/page-portal/intro/title]]'              => 'Welcome to the client portal',
@@ -72,9 +73,9 @@ return [
 	'[[/template/page-portal-account/back/label]]'       => 'Back to the portal',
 	'[[/template/page-portal-account/back/href]]'        => '/portal',
 
-	// The login page, page-login.tpl
-	'[[/template/page-login/intro/title]]'               => 'Sign in',
-	'[[/template/page-login/intro/text]]'                => 'Enter the email address of your account. We send you a link by email - that signs you in, no password needed.',
+	// The portal's door - the site's start page, page-door.tpl
+	'[[/template/page-door/intro/title]]'               => 'Sign in',
+	'[[/template/page-door/intro/text]]'                => 'Enter the email address of your account. We send you a link by email - that signs you in, no password needed.',
 
 	// The Elements panel's own words for the type Positionen - the workbench's, not the site's (listed in the unit's blacklist)
 	'[[/_admin/elements/field/positionen/title]]' => 'Title',

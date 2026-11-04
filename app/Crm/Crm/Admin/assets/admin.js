@@ -61,7 +61,7 @@
 			box.id = 'crm-status';
 			mount.appendChild( box );
 
-			const missing = items.filter( function( item ) { return item.state !== 'ok' } );
+			const missing = items.filter( function( item ) { return item.state !== 'ok' && item.state !== 'own' } );
 
 			if( missing.length === 0 )
 				box.appendChild( Nino.adminUi.hint( Nino.content.getText('/_admin/crm/status/allok') ) );
@@ -71,9 +71,9 @@
 				missing.forEach( function( item ) {
 					const key = '/_admin/crm/status/'+ item.key+ '-'+ item.state;
 
-					// A portal that is only partly there names what it lacks
+					// A portal that is only partly there names what it lacks; the PDF templates that are not there are named by their keys
 					const text = item.state === 'partial' && Array.isArray( item.lacks ) === true
-						? crm._text( key, item.lacks.map( function( kind ) { return Nino.content.getText( '/_admin/crm/status/lacks-'+ kind ) } ).join(', ') )
+						? crm._text( key, item.lacks.map( function( kind ) { return item.key === 'pdf-templates' ? kind : Nino.content.getText( '/_admin/crm/status/lacks-'+ kind ) } ).join(', ') )
 						: Nino.content.getText( key );
 
 					list.appendChild( Nino.adminUi.el( 'li', '', text ) );
@@ -82,7 +82,6 @@
 				box.appendChild( list );
 			}
 
-			const portal = items.find( function( item ) { return item.key === 'portal' } );
 			const line = Nino.adminUi.status( Nino.adminUi.el( 'span' ) );
 
 			if( typeof said === 'string' )
@@ -117,7 +116,7 @@
 			const actions = Nino.adminUi.el( 'div', 'nino-admin-actions' );
 
 			setup.id = 'crm-setup';
-			setup.hidden = portal !== undefined && portal.state === 'ok';
+			setup.hidden = missing.length === 0;
 			actions.appendChild( setup );
 			actions.appendChild( line.element );
 			box.appendChild( actions );
@@ -132,10 +131,16 @@
 		 */
 		_setupSentence : function( answer ) {
 
-			const added = answer.added ?? { routes : [], templates : [], types : [], texts : 0, paths : false };
-			const existed = answer.existed ?? { routes : [], templates : [], types : [] };
+			const none = { features : [], routes : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false };
+			const added = Object.assign( {}, none, answer.added );
+			const existed = Object.assign( {}, none, answer.existed );
+			const there = existed.features.length+ existed.routes.length+ existed.templates.length+ existed.types.length+ existed.pdf.templates.length;
+			const sentence = crm._text( '/_admin/crm/setup/done', added.features.length, added.routes.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
 
-			return crm._text( '/_admin/crm/setup/done', added.routes.length, added.templates.length, added.types.length, added.texts, existed.routes.length+ existed.templates.length+ existed.types.length );
+			// What became of the start page, said in the answer
+			const home = typeof added.home === 'string' ? added.home : ( existed.home === 'own' ? 'own' : '' );
+
+			return home !== '' ? sentence+ ' '+ Nino.content.getText( '/_admin/crm/setup/home-'+ home ) : sentence;
 		},
 	} );
 
