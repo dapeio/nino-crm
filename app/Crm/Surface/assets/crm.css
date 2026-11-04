@@ -199,7 +199,7 @@ a.btn { text-decoration: none }
 .tbl tr.plain:hover, .tbl.ed tbody tr:hover, .tbl.static tbody tr:hover { background: transparent }
 .tbl td.wrap, .ed td { white-space: normal }
 .b-expired { background: var(--warn-soft); color: var(--warn) }
-.dot.bad { background: var(--bad) } .dot.warn { background: var(--warn) } .dot.muted { background: var(--fg-3) }
+.dot.bad { background: var(--bad) } .dot.warn { background: var(--warn) } .dot.muted { background: var(--fg-3) } .dot.good { background: var(--good) }
 .pager { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 10px }
 .note { margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap }
 .note.bad { background: var(--bad-soft); color: var(--bad) }
@@ -231,6 +231,9 @@ a.btn { text-decoration: none }
 
 /* Dialogs: a question and two buttons */
 dialog.dlg { border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); color: var(--fg); padding: 16px 18px; width: min(420px, calc(100vw - 32px)); box-shadow: var(--shadow) }
+dialog.dlg.wide { width: min(760px, calc(100vw - 32px)) }
+dialog.dlg p { overflow-wrap: anywhere }
+dialog.dlg pre.sheet { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 60vh; margin: 0 0 8px }
 dialog.dlg::backdrop { background: rgba(10, 16, 22, .45) }
 dialog.dlg h2 { margin: 0 0 6px; font-size: 15px }
 dialog.dlg p { margin: 0 0 8px }

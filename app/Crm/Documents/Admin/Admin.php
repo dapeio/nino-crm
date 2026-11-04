@@ -594,7 +594,8 @@ class Admin {
 
 		foreach( array_keys( Settings::DEFAULTS ) as $key ) {
 
-			if( array_key_exists( $key, $data ) === false )
+			// What the module keeps itself (the day the Datenschutz changed) is not posted
+			if( array_key_exists( $key, $data ) === false || in_array( $key, Settings::READ_ONLY, true ) === true )
 				continue;
 
 			$value = Settings::clean( $key, $data[$key] );
@@ -820,6 +821,7 @@ class Admin {
 			'offers'    => self::_offers( $appData ),
 			'projects'  => self::_projects( $appData, $document['client_id'] ),
 			'accounts'  => $document['state'] !== 'draft' ? self::_accounts( $appData, $document['client_id'] ) : [],
+			'order'     => $document['state'] !== 'draft' ? \Crm\Records::forDocument( $appData, $document['id'] ) : null,
 			'sign_days' => max( 1, min( 90, (int) \Nino\Features::setting( $appData, 'sign', 'days', 14 ) ) ),
 		];
 	}

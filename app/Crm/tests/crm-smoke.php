@@ -122,7 +122,7 @@ $thirdFile->exec( 'INSERT INTO client_accounts ( client_id, member_id ) VALUES (
 $thirdFile = null;
 $migrated = \Crm\Db::pdo( $third );
 $rows = \Crm\Db::rows( $third, 'SELECT client_id, member_id FROM client_accounts ORDER BY rowid' );
-check( 'migrations 0004 to 0006 on a database of the third schema run once: version 6, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 3 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 6
+check( 'migrations 0004 to 0007 on a database of the third schema run once: version 7, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 4 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 7
 	&& array_map( 'json_encode', $rows ) === [ '{"client_id":2,"member_id":"aaaaaaaaaaaa"}', '{"client_id":1,"member_id":"bbbbbbbbbbbb"}' ] );
 check( '...migration 0006 gave the documents the column project, empty for every row there is, and the index on it', in_array( 'project', array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( documents )' ), 'name' ), true ) === true
 	&& (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'documents_project\' AND tbl_name = \'documents\'' )['n'] === 1 && \Crm\Db::rows( $third, 'SELECT id FROM documents WHERE project <> \'\'' ) === [] );
@@ -479,14 +479,14 @@ check( 'init registers the callback of the door and writes no route: the start p
 
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/setup' );
 $manifest = \Nino\Features::readUnitManifest( $root. '/app/Crm/Crm/install' );
-check( 'setup applies the unit and says what it added', $status === 200 && count( $body['added']['routes'] ) === 6 && count( $body['added']['templates'] ) === 7 && $body['added']['texts'] > 20 && $body['added']['paths'] === true
+check( 'setup applies the unit and says what it added', $status === 200 && count( $body['added']['routes'] ) === 7 && count( $body['added']['templates'] ) === 8 && $body['added']['texts'] > 20 && $body['added']['paths'] === true
 	&& $body['existed']['routes'] === [] && $body['existed']['templates'] === [] );
 check( '...and the element type of the items: it is among what was added, the file is there, and the unit names it', $body['added']['types'] === [ 'positionen.php', 'projekte.php' ] && $body['existed']['types'] === [] && \Crm\Positionen::missing( $appData ) === false && \Crm\Projekte::missing( $appData ) === false
 	&& ( $manifest['elementTypes'] ?? [] ) === [ 'positionen.php', 'projekte.php' ] && is_file( $root. '/app/Crm/Crm/install/positionen.php' ) === true && is_file( $root. '/app/Crm/Crm/install/projekte.php' ) === true );
 check( 'the routes are in the persisted routes and in the live ones', array_diff( array_keys( $manifest['routes'] ), array_keys( \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) ) ) === [] && array_diff( array_keys( $manifest['routes'] ), array_keys( $appData['/nino/http/routes'] ) ) === [] );
-$areas = [ 'meine-daten' => 'page-portal-meine-daten', 'projekte' => 'page-portal-projekte', 'upload' => 'page-portal-upload', 'belege' => 'page-portal-belege', 'termine' => 'page-portal-termine' ];
+$areas = [ 'meine-daten' => 'page-portal-meine-daten', 'projekte' => 'page-portal-projekte', 'upload' => 'page-portal-upload', 'belege' => 'page-portal-belege', 'termine' => 'page-portal-termine', 'datenschutz' => 'page-portal-privacy' ];
 $textsOf = static fn( string $locale ): array => (array) \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] );
-check( 'the unit has the start and the five areas: each a route with its template and its words (name, title, description, intro) in both languages', array_keys( $manifest['routes'] ) === [ 'GET://portal', 'GET://portal/meine-daten', 'GET://portal/projekte', 'GET://portal/upload', 'GET://portal/belege', 'GET://portal/termine' ]
+check( 'the unit has the start, the five areas and the page Datenschutz: each a route with its template and its words (name, title, description, intro) in both languages', array_keys( $manifest['routes'] ) === [ 'GET://portal', 'GET://portal/meine-daten', 'GET://portal/projekte', 'GET://portal/upload', 'GET://portal/belege', 'GET://portal/termine', 'GET://portal/datenschutz' ]
 	&& array_filter( $areas, static fn( string $template, string $area ): bool => ( $manifest['routes']['GET://portal/'. $area]['body'] ?? '' ) !== '[template /templates/'. $template. ']' || in_array( $template. '.tpl', $manifest['templates'], true ) === false
 		|| isset( \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://portal/'. $area] ) === false, ARRAY_FILTER_USE_BOTH ) === []
 	&& array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => array_filter( $areas, static fn( string $template, string $area ): bool => array_filter( [ '[[/_nino/webpage/portal/'. $area. '/name]]', '[[/_nino/webpage/portal/'. $area. '/title]]', '[[/_nino/webpage/portal/'. $area. '/description]]',
@@ -513,7 +513,7 @@ foreach( $manifest['templates'] as $file ) {
 		$unread[] = $file;
 }
 
-check( 'the Builder reads every page of the unit as sections: '. implode( ', ', $unread ), $unread === [] && count( $manifest['templates'] ) === 7 );
+check( 'the Builder reads every page of the unit as sections: '. implode( ', ', $unread ), $unread === [] && count( $manifest['templates'] ) === 8 );
 $styles = (string) file_get_contents( $root. '/_nino/Nino.css' );
 $classes = [];
 
@@ -541,7 +541,7 @@ $textFile['[[/template/page-portal/intro/title]]'] = 'Mein eigener Titel';
 $routesAfter = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/setup' );
 check( 'a second setup adds nothing and says what was there', $status === 200 && $body['added']['routes'] === [] && $body['added']['templates'] === [] && $body['added']['texts'] === 0 && $body['added']['paths'] === false && $body['added']['start'] === false
-	&& $body['added']['types'] === [] && count( $body['existed']['routes'] ) === 6 && count( $body['existed']['templates'] ) === 7 && $body['existed']['types'] === [ 'positionen.php', 'projekte.php' ] );
+	&& $body['added']['types'] === [] && count( $body['existed']['routes'] ) === 7 && count( $body['existed']['templates'] ) === 8 && $body['existed']['types'] === [ 'positionen.php', 'projekte.php' ] );
 check( '...a template the project changed survives it', (string) file_get_contents( $pageFile ) === $changed );
 check( '...so does a word the project changed', \Nino\Filesystem::getFileContent( $appData, '/text/de_DE.php', [] )['[[/template/page-portal/intro/title]]'] === 'Mein eigener Titel' );
 check( '...and the routes are the same, a route the project changed is not written again', \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) === $routesAfter && \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://portal']['body'] === '[template /templates/page-own]' );
@@ -564,6 +564,27 @@ check( 'a portal without the type of the projects is only partly there as well, 
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/setup' );
 check( '...the setup adds that type and nothing else - add-only, the type of the items is as it was - and the portal is ok again', $status === 200 && $body['added']['types'] === [ 'projekte.php' ] && $body['existed']['types'] === [ 'positionen.php' ] && $body['added']['routes'] === [] && $body['added']['templates'] === [] && \Crm\Projekte::missing( $appData ) === false
 	&& $stateOf( ninoCall( $appData, $workbench, [], 'crm/status' )[1], 'portal' ) === 'ok' );
+
+// The main menu: the six pages of the unit are entries of it - the page Datenschutz is not -, and the setup writes the membership onto a route that lacks one
+$navRoutes = array_keys( array_filter( (array) $manifest['routes'], static fn( array $route ): bool => isset( $route['navs'] ) === true ) );
+check( 'the six portal pages of the unit are in the main menu: each route carries navs main 5, as the pages of the wizard do - and the page Datenschutz does not', $navRoutes === [ 'GET://portal', 'GET://portal/meine-daten', 'GET://portal/projekte', 'GET://portal/upload', 'GET://portal/belege', 'GET://portal/termine' ]
+	&& array_unique( array_map( static fn( string $key ): string => json_encode( $manifest['routes'][$key]['navs'] ), $navRoutes ) ) === [ '{"main":5}' ] && isset( $manifest['routes']['GET://portal/datenschutz']['navs'] ) === false
+	&& array_filter( $navRoutes, static fn( string $key ): bool => ( \Nino\AppData::stored( $appData, '/nino/http/routes', [] )[$key]['navs'] ?? null ) !== [ 'main' => 5 ] ) === [] );
+\Nino\Filesystem::mutate( $appData, '/config.php', static function( array $content ): array {
+	unset( $content['/nino/http/routes']['GET://portal/belege']['navs'] );
+	$content['/nino/http/routes']['GET://portal/termine']['navs'] = [ 'footer' => 3 ];
+	unset( $content['/nino/http/routes']['GET://portal/upload']['navs'] );
+	$content['/nino/http/routes']['GET://portal/upload']['navs'] = [];
+	return $content;
+} );
+unset( $appData['/nino/http/routes']['GET://portal/belege']['navs'] );
+check( 'a portal set up before the menu lacks the entries: the status is partial and names them', $stateOf( ninoCall( $appData, $workbench, [], 'crm/status' )[1], 'portal' ) === 'partial'
+	&& in_array( 'navs', array_column( ninoCall( $appData, $workbench, [], 'crm/status' )[1]['items'], 'lacks', 'key' )['portal'], true ) === true );
+[ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/setup' );
+$navsNow = array_map( static fn( array $route ): mixed => $route['navs'] ?? 'none', array_intersect_key( \Nino\AppData::stored( $appData, '/nino/http/routes', [] ), array_flip( $navRoutes ) ) );
+check( 'the setup adds the membership to the route that has none - and to no route that has one: a page the owner put into another menu (or into none) stays as he set it - and says which it was', $status === 200 && $body['added']['navs'] === [ 'GET://portal/belege' ] && $body['added']['routes'] === []
+	&& $navsNow['GET://portal/belege'] === [ 'main' => 5 ] && $navsNow['GET://portal/termine'] === [ 'footer' => 3 ] && $navsNow['GET://portal/upload'] === [] && $navsNow['GET://portal'] === [ 'main' => 5 ] && ( $appData['/nino/http/routes']['GET://portal/belege']['navs'] ?? null ) === [ 'main' => 5 ] );
+check( '...a second press adds nothing of it, and the status is whole again', ninoCall( $appData, $workbench, [], 'crm/setup' )[1]['added']['navs'] === [] && $stateOf( ninoCall( $appData, $workbench, [], 'crm/status' )[1], 'portal' ) === 'ok' );
 
 // A project that protects paths and has a start page already keeps them
 \Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [ '/club' ], 'start' => '/club' ] );
@@ -1047,7 +1068,7 @@ require_once $root. '/_admin/install/Install.php';
 $units = \Nino\Install\Setup::units();
 $unit = (array) \Nino\Features::readUnitManifest( (string) ( $units['crm'] ?? '' ) );
 check( 'the kernel\'s wizard finds the unit of the module below app/ with the key crm: install/ beside the module, with its label, preset and class', ( $units['crm'] ?? '' ) === $root. '/app/Crm/Crm/install' && ( $unit['key'] ?? '' ) === 'crm' && ( $unit['label'] ?? '' ) === 'CRM & Kundenportal' && ( $unit['preset'] ?? false ) === true && ( $unit['moduleClass'] ?? '' ) === '\\Crm\\Crm' && class_exists( ltrim( (string) $unit['moduleClass'], '\\' ) ) === true );
-check( '...the unit brings the portal pages and the door, not the login page, and no route for the start page - that is the Einrichtung\'s', array_keys( (array) ( $unit['routes'] ?? [] ) ) === [ 'GET://portal', 'GET://portal/meine-daten', 'GET://portal/projekte', 'GET://portal/upload', 'GET://portal/belege', 'GET://portal/termine' ]
+check( '...the unit brings the portal pages and the door, not the login page, and no route for the start page - that is the Einrichtung\'s', array_keys( (array) ( $unit['routes'] ?? [] ) ) === [ 'GET://portal', 'GET://portal/meine-daten', 'GET://portal/projekte', 'GET://portal/upload', 'GET://portal/belege', 'GET://portal/termine', 'GET://portal/datenschutz' ]
 	&& in_array( 'page-door.tpl', (array) ( $unit['templates'] ?? [] ), true ) === true && in_array( 'page-login.tpl', (array) ( $unit['templates'] ?? [] ), true ) === false && is_dir( $root. '/app/Crm/unit' ) === false );
 check( '...its texts are in both languages, and there is none for the login page any more', is_file( $root. '/app/Crm/Crm/install/text/de_DE.php' ) && is_file( $root. '/app/Crm/Crm/install/text/en_US.php' ) && str_contains( (string) file_get_contents( $root. '/app/Crm/Crm/install/text/de_DE.php' ), 'page-login' ) === false && str_contains( (string) file_get_contents( $root. '/app/Crm/Crm/install/text/en_US.php' ), '/webpage/login/' ) === false );
 
@@ -1135,8 +1156,8 @@ $own['name'] = 'Meine Rechnung';
 \Nino\Filesystem::putFileContent( $fresh, '/data/pdf/layout.php', array_merge( \Nino\Modules\Pdf::layout( $fresh ), [ 'header' => '<p>Mein Kopf</p>' ] ) );
 $routesBeforeTwice = \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'];
 [ $status, $body ] = $run( 'crm/setup' );
-check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false ]
-	&& $body['existed']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['pdf']['templates'] === $keys && $body['existed']['home'] === 'door' && count( $body['existed']['routes'] ) === 6 );
+check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'routes' => [], 'navs' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false ]
+	&& $body['existed']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['pdf']['templates'] === $keys && $body['existed']['home'] === 'door' && count( $body['existed']['routes'] ) === 7 );
 check( '...the template the owner changed is the owner\'s still, so is the header; the routes are as they were', ( \Nino\Modules\Pdf::template( $fresh, 'rechnung' )['name'] ?? '' ) === 'Meine Rechnung' && \Nino\Modules\Pdf::layout( $fresh )['header'] === '<p>Mein Kopf</p>' && \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'] === $routesBeforeTwice );
 check( '...and the status is still whole', $run( 'crm/status' )[1]['whole'] === true );
 
@@ -1281,6 +1302,75 @@ unset( $fresh['./nino/auth/current'] );
 \Nino\Auth::loginUser( $fresh, 'plain2@example.com', 'plain password' );
 check( 'an account without the permission of the CRM gets 403 from the status and from the run', $run( 'crm/status' )[0] === 403 && $run( 'crm/setup' )[0] === 403 );
 
+// --- Records: what a customer agreed to -----------------------------------------------------------------------------------
+
+echo "\nRecords\n";
+
+$rec = ninoSandbox( 'crm-records' );
+$ra = \Crm\Clients::add( $rec, [ 'company' => 'Records AG', 'name' => 'Rita Record' ] );
+$rb = \Crm\Clients::add( $rec, [ 'name' => 'Ben Beleg' ] );
+$member = [ 'id' => 'aaaaaaaaaaaa', 'email' => 'rita@example.org', 'name' => 'Rita Record' ];
+$recordsSource = (string) file_get_contents( $root. '/app/Crm/Records/Records.php' );
+
+check( 'migration 0007 makes the table of the records with the columns of the plan, and the two indexes', array_column( \Crm\Db::rows( $rec, 'PRAGMA table_info( records )' ), 'name' ) === [ 'id', 'kind', 'client_id', 'member_id', 'member_email', 'member_name', 'document_id', 'project', 'sha256', 'shown', 'at', 'ip', 'agent' ]
+	&& array_column( \Crm\Db::rows( $rec, 'SELECT name FROM sqlite_master WHERE type = \'index\' AND tbl_name = \'records\' AND name LIKE \'records_%\' ORDER BY name' ), 'name' ) === [ 'records_client_kind', 'records_document' ]
+	&& array_column( \Crm\Db::rows( $rec, 'PRAGMA index_info( records_client_kind )' ), 'name' ) === [ 'client_id', 'kind' ] && array_column( \Crm\Db::rows( $rec, 'PRAGMA index_info( records_document )' ), 'name' ) === [ 'document_id' ] );
+check( '...the client and the document are references that restrict: a client with a record is not deleted', array_map( static fn( array $key ): string => $key['table']. ':'. $key['on_delete'], \Crm\Db::rows( $rec, 'PRAGMA foreign_key_list( records )' ) ) === [ 'documents:RESTRICT', 'clients:RESTRICT' ] || array_map( static fn( array $key ): string => $key['table']. ':'. $key['on_delete'], \Crm\Db::rows( $rec, 'PRAGMA foreign_key_list( records )' ) ) === [ 'clients:RESTRICT', 'documents:RESTRICT' ] );
+
+// the standing with the Datenschutz follows the text
+check( 'while the owner keeps no text the portal asks for nothing: nobody has agreed, nobody is asked', \Crm\Records::privacy( $rec, $ra['id'] ) === [ 'asked' => false, 'agreed' => false, 'at' => '', 'member_name' => '' ] && \Crm\Records::privacyText( $rec ) === '' && \Crm\Settings::get( $rec, 'privacy_changed' ) === '' );
+$first = "Erste Fassung\nmit zwei Zeilen";
+check( 'the settings privacy_text and privacy_changed: a text is kept with its line breaks, the day it changed is set by the module - and not by a post', \Crm\Settings::set( $rec, 'privacy_text', "  Erste Fassung\r\nmit zwei Zeilen \n" ) === true && \Crm\Settings::get( $rec, 'privacy_text' ) === $first && \Crm\Settings::get( $rec, 'privacy_changed' ) === date( 'Y-m-d' )
+	&& \Crm\Settings::set( $rec, 'privacy_changed', '2020-01-01' ) === 'value:privacy_changed' && \Crm\Settings::get( $rec, 'privacy_changed' ) === date( 'Y-m-d' ) );
+\Crm\Db::exec( $rec, 'UPDATE settings SET value = \'2026-01-01\' WHERE key = \'privacy_changed\'' );
+check( '...a save that leaves the text as it is does not move the day; a different text does', \Crm\Settings::set( $rec, 'privacy_text', $first ) === true && \Crm\Settings::get( $rec, 'privacy_changed' ) === '2026-01-01' );
+check( '...the rule of the text: tabs and line breaks pass, a control character, a text longer than '. \Crm\Settings::MAX_PRIVACY. ' characters and anything that is not text are refused; the empty text is a text (the portal asks for nothing again)', \Crm\Settings::set( $rec, 'privacy_text', "a\tb\nc" ) === true && \Crm\Settings::set( $rec, 'privacy_text', "a\x07b" ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', "a\x00b" ) === 'value:privacy_text'
+	&& \Crm\Settings::set( $rec, 'privacy_text', str_repeat( 'x', \Crm\Settings::MAX_PRIVACY + 1 ) ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', str_repeat( 'ä', \Crm\Settings::MAX_PRIVACY ) ) === true && \Crm\Settings::set( $rec, 'privacy_text', [ 'x' ] ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', "\xff\xfe" ) === 'value:privacy_text' );
+\Crm\Settings::set( $rec, 'privacy_text', $first );
+check( '...a text that is stored keeps the keys in order: the particulars, then the text and its day', array_slice( array_keys( \Crm\Settings::all( $rec ) ), -2 ) === [ 'privacy_text', 'privacy_changed' ] );
+check( 'with a text the portal asks, and nobody has agreed yet; Clients::get() and list() carry the standing', \Crm\Records::privacy( $rec, $ra['id'] ) === [ 'asked' => true, 'agreed' => false, 'at' => '', 'member_name' => '' ] && \Crm\Clients::get( $rec, $ra['id'] )['privacy'] === \Crm\Records::privacy( $rec, $ra['id'] ) && array_column( \Crm\Clients::list( $rec ), 'privacy', 'id' )[$rb['id']]['asked'] === true );
+
+$agent = str_repeat( 'ü', 320 );
+$one = \Crm\Records::add( $rec, [ 'kind' => 'privacy', 'client_id' => $ra['id'], 'member' => $member, 'shown' => $first, 'ip' => '203.0.113.9', 'agent' => $agent ] );
+check( 'Records::add keeps a record: the kind, the client, the account as it was, the text that was shown and its hash, the time, the address, the browser cut to 300 characters', is_array( $one ) && $one['id'] === 1 && $one['kind'] === 'privacy' && $one['client_id'] === $ra['id'] && $one['member_id'] === 'aaaaaaaaaaaa' && $one['member_email'] === 'rita@example.org' && $one['member_name'] === 'Rita Record'
+	&& $one['document_id'] === null && $one['project'] === '' && $one['shown'] === $first && $one['sha256'] === hash( 'sha256', $first ) && $one['sha256'] === \Crm\Records::hash( $first ) && preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $one['at'] ) === 1 && $one['ip'] === '203.0.113.9' && mb_strlen( $one['agent'] ) === 300 );
+check( '...the hash is the one of the text and not what the caller says: there is no field for it', str_contains( $recordsSource, "'sha256'       => self::hash( \$shown )" ) === true && \Crm\Records::add( $rec, [ 'kind' => 'privacy', 'client_id' => $rb['id'], 'member' => $member, 'shown' => 'x', 'sha256' => 'abc' ] )['sha256'] === hash( 'sha256', 'x' ) );
+check( '...what it keeps is what of() reads, newest first, and the kind narrows it; latestPrivacy() is the newest agreement whatever its text', \Crm\Records::of( $rec, $ra['id'] ) === [ $one ] && \Crm\Records::of( $rec, $ra['id'], 'order' ) === [] && \Crm\Records::of( $rec, $ra['id'], 'privacy' ) === [ $one ] && \Crm\Records::latestPrivacy( $rec, $ra['id'] ) === $one && \Crm\Records::latestPrivacy( $rec, 999 ) === null && \Crm\Records::forDocument( $rec, 1 ) === null );
+check( 'the client has agreed when a record holds the hash of the text of now: the time and the name of the account come with it', \Crm\Records::privacy( $rec, $ra['id'] ) === [ 'asked' => true, 'agreed' => true, 'at' => $one['at'], 'member_name' => 'Rita Record' ] && \Crm\Clients::get( $rec, $ra['id'] )['privacy']['agreed'] === true && array_column( \Crm\Clients::list( $rec ), 'privacy', 'id' )[$ra['id']]['agreed'] === true && array_column( \Crm\Clients::list( $rec ), 'privacy', 'id' )[$rb['id']]['agreed'] === false );
+check( '...the agreement is of the client: another client has agreed to nothing (Ben\'s record above was to "x", not to the text)', \Crm\Records::privacy( $rec, $rb['id'] )['agreed'] === false && \Crm\Records::privacies( $rec, [ $ra['id'], $rb['id'], 999 ] ) === [ $ra['id'] => \Crm\Records::privacy( $rec, $ra['id'] ), $rb['id'] => \Crm\Records::privacy( $rec, $rb['id'] ), 999 => \Crm\Records::privacy( $rec, 999 ) ] );
+$before = \Crm\Records::of( $rec, $ra['id'] );
+\Crm\Settings::set( $rec, 'privacy_text', $first. ' Und mehr.' );
+check( 'a changed text asks again: the client has not agreed to it, the old record stays as it was', \Crm\Records::privacy( $rec, $ra['id'] ) === [ 'asked' => true, 'agreed' => false, 'at' => '', 'member_name' => '' ] && \Crm\Records::of( $rec, $ra['id'] ) === $before && \Crm\Clients::get( $rec, $ra['id'] )['privacy']['agreed'] === false && \Crm\Records::latestPrivacy( $rec, $ra['id'] ) === $one );
+$two = \Crm\Records::add( $rec, [ 'kind' => 'privacy', 'client_id' => $ra['id'], 'member' => [ 'id' => 'bbbbbbbbbbbb', 'email' => 'carl@example.org', 'name' => '' ], 'shown' => $first. ' Und mehr.' ] );
+check( '...the agreement to the new text is a record of its own; an account without a name is named by its address; a record without an address and a browser has them empty', is_array( $two ) && $two['id'] === 3 && \Crm\Records::privacy( $rec, $ra['id'] )['member_name'] === 'carl@example.org' && $two['ip'] === '' && $two['agent'] === '' && array_column( \Crm\Records::of( $rec, $ra['id'] ), 'id' ) === [ 3, 1 ] );
+\Crm\Settings::set( $rec, 'privacy_text', $first );
+check( '...and the text that is back is the text that was agreed to: the same hash, the first record counts again', \Crm\Records::privacy( $rec, $ra['id'] )['agreed'] === true && \Crm\Records::privacy( $rec, $ra['id'] )['member_name'] === 'Rita Record' );
+\Crm\Settings::set( $rec, 'privacy_text', '' );
+check( '...and no text asks for nothing, whoever has agreed to what: the standing is "not asked" and not "not agreed"', \Crm\Records::privacy( $rec, $ra['id'] )['asked'] === false && \Crm\Records::privacy( $rec, $ra['id'] )['agreed'] === false && \Crm\Records::privacies( $rec, [ $ra['id'] ] )[$ra['id']]['asked'] === false );
+$refused = array_map( static fn( array $input ): string|array => \Crm\Records::add( $rec, $input + [ 'kind' => 'privacy', 'client_id' => $ra['id'], 'member' => $member, 'shown' => 'x' ] ), [ [ 'kind' => 'bogus' ], [ 'kind' => 1 ], [ 'member' => [] ], [ 'member' => [ 'id' => '' ] ], [ 'shown' => '' ], [ 'client_id' => 999 ], [ 'document_id' => 5 ], [ 'kind' => 'order' ] ] );
+check( 'a record that is none is refused with the cause, and nothing is kept: a kind that is none, no account, nothing shown, no such client, a privacy record with a document, an order without one', $refused === [ 'kind', 'kind', 'member', 'member', 'shown', 'client', 'document', 'document' ] && count( \Crm\Records::of( $rec, $ra['id'] ) ) === 2 );
+check( 'a client that has a record cannot be deleted: the table refuses it', ( static function() use ( $rec, $ra ): bool {
+	try {
+		\Crm\Db::exec( $rec, 'DELETE FROM clients WHERE id = :id', [ 'id' => $ra['id'] ] );
+		return false;
+	}
+	catch( \PDOException $e ) {
+		return \Crm\Clients::get( $rec, $ra['id'] ) !== null && count( \Crm\Records::of( $rec, $ra['id'] ) ) === 2;
+	}
+} )() === true );
+
+// the module never changes or deletes a record
+$sources = [];
+
+foreach( new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $root. '/app/Crm', \FilesystemIterator::SKIP_DOTS ) ) as $file )
+	if( $file->getExtension() === 'php' && str_contains( $file->getPathname(), '/tests/' ) === false )
+		$sources[$file->getPathname()] = (string) file_get_contents( $file->getPathname() );
+
+check( 'the module never changes or deletes a record: no statement of it on the table records but the insert and the reads - and the class has no method that does', array_filter( $sources, static fn( string $code ): bool => preg_match( '/(UPDATE|DELETE\s+FROM|DROP\s+TABLE|REPLACE\s+INTO|INSERT\s+OR\s+REPLACE\s+INTO|ALTER\s+TABLE)\s+records\b/i', $code ) === 1 ) === []
+	&& preg_match_all( '/INSERT INTO records/', implode( "\n", $sources ) ) === 1 && array_values( array_filter( get_class_methods( \Crm\Records::class ), static fn( string $method ): bool => preg_match( '/^(add|insert|of|forDocument|latestPrivacy|privacy|privacies|privacyText|hash|source|orderShown)$/', $method ) !== 1 ) ) === [] );
+
+\Nino\Filesystem::removeDir( ninoSandboxDir( $rec ) );
+
 // --- The README -----------------------------------------------------------------------------------------------------------
 
 echo "\nThe README\n";
@@ -1296,6 +1386,8 @@ check( 'the README says the three steps and the fourth by hand - the tax number 
 check( 'the fourth step and the sentence under Fertig. point at the block Rechnungsangaben of the settings and at the footer of the layout, not at a panel; the README has the four tokens and the screens of PDF-Vorlagen', str_contains( $readme, 'im Block **Rechnungsangaben**' ) === true && str_contains( $readme, 'Panel PDF im Fuß' ) === false
 	&& str_contains( $german['einrichtung.after'], 'Rechnungsangaben' ) === true && str_contains( $german['einrichtung.after'], 'Fuß des Layouts' ) === true && str_contains( $german['einrichtung.after'], 'Panel PDF' ) === false && str_contains( $german['settings.particulars-note'], 'Fuß des Layouts' ) === true
 	&& array_filter( [ '/site/tax', '/site/bank', '/site/iban', '/site/bic', '#pdf-bausteine', '#pdf-layout', '#pdf-design', '#pdf-vorlage-<Schlüssel>', 'crm_pdf_template_used', 'multipart/form-data' ], static fn( string $needle ): bool => str_contains( $readme, $needle ) === false ) === [] );
+check( 'the README has the section on the Datenschutz and the order: the record (the table, the hash, what it is and is not - a simple electronic declaration in text form, Sign stays for a signature on a PDF), the setting and its day, the page and its route, the order with its transaction and its two mails, the difference between the owner\'s acceptance and an order, the start page, and the settings block', str_contains( $readme, '## Datenschutz und Auftrag online' ) === true
+	&& array_filter( [ '`records`', 'SHA-256', 'einfache elektronische Erklärung in Textform', '**Sign**', '`privacy_text`', '`privacy_changed`', '/portal/datenschutz', '`POST /.crm/datenschutz`', '`POST /.crm/auftrag`', '**Auftrag erteilen**', '`Documents::order()`', '*Was liegt an*', '`[crm-portal-start]`', '`[crm-privacy]`', '`?state=changed`', '`?state=nomail`', 'Prüfsumme des Textes', 'Rängen 1 bis 6', 'importiere die Vorlage noch einmal', '**Das Hauptmenü.**', "'navs' => [ 'main' => 5 ]", 'added.navs', 'keine Zeile `order`', 'ändert und löscht keine Zeile', 'Block **Datenschutz**' ], static fn( string $needle ): bool => str_contains( $readme, $needle ) === false ) === [] );
 check( 'the screens say Status and not Zustand, in the words of the surface and of the panel', array_filter( [ 'Clients/Admin', 'Documents/Admin', 'Crm/Admin', 'Surface' ], static fn( string $dir ): bool => str_contains( (string) file_get_contents( $root. '/app/Crm/'. $dir. '/text/de_DE.php' ), 'Zustand' ) === true ) === [] );
 
 ninoDone( $appData );

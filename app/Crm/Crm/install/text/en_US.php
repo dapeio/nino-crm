@@ -24,6 +24,9 @@ return [
 	'[[/_nino/webpage/portal/termine/name]]' => 'Dates',
 	'[[/_nino/webpage/portal/termine/title]]' => 'Your dates',
 	'[[/_nino/webpage/portal/termine/description]]' => 'The dates that are coming up for you.',
+	'[[/_nino/webpage/portal/datenschutz/name]]' => 'Privacy',
+	'[[/_nino/webpage/portal/datenschutz/title]]' => 'Privacy',
+	'[[/_nino/webpage/portal/datenschutz/description]]' => 'The privacy policy you agree to.',
 
 	// The details of the start page, the door (its Element-URI is '/', as the wizard writes it for a start page): the head reads them
 	'[[/_nino/webpage//name]]' => 'Sign in',
@@ -63,6 +66,10 @@ return [
 	// Dates, page-portal-termine.tpl
 	'[[/template/page-portal-termine/intro/title]]' => 'Your dates',
 	'[[/template/page-portal-termine/intro/text]]' => 'The dates that are coming up for you.',
+
+	// Privacy, page-portal-privacy.tpl
+	'[[/template/page-portal-privacy/intro/title]]' => 'Privacy',
+	'[[/template/page-portal-privacy/intro/text]]' => 'Read the privacy policy and agree to it. We keep a note of when you agreed; if the text changes, we ask again.',
 
 	// The portal's door - the site's start page, page-door.tpl
 	'[[/template/page-door/intro/title]]'               => 'Sign in',

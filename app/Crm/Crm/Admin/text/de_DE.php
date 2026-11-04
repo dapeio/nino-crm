@@ -14,7 +14,7 @@ return [
 	'[[/_admin/crm/error/setup]]' => 'Das Portal konnte nicht eingerichtet werden.',
 	'[[/_admin/crm/manual/intro]]' => 'Das CRM arbeitet in einer eigenen Oberfläche unter /crm: Kunden, Belege, Positionen und Einstellungen. Hier in der Workbench stehen nur der Weg dorthin, der Status des Moduls und der Knopf für das Portal.',
 
-	'[[/_admin/crm/setup/done]]' => 'Eingerichtet. Neu: Features %s, Routen %s, Vorlagen %s, Elementtypen %s, Worte %s, PDF-Vorlagen %s. Schon da: %s.',
+	'[[/_admin/crm/setup/done]]' => 'Eingerichtet. Neu: Features %s, Routen %s, Menüeinträge %s, Vorlagen %s, Elementtypen %s, Worte %s, PDF-Vorlagen %s. Schon da: %s.',
 	'[[/_admin/crm/setup/home-new]]' => 'Die Startseite ist jetzt das Tor des Portals.',
 	'[[/_admin/crm/setup/home-starter]]' => 'Die Startseite ist jetzt das Tor des Portals; die Seite /home des Assistenten ist nicht mehr verlinkt.',
 	'[[/_admin/crm/setup/home-own]]' => 'Deine Startseite bleibt; das Tor des Portals liegt unter /portal.',
@@ -26,6 +26,7 @@ return [
 	'[[/_admin/crm/status/lacks-templates]]' => 'Vorlagen',
 	'[[/_admin/crm/status/lacks-type-positionen]]' => 'der Elementtyp Positionen',
 	'[[/_admin/crm/status/lacks-type-projekte]]' => 'der Elementtyp Projekte',
+	'[[/_admin/crm/status/lacks-navs]]' => 'der Eintrag im Hauptmenü',
 	'[[/_admin/crm/status/lacks-texts]]' => 'die Worte der Seiten',
 	'[[/_admin/crm/status/lacks-start]]' => 'die Startseite des Features Mitglieder',
 	'[[/_admin/crm/status/pdf-templates-none]]' => 'Die PDF-Vorlagen fehlen noch. Das Einrichten legt sie an.',

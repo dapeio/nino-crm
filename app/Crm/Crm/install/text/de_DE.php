@@ -24,6 +24,9 @@ return [
 	'[[/_nino/webpage/portal/termine/name]]' => 'Termine',
 	'[[/_nino/webpage/portal/termine/title]]' => 'Deine Termine',
 	'[[/_nino/webpage/portal/termine/description]]' => 'Die Termine, die für Dich anstehen.',
+	'[[/_nino/webpage/portal/datenschutz/name]]' => 'Datenschutz',
+	'[[/_nino/webpage/portal/datenschutz/title]]' => 'Datenschutz',
+	'[[/_nino/webpage/portal/datenschutz/description]]' => 'Die Datenschutzerklärung, der Du zustimmst.',
 
 	// Die Angaben der Startseite, des Tors (der Element-URI ist '/', wie ihn der Assistent für die Startseite schreibt): der Kopf liest sie
 	'[[/_nino/webpage//name]]' => 'Anmelden',
@@ -63,6 +66,10 @@ return [
 	// Termine, page-portal-termine.tpl
 	'[[/template/page-portal-termine/intro/title]]' => 'Deine Termine',
 	'[[/template/page-portal-termine/intro/text]]' => 'Die Termine, die für Dich anstehen.',
+
+	// Datenschutz, page-portal-privacy.tpl
+	'[[/template/page-portal-privacy/intro/title]]' => 'Datenschutz',
+	'[[/template/page-portal-privacy/intro/text]]' => 'Lies die Datenschutzerklärung und stimme ihr zu. Wir halten fest, wann Du zugestimmt hast; ändert sich der Text, fragen wir noch einmal.',
 
 	// Das Tor des Portals - die Startseite der Website, page-door.tpl
 	'[[/template/page-door/intro/title]]'               => 'Anmelden',

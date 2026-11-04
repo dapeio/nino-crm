@@ -25,7 +25,12 @@ class Settings {
 		'bank_name'      => '',
 		'iban'           => '',
 		'bic'            => '',
+		'privacy_text'   => '',
+		'privacy_changed' => '',
 	];
+
+	// The keys the module keeps itself: a post of the surface never writes them. privacy_changed is the day privacy_text last changed
+	public const array READ_ONLY = [ 'privacy_changed' ];
 
 	public const array VAT_MODES = [ 'small_business', 'regular' ];
 
@@ -38,6 +43,7 @@ class Settings {
 	public const int MAX_WIDTH = 9;
 	public const int MAX_TAX = 40;
 	public const int MAX_BANK = 80;
+	public const int MAX_PRIVACY = 20000;
 
 	/**
 	 *	All settings, a key for every default
@@ -151,7 +157,13 @@ class Settings {
 		if( is_array( $clean ) === true )
 			return $clean[0];
 
+		// A text of the Datenschutz that is different from the one before is a new text: the day is kept beside it, and the customers are asked again
+		$changed = $key === 'privacy_text' && self::get( $appData, 'privacy_text' ) !== $clean;
+
 		Db::exec( $appData, 'INSERT INTO settings ( key, value ) VALUES ( :k, :v ) ON CONFLICT( key ) DO UPDATE SET value = excluded.value', [ 'k' => $key, 'v' => $clean ] );
+
+		if( $changed === true )
+			Db::exec( $appData, 'INSERT INTO settings ( key, value ) VALUES ( \'privacy_changed\', :v ) ON CONFLICT( key ) DO UPDATE SET value = excluded.value', [ 'v' => date( 'Y-m-d' ) ] );
 
 		return true;
 	}
@@ -172,6 +184,16 @@ class Settings {
 		$value = trim( (string) $value );
 
 		switch( $key ) {
+
+			// The text of the Datenschutz is the one multi-line setting: line breaks are kept as \n, nothing else that is a control character
+			case 'privacy_text':
+				$value = trim( str_replace( [ "\r\n", "\r" ], "\n", $value ) );
+
+				return mb_strlen( $value, 'UTF-8' ) <= self::MAX_PRIVACY && preg_match( '/[^\P{C}\n\t]/u', $value ) === 0 ? $value : [ 'value:'. $key ];
+
+			// Set by the module when the text changes, never by a post
+			case 'privacy_changed':
+				return [ 'value:'. $key ];
 
 			case 'vat_mode':
 				return in_array( $value, self::VAT_MODES, true ) === true ? $value : [ 'value:'. $key ];

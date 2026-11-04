@@ -184,13 +184,13 @@ class Projects {
 
 		foreach( $documents as $document )
 			if( $document['category'] === 'offer' )
-				$offers .= self::offer( $appData, $document, $dir );
+				$offers .= self::offer( $appData, $client, $document, $dir );
 
 		$day = Documents\Render::day( $project['started'] );
 		$text = str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $project['description'] ) );
 
 		$sections = [
-			'offer'     => $offers !== '' ? $offers : self::template( 'project-offer-none' ),
+			'offer'     => Order::state( $appData ). ( $offers !== '' ? $offers : self::template( 'project-offer-none' ) ),
 			'files'     => self::files( $appData, $project, $review, $dir ),
 			'documents' => Portal::documentList( $appData, $documents, '', false ),
 			'upload'    => str_replace( '[[dir]]', $dir, self::template( 'project-upload' ) ),
@@ -217,15 +217,16 @@ class Projects {
 	}
 
 	/**
-	 *	One released offer: what it is, its lines, its sums and the download of its PDF
+	 *	One released offer: what it is, its lines, its sums, the download of its PDF and - where it can be ordered or was - the form of the order or the line that says it was
 	 *
 	 *	@param		array 		&$appData
+	 *	@param		array 		$client				The client of the member
 	 *	@param		array 		$released			As Documents::released() has it
 	 *	@param		string		$dir					The directory the project is served from, escaped
 	 *
 	 *	@return 	string										'' for an offer that cannot be read or whose state the words do not know
 	 */
-	private static function offer( array &$appData, array $released, string $dir ): string {
+	private static function offer( array &$appData, array $client, array $released, string $dir ): string {
 
 		$state = $released['expired'] === true ? 'expired' : $released['state'];
 		$document = Documents::get( $appData, $released['id'] );
@@ -276,7 +277,7 @@ class Projects {
 		$valid = Documents\Render::day( (string) ( $document['valid_until'] ?? '' ) );
 
 		return str_replace(
-			[ '[[id]]', '[[state]]', '[[title]]', '[[iso]]', '[[date]]', '[[valid]]', '[[lines]]', '[[sums]]', '[[note]]', '[[dir]]' ],
+			[ '[[id]]', '[[state]]', '[[title]]', '[[iso]]', '[[date]]', '[[valid]]', '[[lines]]', '[[sums]]', '[[note]]', '[[dir]]', '[[order]]' ],
 			[
 				(string) $document['id'],
 				$state,
@@ -288,6 +289,7 @@ class Projects {
 				$sums,
 				$note === '' ? '' : str_replace( '[[text]]', \Nino\Modules\Components::escape( Documents\Render::text( $note ) ), self::template( 'offer-note' ) ),
 				$dir,
+				Order::block( $appData, $client, $released, 'projekt', $dir ),
 			],
 			self::template( 'offer' )
 		);

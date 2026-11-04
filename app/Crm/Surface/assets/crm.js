@@ -263,6 +263,7 @@
 		{ key : 'overdue', test : function( doc ) { return doc.overdue === true } },
 		{ key : 'drafts', test : function( doc ) { return doc.state === 'draft' } },
 		{ key : 'offers', test : function( doc ) { return doc.category === 'offer' } },
+		{ key : 'accepted', test : function( doc ) { return doc.state === 'accepted' } },
 		{ key : 'invoices', test : function( doc ) { return doc.category === 'invoice' || doc.category === 'credit' } },
 		{ key : 'plain', test : function( doc ) { return isPlain( doc ) } },
 		{ key : 'paid', test : function( doc ) { return doc.state === 'paid' } },
@@ -539,7 +540,7 @@
 			let decided = false;
 			const controls = {};
 
-			const box = el( 'dialog', { class: 'dlg', 'aria-label': spec.title || spec.text } );
+			const box = el( 'dialog', { class: spec.wide === true ? 'dlg wide' : 'dlg', 'aria-label': spec.title || spec.text } );
 			const finish = function( value ) {
 
 				if( decided === true )
@@ -585,6 +586,7 @@
 			const form = el( 'form', { on: { submit: function( event ) { event.preventDefault(); accept() } } },
 				spec.title ? el( 'h2', { text: spec.title } ) : null,
 				spec.text === undefined ? null : el( 'p', { text: spec.text } ),
+				spec.pre === undefined ? null : el( 'pre', { class: 'sheet', text: spec.pre } ),
 				fields,
 				el( 'div', { class: 'actions end' },
 					spec.link !== undefined
@@ -594,7 +596,7 @@
 								wn.location.reload();
 							}
 						} } } )
-						: [
+						: spec.close === true ? el( 'button', { type: 'button', class: 'btn primary', text: t( 'dialog.close' ), on: { click: function() { finish( null ) } } } ) : [
 							el( 'button', { type: 'button', class: 'btn', text: spec.no || t( 'dialog.no' ), on: { click: function() { finish( null ) } } } ),
 							el( 'button', { type: 'button', class: 'btn '+ ( spec.danger === true ? 'danger' : 'primary' ), text: spec.yes || t( 'dialog.yes' ), on: { click: accept } } ),
 						] ) );
@@ -1128,6 +1130,13 @@
 
 		if( need.kind === 'overdue' )
 			return el( 'li', {}, el( 'span', {}, dot( 'bad' ), link( '#beleg-'+ need.id, need.number ), ' · '+ need.client_title+ ' · '+ t( 'needs.overdue', dmy( need.date ) ) ), el( 'span', { class: 'r', text: cash( need.gross ) } ) );
+
+		// The orders of the portal that no invoice has followed: one line, and the link shows the offers that are accepted
+		if( need.kind === 'orders' )
+			return el( 'li', {}, el( 'span', {}, dot( 'good' ), link( '#belege', t( need.count === 1 ? 'needs.orders-one' : 'needs.orders-many', need.count ), { id: 'needs-orders', on: { click: function() {
+				state.filter.chip = 'accepted';
+				state.filter.page = 1;
+			} } } ) ), el( 'span', { class: 'r', text: cash( need.gross ) } ) );
 
 		if( need.kind === 'sign' )
 			return el( 'li', {}, el( 'span', {}, dot( 'warn' ), link( '#beleg-'+ need.id, need.title ), ' · '+ need.client_title+ ' · '+ t( 'needs.sign-'+ need.sign_state ) ), el( 'span', { class: 'r', text: t( 'needs.since', dmy( need.date ) ) } ) );
@@ -1753,6 +1762,44 @@
 			el( 'div', { class: 'actions' }, actions ) );
 	};
 
+	/**
+	 *	@param		{Object}	record					A record of the portal, see Records
+	 *
+	 *	@return		{string}									Who agreed: the name of the account, its address where it has no name
+	 */
+	const recordWho = function( record ) {
+		return record.member_name !== '' ? record.member_name : record.member_email;
+	};
+
+	/**
+	 *	What the customer was shown, in a dialog: the text or the JSON as text, with its hash over it
+	 *
+	 *	@param		{Object}	record
+	 *
+	 *	@return		{Promise}
+	 */
+	const showRecord = function( record ) {
+		return dialog( { title: t( 'record.title-'+ record.kind ), text: t( 'record.hash', record.sha256 ), pre: record.shown, close: true, wide: true } );
+	};
+
+	/**
+	 *	The card of the order in the tab Portal of a document: when, by whom and from where the customer ordered, the hash, and the way to the text that was shown
+	 *
+	 *	@param		{Object}	order						The record
+	 *
+	 *	@return		{Object}
+	 */
+	const orderCard = function( order ) {
+
+		return el( 'div', { class: 'card pad gap', id: 'order-card' }, el( 'h3', { text: t( 'order.title' ) } ), kv( [
+			[ t( 'order.at' ), stamp( order.at ) ],
+			[ t( 'order.by' ), order.member_name !== '' ? order.member_name+ ' <'+ order.member_email+ '>' : order.member_email ],
+			[ t( 'order.ip' ), order.ip ],
+			[ t( 'order.agent' ), order.agent ],
+			[ t( 'order.hash' ), el( 'code', { class: 'num', text: order.sha256 } ) ],
+		] ), el( 'div', { class: 'actions' }, el( 'button', { type: 'button', class: 'btn sm', id: 'order-show', text: t( 'order.show' ), on: { click: function() { showRecord( order ) } } } ) ) );
+	};
+
 	const tabPortal = function( view ) {
 
 		const doc = view.document;
@@ -1786,7 +1833,9 @@
 			]
 			: [ el( 'p', { class: 'state-note', text: doc.sent_at ? t( 'other.sent', stamp( doc.sent_at ) ) : t( 'other.none' ) } ) ];
 
-		return el( 'div', { class: 'cols' }, card( t( 'portal.title' ), portal ), card( t( 'other.title' ), other ) );
+		const cols = el( 'div', { class: 'cols' }, card( t( 'portal.title' ), portal ), card( t( 'other.title' ), other ) );
+
+		return view.order === null || view.order === undefined ? cols : el( 'div', { class: 'gap' }, cols, orderCard( view.order ) );
 	};
 
 	const tabNotes = function( view ) {
@@ -1827,6 +1876,7 @@
 			[ doc.sent_at, t( 'history.sent' ) ],
 			[ doc.paid_at, t( 'history.paid' ) ],
 			[ doc.signed_at, t( 'history.signed' ) ],
+			[ view.order ? view.order.at : '', view.order ? t( 'history.ordered', recordWho( view.order ) ) : '' ],
 		].filter( function( entry ) { return typeof entry[0] === 'string' && entry[0] !== '' } );
 
 		entries.sort( function( a, b ) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0 } );
@@ -1867,6 +1917,10 @@
 		state.main.appendChild( head( docName( doc ), stateBadge( doc ), marks( doc ),
 			el( 'span', { class: 'sub' }, link( '#kunde-'+ doc.client_id, client.company || client.name ), ' · '+ dmy( doc.date )+ ( doc.due_date ? ' · '+ t( 'head.due', dmy( doc.due_date ) ) : doc.valid_until ? ' · '+ t( 'head.valid', dmy( doc.valid_until ) ) : '' ), doc.project === '' ? null : [ ' · ', link( '#projekt-'+ doc.project, doc.project_title !== '' ? doc.project_title : doc.project, { id: 'doc-project' } ) ] ),
 			el( 'span', { class: 'grow' } ), isPlain( doc ) ? null : el( 'span', { class: 'big num', id: 'gross', text: cash( doc.gross ) } ), primaryButton, menuOf( view ) ) );
+
+		// An offer the customer ordered in the portal says so under the head; one the owner accepted has no record and says nothing
+		if( view.order !== null && view.order !== undefined )
+			state.main.appendChild( el( 'p', { class: 'state-note', id: 'order-head' }, badge( 'portal', t( 'order.badge' ) ), ' '+ t( 'order.head', dmy( view.order.at ), recordWho( view.order ) ) ) );
 
 		if( doc.overdue === true )
 			state.main.appendChild( note( '', t( 'overdue.note', dmy( doc.due_date ) ), ' ', doc.released === true ? el( 'button', { type: 'button', class: 'btn sm', id: 'remind', text: t( 'menu.remind' ), on: { click: function() { remind( view ) } } } ) : t( 'overdue.release' ) ) );
@@ -3292,6 +3346,14 @@
 					} ) ),
 				portal.features.review === true ? el( 'p', { class: 'state-note', text: portal.review.media === 0 ? t( 'cportal.review-none' ) : t( 'cportal.review', portal.review.media, portal.review.comments ) } ) : null,
 				el( 'p', { class: 'state-note', text: t( 'cportal.rest' ) } ),
+				Array.isArray( portal.records ) === false ? null : [
+					el( 'h4', { text: t( 'cportal.records' ) } ),
+					el( 'ul', { class: 'list-mini', id: 'client-records' }, portal.records.length === 0 ? el( 'li', { class: 'muted', text: t( 'cportal.records-none' ) } ) : portal.records.map( function( record ) {
+						return el( 'li', { dataset: { kind: record.kind } }, el( 'span', {}, t( 'record.kind-'+ record.kind ), ' · ', stamp( record.at ), ' · ', recordWho( record ),
+							record.document_id === null ? null : [ ' · ', link( '#beleg-'+ record.document_id, record.document_number !== undefined && record.document_number !== '' ? record.document_number : t( 'record.document' ) ) ] ),
+							el( 'span', { class: 'r' }, el( 'button', { type: 'button', class: 'btn sm quiet', text: t( 'record.show' ), on: { click: function() { showRecord( record ) } } } ) ) );
+					} ) ),
+				],
 			] );
 		};
 
@@ -3368,6 +3430,23 @@
 		} );
 	};
 
+	/**
+	 *	The line of the head of the Kundenkarte about the Datenschutz: agreed to the text of now - when and by whom - or still to come. Nothing where the portal asks for no text
+	 *
+	 *	@param		{Object}	client					With the standing as Clients::get() has it
+	 *
+	 *	@return		{Object|null}
+	 */
+	const privacyLine = function( client ) {
+
+		const privacy = client.privacy;
+
+		if( privacy === undefined || privacy === null || privacy.asked !== true )
+			return null;
+
+		return el( 'span', { class: 'sub', id: 'client-privacy', dataset: { agreed: privacy.agreed === true ? '1' : '0' }, text: privacy.agreed === true ? t( 'privacy.head-agreed', dmy( privacy.at ), privacy.member_name ) : t( 'privacy.head-open' ) } );
+	};
+
 	const drawKunde = function( view ) {
 
 		const client = view.client;
@@ -3380,7 +3459,7 @@
 		reveal();
 
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#kunden', t( 'clients.title' ) ), ' › '+ client.number ) );
-		state.main.appendChild( head( el( 'h1', { text: clientTitle( client ) } ), clientBadge( client ), el( 'span', { class: 'sub num', text: client.number } ), el( 'span', { class: 'grow' } ),
+		state.main.appendChild( head( el( 'h1', { text: clientTitle( client ) } ), clientBadge( client ), el( 'span', { class: 'sub num', text: client.number } ), privacyLine( client ), el( 'span', { class: 'grow' } ),
 			client.active === true ? newMenu( t( 'card.document-new' ), client.id ) : null,
 			menu( { label : '⋯', items : [
 				{ label : t( 'card.edit' ), run : function() {
@@ -5275,11 +5354,11 @@
 	 */
 	const setupSentence = function( answer ) {
 
-		const none = { features : [], routes : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false };
+		const none = { features : [], routes : [], navs : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false };
 		const added = Object.assign( {}, none, answer.added );
 		const existed = Object.assign( {}, none, answer.existed );
 		const there = existed.features.length+ existed.routes.length+ existed.templates.length+ existed.types.length+ existed.pdf.templates.length;
-		const sentence = t( 'setup.done', added.features.length, added.routes.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
+		const sentence = t( 'setup.done', added.features.length, added.routes.length, added.navs.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
 
 		// What became of the start page, said in the answer: made the door where there was none or the wizard's page, or kept where it is the owner's
 		return typeof added.home === 'string' ? sentence+ ' '+ t( 'setup.home-'+ added.home ) : ( existed.home === 'own' ? sentence+ ' '+ t( 'setup.home-own' ) : sentence );
@@ -5634,6 +5713,74 @@
 		} );
 	};
 
+	/**
+	 *	The block Datenschutz of the Einstellungen: the text the portal asks the customers to agree to, a field with Speichern of its own (and Strg+S). The day the text last
+	 *	changed is the module's and only shown; a text that is saved different from the one before asks every customer again, which the note says. An empty text
+	 *	means the portal asks for nothing
+	 *
+	 *	@param		{Object}	settings				As settings-get has them
+	 *	@param		{Object}	sibling					The form of the screen next to it, which keeps the page's guard when this one is saved
+	 *
+	 *	@return		{Object}
+	 */
+	const privacyCard = function( settings, sibling ) {
+
+		const form = { controls : {}, notes : {}, dirty : false, form : true };
+		const area = el( 'textarea', { id: 'f-privacy_text', rows: 10, maxlength: '20000', spellcheck: 'true', value: settings.privacy_text ?? '' } );
+		const day = el( 'span', { class: 'state-note', id: 'privacy-changed', text: ( settings.privacy_changed ?? '' ) === '' ? t( 'privacy.never' ) : t( 'privacy.changed', dmy( settings.privacy_changed ) ) } );
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'privacy-save', title: t( 'save.shortcut' ), text: t( 'privacy.save' ) } );
+		const mine = state.view;
+		let stored = area.value;
+
+		const list = formList( [ { name : 'privacy_text', label : t( 'privacy.label' ), control : area, hint : t( 'privacy.hint' ) } ], form );
+
+		// What is typed is unsaved while it differs from the stored text; the guard of the page asks before it lets go
+		[ 'input', 'change' ].forEach( function( name ) {
+			area.addEventListener( name, function() {
+				form.dirty = area.value !== stored;
+
+				if( form.dirty === true && ( state.draft === null || state.draft.dirty !== true ) )
+					state.draft = form;
+			} );
+		} );
+
+		const box = el( 'form', { class: 'card pad gap', id: 'privacy', novalidate: 'novalidate', on: { submit: function( event ) {
+
+			event.preventDefault();
+			save.disabled = true;
+
+			api( 'crm-documents/settings-save', { privacy_text : area.value } ).then( function( answer ) {
+
+				save.disabled = false;
+
+				if( state.view !== mine )
+					return;
+
+				if( answer.ok !== true ) {
+					refuseAt( form, answer, 'error.settings' );
+					return;
+				}
+
+				stored = answer.body.settings.privacy_text;
+				area.value = stored;
+				form.dirty = false;
+				day.textContent = answer.body.settings.privacy_changed === '' ? t( 'privacy.never' ) : t( 'privacy.changed', dmy( answer.body.settings.privacy_changed ) );
+
+				if( state.draft === form )
+					state.draft = sibling.dirty === true ? sibling : null;
+
+				toast( t( 'privacy.saved' ) );
+			} );
+		} } },
+			el( 'h3', { text: t( 'privacy.title' ) } ), el( 'p', { class: 'state-note', text: t( 'privacy.note' ) } ),
+			list, el( 'p', {}, day ),
+			el( 'div', { class: 'actions top' }, save ) );
+
+		submitter( 'privacy', box, save, function() { return area.value !== stored } );
+
+		return box;
+	};
+
 	const drawEinstellungen = function( view, items, said ) {
 
 		const settings = view.settings;
@@ -5706,6 +5853,8 @@
 
 		state.main.appendChild( box );
 		submitter( 'settings', box, save, function() { return form.dirty === true } );
+
+		state.main.appendChild( privacyCard( settings, form ) );
 
 		const firma = el( 'div', { class: 'gap', id: 'firma-holder' } );
 

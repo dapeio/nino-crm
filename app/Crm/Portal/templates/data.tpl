@@ -1,5 +1,6 @@
 <form class="crm-data[[classes]]" method="post" action="[[dir]]/.crm/daten">
 	[[state]]
+	[[privacy]]
 	[csrf]
 	<div class="crm-data__fields">
 		[[fields]]

@@ -15,6 +15,7 @@ use Crm\Clients;
 use Crm\Crm;
 use Crm\Documents;
 use Crm\Portal;
+use Crm\Records;
 
 class Data {
 
@@ -85,12 +86,15 @@ class Data {
 			);
 
 		$member = \Nino\Modules\Members::current( $appData );
+		$standing = Records::privacy( $appData, $client['id'] );
+		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 
 		return str_replace(
-			[ '[[classes]]', '[[dir]]', '[[state]]', '[[fields]]', '[[email]]' ],
+			[ '[[classes]]', '[[dir]]', '[[privacy]]', '[[state]]', '[[fields]]', '[[email]]' ],
 			[
 				$classes,
-				\Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) ),
+				$dir,
+				$standing['asked'] === false ? '' : str_replace( [ '[[agreed]]', '[[standing]]', '[[dir]]' ], [ $standing['agreed'] === true ? '1' : '0', Privacy::standingLine( $standing ), $dir ], Portal::template( 'data-privacy' ) ),
 				$state === '' ? '' : str_replace( [ '[[state]]', '[[field]]' ], [ $state, $state === 'invalid' ? $field : '' ], Portal::template( $state === 'invalid' ? 'data-state-invalid' : 'data-state' ) ),
 				$fields,
 				\Nino\Modules\Components::escape( (string) ( $member['email'] ?? '' ) ),

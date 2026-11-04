@@ -6,4 +6,5 @@
 	<span class="crm-documents__state">[[/project/crm-documents/state/[[state]]]]</span>
 	<a class="crm-documents__download" href="[[dir]]/.crm/pdf/[[id]]?download=1">[[/project/crm-documents/list/download]]</a>
 	[[sign]]
+	[[order]]
 </li>

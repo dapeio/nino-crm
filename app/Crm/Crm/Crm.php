@@ -3,9 +3,9 @@ declare(strict_types=1);
 /**
  *	Crm\Crm		The project module of the CRM. Listed in /nino/modules by the setup wizard, which finds its install unit (install/);
  *						init() registers behaviour and writes nothing: the panel CRM (adminPanels()), the
- *						components [crm-client], [crm-documents], [crm-portal-nav], [crm-projects], [crm-uploads] and [crm-client-data], the callbacks that keep the portal's lookup true when a member signs in or
+ *						components [crm-client], [crm-documents], [crm-portal-nav], [crm-portal-start], [crm-projects], [crm-uploads], [crm-client-data] and [crm-privacy], the callbacks that keep the portal's lookup true when a member signs in or
  *						out and the ones that let a document follow its request in Sign, the style sheet of the portal, the route
- *						/.crm/pdf/<id> that answers the PDF of a finalised document and the route POST /.crm/daten of the page Meine Daten; and the surface at /crm, one page of the project with its
+ *						/.crm/pdf/<id> that answers the PDF of a finalised document and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/datenschutz of the page Datenschutz and POST /.crm/auftrag of the order under an offer; and the surface at /crm, one page of the project with its
  *						endpoint and assets (Surface::init()). The database is opened on first use, the portal pages come with the install unit
  *						the wizard applies, and the screen Einrichtung of the surface completes the product (see Admin::apiSetup()).
  */
@@ -127,6 +127,28 @@ class Crm {
 			'group'      => 'global',
 		] );
 
+		\Nino\Modules\Components::addComponent( $appData, 'crm-privacy', [ Portal\Privacy::class, 'componentCrmPrivacy' ], [
+			'label'      => [ 'en_US' => 'Privacy policy of the client', 'de_DE' => 'Datenschutz des Kunden' ],
+			'source'     => 'none',
+			'loop'       => false,
+			'attributes' => [],
+			'preview'    => 'block',
+			'draws'      => 'div .crm-privacy',
+			'in'         => [ 'section', 'card' ],
+			'group'      => 'global',
+		] );
+
+		\Nino\Modules\Components::addComponent( $appData, 'crm-portal-start', [ Portal\Start::class, 'componentCrmPortalStart' ], [
+			'label'      => [ 'en_US' => 'What is pending for the client', 'de_DE' => 'Was für den Kunden ansteht' ],
+			'source'     => 'none',
+			'loop'       => false,
+			'attributes' => [],
+			'preview'    => 'block',
+			'draws'      => 'div .crm-start',
+			'in'         => [ 'section', 'card' ],
+			'group'      => 'global',
+		] );
+
 		// The list of the portal is drawn by a style sheet of the module, in the bundle of the site
 		\Nino\Html::addAsset( $appData, '/.cache/style.css', Portal::STYLE );
 
@@ -147,6 +169,12 @@ class Crm {
 		// The form of the page Meine Daten posts here: a member of a client changes the data of the client (see Portal\Data::callbackSave())
 		$appData['/nino/http/routes']['POST://.crm/daten'] = [ 'uri' => Portal\Data::ROUTE ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/daten', [ Portal\Data::class, 'callbackSave' ] );
+
+		// The Datenschutz and the order: the forms of the pages Datenschutz and of the offers post here, a member of a client agrees or orders (see Portal\Privacy::callbackAgree(), Portal\Order::callbackOrder())
+		$appData['/nino/http/routes']['POST://.crm/datenschutz'] = [ 'uri' => Portal\Privacy::ROUTE ];
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/datenschutz', [ Portal\Privacy::class, 'callbackAgree' ] );
+		$appData['/nino/http/routes']['POST://.crm/auftrag'] = [ 'uri' => Portal\Order::ROUTE ];
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/auftrag', [ Portal\Order::class, 'callbackOrder' ] );
 
 		// The projects: a project that a document names is not deleted, and its client is a client that is there and stays - the kernel's vetoes, so that
 		// the Elements panel of the workbench refuses as the endpoint of the surface does

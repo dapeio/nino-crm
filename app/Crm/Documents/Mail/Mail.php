@@ -5,7 +5,7 @@ declare(strict_types=1);
  *												account of the client, in German (a document is the owner's letter to his client, and an account of
  *												Members has no language of its own), with the absolute link to the page Belege and no attachment.
  *												All mails are one call of the kernel's mail, which counts a call against the cap of mails an hour and not
- *												a mail. The words are in text/de_DE.php, the markup in templates/release.tpl (and changed.tpl for the mail to the owner); a value enters the
+ *												a mail. The words are in text/de_DE.php, the markup in templates/release.tpl (changed.tpl for the mail to the owner about changed data, order-owner.tpl and order-confirm.tpl for the order of an offer); a value enters the
  *												template after it was rendered, escaped, so that nothing in it is read as a fill or a shortcode. The same
  *												mail, in the words of a reminder (text/de_DE.php, remind.*), asks for the payment of an invoice that is overdue.
  */
@@ -202,6 +202,108 @@ class Mail {
 
 		if( $delivered === false )
 			trigger_error( 'Crm: the mail about the changed data of client '. $client['number']. ' was not delivered', E_USER_WARNING );
+
+		return count( array_filter( (array) ( $appData['./nino/mail/results'] ?? [] ), static fn( mixed $result ): bool => $result === true ) );
+	}
+
+	/**
+	 *	Mail the owner and the customer that an offer was ordered in the portal: one call of the kernel's mail with two mails. The owner's goes to the contact address
+	 *	of the company (subject "Auftrag erteilt: Angebot <number> von Kunde <number and company> durch <account>", the reply to the account, the link to the
+	 *	document in the surface); the customer's goes to the account that ordered (the offer, the day, the way to the project page or to the page Belege and the
+	 *	address of the PDF - no attachment, the reply to the company). Own templates (templates/order-owner.tpl, order-confirm.tpl) and own words (text/de_DE.php, order.*)
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			The offer, as Documents::get() has it, accepted
+	 *	@param		array 		$record				The record of the order, as Records::of() has it
+	 *	@param		array 		$client				As Clients::get() has it
+	 *
+	 *	@return 	int|string								How many mails were delivered; 'address' where the site has no address to link to, 'limit' where the cap of mails an hour refused them
+	 */
+	public static function ordered( array &$appData, array $document, array $record, array $client ): int|string {
+
+		$documents = \Nino\Html::absoluteUrl( $appData, self::PAGE );
+
+		if( $documents === '' ) {
+			trigger_error( 'Crm: the mails about the order of document '. Render::name( $document ). ' were not sent: the site has no address to link to', E_USER_WARNING );
+
+			return 'address';
+		}
+
+		$locale = \Nino\Locales::getCurrentLocale( $appData );
+
+		\Nino\Locales::useLocale( $appData, \Nino\Locales::getNativeLocale( $appData ) );
+
+		try {
+			$ownerMarkup = \Nino\Html::renderHtml( $appData, self::template( 'order-owner' ) );
+			$confirmMarkup = \Nino\Html::renderHtml( $appData, self::template( 'order-confirm' ) );
+			$owner = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ) );
+		}
+		finally {
+			\Nino\Locales::useLocale( $appData, $locale );
+		}
+
+		$escape = static fn( string $value ): string => \Nino\Modules\Components::escape( $value );
+		$replace = static fn( string $markup, array $values ): string => str_replace( array_keys( $values ), array_map( $escape, array_values( $values ) ), $markup );
+		$number = (string) $document['number'] !== '' ? (string) $document['number'] : (string) $document['title'];
+		$who = (string) $record['member_name'] !== '' ? (string) $record['member_name'] : (string) $record['member_email'];
+		$name = (string) $client['number']. ' '. ( (string) $client['company'] !== '' ? (string) $client['company'] : (string) $client['name'] );
+		$day = Render::day( substr( (string) $record['at'], 0, 10 ) );
+		$mails = [];
+
+		if( filter_var( $owner, FILTER_VALIDATE_EMAIL ) !== false )
+			$mails[] = [
+				'to'      => $owner,
+				'subject' => self::text( 'order.owner.subject', $number, $name, $who ),
+				'body'    => $replace( $ownerMarkup, [
+					'[[heading]]' => self::text( 'order.owner.title' ),
+					'[[intro]]'   => self::text( 'order.owner.intro' ),
+					'[[offer]]'   => self::text( 'order.owner.offer', $number ),
+					'[[client]]'  => self::text( 'order.owner.client', $name ),
+					'[[sum]]'     => self::text( 'order.owner.sum', Money::format( (int) $document['gross'], \Crm\Settings::get( $appData, 'currency' ) ) ),
+					'[[account]]' => self::text( 'order.owner.account', (string) $record['member_name'] !== '' ? $record['member_name']. ' <'. $record['member_email']. '>' : (string) $record['member_email'] ),
+					'[[link]]'    => \Nino\Html::absoluteUrl( $appData, \Crm\Surface::ROUTE. '#beleg-'. (int) $document['id'] ),
+					'[[cta]]'     => self::text( 'order.owner.button' ),
+					'[[notice]]'  => self::text( 'order.owner.notice' ),
+				] ),
+				'replyTo' => filter_var( $record['member_email'], FILTER_VALIDATE_EMAIL ) === false ? '' : (string) $record['member_email'],
+			];
+
+		if( filter_var( $record['member_email'], FILTER_VALIDATE_EMAIL ) !== false ) {
+
+			$project = preg_match( \Crm\Projekte::ID, (string) $document['project'] ) === 1 ? (string) $document['project'] : '';
+
+			$mails[] = [
+				'to'      => (string) $record['member_email'],
+				'subject' => self::text( 'order.confirm.subject', $number ),
+				'body'    => $replace( $confirmMarkup, [
+					'[[heading]]'        => self::text( 'order.confirm.title' ),
+					'[[greeting]]'       => self::text( 'greeting', $who ),
+					'[[intro]]'          => self::text( 'order.confirm.intro', $day ),
+					'[[offer]]'          => self::text( 'order.confirm.offer', $number ),
+					'[[link]]'           => $project === '' ? $documents : \Nino\Html::absoluteUrl( $appData, '/portal/projekte?projekt='. rawurlencode( $project ) ),
+					'[[cta]]'            => self::text( $project === '' ? 'order.confirm.button.documents' : 'order.confirm.button.project' ),
+					'[[download]]'       => \Nino\Html::absoluteUrl( $appData, '/.crm/pdf/'. (int) $document['id']. '?download=1' ),
+					'[[download-label]]' => self::text( 'order.confirm.download' ),
+					'[[notice]]'         => self::text( 'order.confirm.notice' ),
+					'[[closing]]'        => self::text( 'closing' ),
+				] ),
+				'replyTo' => filter_var( $owner, FILTER_VALIDATE_EMAIL ) === false ? '' : $owner,
+			];
+		}
+
+		if( $mails === [] )
+			return 0;
+
+		$delivered = \Nino\Mail::sendAll( $appData, $mails );
+
+		if( \Nino\Mail::rateLimited( $appData ) === true ) {
+			trigger_error( 'Crm: the mails about the order of document '. Render::name( $document ). ' were refused by the cap of mails an hour', E_USER_WARNING );
+
+			return 'limit';
+		}
+
+		if( $delivered === false )
+			trigger_error( 'Crm: the mails about the order of document '. Render::name( $document ). ' were not all delivered', E_USER_WARNING );
 
 		return count( array_filter( (array) ( $appData['./nino/mail/results'] ?? [] ), static fn( mixed $result ): bool => $result === true ) );
 	}

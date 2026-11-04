@@ -505,6 +505,7 @@ class Admin {
 				'features'  => [ 'files' => $files, 'review' => $review ],
 				'folders'   => $folders,
 				'review'    => [ 'media' => $media, 'comments' => $comments ],
+				'records'   => array_map( static fn( array $record ): array => $record + [ 'document_number' => $record['document_id'] === null ? '' : (string) ( \Crm\Documents::get( $appData, $record['document_id'] )['number'] ?? '' ) ], \Crm\Records::of( $appData, $client['id'] ) ),
 			] );
 		} );
 	}

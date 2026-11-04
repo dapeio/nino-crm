@@ -14,7 +14,7 @@ return [
 	'[[/_admin/crm/error/setup]]' => 'The portal could not be set up.',
 	'[[/_admin/crm/manual/intro]]' => 'The CRM works in a surface of its own at /crm: clients, documents, items and settings. Here in the workbench there is only the way there, the state of the module and the button for the portal.',
 
-	'[[/_admin/crm/setup/done]]' => 'Set up. New: features %s, routes %s, templates %s, element types %s, words %s, PDF templates %s. There already: %s.',
+	'[[/_admin/crm/setup/done]]' => 'Set up. New: features %s, routes %s, menu entries %s, templates %s, element types %s, words %s, PDF templates %s. There already: %s.',
 	'[[/_admin/crm/setup/home-new]]' => 'The start page is now the door of the portal.',
 	'[[/_admin/crm/setup/home-starter]]' => 'The start page is now the door of the portal; the wizard\'s page /home is no longer linked.',
 	'[[/_admin/crm/setup/home-own]]' => 'Your start page stays; the door of the portal is at /portal.',
@@ -26,6 +26,7 @@ return [
 	'[[/_admin/crm/status/lacks-templates]]' => 'templates',
 	'[[/_admin/crm/status/lacks-type-positionen]]' => 'the element type Positionen',
 	'[[/_admin/crm/status/lacks-type-projekte]]' => 'the element type Projekte',
+	'[[/_admin/crm/status/lacks-navs]]' => 'the entry in the main menu',
 	'[[/_admin/crm/status/lacks-texts]]' => 'the words of the pages',
 	'[[/_admin/crm/status/lacks-start]]' => 'the start page of the Members feature',
 	'[[/_admin/crm/status/pdf-templates-none]]' => 'The PDF templates are missing. Setting up creates them.',

@@ -91,7 +91,7 @@ class Admin {
 		if( \Nino\Admin\Admin::guardPerm( $appData, $request, \Crm\Crm::MANAGE_PERM ) === false )
 			return;
 
-		$added = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false ];
+		$added = [ 'features' => [], 'routes' => [], 'navs' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false ];
 		$existed = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false ];
 
 		// 1. The features. One is on when it is active at its version and nothing is wrong with it; what is on before the first step is "there
@@ -176,6 +176,37 @@ class Admin {
 		foreach( $routes as $key => $route )
 			if( ( $before[$key] ?? null ) !== $route )
 				$addedRoutes[$key] = $route;
+
+		// The menu: a route of the unit that the project has already, without any 'navs', gets the membership the unit gives it - a missing key is added,
+		// a membership that is there (the owner took the page out of the menu, or into another) is never changed
+		$addedNavs = [];
+
+		foreach( (array) ( $manifest['routes'] ?? [] ) as $key => $route )
+			if( is_array( $route['navs'] ?? null ) === true && isset( $routes[$key] ) === true && isset( $addedRoutes[$key] ) === false && array_key_exists( 'navs', $routes[$key] ) === false )
+				$addedNavs[$key] = $route['navs'];
+
+		if( $addedNavs !== [] ) {
+
+			$written = \Nino\Filesystem::mutate( $appData, '/config.php', static function( array $content ) use ( $addedNavs ): array {
+
+				foreach( $addedNavs as $key => $navs )
+					if( is_array( $content['/nino/http/routes'][$key] ?? null ) === true && array_key_exists( 'navs', $content['/nino/http/routes'][$key] ) === false )
+						$content['/nino/http/routes'][$key]['navs'] = $navs;
+
+				return $content;
+			} );
+
+			if( $written === false ) {
+				\Nino\Http::fail( $request, 500, 'the menu of the portal pages could not be written' );
+				return;
+			}
+
+			foreach( $addedNavs as $key => $navs )
+				if( isset( $appData['/nino/http/routes'][$key] ) === true && array_key_exists( 'navs', $appData['/nino/http/routes'][$key] ) === false )
+					$appData['/nino/http/routes'][$key]['navs'] = $navs;
+		}
+
+		$added['navs'] = array_keys( $addedNavs );
 
 		// The persisted routes get the new ones and nothing else; the live ones keep what this request booted with
 		if( $addedRoutes !== [] ) {
@@ -318,6 +349,7 @@ class Admin {
 		$kinds = [
 			'routes'    => [ count( array_filter( $wanted, static fn( string $key ): bool => isset( $routes[$key] ) === true ) ), count( $wanted ) ],
 			'templates' => [ count( array_filter( (array) ( $manifest['templates'] ?? [] ), static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/templates/'. $file ) ) ), count( (array) ( $manifest['templates'] ?? [] ) ) ],
+			'navs'      => [ count( array_filter( $wanted, static fn( string $key ): bool => isset( $routes[$key] ) === true && array_key_exists( 'navs', $routes[$key] ) === true && is_array( $manifest['routes'][$key]['navs'] ?? null ) === true ) ), count( array_filter( $wanted, static fn( string $key ): bool => isset( $routes[$key] ) === true && is_array( $manifest['routes'][$key]['navs'] ?? null ) === true ) ) ],
 			'texts'     => [ count( array_filter( $words, static fn( mixed $key ): bool => array_key_exists( $key, $had ) === true ) ), count( $words ) ],
 			'paths'     => [ in_array( '/portal', (array) \Nino\Features::setting( $appData, 'members', 'paths', [] ), true ) === true ? 1 : 0, 1 ],
 			'start'     => [ in_array( \Nino\Features::setting( $appData, 'members', 'start', '/' ), [ '', '/' ], true ) === true ? 0 : 1, 1 ],

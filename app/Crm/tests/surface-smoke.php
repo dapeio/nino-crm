@@ -823,7 +823,7 @@ check( '...the files of the panels Kunden and Belege are gone: no script, no sty
 	&& is_file( $root. '/app/Crm/Crm/Admin/assets/admin.js' ) === true && is_file( $root. '/app/Crm/Crm/Admin/assets/admin.css' ) === true && is_file( $root. '/app/Crm/Crm/Admin/templates/panel.tpl' ) === true && is_file( $root. '/app/Crm/Crm/Admin/text/de_DE.php' ) === true && is_file( $root. '/app/Crm/Crm/Admin/text/en_US.php' ) === true );
 check( '...no word of the workbench is left for a panel that is not there: the texts of Kunden and Belege hold the sentences of their codes and nothing else', array_filter( [ 'Clients', 'Documents' ], static fn( string $dir ): bool => array_filter( array_keys( (array) require $root. '/app/Crm/'. $dir. '/Admin/text/de_DE.php' ), static fn( string $key ): bool => str_starts_with( $key, '[[/_admin/error/crm_' ) === false ) !== [] ) === [] );
 $texts = Surface::texts();
-check( 'the surface has the sentences of the status and of the setup from the panel CRM as status.<key> and setup.done, and the code of the setup as an error', ( $texts['status.allok'] ?? '' ) !== '' && ( $texts['status.portal-partial'] ?? '' ) !== '' && ( $texts['status.lacks-type-positionen'] ?? '' ) === 'der Elementtyp Positionen' && ( $texts['status.lacks-type-projekte'] ?? '' ) === 'der Elementtyp Projekte' && substr_count( $texts['setup.done'] ?? '', '%s' ) === 7 && ( $texts['setup.home-new'] ?? '' ) === 'Die Startseite ist jetzt das Tor des Portals.' && ( $texts['setup.home-starter'] ?? '' ) === 'Die Startseite ist jetzt das Tor des Portals; die Seite /home des Assistenten ist nicht mehr verlinkt.' && ( $texts['setup.home-own'] ?? '' ) === 'Deine Startseite bleibt; das Tor des Portals liegt unter /portal.' && ( $texts['status.home-own'] ?? '' ) === 'Startseite: eigene Seite, nicht das Tor.' && ( $texts['status.home-other'] ?? '' ) !== '' && ( $texts['status.pdf-templates-none'] ?? '' ) !== '' && ( $texts['error.crm_setup_feature'] ?? '' ) !== '' && ( $texts['error.crm_setup_pdf'] ?? '' ) !== '' && isset( $texts['error.crm_setup_members'] ) === false
+check( 'the surface has the sentences of the status and of the setup from the panel CRM as status.<key> and setup.done, and the code of the setup as an error', ( $texts['status.allok'] ?? '' ) !== '' && ( $texts['status.portal-partial'] ?? '' ) !== '' && ( $texts['status.lacks-type-positionen'] ?? '' ) === 'der Elementtyp Positionen' && ( $texts['status.lacks-type-projekte'] ?? '' ) === 'der Elementtyp Projekte' && substr_count( $texts['setup.done'] ?? '', '%s' ) === 8 && ( $texts['setup.home-new'] ?? '' ) === 'Die Startseite ist jetzt das Tor des Portals.' && ( $texts['setup.home-starter'] ?? '' ) === 'Die Startseite ist jetzt das Tor des Portals; die Seite /home des Assistenten ist nicht mehr verlinkt.' && ( $texts['setup.home-own'] ?? '' ) === 'Deine Startseite bleibt; das Tor des Portals liegt unter /portal.' && ( $texts['status.home-own'] ?? '' ) === 'Startseite: eigene Seite, nicht das Tor.' && ( $texts['status.home-other'] ?? '' ) !== '' && ( $texts['status.pdf-templates-none'] ?? '' ) !== '' && ( $texts['error.crm_setup_feature'] ?? '' ) !== '' && ( $texts['error.crm_setup_pdf'] ?? '' ) !== '' && isset( $texts['error.crm_setup_members'] ) === false
 	&& str_contains( (string) ( $texts['status.module-off'] ?? '' ), '\\Crm\\Crm' ) === true );
 
 // status and setup through the endpoint
@@ -840,7 +840,7 @@ $routesBefore = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 check( 'status through the endpoint is the answer of the panel: the module, the data directory, the six features, the portal, the PDF templates and the start page - which the surface says as sentences, and not whole yet', $status === 200 && array_column( $statusAnswer['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home' ] && array_column( $statusAnswer['items'], 'state', 'key' )['portal'] !== 'ok' && array_column( $statusAnswer['items'], 'state', 'key' )['members'] === 'ok' && $statusAnswer['whole'] === false );
 $settingsView = surfaceApi( $appData, 'crm-documents/settings-get' )[1];
 check( 'the portal as the settings tell it - read, written nowhere: the address of its start page from the address of the site, the pages the unit brings with the ones this site has no route for marked missing, the settings of Members with their German labels and the cap of mails of the kernel where the kernel has one', $settingsView['portal']['address'] === 'https://example.org/club/portal'
-	&& array_column( $settingsView['portal']['pages'], 'uri' ) === [ '/portal', '/portal/meine-daten', '/portal/projekte', '/portal/upload', '/portal/belege', '/portal/termine' ] && array_unique( array_column( $settingsView['portal']['pages'], 'present' ) ) === [ false ]
+	&& array_column( $settingsView['portal']['pages'], 'uri' ) === [ '/portal', '/portal/meine-daten', '/portal/projekte', '/portal/upload', '/portal/belege', '/portal/termine', '/portal/datenschutz' ] && array_unique( array_column( $settingsView['portal']['pages'], 'present' ) ) === [ false ]
 	&& in_array( 'Geschützte Pfade', array_column( $settingsView['portal']['members'], 'label' ), true ) === true && array_column( $settingsView['portal']['members'], 'unit', 'key' )['linkMinutes'] === 'minutes' && array_column( $settingsView['portal']['members'], 'unit', 'key' )['inviteDays'] === 'days' && array_column( $settingsView['portal']['members'], 'unit', 'key' )['paths'] === '' && array_column( $settingsView['portal']['members'], 'value', 'key' )['start'] === '/' && $settingsView['portal']['mail_cap'] === ( isset( $appData['/nino/mail/cap'] ) === true ? (int) $appData['/nino/mail/cap'] : null ) );
 $appData['/nino/mail/cap'] = 50;
 check( '...the cap is the key of config.php, read as it stands', surfaceApi( $appData, 'crm-documents/settings-get' )[1]['portal']['mail_cap'] === 50 );
@@ -848,7 +848,7 @@ unset( $appData['/nino/mail/cap'] );
 $linesBefore = count( \Nino\Modules\Logs\Admin::recentLines( $appData, 200 ) );
 [ $status, $setupAnswer ] = surfaceApi( $appData, 'crm/setup' );
 $portalAfter = surfaceApi( $appData, 'crm-documents/settings-get' )[1]['portal'];
-check( 'setup through the endpoint applies the unit: the routes, the templates and the element type are added and the answer says so; the status says the portal is ready, and the settings that all six pages are there', $status === 200 && count( $setupAnswer['added']['routes'] ) === 6 && $setupAnswer['added']['types'] === [ 'positionen.php', 'projekte.php' ] && array_column( surfaceApi( $appData, 'crm/status' )[1]['items'], 'state', 'key' )['portal'] === 'ok'
+check( 'setup through the endpoint applies the unit: the routes, the templates and the element type are added and the answer says so; the status says the portal is ready, and the settings that all seven pages are there', $status === 200 && count( $setupAnswer['added']['routes'] ) === 7 && $setupAnswer['added']['types'] === [ 'positionen.php', 'projekte.php' ] && array_column( surfaceApi( $appData, 'crm/status' )[1]['items'], 'state', 'key' )['portal'] === 'ok'
 	&& array_unique( array_column( $portalAfter['pages'], 'present' ) ) === [ true ] && \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) !== $routesBefore );
 $setupLines = array_values( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 20 ), static fn( string $entry ): bool => str_contains( $entry, 'Set the CRM up' ) === true ) );
 check( '...and the activity log has its line, by the account that did it, and the status a read leaves none', count( $setupLines ) === 1 && str_contains( $setupLines[0], 'crm@example.com' ) === true && count( \Nino\Modules\Logs\Admin::recentLines( $appData, 200 ) ) === $linesBefore + 1 );
@@ -875,7 +875,7 @@ $first = \Nino\Modules\Review::add( $appData, $mix, [ 'kind' => 'owner', 'id' =>
 Documents::release( $appData, $late2['id'], false );
 $reset();
 [ $status, $portal ] = surfaceApi( $appData, 'crm-clients/portal', [ 'id' => (string) $a['id'] ] );
-check( 'the portal of a client through the endpoint: the documents released to it as the portal lists them, the folders of the client\'s group with the files it may see - the hidden one is not counted -, and what Review holds for the files that can be commented on, answers and all', $status === 200 && array_keys( $portal ) === [ 'documents', 'features', 'folders', 'review' ]
+check( 'the portal of a client through the endpoint: the documents released to it as the portal lists them, the folders of the client\'s group with the files it may see - the hidden one is not counted -, and what Review holds for the files that can be commented on, answers and all', $status === 200 && array_keys( $portal ) === [ 'documents', 'features', 'folders', 'review', 'records' ]
 	&& array_column( $portal['documents'], 'id' ) === array_column( Documents::released( $appData, $a['id'] ), 'id' ) && in_array( $late1['id'], array_column( $portal['documents'], 'id' ), true ) === true && $portal['features'] === [ 'files' => true, 'review' => true ]
 	&& $portal['folders'] === [ [ 'id' => $folder['id'], 'name' => 'Nordwind Album', 'upload' => false, 'files' => 3 ] ] && $portal['review'] === [ 'media' => 2, 'comments' => 3 ] );
 $asVisitor();
@@ -908,6 +908,47 @@ check( 'the overview answers the count of the active clients in its summary - th
 \Crm\Clients::setActive( $appData, $c['id'], false );
 check( '...and it follows a client that is switched off', surfaceApi( $appData, 'crm-documents/overview' )[1]['summary']['clients'] === 2 );
 \Crm\Clients::setActive( $appData, $c['id'], true );
+
+// --- Datenschutz and Auftrag: what /crm shows of the records ------------------------------------------------------------------
+
+echo "\nDatenschutz and Auftrag\n";
+
+check( 'the settings answer the text of the Datenschutz and the day it changed, both empty before the owner wrote one', surfaceApi( $appData, 'crm-documents/settings-get' )[1]['settings']['privacy_text'] === '' && surfaceApi( $appData, 'crm-documents/settings-get' )[1]['settings']['privacy_changed'] === '' );
+$privacy = "Erste Zeile\nZweite Zeile";
+[ $status, $saved ] = surfaceApi( $appData, 'crm-documents/settings-save', [ 'privacy_text' => $privacy, 'privacy_changed' => '2001-01-01' ] );
+check( 'the block saves the text through settings-save: the text is kept with its breaks and the day is set by the module - a day in the post is ignored', $status === 200 && $saved['settings']['privacy_text'] === $privacy && $saved['settings']['privacy_changed'] === date( 'Y-m-d' ) );
+[ $status, $answer ] = surfaceApi( $appData, 'crm-documents/settings-save', [ 'privacy_text' => "a\x07" ] );
+check( '...a text with a control character is refused at its field: 400 crm_documents_setting, field privacy_text, and the text is as it was', $status === 400 && $answer['code'] === 'crm_documents_setting' && $answer['field'] === 'privacy_text' && \Crm\Settings::get( $appData, 'privacy_text' ) === $privacy );
+[ $status, $answer ] = surfaceApi( $appData, 'crm-documents/settings-save', [ 'currency' => '€' ] );
+check( '...a save that does not carry the text leaves it alone', $status === 200 && \Crm\Settings::get( $appData, 'privacy_text' ) === $privacy );
+[ , $client ] = surfaceApi( $appData, 'crm-clients/get', [ 'id' => (string) $a['id'] ] );
+check( 'crm-clients/get and crm-clients/list carry the standing with the Datenschutz: asked, not agreed', $client['client']['privacy'] === [ 'asked' => true, 'agreed' => false, 'at' => '', 'member_name' => '' ] && array_column( surfaceApi( $appData, 'crm-clients/list' )[1]['clients'], 'privacy', 'id' )[$a['id']] === $client['client']['privacy'] );
+$agreedRecord = \Crm\Records::add( $appData, [ 'kind' => 'privacy', 'client_id' => $a['id'], 'member' => [ 'id' => 'aaaaaaaaaaaa', 'email' => 'anna@studio-nord.example', 'name' => 'Anna Nord' ], 'shown' => $privacy, 'ip' => '203.0.113.5' ] );
+[ , $client ] = surfaceApi( $appData, 'crm-clients/get', [ 'id' => (string) $a['id'] ] );
+check( '...and once a record holds the hash of the text: agreed, with the time and the name', $client['client']['privacy'] === [ 'asked' => true, 'agreed' => true, 'at' => $agreedRecord['at'], 'member_name' => 'Anna Nord' ] );
+[ , $portalOfA ] = surfaceApi( $appData, 'crm-clients/portal', [ 'id' => (string) $a['id'] ] );
+check( 'the Portal tab of the client lists its records, the newest first, with the shown text and the hash', array_column( $portalOfA['records'], 'id' ) === [ $agreedRecord['id'] ] && $portalOfA['records'][0]['shown'] === $privacy && $portalOfA['records'][0]['sha256'] === hash( 'sha256', $privacy ) && $portalOfA['records'][0]['ip'] === '203.0.113.5' );
+
+$ordered = $final( 'offer', $a['id'], [ 'date' => $day( -1 ), 'valid_until' => $day( 20 ), 'lines' => [ $line( 'Beauftragt' ) ], 'template_key' => 'angebot' ] );
+$ownerAccepted = $final( 'offer', $a['id'], [ 'date' => $day( -1 ), 'valid_until' => $day( 20 ), 'lines' => [ $line( 'Vom Inhaber' ) ], 'template_key' => 'angebot' ] );
+$olderOrdered = $final( 'offer', $a['id'], [ 'date' => $day( -40 ), 'valid_until' => $day( -10 ), 'lines' => [ $line( 'Vor langer Zeit' ) ], 'template_key' => 'angebot' ] );
+\Crm\Documents::release( $appData, $ordered['id'], false );
+$orderResult = \Crm\Documents::order( $appData, $ordered['id'], $a['id'], [ 'id' => 'aaaaaaaaaaaa', 'email' => 'anna@studio-nord.example', 'name' => 'Anna Nord' ], 'Ich beauftrage.', [ 'ip' => '203.0.113.5', 'agent' => 'Test' ] );
+\Crm\Documents::setState( $appData, $ownerAccepted['id'], 'accepted' );
+\Crm\Documents::setState( $appData, $olderOrdered['id'], 'accepted' );
+\Crm\Db::exec( $appData, 'INSERT INTO records ( kind, client_id, member_id, document_id, sha256, shown, at ) VALUES ( \'order\', :c, \'x\', :d, \'h\', \'s\', :at )', [ 'c' => $a['id'], 'd' => $olderOrdered['id'], 'at' => gmdate( 'Y-m-d\TH:i:s\Z', time() - 20 * 86400 ) ] );
+[ $status, $view ] = surfaceApi( $appData, 'crm-documents/get', [ 'id' => (string) $ordered['id'] ] );
+check( 'crm-documents/get carries the order of an offer that was ordered in the portal: the record with the account, the address, the hash and the JSON that was shown', is_array( $orderResult ) && $status === 200 && $view['order']['id'] === $orderResult['record']['id'] && $view['order']['member_name'] === 'Anna Nord' && $view['order']['ip'] === '203.0.113.5' && $view['order']['sha256'] === hash( 'sha256', $view['order']['shown'] ) && json_decode( $view['order']['shown'], true )['number'] === $ordered['number'] && $view['document']['state'] === 'accepted' );
+[ , $portalAfter ] = surfaceApi( $appData, 'crm-clients/portal', [ 'id' => (string) $a['id'] ] );
+check( '...the records of the client name the document of an order by its number, and a record of the Datenschutz has none', array_column( $portalAfter['records'], 'document_number', 'kind' )['order'] === $ordered['number'] && array_column( $portalAfter['records'], 'document_number', 'kind' )['privacy'] === '' );
+check( '...an offer the owner accepted has none, and neither has a draft', surfaceApi( $appData, 'crm-documents/get', [ 'id' => (string) $ownerAccepted['id'] ] )[1]['order'] === null && surfaceApi( $appData, 'crm-documents/get', [ 'id' => (string) $previewed['id'] ] )[1]['order'] === null );
+$needs = surfaceApi( $appData, 'crm-documents/overview' )[1]['needs'];
+$orders = array_values( array_filter( $needs, static fn( array $need ): bool => $need['kind'] === 'orders' ) );
+check( 'the overview has one line for the orders of the last 14 days that no invoice has followed: how many and the sum - not the order from twenty days ago, not the offer the owner accepted', count( $orders ) === 1 && $orders[0]['count'] === 1 && $orders[0]['gross'] === $ordered['gross'] && $orders[0]['id'] === 0 );
+check( '...it comes after the invoices that are overdue and before the rest', array_search( 'orders', array_column( $needs, 'kind' ), true ) === count( array_filter( $needs, static fn( array $need ): bool => $need['kind'] === 'overdue' ) ) );
+\Crm\Documents::fromOffer( $appData, $ordered['id'] );
+check( '...an invoice made of the offer takes it off the list', array_filter( surfaceApi( $appData, 'crm-documents/overview' )[1]['needs'], static fn( array $need ): bool => $need['kind'] === 'orders' ) === [] );
+\Crm\Settings::set( $appData, 'privacy_text', '' );
 
 // --- PDF-Vorlagen: the actions of the Pdf panel through the endpoint, the context, the picture, the rail -------------------
 

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-// Die Worte der Komponenten des Kundenportals ([crm-documents], [crm-projects], [crm-uploads], [crm-client-data], [crm-portal-nav]), eine Datei je Sprache der Seite (siehe Portal::words()): als Fills für die Dauer
+// Die Worte der Komponenten des Kundenportals ([crm-documents], [crm-projects], [crm-uploads], [crm-client-data], [crm-portal-nav], [crm-portal-start], [crm-privacy] und die Bestellung unter einem Angebot), eine Datei je Sprache der Seite (siehe Portal::words()): als Fills für die Dauer
 // des Aufrufs hinzugefügt, solange das Modul aktiv ist, nie in die Textdateien des Projekts geschrieben
 return [
 
@@ -72,4 +72,44 @@ return [
 	'[[/project/crm-portal/data/state-saved]]' => 'Gespeichert. Danke!',
 	'[[/project/crm-portal/data/state-expired]]' => 'Die Seite war zu lange offen. Bitte speichere noch einmal.',
 	'[[/project/crm-portal/data/state-invalid]]' => 'Gespeichert wurde nichts. Bitte prüfe die Angabe bei:',
+
+	'[[/project/crm-portal/privacy/none]]' => 'Die Datenschutzerklärung gilt für Kunden. Für Dein Konto sind keine Kundendaten hinterlegt.',
+	'[[/project/crm-portal/privacy/empty]]' => 'Im Moment gibt es keine Datenschutzerklärung, der Du zustimmen müsstest.',
+	'[[/project/crm-portal/privacy/agreed-on]]' => 'Zugestimmt am',
+	'[[/project/crm-portal/privacy/agreed-by]]' => 'durch',
+	'[[/project/crm-portal/privacy/open]]' => 'Du hast der Datenschutzerklärung noch nicht zugestimmt.',
+	'[[/project/crm-portal/privacy/changed]]' => 'Der Text hat sich zuletzt geändert am',
+	'[[/project/crm-portal/privacy/box]]' => 'Ich habe die Datenschutzerklärung gelesen und stimme zu.',
+	'[[/project/crm-portal/privacy/button]]' => 'Zustimmen',
+	'[[/project/crm-portal/privacy/state-agreed]]' => 'Danke, Deine Zustimmung ist festgehalten.',
+	'[[/project/crm-portal/privacy/state-unchecked]]' => 'Bitte setze das Häkchen, wenn Du zustimmst.',
+	'[[/project/crm-portal/privacy/state-invalid]]' => 'Im Moment gibt es keine Datenschutzerklärung, der Du zustimmen könntest.',
+	'[[/project/crm-portal/privacy/state-expired]]' => 'Die Seite war zu lange offen. Bitte stimme noch einmal zu.',
+	'[[/project/crm-portal/data/privacy-link]]' => 'Datenschutzerklärung ansehen',
+	'[[/project/crm-portal/order/sentence]]' => 'Ich beauftrage {company} verbindlich mit dem Angebot {number} zu den genannten Konditionen.',
+	'[[/project/crm-portal/order/company-none]]' => 'den Anbieter',
+	'[[/project/crm-portal/order/button]]' => 'Auftrag erteilen',
+	'[[/project/crm-portal/order/privacy-first]]' => 'Bevor Du einen Auftrag erteilen kannst, stimmst Du zuerst dem Datenschutz zu.',
+	'[[/project/crm-portal/order/privacy-link]]' => 'Zum Datenschutz',
+	'[[/project/crm-portal/order/done]]' => 'Beauftragt am',
+	'[[/project/crm-portal/order/by]]' => 'durch',
+	'[[/project/crm-portal/order/state-ordered]]' => 'Danke für Deinen Auftrag. Wir haben Dir eine Bestätigung per E-Mail geschickt.',
+	'[[/project/crm-portal/order/state-invalid]]' => 'Dieses Angebot lässt sich nicht mehr beauftragen. Es ist abgelaufen, schon beauftragt oder nicht für Dich freigegeben.',
+	'[[/project/crm-portal/order/state-unchecked]]' => 'Bitte setze das Häkchen, wenn Du das Angebot beauftragen möchtest.',
+	'[[/project/crm-portal/order/state-privacy]]' => 'Bitte stimme zuerst dem Datenschutz zu, danach kannst Du den Auftrag erteilen.',
+	'[[/project/crm-portal/order/state-expired]]' => 'Die Seite war zu lange offen. Bitte erteile den Auftrag noch einmal.',
+	'[[/project/crm-portal/start/heading]]' => 'Was liegt an',
+	'[[/project/crm-portal/start/card-privacy]]' => 'Datenschutz ausstehend',
+	'[[/project/crm-portal/start/card-offers]]' => 'Angebote, die auf Deine Beauftragung warten',
+	'[[/project/crm-portal/start/card-documents]]' => 'Neue Dokumente der letzten 14 Tage',
+	'[[/project/crm-portal/start/card-files]]' => 'Neue Dateien der letzten 14 Tage',
+	'[[/project/crm-portal/start/card-dates]]' => 'Termine der nächsten 30 Tage',
+	'[[/project/crm-portal/start/privacy-text]]' => 'Wir brauchen noch Deine Zustimmung zum Datenschutz.',
+	'[[/project/crm-portal/start/privacy-link]]' => 'Zum Datenschutz',
+	'[[/project/crm-portal/start/new-file-one]]' => 'neue Datei',
+	'[[/project/crm-portal/start/new-file-many]]' => 'neue Dateien',
+	'[[/project/crm-portal/start/nothing]]' => 'Im Moment liegt nichts für Dich an.',
+	'[[/project/crm-portal/privacy/state-changed]]' => 'Der Text hat sich geändert, seit Du ihn geöffnet hast. Unten steht der aktuelle Text: Bitte lies ihn und stimme dann zu.',
+	'[[/project/crm-portal/order/state-nomail]]' => 'Danke für Deinen Auftrag. Er ist bei uns eingegangen; die Bestätigung per E-Mail konnten wir Dir gerade nicht schicken.',
+	'[[/project/crm-portal/order/state-changed]]' => 'Das Angebot hat sich geändert, seit Du es geöffnet hast. Unten steht es, wie es jetzt ist: Bitte prüfe es und erteile dann den Auftrag.',
 ];

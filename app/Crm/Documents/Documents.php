@@ -30,7 +30,7 @@ declare(strict_types=1);
  *											  sign:<code>             Sign refused with template, input, render or write
  *											  released, mail          at remind(): the invoice is not released to the portal; at remindSignature(): the member was not mailed
  *											A database failure is a \PDOException the caller answers. Beside the steps there are readings for the surface: overdue(), summary(), needs()
- *											(what needs the owner), recent(), and two things made of a document: copy() (a draft of it) and preview() (the PDF of a draft, stored nowhere).
+ *											(what needs the owner), recent(), order() (the customer orders an offer in the portal: the record of Records and the step to accepted in one transaction), and two things made of a document: copy() (a draft of it) and preview() (the PDF of a draft, stored nowhere).
  */
 namespace Crm;
 
@@ -69,6 +69,9 @@ class Documents {
 	];
 
 	private const string TIME = 'Y-m-d\TH:i:s\Z';
+
+	// How many days an order of the portal that no invoice has followed stays among the things that need the owner
+	public const int ORDER_DAYS = 14;
 
 	// The fields of the client that are frozen into a finalised document
 	private const array CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'number', 'vat_id', 'email' ];
@@ -500,26 +503,13 @@ class Documents {
 
 		try {
 			// Read and written in one transaction: a step another request took first is not taken twice
-			$statement = $pdo->prepare( 'SELECT category, state FROM documents WHERE id = :id' );
-			$statement->execute( [ 'id' => $id ] );
-			$row = $statement->fetch();
-
-			$refused = match( true ) {
-				$row === false                                                                           => 'unknown',
-				in_array( $state, self::TRANSITIONS[$row['category']][$row['state']] ?? [], true ) === false => 'state',
-				$date !== null && self::validDate( $date ) === false                                     => 'date:date',
-				default                                                                                  => '',
-			};
+			$refused = self::moveIn( $pdo, $id, $state, $date );
 
 			if( $refused !== '' ) {
 				$pdo->exec( 'ROLLBACK' );
 				return $refused;
 			}
 
-			$column = $state === 'sent' ? ', sent_at = :time' : ( $state === 'paid' ? ', paid_at = :time' : '' );
-			$params = [ 'id' => $id, 'new' => $state, 'now' => gmdate( self::TIME ) ] + ( $column === '' ? [] : [ 'time' => $date === null ? gmdate( self::TIME ) : $date. 'T00:00:00Z' ] );
-
-			$pdo->prepare( 'UPDATE documents SET state = :new, updated = :now'. $column. ' WHERE id = :id' )->execute( $params );
 			$pdo->exec( 'COMMIT' );
 		}
 		catch( \Throwable $e ) {
@@ -528,6 +518,115 @@ class Documents {
 		}
 
 		return (array) self::get( $appData, $id );
+	}
+
+	/**
+	 *	The customer orders an offer in the portal: the record of the order and the step of the offer to accepted are one transaction, so that an offer is
+	 *	never accepted without the record of who accepted it, nor a record kept of an offer that stayed as it was. The offer must be the client's, finalised and
+	 *	released to the portal, open or sent and not expired; what the customer was shown - the JSON the page of the offer is drawn from, with the sentence beside
+	 *	the box - is kept with its hash, together with the account, the time and the circumstances of the request
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id						The offer
+	 *	@param		int				$clientId			The client of the account that orders
+	 *	@param		array 		$member				id, email and name of that account
+	 *	@param		string		$sentence			The words beside the box, as the customer read them
+	 *	@param		array 		$source				ip and agent of the request, see Records::source()
+	 *
+	 *	@return 	array|string							document (as get() has it, accepted) and record (as Records::of() has it); or why not: unknown (no offer of the client), state (the offer cannot be ordered), long, kind, member, shown (see Records)
+	 */
+	public static function order( array &$appData, int $id, int $clientId, array $member, string $sentence, array $source ): array|string {
+
+		$document = self::get( $appData, $id );
+
+		if( $document === null || $document['client_id'] !== $clientId )
+			return 'unknown';
+
+		if( self::orderable( $document ) === false || $document['released'] !== true || $document['pdf_path'] === '' )
+			return 'state';
+
+		$shown = Records::orderShown( $appData, $document, $sentence );
+		$pdo = Db::pdo( $appData );
+		$pdo->exec( 'BEGIN IMMEDIATE' );
+
+		try {
+			// Looked at again inside the transaction: an offer that another request ordered, took back or let run out meanwhile is not ordered twice
+			$statement = $pdo->prepare( 'SELECT category, state, released, valid_until FROM documents WHERE id = :id AND client_id = :client' );
+			$statement->execute( [ 'id' => $id, 'client' => $clientId ] );
+			$row = $statement->fetch();
+
+			if( $row === false || (int) $row['released'] !== 1 || self::orderable( $row ) === false ) {
+				$pdo->exec( 'ROLLBACK' );
+				return $row === false ? 'unknown' : 'state';
+			}
+
+			$record = Records::insert( $appData, $pdo, [
+				'kind' => 'order', 'client_id' => $clientId, 'member' => $member, 'document_id' => $id, 'project' => $document['project'], 'shown' => $shown,
+				'ip' => (string) ( $source['ip'] ?? '' ), 'agent' => (string) ( $source['agent'] ?? '' ),
+			] );
+			$refused = is_string( $record ) === true ? $record : self::moveIn( $pdo, $id, 'accepted', date( 'Y-m-d' ) );
+
+			if( $refused !== '' ) {
+				$pdo->exec( 'ROLLBACK' );
+				return $refused;
+			}
+
+			$pdo->exec( 'COMMIT' );
+		}
+		catch( \Throwable $e ) {
+			$pdo->exec( 'ROLLBACK' );
+			throw $e;
+		}
+
+		return [ 'document' => (array) self::get( $appData, $id ), 'record' => (array) $record ];
+	}
+
+	/**
+	 *	Whether an offer may be ordered: it is an offer, open or sent, and not past its validity day (an offer without one does not run out)
+	 *
+	 *	@param		array 		$row					category, state and valid_until - or expired, which a document as get() and released() have it carries already
+	 *
+	 *	@return 	bool
+	 */
+	public static function orderable( array $row ): bool {
+
+		$expired = is_bool( $row['expired'] ?? null ) === true ? $row['expired'] : self::expired( $row, date( 'Y-m-d' ) );
+
+		return ( $row['category'] ?? '' ) === 'offer' && in_array( $row['state'] ?? '', [ 'open', 'sent' ], true ) === true && $expired === false;
+	}
+
+	/**
+	 *	One step of setState() on a connection that is in a transaction already
+	 *
+	 *	@param		\PDO			$pdo
+	 *	@param		int				$id
+	 *	@param		string		$state
+	 *	@param		string|null	$date
+	 *
+	 *	@return 	string										'' once the document is moved; or why not: unknown, state, date:date
+	 */
+	private static function moveIn( \PDO $pdo, int $id, string $state, ?string $date ): string {
+
+		$statement = $pdo->prepare( 'SELECT category, state FROM documents WHERE id = :id' );
+		$statement->execute( [ 'id' => $id ] );
+		$row = $statement->fetch();
+
+		$refused = match( true ) {
+			$row === false                                                                           => 'unknown',
+			in_array( $state, self::TRANSITIONS[$row['category']][$row['state']] ?? [], true ) === false => 'state',
+			$date !== null && self::validDate( $date ) === false                                     => 'date:date',
+			default                                                                                  => '',
+		};
+
+		if( $refused !== '' )
+			return $refused;
+
+		$column = $state === 'sent' ? ', sent_at = :time' : ( $state === 'paid' ? ', paid_at = :time' : '' );
+		$params = [ 'id' => $id, 'new' => $state, 'now' => gmdate( self::TIME ) ] + ( $column === '' ? [] : [ 'time' => $date === null ? gmdate( self::TIME ) : $date. 'T00:00:00Z' ] );
+
+		$pdo->prepare( 'UPDATE documents SET state = :new, updated = :now'. $column. ' WHERE id = :id' )->execute( $params );
+
+		return '';
 	}
 
 	/**
@@ -638,12 +737,13 @@ class Documents {
 	}
 
 	/**
-	 *	What needs the owner: the invoices that are overdue (the oldest due first), the offers that run out within the next seven days, the contracts
-	 *	and privacy documents whose signature was looked at and not given or ran out of time, and the active clients that have no account
+	 *	What needs the owner: the invoices that are overdue (the oldest due first), the orders of the portal of the last ORDER_DAYS days that no invoice has followed (one
+	 *	entry, kind orders, with how many and the sum), the offers that run out within the next seven days, the contracts and privacy documents whose signature was
+	 *	looked at and not given or ran out of time, and the active clients that have no account
 	 *
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	array											A list in that order; each has kind (overdue, expiring, sign, account), id (the document, 0 for a client), client_id, client_title, number, title,
+	 *	@return 	array											A list in that order; each has kind (overdue, orders, expiring, sign, account), id (the document, 0 for a client), client_id, client_title, number, title,
 	 *																		date (the due date, the day the offer runs out, the day the state last changed, ''), gross and sign_state ('' unless it is a signature)
 	 */
 	public static function needs( array &$appData ): array {
@@ -684,7 +784,12 @@ class Documents {
 			if( $client['active'] === true && $client['accounts'] === 0 )
 				$accounts[] = [ 'kind' => 'account', 'id' => 0, 'client_id' => $client['id'], 'client_title' => (string) ( $client['company'] !== '' ? $client['company'] : $client['name'] ), 'number' => (string) $client['number'], 'title' => '', 'date' => '', 'gross' => 0, 'sign_state' => '' ];
 
-		return array_merge( $groups['overdue'], $groups['sign'], $groups['expiring'], $accounts );
+		// The orders of the portal of the last ORDER_DAYS days that no invoice has followed: one line with how many and what they come to
+		$orders = Db::row( $appData, 'SELECT COUNT( DISTINCT d.id ) AS n, COALESCE( SUM( d.gross ), 0 ) AS gross FROM records r JOIN documents d ON d.id = r.document_id
+			WHERE r.kind = \'order\' AND d.state = \'accepted\' AND r.at >= :since AND NOT EXISTS ( SELECT 1 FROM documents c WHERE c.parent_id = d.id AND c.category = \'invoice\' )', [ 'since' => gmdate( self::TIME, time() - self::ORDER_DAYS * 86400 ) ] );
+		$ordered = (int) ( $orders['n'] ?? 0 ) === 0 ? [] : [ [ 'kind' => 'orders', 'id' => 0, 'client_id' => 0, 'client_title' => '', 'number' => '', 'title' => '', 'date' => '', 'gross' => (int) $orders['gross'], 'sign_state' => '', 'count' => (int) $orders['n'] ] ];
+
+		return array_merge( $groups['overdue'], $ordered, $groups['sign'], $groups['expiring'], $accounts );
 	}
 
 	/**
@@ -1051,7 +1156,7 @@ class Documents {
 	 *	@param		int				$clientId
 	 *	@param		string		$project			Only the documents of this project ('' for all of them)
 	 *
-	 *	@return 	array											id, category, number, title, state, expired, date, valid_until, sign_id, sign_state, project, project_title
+	 *	@return 	array											id, category, number, title, state, expired, date, valid_until, sign_id, sign_state, project, project_title, released_at
 	 */
 	public static function released( array &$appData, int $clientId, string $project = '' ): array {
 
@@ -1063,14 +1168,14 @@ class Documents {
 		if( $project !== '' )
 			$params['project'] = $project;
 
-		$rows = Db::rows( $appData, 'SELECT id, category, number, title, state, date, valid_until, sign_id, sign_state, project FROM documents
+		$rows = Db::rows( $appData, 'SELECT id, category, number, title, state, date, valid_until, sign_id, sign_state, project, released_at FROM documents
 			WHERE client_id = :client AND released = 1 AND state != \'draft\' AND pdf_path != \'\''. ( $project !== '' ? ' AND project = :project' : '' ). ' ORDER BY date DESC, id DESC', $params );
 		$titles = array_filter( $rows, static fn( array $row ): bool => (string) $row['project'] !== '' ) === [] ? [] : Projekte::titles( $appData );
 
 		return array_map( static fn( array $row ): array => [
 			'id' => (int) $row['id'], 'category' => (string) $row['category'], 'number' => (string) ( $row['number'] ?? '' ), 'title' => (string) $row['title'], 'state' => (string) $row['state'],
 			'expired' => self::expired( $row, $today ), 'date' => (string) $row['date'], 'valid_until' => (string) ( $row['valid_until'] ?? '' ), 'sign_id' => (string) $row['sign_id'], 'sign_state' => (string) $row['sign_state'],
-			'project' => (string) $row['project'], 'project_title' => (string) ( $titles[(string) $row['project']] ?? '' ),
+			'project' => (string) $row['project'], 'project_title' => (string) ( $titles[(string) $row['project']] ?? '' ), 'released_at' => (string) ( $row['released_at'] ?? '' ),
 		], $rows );
 	}
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
  *								has a number K-0001, counted inside a write transaction; its group in Members is that number
  *								as a slug (k-0001). All storage is Crm\Db; every statement is prepared.
  *
+ *								A client carries privacy (Records::privacy(): whether the portal asks for a text, whether the client has agreed to it, when and by whom) from get() and list().
  *								A write answers the client as list() has it, or a string: 'empty' (neither company nor name),
  *								'email:email', 'long:<field>' or 'format:<field>' (the field a value was refused for),
  *								'unknown' (no such client). A database failure is a \PDOException the caller answers.
@@ -52,8 +53,9 @@ class Clients {
 			$linked[(int) $link['client_id']][] = $link['member_id'];
 
 		$members = self::members( $appData );
+		$privacy = Records::privacies( $appData, array_map( static fn( array $row ): int => (int) $row['id'], $rows ) );
 
-		return array_map( static fn( array $row ): array => self::shape( $row, $linked[(int) $row['id']] ?? [], $members ), $rows );
+		return array_map( static fn( array $row ): array => self::shape( $row, $linked[(int) $row['id']] ?? [], $members ) + [ 'privacy' => $privacy[(int) $row['id']] ], $rows );
 	}
 
 	/**
@@ -66,7 +68,7 @@ class Clients {
 
 		$row = Db::row( $appData, 'SELECT c.* FROM clients c WHERE c.id = :id', [ 'id' => $id ] );
 
-		return $row === null ? null : self::shape( $row, self::linked( $appData, $id ), self::members( $appData ) );
+		return $row === null ? null : self::shape( $row, self::linked( $appData, $id ), self::members( $appData ) ) + [ 'privacy' => Records::privacy( $appData, $id ) ];
 	}
 
 	/**

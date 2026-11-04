@@ -13,4 +13,5 @@
 			</dl>
 			[[note]]
 			<p class="crm-offer__actions"><a class="crm-offer__download" href="[[dir]]/.crm/pdf/[[id]]?download=1">[[/project/crm-documents/list/download]]</a></p>
+			[[order]]
 		</div>

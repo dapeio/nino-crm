@@ -411,7 +411,7 @@ function press( w, key, target, mods ) {
 
 	const families = {
 		'category.' : [ 'offer', 'invoice', 'credit', 'contract', 'privacy', 'information' ], 'state.' : [ 'draft', 'open', 'sent', 'paid', 'accepted', 'declined', 'cancelled', 'signed', 'overdue', 'expired' ],
-		'chip.' : [ 'all', 'open', 'overdue', 'drafts', 'offers', 'invoices', 'plain', 'paid' ], 'tab.' : [ 'lines', 'document', 'portal', 'sign', 'notes', 'history' ], 'primary.' : [ 'send', 'sent', 'paid', 'invoice', 'sign' ],
+		'chip.' : [ 'all', 'open', 'overdue', 'drafts', 'offers', 'accepted', 'invoices', 'plain', 'paid' ], 'tab.' : [ 'lines', 'document', 'portal', 'sign', 'notes', 'history' ], 'primary.' : [ 'send', 'sent', 'paid', 'invoice', 'sign' ],
 		'new.' : [ 'invoice', 'offer', 'contract', 'privacy', 'information' ], 'sign.badge-' : [ 'requested', 'viewed', 'expired' ], 'sign.state-' : [ 'requested', 'viewed', 'signed', 'declined', 'cancelled', 'expired', 'changed' ],
 		'needs.sign-' : [ 'viewed', 'expired' ], 'tile.paid-' : [ 'small_business', 'regular' ], 'vat.' : [ 'small_business', 'regular', 'reverse' ],
 	};
@@ -558,8 +558,8 @@ function press( w, key, target, mods ) {
 	const rows = function() { return all( listing.main, 'tbody' )[0].children };
 	const numbers = function() { return rows().map( function( r ) { return textOf( r.children[0] ) } ) };
 
-	check( 'Belege asks for the list of the year, and shows eight tabs with the counts of the documents each takes', lists2.length === 1 && lists2[0].year === String( new Date().getFullYear() ) && tabs().length === 8
-		&& tabs().map( textOf ).join( '|' ) === 'Alle8|Offen3|Überfällig1|Entwürfe1|Angebote2|Rechnungen5|Verträge & Dokumente1|Bezahlt1' );
+	check( 'Belege asks for the list of the year, and shows nine tabs with the counts of the documents each takes', lists2.length === 1 && lists2[0].year === String( new Date().getFullYear() ) && tabs().length === 9
+		&& tabs().map( textOf ).join( '|' ) === 'Alle8|Offen3|Überfällig1|Entwürfe1|Angebote2|Angenommen1|Rechnungen5|Verträge & Dokumente1|Bezahlt1' );
 	check( '...the table has the columns, the number in the first, and the foot has the sum of what is shown: the credit note is taken off', all( listing.main, 'thead th' ).map( textOf ).join( '|' ) === 'Nummer|Art|Kunde|Projekt|Datum ↓|Fällig / gültig|Betrag|Status|' && rows().length === 8
 		&& textOf( all( listing.main, '#sum' )[0] ) === '5.908,40'+ NBSP+ '€' );
 	check( '...a row has the kind, the client, the day, the due or valid day, the gross in the currency and the state', ( function() {
@@ -2144,7 +2144,7 @@ function press( w, key, target, mods ) {
 	let statusItems = pitemsStatus;
 	const est = await eopen( {}, undefined, {
 		'crm/status' : function() { return [ 200, { items : statusItems } ] },
-		'crm/setup' : function() { setups++; return [ 200, { added : { routes : [ 'a', 'b', 'c' ], templates : [ 'x' ], types : [ 'positionen.php' ], texts : 12, paths : false, start : false }, existed : { routes : [ 'd' ], templates : [ 'y', 'z' ], types : [], paths : true, start : true } } ] },
+		'crm/setup' : function() { setups++; return [ 200, { added : { routes : [ 'a', 'b', 'c' ], navs : [ 'e' ], templates : [ 'x' ], types : [ 'positionen.php' ], texts : 12, paths : false, start : false }, existed : { routes : [ 'd' ], templates : [ 'y', 'z' ], types : [], paths : true, start : true } } ] },
 	} );
 	check( 'a module that misses something says it line by line, in the words of the state - a portal that is partly there names what it lacks, in the words of the parts - and the button Portal einrichten is there', all( all( est.main, '#status-missing' )[0], 'li' ).map( textOf ).join( '|' ) === [
 		'Das Verzeichnis data/ ist nicht beschreibbar, die Datenbank kann nicht angelegt werden.', texts['status.sign-off'], 'Das Feature PDF ist nicht installiert.',
@@ -2154,8 +2154,8 @@ function press( w, key, target, mods ) {
 	click( est, all( est.main, '#portal-setup' )[0] );
 	check( 'the button posts crm/setup with nothing, and is off while the request is out', est.last( 'crm/setup' ) !== undefined && JSON.stringify( est.last( 'crm/setup' ).data ) === '{}' && all( est.main, '#portal-setup' )[0].disabled === true );
 	await settle();
-	check( '...the status is asked for again and drawn: all is well, the button is gone, and what the setup did stands in one sentence with a place for each of the seven numbers - what a person typed in the form above stays where it is', setups === 1 && est.all( 'crm/status' ).length === 2 && all( est.main, '#status-ok' ).length === 1 && all( est.main, '#portal-setup' )[0].hidden === true
-		&& textOf( all( est.main, '#setup-said' )[0] ) === 'Eingerichtet. Neu: Features 0, Routen 3, Vorlagen 1, Elementtypen 1, Worte 12, PDF-Vorlagen 0. Schon da: 3.' && efield( est, 'currency' ).value === 'CHF' );
+	check( '...the status is asked for again and drawn: all is well, the button is gone, and what the setup did stands in one sentence with a place for each of the eight numbers - what a person typed in the form above stays where it is', setups === 1 && est.all( 'crm/status' ).length === 2 && all( est.main, '#status-ok' ).length === 1 && all( est.main, '#portal-setup' )[0].hidden === true
+		&& textOf( all( est.main, '#setup-said' )[0] ) === 'Eingerichtet. Neu: Features 0, Routen 3, Menüeinträge 1, Vorlagen 1, Elementtypen 1, Worte 12, PDF-Vorlagen 0. Schon da: 3.' && efield( est, 'currency' ).value === 'CHF' );
 	const ehome = await eopen( {}, eok.concat( [ { key : 'pdf-templates', state : 'none', lacks : [ 'rechnung' ] }, { key : 'home', state : 'other' } ] ) );
 	check( 'the card of the portal offers the button while anything of the product is missing, the portal itself being in order: the PDF templates and the start page are lines of the status as well', all( ehome.main, '#portal-setup' )[0].hidden === false && all( all( ehome.main, '#status-missing' )[0], 'li' ).map( textOf ).join( '|' ) === texts['status.pdf-templates-none']+ '|'+ texts['status.home-other'] );
 	const eown = await eopen( {}, eok.concat( [ { key : 'pdf-templates', state : 'ok' }, { key : 'home', state : 'own' } ] ) );
@@ -2202,7 +2202,7 @@ function press( w, key, target, mods ) {
 	await settle();
 	check( '...the status is asked for again and drawn: every row done, the button gone, Fertig. with the way on to the Übersicht, and what the run did in a sentence - and the start page said once', iran === 1 && first.all( 'crm/status' ).length === 2 && Array.from( irows( first ) ).every( function( li ) { return li.getAttribute( 'data-state' ) === 'ok' } )
 		&& all( first.main, '#einrichtung-run' )[0].hidden === true && textOf( all( first.main, '#einrichtung-done' )[0] ).indexOf( 'Fertig.' ) === 0 && all( all( first.main, '#einrichtung-done' )[0], 'a' )[0].getAttribute( 'href' ) === '#uebersicht' && textOf( all( first.main, '#einrichtung-after' )[0] ) === texts['einrichtung.after']
-		&& textOf( all( first.main, '#einrichtung-said' )[0] ) === 'Eingerichtet. Neu: Features 2, Routen 0, Vorlagen 0, Elementtypen 0, Worte 3, PDF-Vorlagen 6. Schon da: 2. '+ texts['setup.home-starter'] );
+		&& textOf( all( first.main, '#einrichtung-said' )[0] ) === 'Eingerichtet. Neu: Features 2, Routen 0, Menüeinträge 0, Vorlagen 0, Elementtypen 0, Worte 3, PDF-Vorlagen 6. Schon da: 2. '+ texts['setup.home-starter'] );
 
 	// The start page of the owner's own: no lack, kept - the row says what it is, the answer says that it stays
 	let ownRun = false;
@@ -2439,10 +2439,10 @@ function press( w, key, target, mods ) {
 	const pmButton = pm.find( function( node ) { return node.id === 'crm-setup' } );
 	pmButton.click();
 	check( 'the button posts crm/setup with nothing, and is off while the request is out', pm.last().action === 'crm/setup' && JSON.stringify( pm.last().payload ) === '{}' && pmButton.disabled === true );
-	pm.answer( 200, { added : { routes : [ 'a', 'b', 'c' ], templates : [ 'x' ], types : [ 'positionen.php' ], texts : 12, paths : false, start : false }, existed : { routes : [ 'd' ], templates : [ 'y', 'z' ], types : [], paths : true, start : true } } );
+	pm.answer( 200, { added : { routes : [ 'a', 'b', 'c' ], navs : [ 'e' ], templates : [ 'x' ], types : [ 'positionen.php' ], texts : 12, paths : false, start : false }, existed : { routes : [ 'd' ], templates : [ 'y', 'z' ], types : [], paths : true, start : true } } );
 	check( '...the status is asked for again after it', pm.last().action === 'crm/status' && pm.requests.length === 3 );
 	pm.answer( 200, { items : eok } );
-	check( '...and what the setup did stays on the screen after the box is drawn again: one sentence with a place for each of the seven numbers', pm.texts().indexOf( 'Eingerichtet. Neu: Features 0, Routen 3, Vorlagen 1, Elementtypen 1, Worte 12, PDF-Vorlagen 0. Schon da: 3.' ) !== -1 && pm.words['/_admin/crm/setup/done'].split( '%s' ).length === 8
+	check( '...and what the setup did stays on the screen after the box is drawn again: one sentence with a place for each of the eight numbers', pm.texts().indexOf( 'Eingerichtet. Neu: Features 0, Routen 3, Menüeinträge 1, Vorlagen 1, Elementtypen 1, Worte 12, PDF-Vorlagen 0. Schon da: 3.' ) !== -1 && pm.words['/_admin/crm/setup/done'].split( '%s' ).length === 9
 		&& pm.find( function( node ) { return node.id === 'crm-setup' } ).hidden === true );
 	const pr = panelWorld( 'de_DE' );
 	pr.panel.showCurrent();
@@ -4108,6 +4108,92 @@ function press( w, key, target, mods ) {
 	check( 'the script posts a file to the Files panel\'s upload only as chunks, with the part named chunk, and keeps no folder of its own: the actions it names of that panel are the six of the endpoint', [ ...script.matchAll( /(?:api|call|upload)\( '(files\/[a-z/]+)'/g ) ].map( function( found ) { return found[1] } ).sort().join() === 'files/delete,files/folder/add,files/folder/save,files/list,files/save,files/upload' && /upload\( 'files\/upload', \{[^}]*\}, file\.slice\([^)]*\), 'chunk' \)/.test( script ) === true );
 	check( '...every word the screens ask for is a word of the page', [ ...script.matchAll( /\bt\( '(projects\.[a-z-]+|project\.[a-z-]+|ptab\.[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return typeof texts[key] !== 'string' || texts[key] === '' } ).length === 0 && typeof texts['nav.projects'] === 'string' );
 	}
+
+	// === C18: the Datenschutz and the orders of the portal in the surface
+
+	const pkey18 = function( w ) { return press( w, 's', null, { ctrlKey : true } ) };
+	const x18_record = function( over ) {
+		return Object.assign( { id : 1, kind : 'privacy', client_id : 1, member_id : 'aaaaaaaaaaaa', member_email : 'lena@nordlicht.example', member_name : 'Lena Brandt', document_id : null, project : '', sha256 : 'a'.repeat( 64 ), shown : 'Zeile eins\nZeile <b>zwei</b>', at : '2026-11-03T10:15:00Z', ip : '203.0.113.7', agent : 'Browser/1.0' }, over );
+	};
+	const x18_ordered = x18_record( { id : 2, kind : 'order', document_id : 31, document_number : 'A-2026-0031', project : '00001', shown : '{\n    "number": "A-2026-0031"\n}', sha256 : 'b'.repeat( 64 ) } );
+
+	// the block Datenschutz of the Einstellungen
+	let privacyPosts = [];
+	const x18_pr = await eopen( { settings : Object.assign( {}, esettings, { privacy_text : 'Alter Text\nzweite Zeile', privacy_changed : '2026-10-01' } ) }, undefined, {
+		'crm-documents/settings-save' : function( data ) { privacyPosts.push( data ); return data.privacy_text === 'zu\x07' ? [ 400, { error : 'x', code : 'crm_documents_setting', field : 'privacy_text' } ] : [ 200, { settings : Object.assign( {}, esettings, { privacy_text : data.privacy_text, privacy_changed : '2026-11-04' } ) } ] },
+	} );
+	const x18_pbox = all( x18_pr.main, '#privacy' )[0];
+	const x18_parea = efield( x18_pr, 'privacy_text' );
+	check( 'the Einstellungen have the block Datenschutz: a textarea with the text as it is stored - line breaks kept - the day it last changed, a note that a change asks every customer again, and a Speichern that carries the shortcut', x18_pbox !== undefined && x18_pbox.tagName === 'FORM' && x18_parea.tagName === 'TEXTAREA' && x18_parea.value === 'Alter Text\nzweite Zeile' && textOf( all( x18_pr.main, '#privacy-changed' )[0] ) === texts['privacy.changed'].replace( '%s', '01.10.2026' )
+		&& textOf( x18_pbox ).indexOf( texts['privacy.note'] ) !== -1 && all( x18_pr.main, '#privacy-save' )[0].title === texts['save.shortcut'] && textOf( all( x18_pr.main, '#privacy-save' )[0] ) === texts['privacy.save'] );
+	check( '...it is a form of its own: the settings form does not hold the text and does not post it', all( all( x18_pr.main, '#settings-form' )[0], '#f-privacy_text' ).length === 0 );
+	check( '...nothing typed, nothing to save: Strg+S posts nothing', pkey18( x18_pr ) === false || privacyPosts.length === 0 );
+	type( x18_parea, 'Neuer Text\nmit Umbruch', false );
+	check( 'what is typed is unsaved input, and the guard of the page knows', x18_pr.app.state.draft.dirty === true );
+	check( 'Strg+S in the field saves it as the button does: crm-documents/settings-save with the text alone', ( x18_parea.focused = true, pkey18( x18_pr ) ) === true && ( await settle(), privacyPosts.length === 1 ) && JSON.stringify( privacyPosts[0] ) === JSON.stringify( { privacy_text : 'Neuer Text\nmit Umbruch' } ) );
+	check( '...the day the module set is shown, the toast says it is saved, the guard holds nothing and the text stays as saved', textOf( all( x18_pr.main, '#privacy-changed' )[0] ) === texts['privacy.changed'].replace( '%s', '04.11.2026' ) && x18_pr.toast.textContent === texts['privacy.saved'] && x18_pr.app.state.draft === null && x18_parea.value === 'Neuer Text\nmit Umbruch' );
+	type( x18_parea, 'zu\x07', false );
+	submit( x18_pr, x18_pbox );
+	await settle();
+	check( 'a refusal is said at the field it names, the field marked and focused, and the text stays as typed', x18_parea.classList.contains( 'err' ) === true && x18_parea.focused === true && textOf( all( x18_pbox, '.state-note' ).find( function( n ) { return textOf( n ).indexOf( texts['error.crm_documents_setting'].slice( 0, 12 ) ) === 0 } ) ?? element( 'span' ) ) !== '' && x18_parea.value === 'zu\x07' && privacyPosts.length === 2 );
+	const x18_pr0 = await eopen( {} );
+	check( 'where no text is stored yet the block says so and the field is empty', efield( x18_pr0, 'privacy_text' ).value === '' && textOf( all( x18_pr0.main, '#privacy-changed' )[0] ) === texts['privacy.never'] );
+
+	// the Kundenkarte: the head and the tab Portal
+	const x18_kagreed = Object.assign( {}, kclient, { privacy : { asked : true, agreed : true, at : '2026-11-03T10:15:00Z', member_name : 'Lena Brandt' } } );
+	const x18_kask = await kopen( '#kunde-1', { 'crm-clients/get' : function() { return [ 200, { client : x18_kagreed, accounts : kaccounts } ] } } );
+	check( 'the head of the Kundenkarte says "Datenschutz: zugestimmt am … durch …" for a client that has agreed to the text of now', textOf( all( x18_kask.main, '#client-privacy' )[0] ) === texts['privacy.head-agreed'].replace( '%s', '03.11.2026' ).replace( '%s', 'Lena Brandt' ) && all( x18_kask.main, '#client-privacy' )[0].dataset.agreed === '1' );
+	const x18_kopenPrivacy = await kopen( '#kunde-1', { 'crm-clients/get' : function() { return [ 200, { client : Object.assign( {}, kclient, { privacy : { asked : true, agreed : false, at : '', member_name : '' } } ), accounts : kaccounts } ] } } );
+	check( '...and "ausstehend" for one that has not', textOf( all( x18_kopenPrivacy.main, '#client-privacy' )[0] ) === texts['privacy.head-open'] && all( x18_kopenPrivacy.main, '#client-privacy' )[0].dataset.agreed === '0' );
+	const x18_knone = await kopen( '#kunde-1', { 'crm-clients/get' : function() { return [ 200, { client : Object.assign( {}, kclient, { privacy : { asked : false, agreed : false, at : '', member_name : '' } } ), accounts : kaccounts } ] } } );
+	check( '...and nothing where the portal asks for no text, or where the answer has no standing', all( x18_knone.main, '#client-privacy' ).length === 0 && all( x18_kask.main, '.head' )[0] !== undefined && ( await kopen( '#kunde-1' ) ).main.querySelectorAll( '#client-privacy' ).length === 0 );
+	const x18_krecords = await kopen( '#kunde-1-portal', { 'crm-clients/portal' : function() { return [ 200, Object.assign( {}, kportal, { records : [ x18_ordered, x18_record( { member_name : '', member_email : 'tom@nordlicht.example', shown : '<img src=x onerror=alert(1)>' } ) ] } ) ] } } );
+	const x18_recordRows = all( all( x18_krecords.main, '#client-records' )[0], 'li' );
+	check( 'the tab Portal lists the records of the client, the newest first: the kind, the time, the account - its address where it has no name - and, for an order, the link to the document', x18_recordRows.length === 2 && textOf( x18_recordRows[0] ).indexOf( texts['record.kind-order']+ ' · 03.11.2026 ' ) === 0 && textOf( x18_recordRows[0] ).indexOf( 'Lena Brandt' ) !== -1 && all( x18_recordRows[0], 'a' )[0].getAttribute( 'href' ) === '#beleg-31' && textOf( all( x18_recordRows[0], 'a' )[0] ) === 'A-2026-0031'
+		&& textOf( x18_recordRows[1] ).indexOf( texts['record.kind-privacy'] ) === 0 && textOf( x18_recordRows[1] ).indexOf( 'tom@nordlicht.example' ) !== -1 && all( x18_recordRows[1], 'a' ).length === 0 );
+	click( x18_krecords, all( x18_recordRows[1], 'button' )[0] );
+	check( '...a click on Anzeigen opens a dialog with the text that was shown as text - markup in it is not markup - and its hash', x18_krecords.dialogs.length === 1 && textOf( all( x18_krecords.dialogs[0], 'pre' )[0] ) === '<img src=x onerror=alert(1)>' && findAll( x18_krecords.dialogs[0], function( node ) { return node.tagName === 'IMG' } ).length === 0
+		&& textOf( all( x18_krecords.dialogs[0], 'p' )[0] ) === texts['record.hash'].replace( '%s', 'a'.repeat( 64 ) ) && x18_krecords.dialogs[0].classList.contains( 'wide' ) === true && all( x18_krecords.dialogs[0], 'pre' )[0].classList.contains( 'sheet' ) === true && all( x18_krecords.dialogs[0], 'button' ).length === 1 && textOf( all( x18_krecords.dialogs[0], 'button' )[0] ) === texts['dialog.close'] );
+	click( x18_krecords, all( x18_krecords.dialogs[0], 'button' )[0] );
+	check( '...and Schließen closes it', x18_krecords.dialogs[0].open === false );
+	const x18_knorecords = await kopen( '#kunde-1-portal', { 'crm-clients/portal' : function() { return [ 200, Object.assign( {}, kportal, { records : [] } ) ] } } );
+	check( 'a client with no x18_record says so', textOf( all( x18_knorecords.main, '#client-records' )[0] ) === texts['cportal.records-none'] );
+
+	// the Beleg: head, history, tab Portal
+	const x18_orderView = function( over ) { return view( Object.assign( { id : 31, category : 'offer', number : 'A-2026-0031', state : 'accepted', due_date : null, valid_until : '2026-12-01', released : true, released_at : '2026-11-01T09:00:00Z', finalised : '2026-10-30T09:00:00Z' }, over || {} ), { order : x18_ordered } ); };
+	const x18_bo = world( { hash : '#beleg-31', answers: { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] }, 'crm-documents/get' : function() { return [ 200, x18_orderView() ] } } } );
+	x18_bo.boot();
+	await settle();
+	check( 'the head of an offer that was x18_ordered in the portal says so under the head: "Beauftragt im Portal am … durch …"', textOf( all( x18_bo.main, '#order-head' )[0] ).indexOf( texts['order.head'].replace( '%s', '03.11.2026' ).replace( '%s', 'Lena Brandt' ) ) !== -1 );
+	click( x18_bo, all( x18_bo.main, '.tabs button' ).find( function( b ) { return b.dataset.tab === 'history' } ) );
+	check( 'the history has the line of the order with its time among the others, in the order of the times', textOf( all( x18_bo.main, '.log' )[0] ).indexOf( texts['history.ordered'].replace( '%s', 'Lena Brandt' ) ) !== -1 && textOf( all( x18_bo.main, '.log' )[0] ).indexOf( texts['history.ordered'].replace( '%s', 'Lena Brandt' ) ) > textOf( all( x18_bo.main, '.log' )[0] ).indexOf( texts['history.released'] ) );
+	click( x18_bo, all( x18_bo.main, '.tabs button' ).find( function( b ) { return b.dataset.tab === 'portal' } ) );
+	const x18_ocard = all( x18_bo.main, '#order-card' )[0];
+	check( 'the tab Portal shows the x18_record: the time, the account with its address, the address of the request, the browser and the hash', x18_ocard !== undefined && textOf( x18_ocard ).indexOf( '03.11.2026' ) !== -1 && textOf( x18_ocard ).indexOf( 'Lena Brandt <lena@nordlicht.example>' ) !== -1 && textOf( x18_ocard ).indexOf( '203.0.113.7' ) !== -1 && textOf( x18_ocard ).indexOf( 'Browser/1.0' ) !== -1 && textOf( x18_ocard ).indexOf( 'b'.repeat( 64 ) ) !== -1 );
+	click( x18_bo, all( x18_bo.main, '#order-show' )[0] );
+	check( '...the card has its space under the columns', x18_ocard.classList.contains( 'gap' ) === true );
+	check( '...and the JSON that was shown opens in a dialog as text', x18_bo.dialogs.length === 1 && textOf( all( x18_bo.dialogs[0], 'pre' )[0] ) === x18_ordered.shown );
+	const x18_bn = world( { hash : '#beleg-31', answers: { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] }, 'crm-documents/get' : function() { return [ 200, view( { id : 31, category : 'offer', state : 'accepted' } ) ] } } } );
+	x18_bn.boot();
+	await settle();
+	click( x18_bn, all( x18_bn.main, '.tabs button' ).find( function( b ) { return b.dataset.tab === 'portal' } ) );
+	check( 'an offer the owner accepted has no line under the head, no card of an order and no line in the history', all( x18_bn.main, '#order-head' ).length === 0 && all( x18_bn.main, '#order-card' ).length === 0 );
+
+	// the overview
+	const x18_ov = world( { hash : '#uebersicht', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [ { kind : 'orders', id : 0, client_id : 0, client_title : '', number : '', title : '', date : '', gross : 119000, sign_state : '', count : 3 } ], recent : [], settings : settings } ] }, 'crm-documents/list' : function() { return [ 200, { documents : [ row( { id : 5, category : 'offer', state : 'accepted' }), row( { id : 6, category : 'offer', state : 'open' }) ], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+	x18_ov.boot();
+	await settle();
+	const x18_orderLine = all( x18_ov.main, '#needs-orders' )[0];
+	check( '"Braucht Dich" has one line for the orders of the portal: how many, the sum, and a link to the Belege', x18_orderLine !== undefined && textOf( x18_orderLine ) === texts['needs.orders-many'].replace( '%s', '3' ) && x18_orderLine.getAttribute( 'href' ) === '#belege' && textOf( all( x18_ov.main, '.list-mini' )[0].children[0] ).indexOf( '1.190,00'+ NBSP+ '€' ) !== -1 );
+	click( x18_ov, x18_orderLine );
+	x18_ov.location.hash = '#belege';
+	await settle();
+	check( '...the click shows the Belege filtered by the state accepted: the chip is on and only the accepted offer is in the table', all( x18_ov.main, '.tabs button' ).find( function( b ) { return b.dataset.chip === 'accepted' } ).classList.contains( 'on' ) === true && all( x18_ov.main, 'tbody tr' ).length === 1 );
+	const x18_ov1 = world( { hash : '#uebersicht', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [ { kind : 'orders', id : 0, client_id : 0, client_title : '', number : '', title : '', date : '', gross : 100, sign_state : '', count : 1 } ], recent : [], settings : settings } ] } } } );
+	x18_ov1.boot();
+	await settle();
+	check( 'a single order is said in the singular', textOf( all( x18_ov1.main, '#needs-orders' )[0] ) === texts['needs.orders-one'].replace( '%s', '1' ) );
+	check( 'the script keeps to its rules for the new screens: the texts are asked for as texts, and every new key is a word of the page', [ 'privacy.title', 'privacy.note', 'privacy.label', 'privacy.hint', 'privacy.never', 'privacy.changed', 'privacy.save', 'privacy.saved', 'privacy.head-agreed', 'privacy.head-open', 'record.document', 'record.show', 'record.hash', 'order.badge', 'order.head', 'order.title', 'order.at', 'order.by', 'order.ip', 'order.agent', 'order.hash', 'order.show', 'cportal.records', 'cportal.records-none', 'history.ordered', 'needs.orders-one', 'needs.orders-many', 'dialog.close' ].every( function( key ) { return typeof texts[key] === 'string' && texts[key] !== '' && script.indexOf( "'"+ key+ "'" ) !== -1 } ) && [ 'record.kind-', 'record.title-' ].every( function( stem ) { return script.indexOf( "'"+ stem+ "'" ) !== -1 && [ 'privacy', 'order' ].every( function( kind ) { return typeof texts[stem+ kind] === 'string' } ) } ) && typeof texts['chip.accepted'] === 'string' );
 
 
 	done();

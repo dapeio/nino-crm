@@ -131,11 +131,11 @@
 		 */
 		_setupSentence : function( answer ) {
 
-			const none = { features : [], routes : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false };
+			const none = { features : [], routes : [], navs : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false };
 			const added = Object.assign( {}, none, answer.added );
 			const existed = Object.assign( {}, none, answer.existed );
 			const there = existed.features.length+ existed.routes.length+ existed.templates.length+ existed.types.length+ existed.pdf.templates.length;
-			const sentence = crm._text( '/_admin/crm/setup/done', added.features.length, added.routes.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
+			const sentence = crm._text( '/_admin/crm/setup/done', added.features.length, added.routes.length, added.navs.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
 
 			// What became of the start page, said in the answer
 			const home = typeof added.home === 'string' ? added.home : ( existed.home === 'own' ? 'own' : '' );

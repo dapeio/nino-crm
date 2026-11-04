@@ -9,6 +9,7 @@
 			[title /template/page-portal/intro/title tag="h2"]
 			[text /template/page-portal/intro/text]
 			[members-name] [crm-client]
+			[crm-portal-start]
 			[crm-projects open="1" short="1"]
 			[button /template/page-portal/link-projekte/label href="/template/page-portal/link-projekte/href" style="primary"]
 			[button /template/page-portal/link-upload/label href="/template/page-portal/link-upload/href" style="primary"]

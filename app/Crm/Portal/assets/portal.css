@@ -216,6 +216,9 @@ a.crm-documents__project {
 .crm-files__download,
 .crm-files__listen,
 .crm-offer__download,
+.crm-start__link,
+.crm-order__link,
+.crm-data__link,
 .crm-project__link {
 	color: var(--color-accent);
 }
@@ -453,5 +456,125 @@ a.crm-documents__project {
 }
 
 .crm-data__actions {
+	margin: 0;
+}
+
+/*	The Datenschutz: the text, where the client stands, the form	*/
+
+.crm-privacy {
+	box-sizing: border-box;
+	max-width: 48rem;
+	margin: 0 0 var(--space-2);
+}
+
+.crm-privacy__text {
+	margin: 0 0 var(--space-2);
+	padding: var(--crm-documents-space);
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+	overflow-wrap: anywhere;
+}
+
+.crm-privacy__state,
+.crm-order__state {
+	margin: 0 0 var(--space-2);
+	padding: var(--crm-documents-space);
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+}
+
+.crm-privacy__state--agreed,
+.crm-order__state--ordered {
+	border-color: var(--color-success);
+}
+
+.crm-privacy__state--expired,
+.crm-privacy__state--unchecked,
+.crm-privacy__state--invalid,
+.crm-order__state--expired,
+.crm-order__state--unchecked,
+.crm-order__state--invalid,
+.crm-order__state--privacy {
+	border-color: var(--color-warning);
+}
+
+.crm-privacy__standing {
+	margin: 0 0 var(--space-2);
+}
+
+.crm-privacy__check,
+.crm-order__check {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-1);
+}
+
+.crm-privacy__field,
+.crm-order__field,
+.crm-privacy__actions,
+.crm-order__actions {
+	margin: 0 0 var(--space-1);
+}
+
+.crm-data__privacy {
+	margin: 0 0 var(--space-2);
+}
+
+/*	The order under an offer	*/
+
+.crm-order {
+	flex-basis: 100%;
+	box-sizing: border-box;
+	margin: var(--space-2) 0 0;
+	padding: var(--crm-documents-space);
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+}
+
+.crm-order--done {
+	border-color: var(--color-success);
+}
+
+.crm-order--privacy {
+	border-color: var(--color-warning);
+}
+
+.crm-order__sentence {
+	overflow-wrap: anywhere;
+}
+
+/*	What is pending: the cards of the start page	*/
+
+.crm-start {
+	box-sizing: border-box;
+	max-width: 48rem;
+	margin: 0 0 var(--space-2);
+}
+
+.crm-start__card {
+	margin: 0 0 var(--space-1);
+	padding: var(--crm-documents-space);
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+}
+
+.crm-start__title {
+	margin: 0 0 var(--space-1);
+}
+
+.crm-start__list {
+	display: grid;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.crm-start__meta {
+	font-size: .875em;
+}
+
+.crm-start__text,
+.crm-start__nothing {
 	margin: 0;
 }

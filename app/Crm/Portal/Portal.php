@@ -4,7 +4,7 @@ declare(strict_types=1);
  *	Crm\Portal		What the portal pages read of the CRM: the client of the member who is signed in, the component
  *								[crm-client] that says its company, the component [crm-documents] that lists the documents released
  *								to that client (all of them, or those of one project) and the navigation [crm-portal-nav] of the areas of
- *								the portal. The areas themselves are the components of Portal\Projects ([crm-projects]), Portal\Files
+ *								the portal. The Datenschutz ([crm-privacy], Portal\Privacy), the order under an offer (Portal\Order) and the start page (Portal\Start, [crm-portal-start]) are classes of their own. The areas themselves are the components of Portal\Projects ([crm-projects]), Portal\Files
  *								([crm-uploads]) and Portal\Data ([crm-client-data] and the route that saves it). A visitor has no
  *								client, and a page view of a visitor never opens the database. The lookup is kept for the request and
  *								dropped when a member signs in or out.
@@ -26,6 +26,9 @@ class Portal {
 
 	// The areas of the portal, in the order of the navigation: the last part of the address, which is also the key of the page's name
 	public const array AREAS = [ 'meine-daten', 'projekte', 'upload', 'belege', 'termine' ];
+
+	// The sixth area, which the navigation has only while the client has not agreed to the Datenschutz it is asked for (it is reachable from Meine Daten all the time)
+	public const string PRIVACY = 'datenschutz';
 
 	/**
 	 *	The client of the signed-in member
@@ -86,7 +89,8 @@ class Portal {
 
 	/**
 	 *	[crm-portal-nav] - the areas of the portal as links, the one the request is in marked with aria-current. The names are the words
-	 *	of the pages (/_nino/webpage/portal/<area>/name). Nothing for a visitor
+	 *	of the pages (/_nino/webpage/portal/<area>/name). A sixth link, to the Datenschutz, stands there while the client has not agreed to the text it is asked
+	 *	for. Nothing for a visitor
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$args
@@ -105,7 +109,17 @@ class Portal {
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 		$items = '';
 
-		foreach( self::AREAS as $area ) {
+		$areas = self::AREAS;
+		$client = self::client( $appData );
+
+		if( $client !== null ) {
+			$standing = Records::privacy( $appData, $client['id'] );
+
+			if( $standing['asked'] === true && $standing['agreed'] === false )
+				$areas[] = self::PRIVACY;
+		}
+
+		foreach( $areas as $area ) {
 
 			$here = $path === '/portal/'. $area || str_starts_with( $path, '/portal/'. $area. '/' ) === true;
 
@@ -141,7 +155,7 @@ class Portal {
 		if( $client !== null && ( $project === '' || preg_match( Projekte::ID, $project ) === 1 ) )
 			$documents = Documents::released( $appData, $client['id'], $project );
 
-		return self::documentList( $appData, $documents, \Nino\Feature::classes( $args ), $project === '' );
+		return ( $client === null ? '' : Portal\Order::state( $appData ) ). self::documentList( $appData, $documents, \Nino\Feature::classes( $args ), $project === '', $client );
 	}
 
 	/**
@@ -151,16 +165,17 @@ class Portal {
 	 *	@param		array 		$documents		As Documents::released() has them
 	 *	@param		string		$classes			The class attribute's tail, see \Nino\Feature::classes()
 	 *	@param		bool			$withProject	Whether each row names its project
+	 *	@param		array|null	$client				The client, where an offer in the list may be ordered from it (the project page has its form under the offer itself); null for no form
 	 *
 	 *	@return 	string										The list, or the sentence that there is none
 	 */
-	public static function documentList( array &$appData, array $documents, string $classes, bool $withProject ): string {
+	public static function documentList( array &$appData, array $documents, string $classes, bool $withProject, ?array $client = null ): string {
 
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 		$rows = '';
 
 		foreach( $documents as $document )
-			$rows .= self::documentRow( $document, $dir, $withProject );
+			$rows .= self::documentRow( $document, $dir, $withProject, $client === null ? '' : Portal\Order::block( $appData, $client, $document, 'belege', $dir ) );
 
 		if( $rows === '' )
 			return str_replace( '[[classes]]', $classes, self::template( 'documents-empty' ) );
@@ -174,10 +189,11 @@ class Portal {
 	 *	@param		array 		$document			As Documents::released() has it
 	 *	@param		string		$dir					The directory the project is served from, escaped
 	 *	@param		bool			$withProject	Whether the row names its project
+	 *	@param		string		$order				The form of the order under an offer, or the line that it was ordered ('' for none)
 	 *
 	 *	@return 	string										'' for a document whose names the words do not know
 	 */
-	private static function documentRow( array $document, string $dir, bool $withProject ): string {
+	private static function documentRow( array $document, string $dir, bool $withProject, string $order = '' ): string {
 
 		$state = $document['expired'] === true ? 'expired' : $document['state'];
 
@@ -203,7 +219,7 @@ class Portal {
 			);
 
 		return str_replace(
-			[ '[[category]]', '[[state]]', '[[id]]', '[[title]]', '[[project]]', '[[iso]]', '[[date]]', '[[dir]]', '[[sign]]' ],
+			[ '[[category]]', '[[state]]', '[[id]]', '[[title]]', '[[project]]', '[[iso]]', '[[date]]', '[[dir]]', '[[sign]]', '[[order]]' ],
 			[
 				$document['category'],
 				$state,
@@ -214,6 +230,7 @@ class Portal {
 				\Nino\Modules\Components::escape( Documents\Render::day( $document['date'] ) ),
 				$dir,
 				$sign === '' ? '' : str_replace( [ '[[dir]]', '[[request]]' ], [ $dir, $request ], self::template( $sign ) ),
+				$order,
 			],
 			self::template( 'document' )
 		);
