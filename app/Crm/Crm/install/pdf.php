@@ -8,8 +8,9 @@ declare(strict_types=1);
 // The tokens are the ones \Crm\Documents\Render::data() hands a template ([[/document/number]], [[/customer/company]], ...) and the
 // site's own texts ([[/project/company/general/name]], ... - the words of the company step of the wizard), so a document speaks
 // with the company of the site and the client of the document. A template of the tags contract and privacy carries a field of the
-// owner and one of the member, which is what Sign needs to ask a member for a signature. The texts of a document are the owner's
-// letter to his client: no pronoun, so that the owner's tone is the owner's to set in the panel Pdf
+// owner and one of the member, which is what Sign needs to ask a member for a signature. The footer of a new install carries the
+// owner's particulars ([[/site/tax]], [[/site/iban]], which the settings of the CRM hold) as one line the owner edits. The texts of a
+// document are the owner's letter to his client: no pronoun, so that the owner's tone is the owner's to set in the PDF-Vorlagen
 return [
 
 	'blocks' => [
@@ -21,7 +22,7 @@ return [
 
 	'layout' => [
 		'header' => '<p><strong>[[/project/company/general/name]]</strong><br>[[/project/company/contact/address]]<br>[[/project/company/contact/email]] · [[/project/company/contact/phone]]</p>',
-		'footer' => '<p align="center">[[/project/company/general/name]] · [[/project/company/contact/email]] · [[/project/company/contact/phone]]</p>',
+		'footer' => '<p align="center">[[/project/company/general/name]] · [[/project/company/contact/email]] · [[/project/company/contact/phone]] · Steuernummer [[/site/tax]] · IBAN [[/site/iban]]</p>',
 	],
 
 	'templates' => [

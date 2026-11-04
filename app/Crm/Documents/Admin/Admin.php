@@ -51,6 +51,9 @@ class Admin {
 	];
 
 	// What Sign refuses a request with, as the status and the code a person is answered
+	// A setting that is one of the invoice particulars has a sentence of its own for a wrong value
+	private const array PARTICULARS = [ 'tax_id' => 'crm_documents_particular_tax_id', 'bank_name' => 'crm_documents_particular_bank_name', 'iban' => 'crm_documents_particular_iban', 'bic' => 'crm_documents_particular_bic' ];
+
 	private const array SIGN_REFUSALS = [
 		'template' => [ 409, 'crm_documents_sign_template' ],
 		'input'    => [ 409, 'crm_documents_sign_input' ],
@@ -954,7 +957,7 @@ class Admin {
 			'exists' => \Nino\Http::fail( $request, 409, 'the PDF file is there already', 'crm_documents_exists', [ basename( $rest, '.pdf' ), ltrim( $rest, '/' ) ] ),
 			'inputs' => \Nino\Http::fail( $request, 409, 'a required input is missing', 'crm_documents_inputs', [], 'inputs.'. $rest ),
 			'line'   => self::_refusedLine( $request, $rest ),
-			'value'  => \Nino\Http::fail( $request, 400, 'the setting has a wrong value', 'crm_documents_setting', [], $rest ),
+			'value'  => \Nino\Http::fail( $request, 400, 'the setting has a wrong value', self::PARTICULARS[$rest] ?? 'crm_documents_setting', [], $rest ),
 			default  => \Nino\Http::fail( $request, 500, 'the document module refused with "'. $kind. '"' ),
 		};
 	}

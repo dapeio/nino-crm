@@ -152,6 +152,8 @@ ninoUser( $appData, 'admin@example.com' );
 \Nino\Auth::insertUser( $appData, 'plain@example.com', 'plain password', [] );
 \Nino\Auth::insertUser( $appData, 'crm@example.com', 'crm password', [ '/_admin/crm/manage' ] );
 \Nino\Auth::insertUser( $appData, 'old@example.com', 'old password', [ '/_admin/crm-clients/manage', '/_admin/crm-documents/manage' ] );
+\Nino\Auth::insertUser( $appData, 'pdf@example.com', 'pdf password', [ '/_admin/crm/manage', '/_admin/pdf/manage' ] );
+\Nino\Auth::insertUser( $appData, 'pdfonly@example.com', 'pdfonly password', [ '/_admin/pdf/manage' ] );
 $asAdmin = static function() use ( $asUser ): void { $asUser( 'admin@example.com', 'correct horse battery staple' ); };
 $asCrm = static function() use ( $asUser ): void { $asUser( 'crm@example.com', 'crm password' ); };
 
@@ -206,7 +208,8 @@ check( '...the login has the headers of the page, the policy as well: never cach
 check( '...and the page carries the icon of nothing too, and the 403 page', str_contains( $html, '<link rel="icon" href="data:,">' ) === true && str_contains( (string) $forbidden['body'], '<link rel="icon" href="data:,">' ) === true );
 $policy = $page['header']['Content-Security-Policy'];
 check( '...the policy is the surface\'s own: self for everything, scripts and styles from self alone, connect to self, no framing - and no inline anything', str_contains( $policy, "default-src 'self'" ) === true && str_contains( $policy, "script-src 'self'" ) === true && str_contains( $policy, "style-src 'self'" ) === true
-	&& str_contains( $policy, "connect-src 'self'" ) === true && str_contains( $policy, "frame-ancestors 'none'" ) === true && str_contains( $policy, 'unsafe-inline' ) === false && str_contains( $policy, 'unsafe-eval' ) === false && str_contains( $policy, 'nonce' ) === false );
+	&& str_contains( $policy, "connect-src 'self'" ) === true && str_contains( $policy, "frame-ancestors 'none'" ) === true && str_contains( $policy, 'unsafe-eval' ) === false && str_contains( $policy, 'nonce' ) === false
+	&& str_contains( $policy, 'unsafe-inline' ) === false && str_contains( $policy, 'blob:' ) === false && str_contains( $policy, 'frame-src' ) === false && str_contains( $policy, 'style-src-attr' ) === false );
 check( '...the page has no inline script (the only script without a src is the JSON block), no style element, no style attribute and no handler attribute', preg_match_all( '~<script(?![^>]*\ssrc=)[^>]*>~', $html, $inline ) === 1 && $inline[0] === [ '<script type="application/json" id="crm-data">' ]
 	&& stripos( $html, '<style' ) === false && preg_match( '~\sstyle="~', $html ) !== 1 && preg_match( '~\son[a-z]+="~i', $html ) !== 1 );
 check( '...every token is filled and no word is missing: no [[ is left in the page', str_contains( $html, '[[' ) === false && str_contains( $html, '&#91;' ) === false );
@@ -214,8 +217,8 @@ check( '...the JSON block holds the token of the session, the user, the permissi
 	&& $data['links']['workbench'] === '/_admin/' && $data['links']['site'] === '/' );
 check( '...the links lead to the pages of the workbench the surface has no screen of: the Elements panel at the type of the items, the panels PDF, Members and Users - and none to a panel Kunden or Belege, which are gone', $data['links']['items'] === '/_admin/#elements/positionen' && $data['links']['pdf'] === '/_admin/#pdf'
 	&& $data['links']['members'] === '/_admin/#members' && $data['links']['users'] === '/_admin/#users' && array_diff( array_keys( $data['links'] ), [ 'css', 'site', 'workbench', 'items', 'pdf', 'members', 'users' ] ) === [] && str_contains( $html, 'crm-clients' ) === false && str_contains( $html, 'crm-documents' ) === false );
-check( '...the rail has five entries and each is a screen of the surface: Kunden, Positionen and Einstellungen are hashes with their own mark, the count of the clients has its place, nothing leaves the page but the two links of the foot', preg_match_all( '~<nav class="nav".*?</nav>~s', $html, $rail ) === 1
-	&& preg_match_all( '~<a href="([^"]*)"(?: data-r="([a-z]+)")?~', $rail[0][0], $entries, PREG_SET_ORDER ) === 5 && array_map( static fn( array $entry ): string => $entry[1]. '|'. ( $entry[2] ?? '' ), $entries ) === [ '#uebersicht|uebersicht', '#belege|belege', '#kunden|kunden', '#positionen|positionen', '#einstellungen|einstellungen' ]
+check( '...the rail has six entries and each is a screen of the surface: Kunden, Positionen, PDF-Vorlagen and Einstellungen are hashes with their own mark, the count of the clients has its place, nothing leaves the page but the two links of the foot', preg_match_all( '~<nav class="nav".*?</nav>~s', $html, $rail ) === 1
+	&& preg_match_all( '~<a href="([^"]*)"(?: data-r="([a-z]+)")?~', $rail[0][0], $entries, PREG_SET_ORDER ) === 6 && array_map( static fn( array $entry ): string => $entry[1]. '|'. ( $entry[2] ?? '' ), $entries ) === [ '#uebersicht|uebersicht', '#belege|belege', '#kunden|kunden', '#positionen|positionen', '#pdf|pdf', '#einstellungen|einstellungen' ]
 	&& str_contains( $rail[0][0], 'id="n-kunden"' ) === true && str_contains( $rail[0][0], 'id="n-belege"' ) === true );
 check( '...the words are the surface\'s and the sentences of the codes of both panels, as error.<code>', $data['texts']['error.crm_documents_fixed'] === Surface::texts()['error.crm_documents_fixed'] && isset( $data['texts']['error.crm_clients_email'] ) === true
 	&& str_starts_with( $data['texts']['error.crm_documents_state'], 'Dieser Schritt' ) === true && count( array_filter( array_keys( $data['texts'] ), static fn( string $key ): bool => str_starts_with( $key, 'error.crm_' ) ) ) > 60 );
@@ -667,7 +670,7 @@ $stillThere = array_filter( [ 'crm-documents/list', 'crm-clients/list', 'crm-cli
 check( '...and the workbench does not have the actions of the old panels any more: they are no panel\'s, so POST /_admin answers 404 for them, to the account that has every permission as well', $stillThere === [] );
 
 $asCrm();
-$unknown = [ 'an action nobody has' => 'crm-documents/nope', 'no action' => '', 'an action of another panel' => 'elements/list', 'one of the workbench' => 'users/list', 'a path' => '../crm-documents/list', 'the name of a method' => 'apiList',
+$unknown = [ 'an action nobody has' => 'crm-documents/nope', 'no action' => '', 'an action of the Pdf panel that it has not' => 'pdf/nope', 'an action of another panel' => 'elements/list', 'one of the workbench' => 'users/list', 'a path' => '../crm-documents/list', 'the name of a method' => 'apiList',
 	'the setup before it moved' => 'crm-clients/setup', 'the status before it moved' => 'crm-clients/status', 'an action of the panel CRM that it has not' => 'crm/nope' ];
 
 foreach( $unknown as $why => $action ) {
@@ -680,8 +683,8 @@ foreach( [ 'not json', '[]', '{"action":["crm-documents/list"]}', '{"action":1}'
 	check( 'a body that is no action ('. $broken. ') is 404 action as well', $answer['statusCode'] === 404 && $answer['body']['code'] === 'action' );
 }
 
-check( 'the table is the API of the clients and of the documents by their names, and the two actions of the panel CRM, and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ] )
-	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents)/[a-z-]+|crm/(status|setup))$~D', $action ) !== 1 ) === []
+check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel and the context of the screens PDF-Vorlagen, and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ] )
+	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context)$~D', $action ) !== 1 ) === []
 	&& in_array( 'crm-clients/setup', array_keys( Surface::actions() ), true ) === false && in_array( 'crm-clients/status', array_keys( Surface::actions() ), true ) === false );
 
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiList' ], [ 'year' => (string) date( 'Y' ) ], 'crm-documents/list' );
@@ -901,6 +904,224 @@ check( 'the overview answers the count of the active clients in its summary - th
 \Crm\Clients::setActive( $appData, $c['id'], false );
 check( '...and it follows a client that is switched off', surfaceApi( $appData, 'crm-documents/overview' )[1]['summary']['clients'] === 2 );
 \Crm\Clients::setActive( $appData, $c['id'], true );
+
+// --- PDF-Vorlagen: the actions of the Pdf panel through the endpoint, the context, the picture, the rail -------------------
+
+echo "\nPDF-Vorlagen\n";
+
+$asPdf = static function() use ( $asUser ): void { $asUser( 'pdf@example.com', 'pdf password' ); };
+
+$asVisitor();
+check( 'the Pdf panel\'s actions are in the table by their names, and the context of the screens: 401 for nobody', surfaceApi( $appData, 'pdf/templates/list' )[0] === 401 && surfaceApi( $appData, 'crm-pdf/context' )[0] === 401 );
+$asCrm();
+check( '...403 for an account with the permission of the CRM only - the panel\'s own guard holds, the table does not widen it - for the lists, a save and the context', surfaceApi( $appData, 'pdf/templates/list' )[0] === 403 && surfaceApi( $appData, 'pdf/blocks/list' )[0] === 403
+	&& surfaceApi( $appData, 'pdf/layout/get' )[0] === 403 && surfaceApi( $appData, 'pdf/templates/save', [ 'key' => 'nope', 'isNew' => true, 'name' => 'Nope', 'tag' => 'invoice', 'blocks' => [] ] )[0] === 403 && surfaceApi( $appData, 'crm-pdf/context' )[0] === 403
+	&& \Nino\Modules\Pdf::template( $appData, 'nope' ) === null );
+$asUser( 'pdfonly@example.com', 'pdfonly password' );
+check( '...and 403 for an account with the permission of the Pdf panel only: the endpoint asks for the CRM\'s first, as for every action', surfaceApi( $appData, 'pdf/templates/list' )[0] === 403 );
+$asPdf();
+[ $status, $list ] = surfaceApi( $appData, 'pdf/templates/list' );
+check( '...200 with both: the answer is the panel\'s - the templates with their blocks counted, the tags, the library, the paper', $status === 200 && array_column( $list['templates'], 'key' ) === array_keys( \Nino\Modules\Pdf::templates( $appData ) ) && count( $list['templates'] ) === count( \Nino\Modules\Pdf::keys( $appData ) )
+	&& $list['paper'] == [ 210, 297 ] && is_array( $list['tags'] ) === true && array_keys( $list ) === array_keys( ninoCall( $appData, [ \Nino\Modules\Pdf\Admin::class, 'apiTemplatesList' ], [], 'pdf/templates/list' )[1] ) );
+
+$perms = static function( string $mail, string $password ) use ( $asUser, &$appData ): array {
+	$asUser( $mail, $password );
+	return surfaceData( (string) surfaceServe( $appData, 'GET', '/crm' )['body'] )['perms'] ?? [];
+};
+check( 'the data block carries which permissions the account has: crm and pdf - the account of the CRM alone has the first only, the account with both has both', $perms( 'crm@example.com', 'crm password' ) === [ 'crm' => true, 'pdf' => false ] && $perms( 'pdf@example.com', 'pdf password' ) === [ 'crm' => true, 'pdf' => true ] && $perms( 'admin@example.com', 'correct horse battery staple' )['pdf'] === true );
+$asPdf();
+$html = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
+check( '...the rail has the entry PDF-Vorlagen at #pdf, hidden in the markup (the script shows it for the permission), between Positionen and Einstellungen', preg_match( '~<a href="#pdf" data-r="pdf" id="nav-pdf" hidden>PDF-Vorlagen</a>~', $html ) === 1
+	&& strpos( $html, 'data-r="positionen"' ) < strpos( $html, 'data-r="pdf"' ) && strpos( $html, 'data-r="pdf"' ) < strpos( $html, 'data-r="einstellungen"' ) );
+$data = surfaceData( $html );
+check( '...and whether the feature is there is a flag of its own, so that a screen can tell a missing feature from a missing permission', $data['pdf_available'] === true && $data['perms']['pdf'] === true );
+check( '...the words of the Pdf panel\'s codes are the page\'s as error.<code>: the sentences of a block, a signature box, the design with its line, an image', array_filter( [ 'pdf_block_html', 'pdf_signature_box', 'pdf_design_value', 'pdf_design_brace', 'pdf_key_taken', 'pdf_block_used', 'pdf_image_type', 'pdf_tag', 'pdf_title' ], static fn( string $code ): bool => ( $data['texts']['error.'. $code] ?? '' ) === '' ) === []
+	&& str_contains( $data['texts']['error.pdf_design_value'], 'Zeile %s' ) === true && isset( $data['texts']['error.upload_missing'], $data['texts']['error.image_type'], $data['texts']['error.pdf_off'], $data['texts']['error.crm_pdf_template_used'] ) === true );
+
+// What a person does: a template from scratch through the endpoint, with the blocks the screens make
+$scratch = [ 'key' => 'neu-vorlage', 'isNew' => true, 'name' => 'Neue Vorlage', 'tag' => 'invoice', 'blocks' => [
+	[ 'type' => 'html', 'html' => '<p>Steuernummer [[/site/tax]]</p>' ], [ 'type' => 'html', 'block' => 'zahlung' ], [ 'type' => 'input', 'name' => 'hinweis', 'label' => 'Hinweis', 'multiline' => true, 'required' => false ],
+	[ 'type' => 'signature', 'name' => 'inhaber', 'party' => 'owner', 'label' => 'Inhaber', 'page' => 'last', 'x' => 20, 'y' => 230.5, 'w' => 70, 'h' => 20, 'line' => true ] ] ];
+[ $status, $answer ] = surfaceApi( $appData, 'pdf/blocks/save', [ 'key' => 'zahlung', 'isNew' => true, 'title' => 'Zahlung', 'html' => '<p>Zahlbar sofort.</p>' ] );
+check( 'a block is saved through the endpoint as the panel saves it, and the answer is the library; the same key again is 400 pdf_key_taken on the field key', $status === 200 && in_array( 'zahlung', array_column( $answer['blocks'], 'key' ), true ) === true
+	&& ( $again = surfaceApi( $appData, 'pdf/blocks/save', [ 'key' => 'zahlung', 'isNew' => true, 'title' => 'Zahlung', 'html' => '<p>x</p>' ] ) )[0] === 400 && $again[1]['code'] === 'pdf_key_taken' && $again[1]['field'] === 'key' );
+[ $status, $answer ] = surfaceApi( $appData, 'pdf/templates/save', $scratch );
+$stored = \Nino\Modules\Pdf::template( $appData, 'neu-vorlage' );
+check( '...a template from scratch with text, a block by reference, an input and a signature field in mm is saved: the answer has its key and the list, the store holds the blocks as they were posted', $status === 200 && $answer['key'] === 'neu-vorlage' && $stored !== null && $stored['blocks'] == $scratch['blocks'] && $stored['name'] === 'Neue Vorlage' && $stored['tag'] === 'invoice' );
+[ $status, $answer ] = surfaceApi( $appData, 'pdf/templates/save', [ 'blocks' => [ [ 'type' => 'signature', 'name' => 'xx', 'party' => 'owner', 'label' => '', 'page' => 'last', 'x' => 200, 'y' => 10, 'w' => 70, 'h' => 20, 'line' => false ] ] ] + $scratch );
+check( '...a signature box off the page is 400 pdf_signature_box on the field blocks with the number of the block in its params - the refusal the screen puts beside the card', $status === 400 && $answer['code'] === 'pdf_signature_box' && $answer['field'] === 'blocks' && $answer['params'] === [ 1 ]
+	&& Surface::texts()['error.pdf_signature_box'] !== '' );
+[ $status, $answer ] = surfaceApi( $appData, 'pdf/templates/save', [ 'blocks' => [ [ 'type' => 'html', 'html' => 'ok' ], [ 'type' => 'html', 'block' => 'es-gibt-ihn-nicht' ] ] ] + $scratch );
+check( '...a block by reference to a block that is not there is 400 pdf_block_ref, number 2', $status === 400 && $answer['code'] === 'pdf_block_ref' && $answer['params'] === [ 2 ] );
+[ $status, $answer ] = surfaceApi( $appData, 'pdf/preview', [ 'name' => 'Neue Vorlage', 'tag' => 'invoice', 'blocks' => $scratch['blocks'] ] );
+$pdf = $status === 200 ? base64_decode( (string) $answer['pdf'], true ) : false;
+check( 'the preview is the panel\'s: a PDF of what the editor holds, as base64, written nowhere - and the template that was not saved yet previews as well', $status === 200 && is_string( $pdf ) === true && str_starts_with( $pdf, '%PDF-' ) === true && $answer['file'] === 'preview.pdf' && \Nino\Modules\Pdf::template( $appData, 'preview-only' ) === null
+	&& surfaceApi( $appData, 'pdf/preview', [ 'name' => '', 'tag' => 'invoice', 'blocks' => [] ] )[1]['code'] === 'pdf_title' );
+
+// The sample PDFs are served by the surface, with the headers of a PDF
+$sample = static function( string $uri ) use ( &$appData ): array { return surfaceServe( $appData, 'GET', $uri ); };
+$asVisitor();
+check( 'GET /crm/pdf-preview/... is guarded like the endpoint: 401 for nobody, 403 for the CRM\'s permission alone and for the Pdf panel\'s alone - with no PDF in the body', $sample( '/crm/pdf-preview/layout' )['statusCode'] === 401 && $sample( '/crm/pdf-preview/template/rechnung' )['statusCode'] === 401 );
+$asCrm();
+$denied = $sample( '/crm/pdf-preview/template/rechnung' );
+$asUser( 'pdfonly@example.com', 'pdfonly password' );
+check( '...and the one of the Pdf panel alone is refused as well', $denied['statusCode'] === 403 && str_starts_with( (string) $denied['body'], '%PDF' ) === false && $sample( '/crm/pdf-preview/layout' )['statusCode'] === 403 );
+$asPdf();
+$served = $sample( '/crm/pdf-preview/template/neu-vorlage' );
+[ , $viaPanel ] = surfaceApi( $appData, 'pdf/preview', [ 'name' => 'Neue Vorlage', 'tag' => 'invoice', 'blocks' => \Nino\Modules\Pdf::template( $appData, 'neu-vorlage' )['blocks'] ] );
+check( 'a template is served as a PDF with its own headers - inline, no cache, nosniff - and the bytes are what the panel\'s preview action answers, decoded (no particulars set: the sample is the panel\'s but for the empty tokens it hands, which show nothing)', $served['statusCode'] === 200 && str_starts_with( (string) $served['body'], '%PDF-' ) === true && $served['header']['Content-Type'] === 'application/pdf' && str_starts_with( $served['header']['Content-Disposition'], 'inline;' ) === true
+	&& $served['header']['Cache-Control'] === 'private, no-store' && $served['header']['X-Content-Type-Options'] === 'nosniff' && strlen( $served['body'] ) > 1000 && abs( strlen( $served['body'] ) - strlen( (string) base64_decode( (string) $viaPanel['pdf'], true ) ) ) < 200 );
+$layoutServed = $sample( '/crm/pdf-preview/layout' );
+check( '...the layout and the design as the panel\'s layout preview renders them', $layoutServed['statusCode'] === 200 && $layoutServed['header']['Content-Type'] === 'application/pdf' && str_starts_with( (string) $layoutServed['body'], '%PDF-' ) === true );
+$setParticulars = [ 'tax_id' => '12/345/67890', 'bank_name' => 'Testbank', 'iban' => 'DE89 3704 0044 0532 0130 00', 'bic' => 'COBADEFFXXX' ];
+foreach( $setParticulars as $key => $value )
+	Settings::set( $appData, $key, $value );
+$tokens = [ '/site/tax' => '12/345/67890', '/site/bank' => 'Testbank', '/site/iban' => 'DE89 3704 0044 0532 0130 00', '/site/bic' => 'COBADEFFXXX' ];
+$stored = \Nino\Modules\Pdf::template( $appData, 'neu-vorlage' );
+$withTokens = $sample( '/crm/pdf-preview/template/neu-vorlage' )['body'];
+check( 'the sample looks like a document: the invoice particulars of the settings are handed to it as the tokens a document hands - the bytes are the feature\'s compose with them, and not the sample without them', $withTokens === \Nino\Modules\Pdf::compose( $appData, $stored, [ 'tokens' => $tokens ], [ 'title' => $stored['name'] ], true )
+	&& $withTokens !== \Nino\Modules\Pdf::compose( $appData, $stored, [], [ 'title' => $stored['name'] ], true ) && $sample( '/crm/pdf-preview/layout' )['body'] === \Nino\Modules\Pdf::compose( $appData, [ 'name' => 'Design', 'tag' => '', 'blocks' => [] ], [ 'tokens' => $tokens ], [ 'title' => 'Design' ], true )
+	&& Surface\Pdf::particulars( $appData ) === $tokens );
+foreach( array_keys( $setParticulars ) as $key )
+	Settings::set( $appData, $key, '' );
+check( '...a key that is none, a kind that is none, a path and a template of the wrong shape are 404 without a PDF', array_filter( [ '/crm/pdf-preview/template/gibt-es-nicht', '/crm/pdf-preview/nope', '/crm/pdf-preview/', '/crm/pdf-preview/template/../layout', '/crm/pdf-preview/template/Bad_Key', '/crm/pdf-preview/layout/x' ], static fn( string $uri ): bool => $sample( $uri )['statusCode'] !== 404 || str_starts_with( (string) $sample( $uri )['body'], '%PDF' ) === true ) === [] );
+
+// The documents that name a template: "benutzt von", the context, and what the surface refuses
+$named = (int) Db::row( $appData, 'SELECT COUNT(*) AS n FROM documents WHERE template_key = :k', [ 'k' => 'rechnung' ] )['n'];
+[ $status, $context ] = surfaceApi( $appData, 'crm-pdf/context' );
+check( 'the context counts the documents that name each template - drafts, finalised and cancelled alike - from the books, and only the templates a document names', $status === 200 && $named > 3 && ( $context['used']['rechnung'] ?? 0 ) === $named
+	&& ( $context['used']['angebot'] ?? 0 ) === (int) Db::row( $appData, 'SELECT COUNT(*) AS n FROM documents WHERE template_key = :k', [ 'k' => 'angebot' ] )['n'] && isset( $context['used']['neu-vorlage'] ) === false && isset( $context['used'][''] ) === false );
+check( '...the day each template was written, the templates that use each block of the library (by name), and the keys of the site\'s texts a template may place - the company\'s, no others', preg_match( '/^\d{4}-\d{2}-\d{2}$/D', $context['changed']['rechnung'] ) === 1 && count( $context['changed'] ) === count( \Nino\Modules\Pdf::keys( $appData ) )
+	&& $context['blocks']['zahlung'] === [ 'Neue Vorlage' ] && $context['blocks']['kontakt'] === [ 'Information', 'Stornorechnung' ] && in_array( '/project/company/contact/email', $context['site'], true ) === true
+	&& array_filter( $context['site'], static fn( string $path ): bool => preg_match( '~^/project/company/[a-z]+/[a-z]+$~D', $path ) !== 1 ) === [] && $context['site'] === array_values( array_unique( $context['site'] ) ) );
+[ $status, $answer ] = surfaceApi( $appData, 'pdf/templates/delete', [ 'key' => 'rechnung' ] );
+check( 'a template that a document names is not deleted: 409 crm_pdf_template_used with the count, and the template is still there', $status === 409 && $answer['code'] === 'crm_pdf_template_used' && $answer['params'] === [ $named ] && \Nino\Modules\Pdf::template( $appData, 'rechnung' ) !== null );
+$linesBefore = count( \Nino\Modules\Logs\Admin::recentLines( $appData, 200 ) );
+[ $status, $answer ] = surfaceApi( $appData, 'pdf/templates/duplicate', [ 'key' => 'neu-vorlage', 'name' => 'Kopie davon' ] );
+check( '...a duplicate is made with the name it is asked for, and is no document\'s: it is deleted at once, 200, and the answer is the list without it', $status === 200 && $answer['key'] === 'neu-vorlage-copy' && \Nino\Modules\Pdf::template( $appData, 'neu-vorlage-copy' )['name'] === 'Kopie davon'
+	&& ( $deleted = surfaceApi( $appData, 'pdf/templates/delete', [ 'key' => 'neu-vorlage-copy' ] ) )[0] === 200 && \Nino\Modules\Pdf::template( $appData, 'neu-vorlage-copy' ) === null && in_array( 'neu-vorlage-copy', array_column( $deleted[1]['templates'], 'key' ), true ) === false );
+check( '...the activity log has the lines the panel phrases for them, by the account that did it', count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 12 ), static fn( string $entry ): bool => str_contains( $entry, 'pdf@example.com' ) && ( str_contains( $entry, 'Duplicate PDF template "neu-vorlage"' ) || str_contains( $entry, 'Delete PDF template "neu-vorlage-copy"' ) ) ) ) === 2
+	&& count( \Nino\Modules\Logs\Admin::recentLines( $appData, 200 ) ) === $linesBefore + 2 );
+[ $status, $answer ] = surfaceApi( $appData, 'pdf/blocks/delete', [ 'key' => 'zahlung' ] );
+check( 'a block that a template references is not deleted: the store\'s rule, 409 pdf_block_used with the names of the templates; once it is out of the template it goes', $status === 409 && $answer['code'] === 'pdf_block_used' && $answer['params'] === [ 'Neue Vorlage' ] && isset( \Nino\Modules\Pdf::blocks( $appData )['zahlung'] ) === true
+	&& surfaceApi( $appData, 'pdf/templates/save', [ 'blocks' => array_slice( $scratch['blocks'], 0, 1 ) ] + [ 'isNew' => false ] + $scratch )[0] === 200 && surfaceApi( $appData, 'pdf/blocks/delete', [ 'key' => 'zahlung' ] )[0] === 200 );
+
+// The picture: a multipart post, the action and the data as fields and the file in $_FILES - the one shape a file takes
+$png = base64_decode( 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' );
+$tmp = tempnam( sys_get_temp_dir(), 'crm-up' );
+file_put_contents( $tmp, $png );
+$upload = static function( string $action, array $data, ?array $file ) use ( &$appData ): array {
+	$_POST = [ 'action' => $action, 'data' => (string) json_encode( $data ) ];
+	$_FILES = $file === null ? [] : [ 'file' => $file ];
+	$request = ninoVisit( $appData, '/crm/api', 'POST', [ 'HTTP_X_CSRF_TOKEN' => \Nino\Csrf::getToken( $appData ) ] );
+	\Nino\Http::response( $appData, $request );
+	$_POST = [];
+	$_FILES = [];
+
+	return [ $request['/nino/http/response']['statusCode'], $request['/nino/http/response']['body'] ];
+};
+$file = [ 'name' => 'logo.png', 'type' => 'image/png', 'tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK, 'size' => strlen( (string) $png ) ];
+[ $status, $answer ] = $upload( 'pdf/layout/image', [ 'kind' => 'logo' ], $file );
+check( 'the upload of a picture goes through the endpoint as the panel sends it: 200, the layout names logo.png and the answer shows the picture as a data address', $status === 200 && $answer['layout']['logo'] === 'logo.png' && str_starts_with( $answer['images']['logo'], 'data:image/png;base64,' ) === true && \Nino\Modules\Pdf::picture( $appData, 'logo' ) === $png );
+check( '...a refusal of the picture keeps its code: a file that is no picture is 400 with the code of the kernel and the field file; no file at all is 400 upload_missing; a kind that is none, 400 pdf_image_kind', ( $bad = $upload( 'pdf/layout/image', [ 'kind' => 'logo' ], [ 'name' => 'x.txt', 'type' => 'text/plain', 'tmp_name' => __FILE__, 'error' => UPLOAD_ERR_OK, 'size' => 10 ] ) )[0] === 400
+	&& $bad[1]['field'] === 'file' && in_array( $bad[1]['code'], [ 'image_type', 'pdf_image_type' ], true ) === true && $upload( 'pdf/layout/image', [ 'kind' => 'logo' ], null )[1]['code'] === 'upload_missing' && $upload( 'pdf/layout/image', [ 'kind' => 'sign' ], $file )[1]['code'] === 'pdf_image_kind' );
+check( 'no other action takes a file: the same multipart post for an action of the clients, of the documents or of the setup is 404 action, and the picture is as it was', $upload( 'crm-documents/list', [], $file )[0] === 404 && $upload( 'crm-clients/list', [], $file )[1]['code'] === 'action' && $upload( 'crm/setup', [], $file )[0] === 404
+	&& $upload( 'pdf/layout/image/delete', [ 'kind' => 'logo' ], $file )[0] === 404 && \Nino\Modules\Pdf::picture( $appData, 'logo' ) === $png );
+check( '...and a post that is JSON is read as JSON: the picture\'s action with a JSON body and no file says upload_missing, and a visitor with a multipart post is 401, not served', surfaceApi( $appData, 'pdf/layout/image', [ 'kind' => 'logo' ] )[1]['code'] === 'upload_missing'
+	&& ( function() use ( $asVisitor, $upload, $file ): bool { $asVisitor(); return $upload( 'pdf/layout/image', [ 'kind' => 'logo' ], $file )[0] === 401; } )() === true );
+$asPdf();
+$huge = ninoVisit( $appData, '/crm/api', 'POST', [ 'HTTP_X_CSRF_TOKEN' => \Nino\Csrf::getToken( $appData ), 'CONTENT_TYPE' => 'multipart/form-data; boundary=x', 'CONTENT_LENGTH' => '999999999999', 'HTTP_CONTENT_LENGTH' => '999999999999' ] );
+$_POST = [];
+$_FILES = [];
+\Nino\Http::response( $appData, $huge );
+check( 'a picture larger than the server takes - the token in the header, so the kernel lets it pass, and PHP has dropped the form: no field, no action - is told what it is: 413 post_too_large with the limit in megabytes, not 404 action', $huge['/nino/http/response']['statusCode'] === 413 && $huge['/nino/http/response']['body']['code'] === 'post_too_large' && $huge['/nino/http/response']['body']['params'][0] >= 1 );
+$smallEmpty = ninoVisit( $appData, '/crm/api', 'POST', [ 'HTTP_X_CSRF_TOKEN' => \Nino\Csrf::getToken( $appData ), 'CONTENT_TYPE' => 'multipart/form-data; boundary=x', 'CONTENT_LENGTH' => '120', 'HTTP_CONTENT_LENGTH' => '120' ] );
+\Nino\Http::response( $appData, $smallEmpty );
+check( '...a form that is empty but small is still 404 action: only the size says too large', $smallEmpty['/nino/http/response']['statusCode'] === 404 && $smallEmpty['/nino/http/response']['body']['code'] === 'action' );
+[ $status, $answer ] = surfaceApi( $appData, 'pdf/layout/image/delete', [ 'kind' => 'logo' ] );
+check( 'the picture is taken away by the panel\'s action: the layout names none and the file is gone', $status === 200 && $answer['layout']['logo'] === '' && $answer['images']['logo'] === '' && \Nino\Modules\Pdf::picture( $appData, 'logo' ) === '' );
+unlink( $tmp );
+
+// The design: a text that is no sheet is refused with its line; a sheet is saved and previewed
+$layoutNow = surfaceApi( $appData, 'pdf/layout/get' )[1];
+$post = static fn( string $design ): array => surfaceApi( $appData, 'pdf/layout/save', [ 'format' => $layoutNow['layout']['format'], 'margins' => $layoutNow['layout']['margins'], 'font' => $layoutNow['layout']['font'], 'size' => $layoutNow['layout']['size'], 'header' => '', 'footer' => '', 'design' => $design ] );
+[ $status, $answer ] = $post( "h1 { font-size: 20pt }\nbanane { color: red }" );
+check( 'a design that is no sheet is 400 on the field design with the code of what is wrong and the line in its params, and the screen has the sentence of the panel for it', $status === 400 && $answer['field'] === 'design' && $answer['code'] === 'pdf_design_selector' && $answer['params'][0] === 2 && str_contains( Surface::texts()['error.pdf_design_selector'], 'Zeile %s' ) === true );
+[ $status, $answer ] = $post( 'h1 { font-size: 20pt; color: #1f5f8b }' );
+$layoutAfter = surfaceApi( $appData, 'pdf/layout/get' )[1];
+check( '...a sheet is saved, and layout/get answers the rules of the feature as text, the layout with the design and no refusal; layout/preview is a PDF', $status === 200 && $layoutAfter['layout']['design'] === 'h1 { font-size: 20pt; color: #1f5f8b }' && $layoutAfter['refusal'] === null && str_contains( $layoutAfter['sheet'], 'font-size' ) === true
+	&& str_starts_with( (string) base64_decode( (string) surfaceApi( $appData, 'pdf/layout/preview' )[1]['pdf'], true ), '%PDF-' ) === true );
+$post( '' );
+
+// The feature is off: the screens say so and the panel's methods are not asked
+$asAdmin();
+check( 'the feature Pdf is switched off (Sign, which needs it, first)', \Nino\Features::deactivate( $appData, 'sign' ) === true && \Nino\Features::deactivate( $appData, 'pdf' ) === true );
+$asPdf();
+[ $status, $answer ] = surfaceApi( $appData, 'pdf/templates/list' );
+$offStatus = $sample( '/crm/pdf-preview/layout' )['statusCode'];
+$asUser( 'crm@example.com', 'crm password' );
+$offDenied = $sample( '/crm/pdf-preview/layout' )['statusCode'];
+check( '...the sample route says so as well - 409 pdf_off, not 403 - and an account without the permission is still told 403', $offStatus === 409 && $offDenied === 403 );
+$asPdf();
+check( '...its actions are 409 pdf_off, the context as well, and the data block says the account may not use screens that would find nothing', $status === 409 && $answer['code'] === 'pdf_off' && surfaceApi( $appData, 'crm-pdf/context' )[1]['code'] === 'pdf_off' && surfaceApi( $appData, 'crm-documents/list' )[0] === 200 );
+$asAdmin();
+check( '...and it is switched on again, and Sign with it', \Nino\Features::activate( $appData, 'pdf' ) === true && \Nino\Features::activate( $appData, 'sign' ) === true );
+$asPdf();
+
+// The feature Pdf absent from the project: a process whose features directory is empty (the autoloader looks there for it)
+$absentScript = tempnam( sys_get_temp_dir(), 'crm-absent' );
+file_put_contents( $absentScript, <<<'PHPCODE'
+<?php
+$root = $argv[1];
+$empty = sys_get_temp_dir(). '/nofeatures-'. getmypid();
+mkdir( $empty );
+define( 'NINO_FEATURES_DIR', $empty );
+require $root. '/tests/harness.php';
+$appData = ninoSandbox( 'absent' );
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+$appData['/nino/dir'] = '';
+$appData['/nino/modules'] = [ '\\Nino\\Modules\\Components', '\\Nino\\Modules\\Csrf', '\\Nino\\Modules\\Template', '\\Crm\\Crm' ];
+\Nino\AppData::writeContentData( $appData, [ '/nino/modules' ] );
+\Nino\Csrf::init( $appData );
+\Nino\Html::init( $appData );
+\Nino\Modules::callModules( $appData, 'init' );
+ninoUser( $appData, 'admin@example.com' );
+\Nino\Auth::loginUser( $appData, 'admin@example.com', 'correct horse battery staple' );
+$get = static function( string $uri ) use ( &$appData ): array { $r = ninoVisit( $appData, $uri ); \Nino\Http::response( $appData, $r ); return $r['/nino/http/response']; };
+$page = $get( '/crm' );
+preg_match( '~id="crm-data">(.*?)</script>~s', (string) $page['body'], $f );
+$data = json_decode( $f[1] ?? '{}', true );
+echo json_encode( [ 'available' => \Crm\Surface\Pdf::available(), 'actions' => \Crm\Surface\Pdf::actions(), 'text' => \Crm\Surface\Pdf::textFile(), 'allowed' => \Crm\Surface\Pdf::allowed( $appData ),
+	'table' => count( array_filter( array_keys( \Crm\Surface::actions() ), static fn( string $a ): bool => str_starts_with( $a, 'pdf/' ) || str_starts_with( $a, 'crm-pdf/' ) ) ),
+	'flag' => $data['pdf_available'] ?? 'none', 'perm' => $data['perms']['pdf'] ?? 'none', 'route' => $get( '/crm/pdf-preview/layout' )['statusCode'] ] );
+rmdir( $empty );
+\Nino\Filesystem::removeDir( ninoSandboxDir( $appData ) );
+PHPCODE );
+$absent = (array) json_decode( (string) shell_exec( escapeshellarg( PHP_BINARY ). ' '. escapeshellarg( $absentScript ). ' '. escapeshellarg( $root ). ' 2>/dev/null' ), true );
+unlink( $absentScript );
+check( 'with the feature Pdf absent the surface knows it: the class check says no, the table holds none of its actions and no sentences of its codes are read, the owner still holds the permission - the data block says perms.pdf true and pdf_available false - and the preview route answers 409, not 403', ( $absent['available'] ?? null ) === false && ( $absent['actions'] ?? null ) === [] && ( $absent['text'] ?? null ) === '' && ( $absent['table'] ?? null ) === 0
+	&& ( $absent['allowed'] ?? null ) === true && ( $absent['perm'] ?? null ) === true && ( $absent['flag'] ?? null ) === false && ( $absent['route'] ?? null ) === 409 );
+check( '...and with the feature there the same questions answer the other way', Surface\Pdf::available() === true && Surface\Pdf::actions() !== [] && Surface\Pdf::textFile() !== '' );
+
+// The vocabulary the menu offers is the vocabulary the documents hand a template
+$script = (string) file_get_contents( $root. '/app/Crm/Surface/assets/crm.js' );
+preg_match( '~const PDF_TOKENS = \[(.*?)\n\t\];~s', $script, $tokenBlock );
+preg_match_all( "~'(/[a-z]+/[a-z]+)'~", $tokenBlock[1] ?? '', $menuTokens );
+$handed = [];
+foreach( [ $late1, $sentLate ] as $document ) {
+	$full = Documents::get( $appData, $document['id'] );
+	$handed = array_merge( $handed, array_keys( \Crm\Documents\Render::data( $appData, $full, $full['lines'], $full['client'] ?? [] )['tokens'] ) );
+}
+$offerDocument = Documents::get( $appData, $paidThisYear['id'] );
+$offerDoc = $final( 'offer', $a['id'], [ 'date' => $today, 'valid_until' => $day( 30 ), 'lines' => [ $line( 'Angebot' ) ], 'template_key' => 'angebot' ] );
+$full = Documents::get( $appData, $offerDoc['id'] );
+$handed = array_merge( $handed, array_keys( \Crm\Documents\Render::data( $appData, $full, $full['lines'], [] )['tokens'] ) );
+$menu = array_values( array_unique( $menuTokens[1] ) );
+sort( $menu );
+$handed = array_values( array_unique( $handed ) );
+sort( $handed );
+check( 'the placeholders of the menu - Beleg, Rechnung, Angebot, Kunde, Portal - are exactly the tokens Render::data() hands a template for an invoice and an offer', $menu === $handed && count( $menu ) === 30 );
+
 
 // --- The script of the surface ---------------------------------------------------------------------------------------
 

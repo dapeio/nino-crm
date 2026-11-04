@@ -8,10 +8,13 @@
  *								what it posts, the totals it shows
  *				  the shell		the element helper (every element is made from data, no markup is written), the toast, the menus, the dialogs
  *								(<dialog>), the keys (/ finds the search, Esc closes), the router (#uebersicht, #belege, #beleg-12,
- *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #positionen, #einstellungen, #einrichtung) and the
- *								answers of the endpoint (the session that ended, the token that is stale)
- *				  the screens	Übersicht, Belege, Beleg and Entwurf, then Kunden, Kundenkarte, Neuer Kunde, Positionen and Einstellungen, and the
- *								Einrichtung of the first run (the page starts there while crm/status says the product is not whole)
+ *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #positionen, #einstellungen, #einrichtung, and
+ *								for PDF-Vorlagen #pdf, #pdf-bausteine, #pdf-layout, #pdf-design, #pdf-vorlage-<key>, #pdf-neue-vorlage-<tag>, #pdf-baustein-<key>,
+ *								#pdf-neuer-baustein) and the answers of the endpoint (the session that ended, the token that is stale)
+ *				  the screens	Übersicht, Belege, Beleg and Entwurf, then Kunden, Kundenkarte, Neuer Kunde, Positionen and Einstellungen, the
+ *								Einrichtung of the first run (the page starts there while crm/status says the product is not whole) and - for an account
+ *								with the permission of the Pdf panel - PDF-Vorlagen: Vorlagen with the editor of a template, Bausteine with the editor of a
+ *								block, Layout and Design, which edit what the feature Pdf keeps through its own actions
  *
  *				Every string that comes from the server or from a person enters the page as textContent or as a property of an
  *				element; nothing here builds HTML.
@@ -49,11 +52,12 @@
 		Object.keys( state ).forEach( function( key ) { delete state[key] } );
 
 		Object.assign( state, {
-			base : '', csrf : '', perm : '', user : '', texts : {}, links : {},
+			base : '', csrf : '', perm : '', perms : { crm : true, pdf : false }, user : '', texts : {}, links : {},
 			settings : { currency : '', vat_mode : 'small_business', rates : [], payment_days : '14', offer_days : '30' },
 			clients : [], items : [], offers : [], years : [], docs : [], summary : null, people : [], owed : {},
 			filter : { chip : 'all', q : '', sort : 'date', dir : -1, year : 0, page : 1 },
 			cfilter : { q : '', sort : 'number', dir : 1, page : 1 },
+			pfilter : { q : '', sort : 'name', dir : 1 }, pdf : { site : [] },
 			view : 0, entered : false, seen : null, tab : '', draft : null, saving : false, queued : false, pending : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
 		} );
 	};
@@ -577,11 +581,11 @@
 
 			const form = el( 'form', { on: { submit: function( event ) { event.preventDefault(); accept() } } },
 				spec.title ? el( 'h2', { text: spec.title } ) : null,
-				el( 'p', { text: spec.text } ),
+				spec.text === undefined ? null : el( 'p', { text: spec.text } ),
 				fields,
 				el( 'div', { class: 'actions end' },
 					spec.link !== undefined
-						? el( 'a', { class: 'btn primary', href: spec.link.href, text: spec.link.text, on: { click: function( event ) {
+						? el( 'a', { class: 'btn primary', href: spec.link.href, target: spec.link.blank === true ? '_blank' : null, rel: spec.link.blank === true ? 'noopener' : null, text: spec.link.text, on: { click: function( event ) {
 							if( spec.link.reload === true ) {
 								event.preventDefault();
 								wn.location.reload();
@@ -623,21 +627,15 @@
 	};
 
 	/**
-	 *	Post an action to the endpoint
+	 *	Post to the endpoint and read the answer: the session that ended and the token that is stale are said by the page, not by the screen
 	 *
-	 *	@param		{string}	action					eg. crm-documents/list
-	 *	@param		{Object}	[data]
+	 *	@param		{Object}	init						headers and body of the request
 	 *
 	 *	@return		{Promise}									{ ok, status, body, handled }; a request that did not arrive has status 0
 	 */
-	const api = function( action, data ) {
+	const post = function( init ) {
 
-		return wn.fetch( state.base+ '/crm/api', {
-			method : 'POST',
-			credentials : 'same-origin',
-			headers : { 'Content-Type' : 'application/json', 'X-CSRF-Token' : state.csrf },
-			body : JSON.stringify( { action : action, data : data || {} } ),
-		} ).then( function( response ) {
+		return wn.fetch( state.base+ '/crm/api', Object.assign( { method : 'POST', credentials : 'same-origin' }, init ) ).then( function( response ) {
 
 			return response.json().then( function( body ) { return body }, function() { return null } ).then( function( body ) {
 
@@ -680,6 +678,39 @@
 		} );
 	};
 
+	/**
+	 *	Post an action to the endpoint
+	 *
+	 *	@param		{string}	action					eg. crm-documents/list
+	 *	@param		{Object}	[data]
+	 *
+	 *	@return		{Promise}									See post()
+	 */
+	const api = function( action, data ) {
+		return post( { headers : { 'Content-Type' : 'application/json', 'X-CSRF-Token' : state.csrf }, body : JSON.stringify( { action : action, data : data || {} } ) } );
+	};
+
+	/**
+	 *	Post an action with a file, as the Pdf panel posts a picture: a form with the action, the data (as JSON) and the file. The browser
+	 *	writes the content type with the boundary itself
+	 *
+	 *	@param		{string}	action
+	 *	@param		{Object}	data
+	 *	@param		{Object}	file						A File
+	 *
+	 *	@return		{Promise}									See post()
+	 */
+	const upload = function( action, data, file ) {
+
+		const form = new wn.FormData();
+
+		form.append( 'action', action );
+		form.append( 'data', JSON.stringify( data || {} ) );
+		form.append( 'file', file );
+
+		return post( { headers : { 'X-CSRF-Token' : state.csrf }, body : form } );
+	};
+
 	const closeMenus = function( except ) {
 
 		dc.querySelectorAll( '.menu' ).forEach( function( menu ) {
@@ -695,7 +726,7 @@
 	/**
 	 *	A menu: a button and the list under it
 	 *
-	 *	@param		{Object}	spec						label, aria (what a screen reader calls the button), button (the class of the button), align, items ([ { label, run, href, saved, danger } | 'sep' ])
+	 *	@param		{Object}	spec						label, aria (what a screen reader calls the button), button (the class of the button), align, tall (a long list that scrolls), items ([ { label, run, href, saved, danger } | { heading } | 'sep' ])
 	 *
 	 *	@return		{Object}
 	 */
@@ -710,10 +741,13 @@
 		} } } );
 
 		root.appendChild( button );
-		root.appendChild( el( 'div', { class: 'list', role: 'menu' }, spec.items.map( function( item ) {
+		root.appendChild( el( 'div', { class: spec.tall === true ? 'list tall' : 'list', role: 'menu' }, spec.items.map( function( item ) {
 
 			if( item === 'sep' )
 				return el( 'hr' );
+
+			if( item.heading !== undefined )
+				return el( 'div', { class: 'heading', role: 'presentation', text: item.heading } );
 
 			if( item.href !== undefined )
 				return el( 'a', { role: 'menuitem', href: item.href, target: '_blank', rel: 'noopener', text: item.label, on: { click: function() { closeMenus() } } } );
@@ -3537,6 +3571,13 @@
 			{ name : 'currency', label : t( 'settings.currency' ), control : el( 'input', { id: 'f-currency', type: 'text', value: settings.currency, maxlength: '5', autocomplete: 'off', class: 'short' } ) },
 		], form );
 
+		const particulars = formList( [
+			{ name : 'tax_id', label : t( 'settings.tax-id' ), control : el( 'input', { id: 'f-tax_id', type: 'text', value: settings.tax_id ?? '', maxlength: '40', autocomplete: 'off' } ), hint : t( 'settings.tax-id-hint' ) },
+			{ name : 'bank_name', label : t( 'settings.bank-name' ), control : el( 'input', { id: 'f-bank_name', type: 'text', value: settings.bank_name ?? '', maxlength: '80', autocomplete: 'off' } ) },
+			{ name : 'iban', label : t( 'settings.iban' ), control : el( 'input', { id: 'f-iban', type: 'text', value: settings.iban ?? '', maxlength: '42', autocomplete: 'off', spellcheck: 'false' } ) },
+			{ name : 'bic', label : t( 'settings.bic' ), control : el( 'input', { id: 'f-bic', type: 'text', value: settings.bic ?? '', maxlength: '11', autocomplete: 'off', spellcheck: 'false', class: 'bic' } ) },
+		], form );
+
 		const numbers = formList( [ 'offer', 'invoice', 'credit' ].map( function( category ) {
 			return { name : 'number_'+ category, label : t( 'settings.number-'+ category ), control : el( 'input', { id: 'f-number_'+ category, type: 'text', value: settings['number_'+ category], maxlength: '40', autocomplete: 'off' } ) };
 		} ), form );
@@ -3580,20 +3621,1243 @@
 			head( t( 'settings.title' ), el( 'span', { class: 'grow' } ), save ),
 			el( 'div', { class: 'cols' },
 				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'settings.vat' ) } ), taxes ),
-				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'settings.numbers' ) } ), numbers, next, el( 'p', { class: 'state-note', text: t( 'settings.numbers-note' ) } ) ) ) ) );
+				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'settings.numbers' ) } ), numbers, next, el( 'p', { class: 'state-note', text: t( 'settings.numbers-note' ) } ) ) ),
+			el( 'div', { class: 'card pad gap', id: 'particulars' }, el( 'h3', { text: t( 'settings.particulars' ) } ), particulars, el( 'p', { class: 'state-note', text: t( 'settings.particulars-note' ) } ) ) ) );
 
 		// Vorlagen of the feature PDF: the assignment, read only
 		const templates = el( 'div', { class: 'card pad', id: 'templates' }, el( 'h3', { text: t( 'settings.templates' ) } ),
 			view.pdf === false ? el( 'p', { class: 'state-note', text: t( 'settings.templates-off' ) } ) : kv( [ 'offer', 'invoice', 'contract', 'privacy', 'information' ].map( function( tag ) {
 				return [ t( 'tag.'+ tag ), view.templates[tag].length === 0 ? t( 'settings.templates-none' ) : view.templates[tag].join( ' · ' ) ];
 			} ) ),
-			el( 'p', { class: 'state-note' }, t( 'settings.templates-note' ), ' ', link( state.links.pdf, t( 'settings.templates-link' ), { target : '_blank', rel : 'noopener' } ) ) );
+			el( 'p', { class: 'state-note' }, t( 'settings.templates-note' ), ' ', state.perms.pdf === true ? link( '#pdf', t( 'settings.templates-link' ) ) : link( state.links.pdf, t( 'settings.templates-link-panel' ), { target : '_blank', rel : 'noopener' } ) ) );
 
 		state.main.appendChild( el( 'div', { class: 'cols gap' }, templates, portalCard( view.portal, items, said, mine ) ) );
 
 		state.main.appendChild( el( 'div', { class: 'card pad gap', id: 'access' }, el( 'h3', { text: t( 'settings.access' ) } ),
 			el( 'p', { class: 'state-note', text: t( 'settings.access-text', state.perm ) } ),
 			el( 'p', { class: 'state-note' }, link( state.links.users, t( 'settings.access-link' ), { target : '_blank', rel : 'noopener' } ) ) ) );
+	};
+
+	// --- PDF-Vorlagen ------------------------------------------------------------------------------------------------
+
+	// The placeholders a template may use, by group: the vocabulary of \Crm\Documents\Render::data(). The word of each is tok.<group>-<name>
+	const PDF_TOKENS = [
+		[ 'document', [ '/document/number', '/document/title', '/document/date', '/document/parent', '/document/vatnote', '/document/net', '/document/vat', '/document/gross' ] ],
+		[ 'invoice', [ '/invoice/due', '/invoice/period', '/site/tax', '/site/bank', '/site/iban', '/site/bic' ] ],
+		[ 'offer', [ '/offer/number', '/offer/date', '/offer/valid', '/offer/gross', '/offer/period' ] ],
+		[ 'customer', [ '/customer/number', '/customer/company', '/customer/name', '/customer/street', '/customer/zip', '/customer/city', '/customer/country', '/customer/email', '/customer/vat' ] ],
+		[ 'portal', [ '/site/portal', '/site/login' ] ],
+	];
+
+	// The page numbers, which a header and a footer know
+	const PDF_PAGE_TOKENS = [ 'page', 'pages' ];
+
+	// The areas of a document the app fills, the names of the slots
+	const PDF_SLOTS = [ 'address', 'lines', 'totals' ];
+
+	// The tabs of the screens, in order: the key and the hash
+	const PDF_TABS = [ [ 'vorlagen', '#pdf' ], [ 'bausteine', '#pdf-bausteine' ], [ 'layout', '#pdf-layout' ], [ 'design', '#pdf-design' ] ];
+
+	// The codes of the save of a template that name a block, by the number in their params; the others belong to the template
+	const PDF_BLOCK_CODES = [ 'pdf_block_type', 'pdf_block_html', 'pdf_block_ref', 'pdf_block_name', 'pdf_block_label', 'pdf_signature_party', 'pdf_signature_page', 'pdf_signature_box' ];
+
+	/**
+	 *	@param		{string}	tag
+	 *
+	 *	@return		{string}									The word of a tag of the feature; the tag itself where the surface has no word for it
+	 */
+	const tagWord = function( tag ) {
+		return typeof state.texts['tag.'+ tag] === 'string' ? t( 'tag.'+ tag ) : tag;
+	};
+
+	/**
+	 *	@param		{string}	token						/document/number
+	 *
+	 *	@return		{string}									The word of a placeholder of the vocabulary
+	 */
+	const tokenWord = function( token ) {
+		return t( 'tok.'+ token.slice( 1 ).replace( '/', '-' ) );
+	};
+
+	/**
+	 *	@param		{string}	path						/project/company/general/name
+	 *
+	 *	@return		{string}									The word of a text of the site, else the key without the company
+	 */
+	const siteWord = function( path ) {
+
+		const rest = path.split( '/' ).slice( 3 ).join( '-' );
+
+		return typeof state.texts['site.'+ rest] === 'string' ? t( 'site.'+ rest ) : path.split( '/' ).slice( 3 ).join( '/' );
+	};
+
+	/**
+	 *	The placeholders as the menu and the legend group them
+	 *
+	 *	@param		{boolean}	band						Whether the page numbers belong to them (a header and a footer)
+	 *
+	 *	@return		{Array}										[ { title, tokens: [ { token, label } ] } ]
+	 */
+	const tokenGroups = function( band ) {
+
+		const groups = PDF_TOKENS.map( function( group ) {
+			return { title : t( 'pdf.group-'+ group[0] ), tokens : group[1].map( function( token ) { return { token : token, label : tokenWord( token ) } } ) };
+		} );
+
+		if( state.pdf.site.length > 0 )
+			groups.push( { title : t( 'pdf.group-site' ), tokens : state.pdf.site.map( function( path ) { return { token : path, label : siteWord( path ) } } ) } );
+
+		if( band === true )
+			groups.push( { title : t( 'pdf.group-page' ), tokens : PDF_PAGE_TOKENS.map( function( name ) { return { token : name, label : t( 'tok.'+ name ) } } ) } );
+
+		return groups;
+	};
+
+	/**
+	 *	Put a text into a field where the caret is, in place of what is selected, and leave the caret behind it
+	 *
+	 *	@param		{Object}	area
+	 *	@param		{string}	text
+	 *
+	 *	@return		{void}
+	 */
+	const insertAt = function( area, text ) {
+
+		const from = typeof area.selectionStart === 'number' ? area.selectionStart : area.value.length;
+		const to = typeof area.selectionEnd === 'number' ? area.selectionEnd : from;
+		const at = from+ text.length;
+
+		area.value = area.value.slice( 0, from )+ text+ area.value.slice( to );
+		area.focus();
+		area.selectionStart = at;
+		area.selectionEnd = at;
+	};
+
+	/**
+	 *	The menu "Platzhalter" of a text: the vocabulary by group, then the texts of the site; a choice goes into the text where the caret is
+	 *
+	 *	@param		{Object}	area						The textarea
+	 *	@param		{boolean}	band						Whether it is a header or a footer
+	 *	@param		{Function}	changed					Called after an insert, as the text was typed
+	 *
+	 *	@return		{Object}
+	 */
+	const placeholderMenu = function( area, band, changed ) {
+
+		const items = [];
+
+		tokenGroups( band ).forEach( function( group ) {
+
+			items.push( { heading : group.title } );
+			group.tokens.forEach( function( one ) {
+				items.push( { label : one.label+ '  [['+ one.token+ ']]', run : function() {
+					insertAt( area, '[['+ one.token+ ']]' );
+					changed();
+				} } );
+			} );
+		} );
+
+		return menu( { label : t( 'pdf.placeholders' ), aria : t( 'pdf.placeholders-aria' ), button : 'sm', tall : true, items : items } );
+	};
+
+	/**
+	 *	The tabs of the screens PDF-Vorlagen
+	 *
+	 *	@param		{string}	active					vorlagen, bausteine, layout or design
+	 *
+	 *	@return		{Object}
+	 */
+	const pdfTabs = function( active ) {
+
+		return el( 'nav', { class: 'tabs top', id: 'pdf-tabs', 'aria-label': t( 'pdf.tabs' ) }, PDF_TABS.map( function( tab ) {
+			return el( 'a', { href: tab[1], class: tab[0] === active ? 'on' : '', 'aria-current': tab[0] === active ? 'page' : null, text: t( 'pdf.tab-'+ tab[0] ) } );
+		} ) );
+	};
+
+	/**
+	 *	The screens need the permission of the Pdf panel: without it the screen says so, and no request is made
+	 *
+	 *	@return		{boolean}
+	 */
+	const pdfAllowed = function() {
+
+		if( state.perms.pdf === true && state.pdfAvailable === true )
+			return true;
+
+		// The feature is not there for an account that has the permission, which is another sentence than the permission that is missing
+		reveal();
+		state.main.appendChild( head( t( 'pdf.title' ) ) );
+		state.main.appendChild( note( 'bad', t( state.perms.pdf === true ? 'pdf.not-installed' : 'pdf.forbidden' ) ) );
+
+		return false;
+	};
+
+	/**
+	 *	Read the lists a screen of PDF-Vorlagen starts from, and draw it when they all came
+	 *
+	 *	@param		{Array}		asks						[ [ action, data ] ... ]; the context of the CRM is always read as the last
+	 *	@param		{number}	mine						The view that draws
+	 *	@param		{Function}	draw						Called with the bodies of the answers
+	 *
+	 *	@return		{void}
+	 */
+	const pdfRead = function( asks, mine, draw ) {
+
+		loading();
+
+		Promise.all( asks.concat( [ [ 'crm-pdf/context' ] ] ).map( function( ask ) { return api( ask[0], ask[1] ) } ) ).then( function( answers ) {
+
+			if( state.view !== mine )
+				return;
+
+			const failure = answers.find( function( answer ) { return answer.ok !== true } );
+
+			if( failure !== undefined ) {
+				loadFailed( failure, 'error.load', function() { route() } );
+				return;
+			}
+
+			const bodies = answers.map( function( answer ) { return answer.body } );
+
+			state.pdf.site = Array.isArray( bodies[bodies.length - 1].site ) === true ? bodies[bodies.length - 1].site : [];
+			draw( ...bodies );
+		} );
+	};
+
+	/**
+	 *	Open a PDF the surface serves itself - the sample of a template or of the layout - in a new tab: the response carries its own headers, the page's
+	 *	policy has no frame or blob for it
+	 *
+	 *	@param		{string}	path						template/<key> or layout
+	 *
+	 *	@return		{void}
+	 */
+	const openPreview = function( path ) {
+
+		const url = state.base+ '/crm/pdf-preview/'+ path;
+		const tab = wn.open( url, '_blank' );
+
+		// A browser that does not open a tab after an asynchronous save (it asks for the click itself): the link is shown, for the owner to click
+		if( tab === null || tab === undefined ) {
+			dialog( { title : t( 'pdf.preview' ), text : t( 'pdf.preview-blocked' ), link : { href : url, text : t( 'pdf.preview-open' ), blank : true } } );
+			return;
+		}
+
+		tab.opener = null;
+	};
+
+	/**
+	 *	The link of a preview that does not depend on what is typed (the layout, the design): a link to the sample, in a new tab
+	 *
+	 *	@param		{string}	id
+	 *
+	 *	@return		{Object}
+	 */
+	const previewLink = function( id ) {
+		return el( 'a', { class: 'btn', id: id, href: state.base+ '/crm/pdf-preview/layout', target: '_blank', rel: 'noopener', text: t( 'pdf.preview' ) } );
+	};
+
+	/**
+	 *	A text of the feature with the menu of the placeholders under it
+	 *
+	 *	@param		{Object}	area
+	 *	@param		{boolean}	band
+	 *	@param		{Function}	changed
+	 *	@param		{Object}	[hint]
+	 *
+	 *	@return		{Object}
+	 */
+	const withPlaceholders = function( area, band, changed, hint ) {
+		return el( 'div', { class: 'textbox' }, area, el( 'div', { class: 'tools' }, placeholderMenu( area, band, changed ), hint === undefined ? null : hint ) );
+	};
+
+	/**
+	 *	@param		{string}	html
+	 *
+	 *	@return		{string}									The text of a piece of HTML, in one line and short
+	 */
+	const plainText = function( html ) {
+
+		const text = String( html ).replace( /<[^>]*>/g, ' ' ).replace( /&nbsp;/g, ' ' ).replace( /\s+/g, ' ' ).trim();
+
+		return text.length > 90 ? text.slice( 0, 90 )+ '…' : text;
+	};
+
+	// --- Vorlagen: the list ------------------------------------------------------------------------------------------
+
+	const pdfKeys = {
+		name : function( one ) { return one.name.toLowerCase() },
+		tag : function( one ) { return tagWord( one.tag ).toLowerCase() },
+		changed : function( one ) { return one.changed },
+		used : function( one ) { return one.used },
+	};
+
+	/**
+	 *	The templates of the list the filter shows, in its order
+	 *
+	 *	@param		{Array}		rows						The templates with changed and used
+	 *	@param		{Object}	filter					q, sort, dir
+	 *
+	 *	@return		{Array}
+	 */
+	const pdfVisible = function( rows, filter ) {
+
+		const query = filter.q.trim().toLowerCase();
+		const key = pdfKeys[filter.sort] || pdfKeys.name;
+
+		return rows.filter( function( one ) {
+			return query === '' || ( one.name+ ' '+ one.key+ ' '+ tagWord( one.tag ) ).toLowerCase().indexOf( query ) !== -1;
+		} ).sort( function( a, b ) {
+
+			const left = key( a );
+			const right = key( b );
+			const order = typeof left === 'string' ? left.localeCompare( right, 'de' ) : ( left < right ? -1 : ( left > right ? 1 : 0 ) );
+
+			return order === 0 ? ( a.key < b.key ? -1 : 1 ) : order * filter.dir;
+		} );
+	};
+
+	const pdfVorlagen = function( where, mine ) {
+
+		if( pdfAllowed() === false )
+			return;
+
+		pdfRead( [ [ 'pdf/templates/list' ] ], mine, function( list, context ) {
+
+			state.pdf.templates = list.templates.map( function( one ) {
+				return Object.assign( {}, one, { changed : context.changed[one.key] || '', used : context.used[one.key] || 0 } );
+			} );
+			state.pdf.tags = list.tags;
+			state.pdf.library = list.library;
+			drawPdfVorlagen();
+		} );
+	};
+
+	const drawPdfVorlagen = function() {
+
+		const filter = state.pfilter;
+		const rows = pdfVisible( state.pdf.templates, filter );
+		const again = function() { drawPdfVorlagen() };
+		const heading = function( key, label, right ) { return sortHead( filter, key, label, right, again, key === 'changed' || key === 'used' ? -1 : 1 ) };
+
+		const body = el( 'tbody', {}, rows.length === 0
+			? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '4', class: 'muted', text: state.pdf.templates.length === 0 ? t( 'pdf.none' ) : t( 'pdf.nomatch' ) } ) )
+			: rows.map( function( one ) {
+				return el( 'tr', { dataset: { key: one.key }, on: { click: function() { wn.location.hash = '#pdf-vorlage-'+ one.key } } },
+					el( 'td', {}, el( 'b', {}, link( '#pdf-vorlage-'+ one.key, one.name ) ), el( 'div', { class: 'muted small', text: one.key } ) ),
+					el( 'td', {}, badge( 'open', tagWord( one.tag ) ), one.known === false ? [ ' ', badge( 'portal', t( 'pdf.tag-gone' ) ) ] : null ),
+					el( 'td', { class: 'num', text: dmy( one.changed ) } ),
+					el( 'td', { class: 'r num' }, one.used > 0 ? String( one.used ) : el( 'span', { class: 'muted', text: '–' } ) ) );
+			} ) );
+
+		const table = el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl', id: 'pdf-templates' },
+			el( 'thead', {}, el( 'tr', {}, heading( 'name', t( 'pdf.col-name' ) ), heading( 'tag', t( 'pdf.col-tag' ) ), heading( 'changed', t( 'pdf.col-changed' ) ), heading( 'used', t( 'pdf.col-used' ), true ) ) ),
+			body ) );
+
+		const fresh = state.pdf.tags.length === 0 ? null : menu( { label : t( 'pdf.new-template' ), button : 'primary', aria : t( 'pdf.new-template' ), items : state.pdf.tags.map( function( tag ) {
+			return { label : tagWord( tag ), run : function() { wn.location.hash = '#pdf-neue-vorlage-'+ tag } };
+		} ) } );
+
+		reveal();
+
+		state.main.appendChild( head( t( 'pdf.title' ), el( 'span', { class: 'sub', text: t( 'pdf.count', state.pdf.templates.length, state.pdf.library.length ) } ), el( 'span', { class: 'grow' } ),
+			search( t( 'pdf.search' ), filter.q, { input: function( event ) {
+				filter.q = event.target.value;
+				keepSearch( drawPdfVorlagen, true );
+			} } ), fresh ) );
+		state.main.appendChild( pdfTabs( 'vorlagen' ) );
+		append( state.main, [ table, el( 'p', { class: 'state-note top', text: t( 'pdf.list-note' ) } ) ] );
+	};
+
+	// --- Vorlage: the editor of a template ---------------------------------------------------------------------------
+
+	/**
+	 *	A number of millimetres as it is posted: a number where the text is one (a decimal comma is read as a point), else the text, which the store refuses
+	 *
+	 *	@param		{string}	text
+	 *
+	 *	@return		{number|string}
+	 */
+	const millimetres = function( text ) {
+
+		const clean = String( text ).trim().replace( ',', '.' );
+
+		return /^-?\d{1,4}(?:\.\d+)?$/.test( clean ) === true ? Number( clean ) : clean;
+	};
+
+	/**
+	 *	A block of the store as the editor holds it: the numbers of a signature as the text of their fields, the page as the word the person chooses
+	 *
+	 *	@param		{Object}	block
+	 *
+	 *	@return		{Object}
+	 */
+	const blockDraft = function( block ) {
+
+		if( block.type === 'html' )
+			return block.block !== undefined ? { type : 'html', mode : 'ref', block : block.block, html : '' } : { type : 'html', mode : 'own', block : '', html : block.html ?? '' };
+
+		if( block.type === 'slot' )
+			return { type : 'slot', name : block.name };
+
+		if( block.type === 'input' )
+			return { type : 'input', name : block.name, label : block.label, multiline : block.multiline === true, required : block.required === true };
+
+		if( block.type === 'signature' )
+			return { type : 'signature', name : block.name, party : block.party, label : block.label, page : block.page === 'last' ? 'last' : ( block.page === 1 ? 'first' : 'number' ), number : block.page === 'last' ? '2' : String( block.page ),
+				x : String( block.x ), y : String( block.y ), w : String( block.w ), h : String( block.h ), line : block.line === true };
+
+		return { type : 'pagebreak' };
+	};
+
+	/**
+	 *	A block of the editor as the store takes it
+	 *
+	 *	@param		{Object}	b
+	 *
+	 *	@return		{Object}
+	 */
+	const blockPayload = function( b ) {
+
+		if( b.type === 'html' )
+			return b.mode === 'ref' ? { type : 'html', block : b.block } : { type : 'html', html : b.html };
+
+		if( b.type === 'slot' )
+			return { type : 'slot', name : b.name };
+
+		if( b.type === 'input' )
+			return { type : 'input', name : b.name, label : b.label, multiline : b.multiline, required : b.required };
+
+		if( b.type === 'signature' ) {
+
+			const number = b.number.trim();
+			const page = b.page === 'last' ? 'last' : ( b.page === 'first' ? 1 : ( /^[1-9][0-9]{0,3}$/.test( number ) === true ? Number( number ) : number ) );
+
+			return { type : 'signature', name : b.name, party : b.party, label : b.label, page : page, x : millimetres( b.x ), y : millimetres( b.y ), w : millimetres( b.w ), h : millimetres( b.h ), line : b.line };
+		}
+
+		return { type : 'pagebreak' };
+	};
+
+	/**
+	 *	@param		{string}	name						What a person called a template
+	 *	@param		{string}	tag
+	 *	@param		{number}	[attempt]				1 for the first key, 2 and on for the keys after a key that was taken
+	 *
+	 *	@return		{string}									The key the template is saved under: the name as a slug (umlauts spelled out), else the tag with -vorlage; -2, -3 ... on a later attempt
+	 */
+	const templateKey = function( name, tag, attempt ) {
+
+		const umlauts = { 'ä' : 'ae', 'ö' : 'oe', 'ü' : 'ue', 'ß' : 'ss' };
+		let slug = String( name ).toLowerCase().replace( /[äöüß]/g, function( char ) { return umlauts[char] } ).normalize( 'NFD' ).replace( /[̀-ͯ]/g, '' ).replace( /[^a-z0-9]+/g, '-' ).replace( /^-+|-+$/g, '' ).slice( 0, 34 ).replace( /-+$/, '' );
+
+		if( /^[a-z][a-z0-9-]+$/.test( slug ) === false )
+			slug = ( tag+ '-vorlage' ).slice( 0, 34 );
+
+		return attempt === undefined || attempt < 2 ? slug : slug+ '-'+ attempt;
+	};
+
+	/**
+	 *	A name no other block of the template has: feld, feld-2, ...
+	 *
+	 *	@param		{Array}		blocks
+	 *	@param		{string}	base
+	 *
+	 *	@return		{string}
+	 */
+	const freeName = function( blocks, base ) {
+
+		const taken = blocks.map( function( block ) { return block.name } );
+		let name = base;
+		let at = 2;
+
+		while( taken.includes( name ) === true )
+			name = base+ '-'+ ( at++ );
+
+		return name;
+	};
+
+	/**
+	 *	A block of a kind, as "Hinzufügen" makes it
+	 *
+	 *	@param		{Array}		blocks					The blocks there are
+	 *	@param		{string}	kind						html, ref (with a key), slot (with a name), input, signature, pagebreak
+	 *	@param		{string}	[what]
+	 *
+	 *	@return		{Object}
+	 */
+	const blockNew = function( blocks, kind, what ) {
+
+		if( kind === 'ref' )
+			return { type : 'html', mode : 'ref', block : what, html : '' };
+
+		if( kind === 'slot' )
+			return { type : 'slot', name : what };
+
+		if( kind === 'input' )
+			return { type : 'input', name : freeName( blocks, 'feld' ), label : '', multiline : false, required : false };
+
+		if( kind === 'signature' )
+			return { type : 'signature', name : freeName( blocks, 'unterschrift' ), party : 'owner', label : '', page : 'last', number : '2', x : '20', y : '230', w : '70', h : '20', line : true };
+
+		return kind === 'pagebreak' ? { type : 'pagebreak' } : { type : 'html', mode : 'own', block : '', html : '' };
+	};
+
+	/**
+	 *	@param		{string}	name						address, lines, totals - or the name another template gave a slot
+	 *
+	 *	@return		{string}									Its word, else the name
+	 */
+	const slotWord = function( name ) {
+		return typeof state.texts['pdf.slot-'+ name] === 'string' ? t( 'pdf.slot-'+ name ) : name;
+	};
+
+	const pdfVorlage = function( where, mine ) {
+
+		if( pdfAllowed() === false )
+			return;
+
+		const asks = where.key === undefined ? [ [ 'pdf/templates/list' ] ] : [ [ 'pdf/templates/get', { key : where.key } ] ];
+
+		pdfRead( asks, mine, function( body, context ) {
+
+			const used = where.key === undefined ? 0 : ( context.used[where.key] || 0 );
+
+			if( where.key === undefined )
+				drawPdfVorlage( { isNew : true, key : '', name : '', tag : where.tag, blocks : [] }, body, used );
+			else
+				drawPdfVorlage( { isNew : false, key : body.key, name : body.template.name, tag : body.template.tag, blocks : body.template.blocks.map( blockDraft ) }, body, used );
+		} );
+	};
+
+	/**
+	 *	The editor of a template: its name and tag, its blocks as cards in order, and what Hinzufügen offers
+	 *
+	 *	@param		{Object}	start						isNew, key, name, tag, blocks (as blockDraft makes them)
+	 *	@param		{Object}	offer						tags, library, ranges (what the get and the list answer)
+	 *	@param		{number}	used						How many documents name the template
+	 *
+	 *	@return		{void}
+	 */
+	const drawPdfVorlage = function( start, offer, used ) {
+
+		const mine = state.view;
+		const draft = Object.assign( { dirty : false, form : true, errors : {} }, start );
+		const message = el( 'p', { class: 'state-note bad', id: 'tpl-note', role: 'alert' } );
+		const box = el( 'div', { class: 'blocks', id: 'blocks' } );
+		const library = offer.library;
+
+		state.draft = draft;
+
+		const touch = function() {
+			draft.dirty = true;
+			message.textContent = '';
+			nameField.classList.remove( 'err' );
+			tagField.classList.remove( 'err' );
+		};
+
+		const nameField = el( 'input', { id: 'tpl-name', type: 'text', value: draft.name, maxlength: String( offer.ranges.title ), autocomplete: 'off', placeholder: t( 'pdf.name' ), 'aria-label': t( 'pdf.name' ), on: { input: function( event ) { draft.name = event.target.value; touch() } } } );
+		const tags = offer.tags.indexOf( draft.tag ) === -1 ? [ draft.tag ].concat( offer.tags ) : offer.tags;
+		const tagField = el( 'select', { id: 'tpl-tag', value: draft.tag, 'aria-label': t( 'pdf.col-tag' ), on: { change: function( event ) { draft.tag = event.target.value; touch() } } }, tags.map( function( tag ) {
+			return el( 'option', { value: tag, text: tagWord( tag )+ ( offer.tags.indexOf( tag ) === -1 ? ' ('+ t( 'pdf.tag-gone' )+ ')' : '' ) } );
+		} ) );
+
+		const shift = function( index, by ) {
+
+			const to = index+ by;
+
+			if( to < 0 || to >= draft.blocks.length )
+				return;
+
+			draft.blocks.splice( to, 0, draft.blocks.splice( index, 1 )[0] );
+			draft.errors = {};
+			draft.dirty = true;
+			drawBlocks();
+		};
+
+		const drop = function( index ) {
+			draft.blocks.splice( index, 1 );
+			draft.errors = {};
+			draft.dirty = true;
+			drawBlocks();
+		};
+
+		const field = function( label, control ) {
+			return el( 'label', { class: 'sf' }, el( 'span', { text: label } ), control );
+		};
+
+		const text = function( b, key, label, size ) {
+			return field( label, el( 'input', { type: 'text', value: b[key], maxlength: size, autocomplete: 'off', dataset: { f: key }, on: { input: function( event ) { b[key] = event.target.value; draft.dirty = true } } } ) );
+		};
+
+		const check = function( b, key, label ) {
+			return el( 'label', { class: 'check sf' }, el( 'input', { type: 'checkbox', checked: b[key] === true, dataset: { f: key }, on: { change: function( event ) { b[key] = event.target.checked; draft.dirty = true } } } ), el( 'span', { text: label } ) );
+		};
+
+		const choose = function( b, key, label, options ) {
+			return field( label, el( 'select', { value: b[key], dataset: { f: key }, on: { change: function( event ) { b[key] = event.target.value; draft.dirty = true; drawBlocks() } } }, options.map( function( option ) { return el( 'option', { value: option[0], text: option[1] } ) } ) ) );
+		};
+
+		const kindOf = function( b ) {
+
+			if( b.type === 'html' && b.mode === 'ref' ) {
+				const known = library.find( function( one ) { return one.key === b.block } );
+				return [ t( 'pdf.kind-html' ), t( 'pdf.kind-ref', known === undefined ? b.block : known.title ) ];
+			}
+
+			const extra = { slot : slotWord( b.name ), input : b.label, signature : t( 'pdf.party-'+ b.party )+ ( b.label === '' ? '' : ' · '+ b.label ) }[b.type];
+
+			return [ t( 'pdf.kind-'+ b.type ), extra === undefined || extra === '' ? null : extra ];
+		};
+
+		const bodyOf = function( b, index ) {
+
+			if( b.type === 'html' && b.mode === 'ref' ) {
+
+				const known = library.some( function( one ) { return one.key === b.block } );
+				const options = ( known === true ? [] : [ [ b.block, b.block ] ] ).concat( library.map( function( one ) { return [ one.key, one.title ] } ) );
+
+				return [ choose( b, 'block', t( 'pdf.block-of' ), options ), el( 'p', { class: 'state-note' }, t( 'pdf.ref-note' ), ' ', known === true ? link( '#pdf-baustein-'+ b.block, t( 'pdf.ref-edit' ) ) : null ) ];
+			}
+
+			if( b.type === 'html' ) {
+
+				const area = el( 'textarea', { class: 'code', rows: 7, spellcheck: 'false', maxlength: String( offer.ranges.html ), 'aria-label': t( 'pdf.kind-html' ), value: b.html, on: { input: function( event ) { b.html = event.target.value; draft.dirty = true } } } );
+
+				return withPlaceholders( area, false, function() { b.html = area.value; draft.dirty = true }, el( 'span', { class: 'state-note', text: t( 'pdf.html-note' ) } ) );
+			}
+
+			if( b.type === 'slot' )
+				return [ choose( b, 'name', t( 'pdf.slot' ), ( PDF_SLOTS.indexOf( b.name ) === -1 ? [ b.name ] : [] ).concat( PDF_SLOTS ).map( function( name ) { return [ name, slotWord( name ) ] } ) ), el( 'p', { class: 'state-note', text: typeof state.texts['pdf.slot-note-'+ b.name] === 'string' ? t( 'pdf.slot-note-'+ b.name ) : '' } ) ];
+
+			if( b.type === 'input' )
+				return [ el( 'div', { class: 'sig' }, text( b, 'name', t( 'pdf.input-name' ), '40' ), text( b, 'label', t( 'pdf.input-label' ), String( offer.ranges.label ) ) ), el( 'div', { class: 'sig' }, check( b, 'multiline', t( 'pdf.input-multiline' ) ), check( b, 'required', t( 'pdf.input-required' ) ) ), el( 'p', { class: 'state-note', text: t( 'pdf.input-note' ) } ) ];
+
+			if( b.type === 'signature' )
+				return [
+					el( 'div', { class: 'sig' }, choose( b, 'party', t( 'pdf.sig-party' ), [ [ 'owner', t( 'pdf.party-owner' ) ], [ 'member', t( 'pdf.party-member' ) ] ] ), text( b, 'name', t( 'pdf.input-name' ), '40' ), text( b, 'label', t( 'pdf.input-label' ), String( offer.ranges.label ) ) ),
+					el( 'div', { class: 'sig' }, choose( b, 'page', t( 'pdf.sig-page' ), [ [ 'first', t( 'pdf.page-first' ) ], [ 'last', t( 'pdf.page-last' ) ], [ 'number', t( 'pdf.page-number' ) ] ] ), b.page === 'number' ? text( b, 'number', t( 'pdf.page-no' ), '4' ) : null ),
+					el( 'div', { class: 'sig' }, text( b, 'x', t( 'pdf.sig-x' ), '8' ), text( b, 'y', t( 'pdf.sig-y' ), '8' ), text( b, 'w', t( 'pdf.sig-w' ), '8' ), text( b, 'h', t( 'pdf.sig-h' ), '8' ) ),
+					check( b, 'line', t( 'pdf.sig-line' ) ),
+					el( 'p', { class: 'state-note', text: t( 'pdf.sig-note', offer.paper[0], offer.paper[1] ) } ),
+				];
+
+			return el( 'p', { class: 'state-note', text: t( 'pdf.pagebreak-note' ) } );
+		};
+
+		const blockCard = function( b, index ) {
+
+			const kind = kindOf( b );
+			const err = el( 'p', { class: 'state-note bad berr', role: 'alert', text: draft.errors[index] || '' } );
+
+			return el( 'div', { class: 'block'+ ( draft.errors[index] === undefined ? '' : ' err' ), dataset: { i: index, type: b.type }, on: { input: function() { err.textContent = ''; delete draft.errors[index] } } },
+				el( 'div', { class: 'bmain' },
+					el( 'span', { class: 'kind' }, kind[0], kind[1] === null ? null : [ ' ', el( 'span', { class: 'tag', text: kind[1] } ) ] ),
+					bodyOf( b, index ), err ),
+				el( 'div', { class: 'ctl' },
+					el( 'button', { type: 'button', class: 'up', 'aria-label': t( 'pdf.up' ), title: t( 'pdf.up' ), text: '↑', disabled: index === 0, on: { click: function() { shift( index, -1 ) } } } ),
+					el( 'button', { type: 'button', class: 'down', 'aria-label': t( 'pdf.down' ), title: t( 'pdf.down' ), text: '↓', disabled: index === draft.blocks.length - 1, on: { click: function() { shift( index, 1 ) } } } ),
+					el( 'button', { type: 'button', class: 'del', 'aria-label': t( 'pdf.remove' ), title: t( 'pdf.remove' ), text: '×', on: { click: function() { drop( index ) } } } ) ) );
+		};
+
+		const drawBlocks = function() {
+
+			clear( box );
+			box.setAttribute( 'aria-label', t( 'pdf.blocks' ) );
+
+			if( draft.blocks.length === 0 )
+				box.appendChild( el( 'p', { class: 'state-note', id: 'no-blocks', text: t( 'pdf.no-blocks' ) } ) );
+
+			draft.blocks.forEach( function( b, index ) { box.appendChild( blockCard( b, index ) ) } );
+		};
+
+		const add = function( kind, what ) {
+			draft.blocks.push( blockNew( draft.blocks, kind, what ) );
+			draft.dirty = true;
+			drawBlocks();
+		};
+
+		const payload = function( attempt ) {
+			return { key : draft.isNew === true ? templateKey( draft.name, draft.tag, attempt ) : draft.key, isNew : draft.isNew, name : draft.name, tag : draft.tag, blocks : draft.blocks.map( blockPayload ) };
+		};
+
+		// The refusal of a save or a preview: beside the block it names, else beside the name or the tag, else under the head
+		const refuse = function( answer, fallback ) {
+
+			const sentence = failed( answer, fallback );
+			const body = answer.body !== null && typeof answer.body === 'object' ? answer.body : {};
+			const at = Array.isArray( body.params ) === true ? Number( body.params[0] ) : 0;
+
+			if( body.field === 'blocks' && PDF_BLOCK_CODES.includes( body.code ) === true && Number.isInteger( at ) === true && at >= 1 && at <= draft.blocks.length ) {
+				draft.errors[at - 1] = sentence;
+				drawBlocks();
+
+				if( typeof box.children[at - 1].scrollIntoView === 'function' )
+					box.children[at - 1].scrollIntoView();
+
+				return;
+			}
+
+			message.textContent = sentence;
+
+			if( body.field === 'name' || body.field === 'key' ) {
+				nameField.classList.add( 'err' );
+				nameField.focus();
+			}
+			else if( body.field === 'tag' ) {
+				tagField.classList.add( 'err' );
+				tagField.focus();
+			}
+		};
+
+		const saveButton = el( 'button', { type: 'button', class: 'btn primary', id: 'tpl-save', text: t( 'pdf.save' ), on: { click: function() { save( 1 ) } } } );
+		const previewButton = el( 'button', { type: 'button', class: 'btn', id: 'tpl-preview', text: t( 'pdf.preview' ), on: { click: function() {
+
+			// The sample is the saved template's: what is not saved is saved first, as the preview of a draft does
+			if( draft.isNew === false && draft.dirty === false )
+				openPreview( 'template/'+ draft.key );
+			else
+				save( 1, true );
+		} } } );
+
+		const save = function( attempt, preview ) {
+
+			saveButton.disabled = true;
+
+			api( 'pdf/templates/save', payload( attempt ) ).then( function( answer ) {
+
+				saveButton.disabled = false;
+
+				if( state.view !== mine )
+					return;
+
+				if( answer.ok === true ) {
+					draft.dirty = false;
+					toast( t( 'pdf.saved' ) );
+
+					if( preview === true )
+						openPreview( 'template/'+ answer.body.key );
+
+					if( draft.isNew === true )
+						wn.location.hash = '#pdf-vorlage-'+ answer.body.key;
+
+					return;
+				}
+
+				// A key the name gives that another template has: the next one, a few times
+				if( draft.isNew === true && answer.body !== null && typeof answer.body === 'object' && answer.body.code === 'pdf_key_taken' && attempt < 9 ) {
+					save( attempt+ 1, preview );
+					return;
+				}
+
+				refuse( answer, 'pdf.error-save' );
+			} );
+		};
+
+		const duplicate = function() {
+			dialog( { title : t( 'pdf.duplicate' ), text : t( 'pdf.duplicate-text' ), yes : t( 'pdf.duplicate' ), fields : [ { name : 'name', label : t( 'pdf.name' ), value : t( 'pdf.copy-of', draft.name ) } ] } ).then( function( values ) {
+
+				if( values === null || state.view !== mine )
+					return;
+
+				call( 'pdf/templates/duplicate', { key : draft.key, name : values.name }, 'pdf.error-duplicate' ).then( function( answer ) {
+					if( answer.ok === true && state.view === mine ) {
+						draft.dirty = false;
+						toast( t( 'pdf.duplicated' ) );
+						wn.location.hash = '#pdf-vorlage-'+ answer.body.key;
+					}
+				} );
+			} );
+		};
+
+		const remove = function() {
+
+			if( used > 0 ) {
+				toast( t( 'pdf.delete-used', used ), true );
+				return;
+			}
+
+			ask( { title : t( 'pdf.delete' ), text : t( 'pdf.delete-text', draft.name ), yes : t( 'pdf.delete' ), danger : true } ).then( function( yes ) {
+
+				if( yes !== true || state.view !== mine )
+					return;
+
+				call( 'pdf/templates/delete', { key : draft.key }, 'pdf.error-delete' ).then( function( answer ) {
+					if( answer.ok === true && state.view === mine ) {
+						draft.dirty = false;
+						toast( t( 'pdf.deleted' ) );
+						wn.location.hash = '#pdf';
+					}
+				} );
+			} );
+		};
+
+		const more = draft.isNew === true ? null : menu( { label : '⋯', aria : t( 'pdf.more' ), items : [ { label : t( 'pdf.duplicate' ), run : duplicate }, 'sep', { label : t( 'pdf.delete' ), danger : true, run : remove } ] } );
+
+		const adder = el( 'div', { class: 'addblock', id: 'add' }, el( 'span', { class: 'state-note', text: t( 'pdf.add' ) } ),
+			el( 'button', { type: 'button', class: 'btn sm', id: 'add-html', text: t( 'pdf.kind-html' ), on: { click: function() { add( 'html' ) } } } ),
+			menu( { label : t( 'pdf.add-ref' ), button : 'sm', items : library.length === 0 ? [ { heading : t( 'pdf.add-ref-none' ) } ] : library.map( function( one ) { return { label : one.title, run : function() { add( 'ref', one.key ) } } } ) } ),
+			menu( { label : t( 'pdf.add-slot' ), button : 'sm', items : PDF_SLOTS.map( function( name ) { return { label : slotWord( name ), run : function() { add( 'slot', name ) } } } ) } ),
+			el( 'button', { type: 'button', class: 'btn sm', id: 'add-input', text: t( 'pdf.kind-input' ), on: { click: function() { add( 'input' ) } } } ),
+			el( 'button', { type: 'button', class: 'btn sm', id: 'add-pagebreak', text: t( 'pdf.kind-pagebreak' ), on: { click: function() { add( 'pagebreak' ) } } } ),
+			el( 'button', { type: 'button', class: 'btn sm', id: 'add-signature', text: t( 'pdf.kind-signature' ), on: { click: function() { add( 'signature' ) } } } ) );
+
+		drawBlocks();
+		reveal();
+
+		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#pdf', t( 'pdf.title' ) ), ' › ', draft.isNew === true ? t( 'pdf.new-title' ) : draft.name ) );
+		state.main.appendChild( el( 'div', { class: 'head' }, el( 'div', { class: 'tagline' }, nameField, tagField ), el( 'span', { class: 'grow' } ), previewButton, saveButton, more ) );
+		append( state.main, [ message, box, adder, el( 'p', { class: 'state-note top', id: 'tpl-help', text: t( 'pdf.editor-note' ) } ) ] );
+	};
+
+	// --- Bausteine ---------------------------------------------------------------------------------------------------
+
+	/**
+	 *	The legend of the placeholders: the vocabulary and the texts of the site, in one card
+	 *
+	 *	@return		{Object}
+	 */
+	const legendCard = function() {
+
+		return el( 'div', { class: 'card pad', id: 'legend' }, el( 'h3', { text: t( 'pdf.legend' ) } ), el( 'p', { class: 'state-note', text: t( 'pdf.legend-note' ) } ),
+			tokenGroups( true ).map( function( group ) {
+				return [ el( 'h4', { text: group.title } ), el( 'table', { class: 'tbl static' }, el( 'tbody', {}, group.tokens.map( function( one ) {
+					return el( 'tr', {}, el( 'td', {}, el( 'span', { class: 'num', text: '[['+ one.token+ ']]' } ) ), el( 'td', { class: 'muted', text: one.label } ) );
+				} ) ) ) ];
+			} ) );
+	};
+
+	const pdfBausteine = function( where, mine ) {
+
+		if( pdfAllowed() === false )
+			return;
+
+		pdfRead( [ [ 'pdf/blocks/list' ] ], mine, function( list, context ) {
+
+			const rows = list.blocks.map( function( block ) { return Object.assign( {}, block, { used : context.blocks[block.key] || [] } ) } );
+
+			reveal();
+
+			state.main.appendChild( head( t( 'pdf.blocks-title' ), el( 'span', { class: 'sub', text: t( 'pdf.blocks-sub' ) } ), el( 'span', { class: 'grow' } ), link( '#pdf-neuer-baustein', t( 'pdf.new-block' ), { class: 'btn primary', id: 'new-block' } ) ) );
+			state.main.appendChild( pdfTabs( 'bausteine' ) );
+			state.main.appendChild( el( 'div', { class: 'tpl-grid' },
+				el( 'div', {}, el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl', id: 'pdf-blocks' },
+					el( 'thead', {}, el( 'tr', {}, el( 'th', { text: t( 'pdf.col-block' ) } ), el( 'th', { text: t( 'pdf.col-title' ) } ), el( 'th', { class: 'r', text: t( 'pdf.col-used-in' ) } ) ) ),
+					el( 'tbody', {}, rows.length === 0
+						? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '3', class: 'muted', text: t( 'pdf.blocks-none' ) } ) )
+						: rows.map( function( block ) {
+							return el( 'tr', { dataset: { key: block.key }, on: { click: function() { wn.location.hash = '#pdf-baustein-'+ block.key } } },
+								el( 'td', { class: 'num' }, link( '#pdf-baustein-'+ block.key, block.key ) ),
+								el( 'td', { class: 'wrap' }, el( 'b', { text: block.title } ), el( 'div', { class: 'muted small', text: plainText( block.html ) } ) ),
+								el( 'td', { class: 'r num' }, block.used.length > 0 ? String( block.used.length ) : el( 'span', { class: 'muted', text: '–' } ) ) );
+						} ) ) ) ) ),
+				legendCard() ) );
+		} );
+	};
+
+	const pdfBaustein = function( where, mine ) {
+
+		if( pdfAllowed() === false )
+			return;
+
+		pdfRead( [ [ 'pdf/blocks/list' ] ], mine, function( list, context ) {
+
+			const found = where.key === undefined ? { key : '', title : '', html : '' } : list.blocks.find( function( block ) { return block.key === where.key } );
+
+			if( found === undefined ) {
+				reveal();
+				state.main.appendChild( head( t( 'pdf.blocks-title' ) ) );
+				state.main.appendChild( pdfTabs( 'bausteine' ) );
+				state.main.appendChild( note( 'bad', el( 'span', { text: t( 'error.pdf_block_missing' ) } ), link( '#pdf-bausteine', t( 'pdf.back' ) ) ) );
+				return;
+			}
+
+			drawPdfBaustein( found, where.key === undefined, list.ranges, context.blocks[found.key] || [] );
+		} );
+	};
+
+	/**
+	 *	The editor of a block: its key (a slug that stays after the first save), its title and its HTML with the menu of the placeholders
+	 *
+	 *	@param		{Object}	block						key, title, html
+	 *	@param		{boolean}	isNew
+	 *	@param		{Object}	ranges					The limits of the fields
+	 *	@param		{Array}		users						The names of the templates that use it
+	 *
+	 *	@return		{void}
+	 */
+	const drawPdfBaustein = function( block, isNew, ranges, users ) {
+
+		const mine = state.view;
+		const form = formOf();
+		const area = el( 'textarea', { id: 'f-html', class: 'code', rows: 14, spellcheck: 'false', maxlength: String( ranges.html ), 'aria-label': t( 'pdf.html' ), value: block.html } );
+		const areaNote = el( 'span', { class: 'state-note bad', role: 'alert' } );
+
+		form.controls.html = area;
+		form.notes.html = areaNote;
+		area.addEventListener( 'input', function() {
+			area.classList.remove( 'err' );
+			areaNote.textContent = '';
+			form.dirty = true;
+		} );
+
+		const rows = formList( [
+			{ name : 'key', label : t( 'pdf.block-key' ), control : el( 'input', { id: 'f-key', type: 'text', value: block.key, maxlength: '40', autocomplete: 'off', disabled: isNew === false } ), hint : t( 'pdf.block-key-hint' ) },
+			{ name : 'title', label : t( 'pdf.block-title' ), control : el( 'input', { id: 'f-title', type: 'text', value: block.title, maxlength: String( ranges.title ), autocomplete: 'off' } ) },
+		], form );
+
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'block-save', text: t( 'pdf.save' ) } );
+
+		const remove = function() {
+
+			if( users.length > 0 ) {
+				toast( t( 'error.pdf_block_used', users.join( ', ' ) ), true );
+				return;
+			}
+
+			ask( { title : t( 'pdf.delete' ), text : t( 'pdf.block-delete-text', block.title ), yes : t( 'pdf.delete' ), danger : true } ).then( function( yes ) {
+
+				if( yes !== true || state.view !== mine )
+					return;
+
+				call( 'pdf/blocks/delete', { key : block.key }, 'pdf.error-delete' ).then( function( answer ) {
+					if( answer.ok === true && state.view === mine ) {
+						form.dirty = false;
+						toast( t( 'pdf.deleted' ) );
+						wn.location.hash = '#pdf-bausteine';
+					}
+				} );
+			} );
+		};
+
+		const submit = function( event ) {
+
+			event.preventDefault();
+			save.disabled = true;
+
+			const key = form.controls.key.value;
+
+			api( 'pdf/blocks/save', { key : key, isNew : isNew, title : form.controls.title.value, html : area.value } ).then( function( answer ) {
+
+				save.disabled = false;
+
+				if( state.view !== mine )
+					return;
+
+				if( answer.ok !== true ) {
+					refuseAt( form, answer, 'pdf.error-save' );
+					return;
+				}
+
+				form.dirty = false;
+				toast( t( 'pdf.saved' ) );
+
+				// The answer is the library again: the block as the store keeps it - its HTML held to the list of the feature - is in it
+				const kept = answer.body.blocks.find( function( one ) { return one.key === key } );
+
+				if( isNew === true )
+					wn.location.hash = '#pdf-baustein-'+ key;
+				else if( kept !== undefined )
+					area.value = kept.html;
+			} );
+		};
+
+		reveal();
+
+		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#pdf-bausteine', t( 'pdf.blocks-title' ) ), ' › ', isNew === true ? t( 'pdf.new-block' ) : block.title ) );
+		state.main.appendChild( el( 'form', { id: 'block-form', novalidate: 'novalidate', on: { submit: submit } },
+			head( isNew === true ? t( 'pdf.new-block' ) : block.title, el( 'span', { class: 'grow' } ),
+				isNew === true ? null : menu( { label : '⋯', aria : t( 'pdf.more' ), items : [ { label : t( 'pdf.delete' ), danger : true, run : remove } ] } ), save ),
+			el( 'div', { class: 'card pad' }, rows,
+				el( 'div', { class: 'field' }, el( 'span', { text: t( 'pdf.html' ) } ), withPlaceholders( area, false, function() { form.dirty = true }, el( 'span', { class: 'state-note', text: t( 'pdf.html-note' ) } ) ), areaNote ),
+				isNew === true ? null : el( 'p', { class: 'state-note', id: 'block-used', text: users.length === 0 ? t( 'pdf.block-unused' ) : t( 'pdf.block-used-by', users.join( ', ' ) ) } ) ) ) );
+	};
+
+	// --- Layout ------------------------------------------------------------------------------------------------------
+
+	/**
+	 *	@param		{string}	text
+	 *
+	 *	@return		{number|string}						A whole number where the text is one; else the text, which the server refuses
+	 */
+	const wholeNumber = function( text ) {
+		return /^\d{1,6}$/.test( text.trim() ) === true ? Number( text.trim() ) : text;
+	};
+
+	/**
+	 *	The layout the way the server takes it: what a save posts of the fields that are on the screen
+	 *
+	 *	@param		{Object}	layout					The layout as the server has it
+	 *
+	 *	@return		{Object}
+	 */
+	const layoutPost = function( layout ) {
+		return { format : layout.format, margins : layout.margins.slice(), font : layout.font, size : layout.size, header : layout.header, footer : layout.footer };
+	};
+
+	const pdfLayout = function( where, mine ) {
+
+		if( pdfAllowed() === false )
+			return;
+
+		pdfRead( [ [ 'pdf/layout/get' ] ], mine, function( body ) { drawPdfLayout( body ) } );
+	};
+
+	/**
+	 *	The card of a picture of the layout (the logo, the owner's signature): the picture, what it is for, the upload and the removal. The answer of
+	 *	either is the layout again, which draws the card again
+	 *
+	 *	@param		{string}	kind						logo or signature
+	 *	@param		{Object}	view						The answer of pdf/layout/get (the current one in .now)
+	 *
+	 *	@return		{Object}
+	 */
+	const pictureCard = function( kind, view ) {
+
+		const mine = state.view;
+		const stored = view.now.layout[kind];
+		const shown = view.now.images[kind];
+		const said = el( 'p', { class: 'state-note bad', role: 'alert' } );
+		const take = function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answer.ok !== true ) {
+				said.textContent = errorText( answer, 'pdf.error-image' );
+				return;
+			}
+
+			view.now = answer.body;
+			toast( t( 'pdf.saved' ) );
+			card.replaceWith( card = pictureCard( kind, view ) );
+		};
+
+		const file = el( 'input', { type: 'file', id: 'file-'+ kind, class: 'file', accept: 'image/png,image/jpeg', 'aria-label': t( 'pdf.upload-'+ kind ), on: { change: function( event ) {
+
+			const chosen = event.target.files !== undefined && event.target.files !== null ? event.target.files[0] : undefined;
+
+			if( chosen === undefined )
+				return;
+
+			said.textContent = '';
+			upload( 'pdf/layout/image', { kind : kind }, chosen ).then( function( answer ) {
+				if( answer.ok !== true )
+					failed( answer, 'pdf.error-image' );
+
+				take( answer );
+			} );
+		} } } );
+
+		const drop = function() {
+			ask( { title : t( 'pdf.delete' ), text : t( 'pdf.picture-delete' ), yes : t( 'pdf.delete' ), danger : true } ).then( function( yes ) {
+
+				if( yes !== true || state.view !== mine )
+					return;
+
+				call( 'pdf/layout/image/delete', { kind : kind }, 'pdf.error-image' ).then( take );
+			} );
+		};
+
+		let card = el( 'div', { class: 'card pad', id: 'pic-'+ kind }, el( 'h3', { text: t( 'pdf.'+ kind ) } ),
+			stored === '' ? el( 'p', { class: 'state-note', text: t( 'pdf.picture-none' ) } )
+				: ( shown === '' ? el( 'p', { class: 'state-note', text: t( 'pdf.picture-large', stored ) } ) : el( 'div', { class: 'pic' }, el( 'img', { src: shown, alt: t( 'pdf.'+ kind ) } ) ) ),
+			el( 'p', { class: 'state-note', text: t( 'pdf.picture-hint-'+ kind ) } ),
+			el( 'div', { class: 'actions' }, el( 'label', { class: 'btn sm', for: 'file-'+ kind }, stored === '' ? t( 'pdf.upload' ) : t( 'pdf.replace' ) ), file,
+				stored === '' ? null : el( 'button', { type: 'button', class: 'btn sm danger', id: 'drop-'+ kind, text: t( 'pdf.delete' ), on: { click: drop } } ) ),
+			said );
+
+		return card;
+	};
+
+	/**
+	 *	The screen Layout: the paper and the font, the margins, the header and the footer, the two pictures, and a preview of a page
+	 *
+	 *	@param		{Object}	body						The answer of pdf/layout/get
+	 *
+	 *	@return		{void}
+	 */
+	const drawPdfLayout = function( body ) {
+
+		const mine = state.view;
+		const layout = body.layout;
+		const form = formOf();
+		const view = { now : body };
+		const margins = layout.margins.map( function( mm, at ) {
+			return el( 'input', { type: 'text', inputmode: 'numeric', value: String( mm ), maxlength: '3', autocomplete: 'off', class: 'mm', 'aria-label': t( 'pdf.margin-'+ [ 'top', 'right', 'bottom', 'left' ][at] ), dataset: { margin: at } } );
+		} );
+		const marginBox = el( 'div', { id: 'f-margins', class: 'pair' }, margins, el( 'span', { class: 'state-note', text: t( 'pdf.margins-hint' ) } ) );
+		const header = el( 'textarea', { id: 'f-header', class: 'code', rows: 5, spellcheck: 'false', maxlength: String( body.ranges.band ), value: layout.header } );
+		const footer = el( 'textarea', { id: 'f-footer', class: 'code', rows: 5, spellcheck: 'false', maxlength: String( body.ranges.band ), value: layout.footer } );
+
+		margins.forEach( function( input ) { input.addEventListener( 'input', function() { form.dirty = true } ) } );
+		marginBox.focus = function() { margins[0].focus() };
+
+		const fields = formList( [
+			{ name : 'format', label : t( 'pdf.paper' ), control : el( 'select', { id: 'f-format', value: layout.format }, body.papers.map( function( paper ) { return el( 'option', { value: paper, text: t( 'pdf.paper-'+ paper ) } ) } ) ) },
+			{ name : 'font', label : t( 'pdf.font' ), control : el( 'select', { id: 'f-font', value: layout.font }, body.fonts.map( function( font ) { return el( 'option', { value: font, text: t( 'pdf.font-'+ font ) } ) } ) ) },
+			{ name : 'size', label : t( 'pdf.size' ), control : el( 'input', { id: 'f-size', type: 'text', inputmode: 'numeric', value: String( layout.size ), maxlength: '3', autocomplete: 'off', class: 'short' } ), hint : t( 'pdf.size-hint', body.ranges.size[0], body.ranges.size[1] ) },
+			{ name : 'margins', label : t( 'pdf.margins' ), control : marginBox },
+		], form );
+
+		const band = function( name, control, label ) {
+
+			const said = el( 'span', { class: 'state-note bad', role: 'alert' } );
+
+			form.controls[name] = control;
+			form.notes[name] = said;
+			control.addEventListener( 'input', function() {
+				control.classList.remove( 'err' );
+				said.textContent = '';
+				form.dirty = true;
+			} );
+
+			return el( 'div', { class: 'card pad', id: 'band-'+ name }, el( 'h3', { text: label } ), withPlaceholders( control, true, function() { form.dirty = true }, el( 'span', { class: 'state-note', text: t( 'pdf.band-note' ) } ) ), said );
+		};
+
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'layout-save', text: t( 'pdf.save' ) } );
+		const preview = previewLink( 'layout-preview' );
+
+		const submit = function( event ) {
+
+			event.preventDefault();
+			save.disabled = true;
+
+			const data = { format : form.controls.format.value, font : form.controls.font.value, size : wholeNumber( form.controls.size.value ), margins : margins.map( function( input ) { return wholeNumber( input.value ) } ), header : header.value, footer : footer.value };
+
+			api( 'pdf/layout/save', data ).then( function( answer ) {
+
+				save.disabled = false;
+
+				if( state.view !== mine )
+					return;
+
+				if( answer.ok !== true ) {
+					refuseAt( form, answer, 'pdf.error-save' );
+					return;
+				}
+
+				form.dirty = false;
+				view.now = answer.body;
+				toast( t( 'pdf.saved' ) );
+			} );
+		};
+
+		reveal();
+
+		state.main.appendChild( el( 'form', { id: 'layout-form', novalidate: 'novalidate', on: { submit: submit } },
+			head( t( 'pdf.layout-title' ), el( 'span', { class: 'sub', text: t( 'pdf.layout-sub' ) } ), el( 'span', { class: 'grow' } ), preview, save ),
+			pdfTabs( 'layout' ),
+			el( 'div', { class: 'stack' },
+				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'pdf.paper-font' ) } ), fields ),
+				band( 'header', header, t( 'pdf.header' ) ),
+				band( 'footer', footer, t( 'pdf.footer' ) ),
+				el( 'div', { class: 'cols' }, pictureCard( 'logo', view ), pictureCard( 'signature', view ) ),
+				el( 'p', { class: 'state-note', text: t( 'pdf.layout-note' ) } ) ) ) );
+	};
+
+	// --- Design ------------------------------------------------------------------------------------------------------
+
+	/**
+	 *	Select a line of a text in its field, so that the person lands where a refusal says
+	 *
+	 *	@param		{Object}	area
+	 *	@param		{number}	line						From 1
+	 *
+	 *	@return		{void}
+	 */
+	const selectLine = function( area, line ) {
+
+		const lines = area.value.split( '\n' );
+
+		if( line < 1 || line > lines.length )
+			return;
+
+		const from = lines.slice( 0, line - 1 ).reduce( function( sum, one ) { return sum+ one.length+ 1 }, 0 );
+
+		area.focus();
+		area.selectionStart = from;
+		area.selectionEnd = from+ lines[line - 1].length;
+	};
+
+	const pdfDesign = function( where, mine ) {
+
+		if( pdfAllowed() === false )
+			return;
+
+		pdfRead( [ [ 'pdf/layout/get' ] ], mine, function( body ) { drawPdfDesign( body ) } );
+	};
+
+	/**
+	 *	The screen Design: the rules of the feature as they are, read only, and the owner's rules over them with the refusal that a text which is no
+	 *	sheet gets - the line, and the sentence of the panel - and a preview of the design as it is saved
+	 *
+	 *	@param		{Object}	body						The answer of pdf/layout/get
+	 *
+	 *	@return		{void}
+	 */
+	const drawPdfDesign = function( body ) {
+
+		const mine = state.view;
+		const form = formOf();
+		const area = el( 'textarea', { id: 'f-design', class: 'sheet', rows: 12, spellcheck: 'false', maxlength: String( body.ranges.design ), placeholder: t( 'pdf.design-placeholder' ), 'aria-label': t( 'pdf.design-own' ), value: body.layout.design } );
+		const said = el( 'p', { class: 'state-note bad', id: 'design-refusal', role: 'alert' } );
+		const stored = el( 'p', { class: 'note bad', id: 'design-stored', role: 'alert', hidden: body.refusal === null || body.refusal === undefined, text: body.refusal === null || body.refusal === undefined ? '' : t( 'pdf.design-stored', errorText( { status : 400, body : body.refusal } ) ) } );
+
+		form.controls.design = area;
+		form.notes.design = said;
+		area.addEventListener( 'input', function() {
+			area.classList.remove( 'err' );
+			said.textContent = '';
+			form.dirty = true;
+		} );
+
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'design-save', text: t( 'pdf.save' ) } );
+		const preview = previewLink( 'design-preview' );
+
+		const submit = function( event ) {
+
+			event.preventDefault();
+			save.disabled = true;
+
+			api( 'pdf/layout/save', Object.assign( layoutPost( body.layout ), { design : area.value } ) ).then( function( answer ) {
+
+				save.disabled = false;
+
+				if( state.view !== mine )
+					return;
+
+				if( answer.ok !== true ) {
+
+					const sentence = refuseAt( form, answer, 'pdf.error-save' );
+					const params = answer.body !== null && typeof answer.body === 'object' && Array.isArray( answer.body.params ) === true ? answer.body.params : [];
+
+					// A refusal of the design names a line: it is selected
+					if( answer.body !== null && typeof answer.body === 'object' && answer.body.field === 'design' && /^pdf_design_/.test( String( answer.body.code ) ) === true && Number.isInteger( Number( params[0] ) ) === true ) {
+						said.textContent = sentence;
+						selectLine( area, Number( params[0] ) );
+					}
+
+					return;
+				}
+
+				form.dirty = false;
+				body = answer.body;
+				stored.hidden = true;
+				stored.textContent = '';
+				toast( t( 'pdf.saved' ) );
+			} );
+		};
+
+		reveal();
+
+		state.main.appendChild( el( 'form', { id: 'design-form', novalidate: 'novalidate', on: { submit: submit } },
+			head( t( 'pdf.design-title' ), el( 'span', { class: 'sub', text: t( 'pdf.design-sub' ) } ), el( 'span', { class: 'grow' } ), preview, save ),
+			pdfTabs( 'design' ),
+			stored,
+			el( 'div', { class: 'cols' },
+				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'pdf.design-sheet' ) } ), el( 'pre', { class: 'sheet ro', id: 'design-sheet', tabIndex: 0, text: body.sheet } ), el( 'p', { class: 'state-note', text: t( 'pdf.design-sheet-note' ) } ) ),
+				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'pdf.design-own' ) } ), area, said, el( 'p', { class: 'state-note', text: t( 'pdf.design-own-note' ) } ) ) ) ) );
 	};
 
 
@@ -3646,14 +4910,46 @@
 		if( text === 'einstellungen' )
 			return { screen : 'einstellungen' };
 
+		if( text === 'pdf' )
+			return { screen : 'pdfvorlagen' };
+
+		if( text === 'pdf-bausteine' )
+			return { screen : 'pdfbausteine' };
+
+		if( text === 'pdf-layout' )
+			return { screen : 'pdflayout' };
+
+		if( text === 'pdf-design' )
+			return { screen : 'pdfdesign' };
+
+		if( text === 'pdf-neuer-baustein' )
+			return { screen : 'pdfbaustein' };
+
+		found = /^pdf-vorlage-([a-z][a-z0-9-]{1,39})$/.exec( text );
+
+		if( found !== null )
+			return { screen : 'pdfvorlage', key : found[1] };
+
+		found = /^pdf-neue-vorlage-([a-z][a-z0-9-]{1,39})$/.exec( text );
+
+		if( found !== null )
+			return { screen : 'pdfvorlage', tag : found[1] };
+
+		found = /^pdf-baustein-([a-z][a-z0-9-]{1,39})$/.exec( text );
+
+		if( found !== null )
+			return { screen : 'pdfbaustein', key : found[1] };
+
 		if( text === 'einrichtung' )
 			return { screen : 'einrichtung' };
 
 		return { screen : 'uebersicht' };
 	};
 
-	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, positionen : positionen, einstellungen : einstellungen, einrichtung : einrichtung };
-	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', positionen : 'positionen', einstellungen : 'einstellungen', einrichtung : '' };
+	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, positionen : positionen, einstellungen : einstellungen, einrichtung : einrichtung,
+		pdfvorlagen : pdfVorlagen, pdfvorlage : pdfVorlage, pdfbausteine : pdfBausteine, pdfbaustein : pdfBaustein, pdflayout : pdfLayout, pdfdesign : pdfDesign };
+	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', positionen : 'positionen', einstellungen : 'einstellungen', einrichtung : '',
+		pdfvorlagen : 'pdf', pdfvorlage : 'pdf', pdfbausteine : 'pdf', pdfbaustein : 'pdf', pdflayout : 'pdf', pdfdesign : 'pdf' };
 
 	const route = function() {
 
@@ -3723,6 +5019,8 @@
 		state.base = data.base;
 		state.csrf = data.csrf;
 		state.perm = data.perm;
+		state.perms = Object.assign( { crm : true, pdf : false }, data.perms );
+		state.pdfAvailable = data.pdf_available !== false;
 		state.user = data.user.name;
 		state.texts = data.texts;
 		state.links = data.links;
@@ -3731,6 +5029,12 @@
 		state.dialogs = dc.getElementById( 'dialogs' );
 		state.count = dc.getElementById( 'n-belege' );
 		state.clientCount = dc.getElementById( 'n-kunden' ) ?? null;
+
+		// The entry PDF-Vorlagen is in the rail for an account with the permission of the Pdf panel only
+		const entry = dc.getElementById( 'nav-pdf' );
+
+		if( entry !== null && entry !== undefined )
+			entry.hidden = state.perms.pdf !== true;
 
 		wn.addEventListener( 'hashchange', route );
 
@@ -3795,7 +5099,8 @@
 		state : state,
 		el : el,
 		t : t,
-		model : { docName : docName, visible : visible, visibleClients : visibleClients, clientTitle : clientTitle, ratesText : ratesText, chips : chips, draftOf : draftOf, draftNew : draftNew, payloadOf : payloadOf, totalsOf : totalsOf, ready : ready, lineOf : lineOf, primaryOf : primaryOf, tabsOf : tabsOf, errorText : errorText },
+		model : { docName : docName, visible : visible, visibleClients : visibleClients, clientTitle : clientTitle, ratesText : ratesText, chips : chips, draftOf : draftOf, draftNew : draftNew, payloadOf : payloadOf, totalsOf : totalsOf, ready : ready, lineOf : lineOf, primaryOf : primaryOf, tabsOf : tabsOf, errorText : errorText,
+			templateKey : templateKey, blockDraft : blockDraft, blockPayload : blockPayload, millimetres : millimetres, tokenGroups : tokenGroups, insertAt : insertAt },
 	};
 
 	if( dc.readyState === 'loading' )

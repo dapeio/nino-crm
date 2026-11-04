@@ -21,6 +21,10 @@ class Settings {
 		'number_offer'   => 'A-{YYYY}-{NNNN}',
 		'number_invoice' => 'R-{YYYY}-{NNNN}',
 		'number_credit'  => 'G-{YYYY}-{NNNN}',
+		'tax_id'         => '',
+		'bank_name'      => '',
+		'iban'           => '',
+		'bic'            => '',
 	];
 
 	public const array VAT_MODES = [ 'small_business', 'regular' ];
@@ -32,6 +36,8 @@ class Settings {
 	public const int MAX_RATE = 10000;
 	public const int MAX_FORMAT = 40;
 	public const int MAX_WIDTH = 9;
+	public const int MAX_TAX = 40;
+	public const int MAX_BANK = 80;
 
 	/**
 	 *	All settings, a key for every default
@@ -187,9 +193,57 @@ class Settings {
 
 			case 'currency':
 				return $value !== '' && mb_strlen( $value, 'UTF-8' ) <= 5 && preg_match( '/^[\p{L}\p{Sc}.]+$/Du', $value ) === 1 ? $value : [ 'value:'. $key ];
+
+			// The particulars of an invoice: each may stay empty, and what is written is a plausible one
+			case 'tax_id':
+				return mb_strlen( $value, 'UTF-8' ) <= self::MAX_TAX && preg_match( '/^[\p{L}\p{N} .\/-]*$/Du', $value ) === 1 ? $value : [ 'value:'. $key ];
+
+			case 'bank_name':
+				return mb_strlen( $value, 'UTF-8' ) <= self::MAX_BANK && preg_match( '/^[^\p{C}]*$/Du', $value ) === 1 ? $value : [ 'value:'. $key ];
+
+			case 'iban':
+				$iban = self::iban( $value );
+
+				return $iban === null ? [ 'value:'. $key ] : $iban;
+
+			case 'bic':
+				$bic = strtoupper( (string) preg_replace( '/\s+/', '', $value ) );
+
+				return $bic === '' || preg_match( '/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?$/D', $bic ) === 1 ? $bic : [ 'value:'. $key ];
 		}
 
 		return self::validFormat( $value ) === true ? $value : [ 'format:'. $key ];
+	}
+
+	/**
+	 *	An IBAN as it is written on an invoice: capitals in groups of four. The check is the one every bank makes - the country and the check
+	 *	digits, 15 to 34 characters, and the remainder 1 of the number the letters make, divided by 97 - not a list of the countries
+	 *
+	 *	@param		string		$text					As typed: blanks anywhere
+	 *
+	 *	@return 	string|null								'' for nothing; null for a text that is no IBAN
+	 */
+	public static function iban( string $text ): ?string {
+
+		$iban = strtoupper( (string) preg_replace( '/\s+/', '', $text ) );
+
+		if( $iban === '' )
+			return '';
+
+		if( preg_match( '/^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/D', $iban ) !== 1 )
+			return null;
+
+		$digits = '';
+
+		foreach( str_split( substr( $iban, 4 ). substr( $iban, 0, 4 ) ) as $char )
+			$digits .= ctype_digit( $char ) === true ? $char : (string) ( ord( $char ) - 55 );
+
+		$rest = 0;
+
+		foreach( str_split( $digits ) as $digit )
+			$rest = ( $rest * 10 + (int) $digit ) % 97;
+
+		return $rest === 1 ? trim( chunk_split( $iban, 4, ' ' ) ) : null;
 	}
 
 	/**

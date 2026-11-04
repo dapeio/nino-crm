@@ -81,7 +81,7 @@ check( 'a second boot runs no migration', Db::migrated() === 0 );
 
 $settings = Settings::all( $appData );
 check( 'the settings are written where they were missing: the defaults of the plan', $settings === [ 'vat_mode' => 'small_business', 'vat_rates' => '1900,700,0', 'payment_days' => '14', 'offer_days' => '30', 'currency' => '€',
-	'number_offer' => 'A-{YYYY}-{NNNN}', 'number_invoice' => 'R-{YYYY}-{NNNN}', 'number_credit' => 'G-{YYYY}-{NNNN}' ]);
+	'number_offer' => 'A-{YYYY}-{NNNN}', 'number_invoice' => 'R-{YYYY}-{NNNN}', 'number_credit' => 'G-{YYYY}-{NNNN}', 'tax_id' => '', 'bank_name' => '', 'iban' => '', 'bic' => '' ]);
 check( 'the columns of documents are the ones of the plan', array_column( Db::rows( $appData, 'PRAGMA table_info( documents )' ), 'name' ) === [ 'id', 'category', 'client_id', 'parent_id', 'number', 'state', 'date', 'due_date', 'valid_until', 'period_from', 'period_to',
 	'vat_mode', 'reverse_charge', 'net', 'vat', 'gross', 'template_key', 'inputs_json', 'client_json', 'notes', 'pdf_path', 'pdf_sha256', 'finalised', 'sent_at', 'paid_at', 'created', 'updated',
 	'title', 'released', 'released_at', 'sign_id', 'sign_state', 'signed_at' ] );
@@ -267,11 +267,12 @@ $ignored = ninoWarnings();
 
 $panel = static function( array &$appData, array &$request ): void {
 
-	// The API of the clients and the documents is reached the way the surface's endpoint reaches it, by the table; the actions of the features' panels (pdf/...) go through the workbench
+	// The API of the clients and the documents is reached the way the surface's endpoint reaches it, by the table; the actions of the features' panels (pdf/...) go through the workbench,
+	// which does not know the documents: it deletes a template that a document names, which the surface's endpoint does not
 	$table = \Crm\Surface::actions();
 	$action = (string) ( $_POST['action'] ?? '' );
 
-	if( isset( $table[$action] ) === true ) {
+	if( isset( $table[$action] ) === true && str_starts_with( $action, 'pdf/' ) === false ) {
 		[ $class, $method ] = $table[$action];
 		$class::{$method}( $appData, $request );
 		return;
@@ -745,10 +746,27 @@ check( 'a document with no period says that the service date is the date of the 
 $offerTokens = Render::data( $appData, $offerFinal, $offerFinal['lines'], $offerFinal['client_frozen'] )['tokens'];
 check( 'an offer has its own number, day, validity and sum under /offer and no due date: an invoice has no validity', $offerTokens['/document/title'] === 'Angebot' && $offerTokens['/offer/valid'] === '09.04.2026' && $offerTokens['/offer/number'] === $offerTokens['/document/number'] && $offerTokens['/offer/gross'] === $offerTokens['/document/gross']
 	&& $offerTokens['/offer/date'] === $offerTokens['/document/date'] && isset( $offerTokens['/invoice/due'] ) === false && isset( $tokens['/offer/valid'] ) === false );
-check( 'the vocabulary is the slash form and nothing else: an invoice has the document, invoice, customer and site keys - and none of the dotted names of before', array_keys( $tokens ) === [ '/site/portal', '/site/login', '/customer/number', '/customer/company', '/customer/name', '/customer/street', '/customer/zip', '/customer/city', '/customer/country', '/customer/email', '/customer/vat',
+check( 'the vocabulary is the slash form and nothing else: an invoice has the document, invoice, customer and site keys - and none of the dotted names of before', array_keys( $tokens ) === [ '/site/portal', '/site/login', '/site/tax', '/site/bank', '/site/iban', '/site/bic', '/customer/number', '/customer/company', '/customer/name', '/customer/street', '/customer/zip', '/customer/city', '/customer/country', '/customer/email', '/customer/vat',
 	'/document/title', '/document/number', '/document/date', '/document/parent', '/document/vatnote', '/document/net', '/document/vat', '/document/gross', '/invoice/due', '/invoice/period' ] );
 check( '...and the old dotted names fill nothing any more, while the slash keys fill what they stand for', \Nino\Modules\Pdf\Layout\Tokens::fill( $appData, '[[document.number]]|[[client.company]]|[[site.portal]]|[[/document/number]]|[[/customer/company]]', $tokens ) === '|||'. $secondInvoice['number']. '|Studio Nord GmbH' );
 check( 'the inputs are the document\'s own', $data['inputs'] === $secondInvoice['inputs'] );
+
+// The particulars of the owner's invoices: the settings tax_id, bank_name, iban, bic, and the tokens a template reads them as
+check( 'the four particulars are tokens of every document, empty where the settings are not set: /site/tax, /site/bank, /site/iban, /site/bic', array_intersect_key( $tokens, array_flip( [ '/site/tax', '/site/bank', '/site/iban', '/site/bic' ] ) ) === [ '/site/tax' => '', '/site/bank' => '', '/site/iban' => '', '/site/bic' => '' ]
+	&& array_intersect_key( $offerTokens, array_flip( [ '/site/tax', '/site/iban' ] ) ) === [ '/site/tax' => '', '/site/iban' => '' ] );
+check( '...the settings are keys with an empty default: all() has them, get() reads them, and a key that is none is still refused', Settings::get( $appData, 'iban' ) === '' && array_slice( array_keys( Settings::all( $appData ) ), -4 ) === [ 'tax_id', 'bank_name', 'iban', 'bic' ] && Settings::set( $appData, 'swift', 'x' ) === 'unknown' );
+$particulars = [ 'tax_id' => '12/345/67890', 'bank_name' => 'Sparkasse Hamburg', 'iban' => 'de89 3704 0044 0532 0130 00', 'bic' => 'cobadeffxxx' ];
+check( '...they are written where they pass their rule: an IBAN in capitals in groups of four, a BIC in capitals; set() answers true', array_filter( $particulars, static fn( string $value, string $key ): bool => Settings::set( $appData, $key, $value ) !== true, ARRAY_FILTER_USE_BOTH ) === []
+	&& Settings::get( $appData, 'iban' ) === 'DE89 3704 0044 0532 0130 00' && Settings::get( $appData, 'bic' ) === 'COBADEFFXXX' && Settings::get( $appData, 'tax_id' ) === '12/345/67890' && Settings::get( $appData, 'bank_name' ) === 'Sparkasse Hamburg' );
+$wrong = [ 'an IBAN with a wrong check digit' => [ 'iban', 'DE89 3704 0044 0532 0130 01' ], 'an IBAN that is too short' => [ 'iban', 'DE89 3704' ], 'an IBAN with a symbol' => [ 'iban', 'DE89 3704 0044 0532 0130 0!' ], 'a BIC of nine characters' => [ 'bic', 'COBADEFFX' ], 'a BIC with a digit in its bank' => [ 'bic', 'C0BADEFF' ],
+	'a tax number with a tag' => [ 'tax_id', '12<b>' ], 'a tax number past forty characters' => [ 'tax_id', str_repeat( '1', 41 ) ], 'a bank with a line break' => [ 'bank_name', "Bank\nName" ], 'a bank past eighty characters' => [ 'bank_name', str_repeat( 'B', 81 ) ], 'an array' => [ 'iban', [ 'DE89' ] ] ];
+check( '...and refused where they do not: '. implode( ', ', array_keys( $wrong ) ), array_filter( $wrong, static fn( array $pair ): bool => Settings::clean( $pair[0], $pair[1] ) !== [ 'value:'. $pair[0] ] ) === [] && Settings::get( $appData, 'iban' ) === 'DE89 3704 0044 0532 0130 00' );
+check( '...each may be emptied again: nothing is a value too', Settings::clean( 'iban', '' ) === '' && Settings::clean( 'bic', '  ' ) === '' && Settings::clean( 'tax_id', '' ) === '' && Settings::clean( 'bank_name', '' ) === '' && Settings::iban( '' ) === '' && Settings::iban( 'GB82 WEST 1234 5698 7654 32' ) === 'GB82 WEST 1234 5698 7654 32' );
+$again = Render::data( $appData, $secondInvoice, $secondInvoice['lines'], $secondInvoice['client_frozen'] )['tokens'];
+check( 'a document hands the settings to its template under /site/*: the footer of a layout reads them as it reads the document\'s numbers', $again['/site/tax'] === '12/345/67890' && $again['/site/bank'] === 'Sparkasse Hamburg' && $again['/site/iban'] === 'DE89 3704 0044 0532 0130 00' && $again['/site/bic'] === 'COBADEFFXXX'
+	&& \Nino\Modules\Pdf\Layout\Tokens::fill( $appData, '<p>Steuernummer [[/site/tax]] · IBAN [[/site/iban]]</p>', $again, false, true ) === '<p>Steuernummer 12/345/67890 · IBAN DE89 3704 0044 0532 0130 00</p>' );
+foreach( array_keys( $particulars ) as $key )
+	Settings::set( $appData, $key, '' );
 
 check( 'the address block: company, name, street, zip and city - and no country for DE', $data['slots']['address'] === '<p>Studio Nord GmbH<br>Anna Nord<br>Hafenstr. 1<br>20095 Hamburg</p>' );
 check( '...a client abroad has the country on a line of its own; without a company the name leads', Render::address( [ 'name' => 'Ben Süd', 'street' => 'Lindenweg 3', 'zip' => '1010', 'city' => 'Wien', 'country' => 'AT' ] ) === '<p>Ben Süd<br>Lindenweg 3<br>1010 Wien<br>'. ( extension_loaded( 'intl' ) === true ? 'Österreich' : 'AT' ). '</p>' && Render::address( [ 'name' => 'X', 'country' => 'DE' ] ) === '<p>X</p>' && Render::country( 'ZZ' ) !== '' );
@@ -1337,6 +1355,10 @@ check( 'a value that is none is 400 crm_documents_setting on its key, and nothin
 check( 'a number format that is none is 400 crm_documents_numberformat on its key, and nothing of the request is written', ( $r = $post( 'crm-documents/settings-save', [ 'payment_days' => '30', 'number_credit' => 'G/{NNNN}' ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_numberformat' && $r[1]['field'] === 'number_credit' && Settings::all( $appData ) === $kept );
 check( 'rates in percent are written by settings-save as hundredths: 19; 7,5 is 1900,750', ( $r = $post( 'crm-documents/settings-save', [ 'vat_rates_percent' => '19; 7,5' ] ) )[0] === 200 && $r[1]['settings']['vat_rates'] === '1900,750' && Settings::get( $appData, 'vat_rates' ) === '1900,750' );
 check( '...19,7,0 is refused as a whole with the code of a setting on the field of the percentages, nothing is written - and nothing of the same request', ( $r = $post( 'crm-documents/settings-save', [ 'payment_days' => '30', 'vat_rates_percent' => '19,7,0' ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_setting' && $r[1]['field'] === 'vat_rates_percent' && Settings::get( $appData, 'vat_rates' ) === '1900,750' && Settings::get( $appData, 'payment_days' ) === $kept['payment_days'] );
+check( 'the particulars are saved with the others, and a wrong one is refused as a whole on its field with a sentence of its own - nothing of the same request is written', ( $r = $post( 'crm-documents/settings-save', [ 'tax_id' => 'DE123456789', 'bank_name' => 'GLS Bank', 'iban' => 'DE89370400440532013000', 'bic' => 'GENODEM1GLS' ] ) )[0] === 200
+	&& $r[1]['settings']['iban'] === 'DE89 3704 0044 0532 0130 00' && $r[1]['settings']['tax_id'] === 'DE123456789' && ( $bad = $post( 'crm-documents/settings-save', [ 'payment_days' => '99', 'bank_name' => 'Nope', 'iban' => 'DE00 0000' ] ) )[0] === 400 && $bad[1]['code'] === 'crm_documents_particular_iban'
+	&& $bad[1]['field'] === 'iban' && Settings::get( $appData, 'bank_name' ) === 'GLS Bank' && Settings::get( $appData, 'payment_days' ) === $kept['payment_days'] && ( $bic = $post( 'crm-documents/settings-save', [ 'bic' => 'XX' ] ) )[1]['code'] === 'crm_documents_particular_bic' );
+$post( 'crm-documents/settings-save', [ 'tax_id' => '', 'bank_name' => '', 'iban' => '', 'bic' => '' ] );
 check( '...the sentence of that code names the rule, in both languages', str_contains( $words['documents']['de_DE']['[[/_admin/error/crm_documents_setting]]'], 'Semikolon' ) === true && str_contains( $words['documents']['en_US']['[[/_admin/error/crm_documents_setting]]'], 'semicolon' ) === true );
 $post( 'crm-documents/settings-save', [ 'vat_rates_percent' => '19; 7; 0' ] );
 $post( 'crm-documents/settings-save', [ 'payment_days' => '14', 'vat_mode' => 'small_business', 'currency' => '€', 'number_invoice' => 'R-{YYYY}-{NNNN}', 'vat_rates' => '1900,700,0' ] );

@@ -52,7 +52,7 @@ function words() {
 	while( ( found = re.exec( text ) ) )
 		map[found[1]] = found[2].replace( /\\(['\\])/g, '$1' );
 
-	[ 'app/Crm/Clients/Admin/text/de_DE.php', 'app/Crm/Documents/Admin/text/de_DE.php', 'app/Crm/Crm/Admin/text/de_DE.php' ].forEach( function( file ) {
+	[ 'app/Crm/Clients/Admin/text/de_DE.php', 'app/Crm/Documents/Admin/text/de_DE.php', 'app/Crm/Crm/Admin/text/de_DE.php', 'features/Pdf/text/de_DE.php' ].forEach( function( file ) {
 		const sentences = fills( file );
 		Object.keys( sentences ).forEach( function( key ) {
 
@@ -72,7 +72,7 @@ const texts = words();
 
 // --- fixtures ------------------------------------------------------------------------------------------------------
 
-const settings = { vat_mode : 'regular', vat_rates : '1900,700,0', payment_days : '14', offer_days : '30', currency : '€', rates : [ 1900, 700, 0 ] };
+const settings = { vat_mode : 'regular', vat_rates : '1900,700,0', payment_days : '14', offer_days : '30', currency : '€', tax_id : '', bank_name : '', iban : '', bic : '', rates : [ 1900, 700, 0 ] };
 const smallBusiness = Object.assign( {}, settings, { vat_mode : 'small_business' } );
 
 const client = { company : 'Nordlicht Records GmbH', name : 'Lena Brandt', street : 'Hafenstraße 12', zip : '20457', city : 'Hamburg', country : 'DE', number : 'K-0001', vat_id : 'DE123456789', email : 'lena@nordlicht.example' };
@@ -146,7 +146,7 @@ const summary = { count : 3, gross : 150000, overdue_count : 2, overdue_gross : 
  */
 function world( options ) {
 
-	const opts = Object.assign( { hash : '', answers : {} }, options || {} );
+	const opts = Object.assign( { hash : '', answers : {}, perms : undefined, pdfAvailable : undefined, blocked : false }, options || {} );
 	const calls = [];
 	const timers = [];
 	const hashListeners = [];
@@ -156,16 +156,24 @@ function world( options ) {
 	const opened = [];
 	const storage = {};
 	const reloads = [];
+	const tabs = [];
 
 	const mount = element('div');
 	mount.id = 'root';
 
 	const nav = element('nav');
 	nav.id = 'nav';
-	[ 'uebersicht', 'belege', 'kunden', 'positionen', 'einstellungen' ].forEach( function( key ) {
+	[ 'uebersicht', 'belege', 'kunden', 'positionen', 'pdf', 'einstellungen' ].forEach( function( key ) {
 		const anchor = element('a');
 		anchor.setAttribute( 'data-r', key );
 		anchor.setAttribute( 'href', '#'+ key );
+
+		// The entry PDF-Vorlagen is hidden in the markup; the script shows it for the permission
+		if( key === 'pdf' ) {
+			anchor.id = 'nav-pdf';
+			anchor.hidden = true;
+		}
+
 		nav.appendChild( anchor );
 	} );
 	const main = element('main');
@@ -182,7 +190,7 @@ function world( options ) {
 
 	const block = element('script');
 	block.id = 'crm-data';
-	block.textContent = JSON.stringify( { base : '', csrf : 'token-1', user : { name : 'crm@example.com' }, perm : '/_admin/crm/manage', texts : texts, links : { workbench : '/_admin/', site : '/', items : '/_admin/#elements/positionen', pdf : '/_admin/#pdf', members : '/_admin/#members', users : '/_admin/#users' } } );
+	block.textContent = JSON.stringify( { base : '', csrf : 'token-1', user : { name : 'crm@example.com' }, perm : '/_admin/crm/manage', perms : opts.perms, pdf_available : opts.pdfAvailable, texts : texts, links : { workbench : '/_admin/', site : '/', items : '/_admin/#elements/positionen', pdf : '/_admin/#pdf', members : '/_admin/#members', users : '/_admin/#users' } } );
 	mount.appendChild( block );
 
 	const page = documentOf( mount );
@@ -229,13 +237,21 @@ function world( options ) {
 		setTimeout : function( fn, ms ) { timers.push( { fn : fn, ms : ms } ); return timers.length },
 		clearTimeout : function( id ) { if( id > 0 && timers[id - 1] ) timers[id - 1].cleared = true },
 		sessionStorage : { getItem : function( key ) { return storage[key] ?? null }, setItem : function( key, value ) { storage[key] = value }, removeItem : function( key ) { delete storage[key] } },
-		open : function( url, target, features ) { opened.push( [ url, target, features ] ) },
+		open : function( url, target, features ) { opened.push( [ url, target, features ] ); if( opts.blocked === true ) return null; const tab = { opener : 'window' }; tabs.push( tab ); return tab; },
+		// A picture is posted as a form: the action, the data and the file as its fields
+		FormData : function FormData() {
+			const fields = [];
+			this.fields = fields;
+			this.append = function( name, value ) { fields.push( [ name, value ] ) };
+			this.get = function( name ) { const one = fields.find( function( field ) { return field[0] === name } ); return one === undefined ? null : one[1] };
+		},
 		fetch : function( url, init ) {
 
-			const request = JSON.parse( init.body );
+			const form = init.body instanceof win.FormData;
+			const request = form ? { action : init.body.get( 'action' ), data : JSON.parse( init.body.get( 'data' ) ), file : init.body.get( 'file' ) } : JSON.parse( init.body );
 			const answer = typeof opts.answers[request.action] === 'function' ? opts.answers[request.action]( request.data ) : [ 404, { error : 'no answer in the test for '+ request.action, code : 'action' } ];
 
-			calls.push( { url : url, init : init, action : request.action, data : request.data } );
+			calls.push( { url : url, init : init, action : request.action, data : request.data, file : request.file, form : form } );
 
 			// An answer may be a promise of one, which the test keeps back until it lets it go
 			return Promise.resolve( answer ).then( function( given ) {
@@ -255,7 +271,7 @@ function world( options ) {
 	const app = win.Nino.crm.app;
 
 	return {
-		app : app, win : win, page : page, calls : calls, main : main, toast : toast, dialogRoot : dialogRoot, count : count, clientCount : clientCount, nav : nav, timers : timers, dialogs : dialogs, opened : opened, reloads : reloads, storage : storage, answers : opts.answers,
+		app : app, win : win, page : page, calls : calls, tabs : tabs, main : main, toast : toast, dialogRoot : dialogRoot, count : count, clientCount : clientCount, nav : nav, timers : timers, dialogs : dialogs, opened : opened, reloads : reloads, storage : storage, answers : opts.answers,
 		location : location, documentListeners : documentListeners, windowListeners : windowListeners,
 		boot : function() { app.boot( block ) },
 		last : function( action ) { return calls.filter( function( call ) { return call.action === action } ).pop() },
@@ -2088,7 +2104,7 @@ function press( w, key, target ) {
 	type( efield( es2, 'payment_days' ), '21', false );
 	submit( es2, all( es2.main, '#settings-form' )[0] );
 	await settle();
-	check( 'a save posts crm-documents/settings-save with the eight settings as text - the rates as typed, 19,7,0 too: the server reads them, the screen has no conversion - and a refusal is said beside the field it names, the rates', Object.keys( posted[posted.length - 1] ).sort().join() === 'currency,number_credit,number_invoice,number_offer,offer_days,payment_days,vat_mode,vat_rates_percent'
+	check( 'a save posts crm-documents/settings-save with the twelve settings as text - the rates as typed, 19,7,0 too: the server reads them, the screen has no conversion - and a refusal is said beside the field it names, the rates', Object.keys( posted[posted.length - 1] ).sort().join() === 'bank_name,bic,currency,iban,number_credit,number_invoice,number_offer,offer_days,payment_days,tax_id,vat_mode,vat_rates_percent'
 		&& posted[posted.length - 1].vat_rates_percent === '19,7,0' && posted[posted.length - 1].payment_days === '21' && efield( es2, 'vat_rates_percent' ).classList.contains( 'err' ) === true && efield( es2, 'vat_rates_percent' ).focused === true
 		&& textOf( all( all( es2.main, '#settings-form' )[0], '.state-note' ).find( function( n ) { return textOf( n ).indexOf( 'Der Wert der Einstellung ist nicht gültig' ) === 0 } ) ).indexOf( 'Semikolon' ) !== -1 && efield( es2, 'payment_days' ).value === '21' );
 	type( efield( es2, 'vat_rates_percent' ), '19; 7; 5,5; 0', false );
@@ -2157,7 +2173,7 @@ function press( w, key, target ) {
 
 	const first = await iopen( '' );
 	check( 'the first showing of the page asks for the status before it draws the Übersicht, and a module that is not whole sends it to the Einrichtung: the overview is not asked for', first.sent().join() === 'crm/status' && first.location.hash === '#einrichtung' && first.all( 'crm-documents/overview' ).length === 0 && all( first.main, '#einrichtung-rows' ).length === 1 );
-	check( '...the rail has its five entries and none is marked: the Einrichtung is no entry of it', all( first.nav, '[data-r]' ).length === 5 && all( first.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).length === 0 );
+	check( '...the rail has its six entries (PDF-Vorlagen hidden for an account without the Pdf permission) and none is marked: the Einrichtung is no entry of it', all( first.nav, '[data-r]' ).length === 6 && all( first.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).length === 0 );
 	check( '...a row for each item of the status, its word and its state: done for the module and the data directory, to do for the rest', irows( first ).length === ifresh.length && Array.from( irows( first ) ).map( function( li ) { return li.getAttribute( 'data-key' )+ ':'+ li.getAttribute( 'data-state' ) } ).join() === 'module:ok,data:ok,members:todo,files:todo,review:todo,sign:todo,pdf:todo,events:todo,portal:todo,pdf-templates:todo,home:todo'
 		&& textOf( irows( first )[2] ).indexOf( texts['einrichtung.row-members'] ) === 0 && textOf( irows( first )[2] ).indexOf( texts['status.members-off'] ) !== -1 && textOf( irows( first )[2] ).indexOf( texts['einrichtung.state-todo'] ) !== -1 && textOf( irows( first )[0] ).indexOf( texts['status.allok'] ) === -1 );
 	check( '...what is missing is said in one sentence of the status: the portal names what it lacks, the PDF templates their keys, the start page that it is not the door yet', textOf( irows( first )[8] ).indexOf( texts['status.portal-partial'].replace( '%s', texts['status.lacks-paths']+ ', '+ texts['status.lacks-start'] ) ) !== -1
@@ -2423,6 +2439,471 @@ function press( w, key, target ) {
 	const panelScript = source( 'app/Crm/Crm/Admin/assets/admin.js' );
 	check( 'the script of the panel assigns no markup: innerHTML only to clear, no outerHTML, no insertAdjacentHTML, no document.write; and it asks for nothing but crm/status and crm/setup', panelScript.match( /innerHTML\s*=(?!\s*'';)/g ) === null && /outerHTML|insertAdjacentHTML|document\.write/.test( panelScript ) === false
 		&& [ ...panelScript.matchAll( /call\( '([a-z/-]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( action, index, list ) { return list.indexOf( action ) === index } ).sort().join() === 'setup,status' );
+
+	// === PDF-Vorlagen: the rail, the four screens and the two editors, from fixtures (a block of its own: the names of the fixtures are its)
+	{
+	const pperms = { crm : true, pdf : true };
+	const poffer = { tags : [ 'offer', 'invoice', 'contract' ], library : [ { key : 'zahlung', title : 'Zahlung' }, { key : 'kontakt', title : 'Kontakt' } ], paper : [ 210, 297 ], ranges : { title : 120, html : 20000, label : 120, blocks : 60 } };
+	const ptemplates = [
+		{ key : 'rechnung', name : 'Rechnung', tag : 'invoice', blocks : 6, known : true },
+		{ key : 'angebot', name : 'Angebot', tag : 'offer', blocks : 2, known : true },
+		{ key : 'alt', name : 'Älteres Format', tag : 'legacy', blocks : 1, known : false },
+	];
+	const pcontext = { used : { rechnung : 3 }, changed : { rechnung : '2026-10-05', angebot : '2026-09-01', alt : '2025-01-02' }, blocks : { zahlung : [ 'Rechnung', 'Angebot' ] }, site : [ '/project/company/contact/email', '/project/company/general/name', '/project/company/general/legal' ] };
+	const pblocks = [
+		{ type : 'html', html : '<h1>Rechnung</h1>' }, { type : 'html', block : 'zahlung' }, { type : 'slot', name : 'lines' },
+		{ type : 'input', name : 'hinweis', label : 'Hinweis', multiline : true, required : false },
+		{ type : 'signature', name : 'inhaber', party : 'owner', label : 'Inhaber', page : 'last', x : 20, y : 230.5, w : 70, h : 20, line : true },
+		{ type : 'pagebreak' },
+	];
+	const playout = { format : 'a4', margins : [ 20, 20, 25, 20 ], font : 'helvetica', size : 10, header : '<p>Kopf</p>', footer : '<p>Fuß</p>', design : 'h1 { font-size: 20pt }', logo : 'logo.png', signature : '' };
+	const pimage = 'data:image/png;base64,iVBORw0KGgo=';
+	const playoutBody = function( over ) {
+		return Object.assign( { layout : playout, sheet : 'body { font-size: 10pt }', refusal : null, images : { logo : pimage, signature : '' }, papers : [ 'a4', 'letter' ], fonts : [ 'helvetica', 'times', 'courier' ],
+			ranges : { margin : [ 5, 50 ], size : [ 8, 14 ], band : 4000, design : 8000 } }, over || {} );
+	};
+	const psaves = [];
+
+	const panswers = function( over ) {
+		return Object.assign( {
+			'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+			'pdf/templates/list' : function() { return [ 200, Object.assign( { templates : ptemplates }, poffer ) ] },
+			'pdf/templates/get' : function( data ) { return data.key === 'rechnung' ? [ 200, Object.assign( { key : 'rechnung', template : { name : 'Rechnung', tag : 'invoice', blocks : pblocks } }, poffer ) ] : [ 404, { error : 'x', code : 'pdf_template_missing' } ] },
+			'pdf/templates/save' : function( data ) { psaves.push( data ); return [ 200, Object.assign( { key : data.key, templates : ptemplates }, poffer ) ] },
+			'pdf/blocks/list' : function() { return [ 200, { blocks : [ { key : 'zahlung', title : 'Zahlung', html : '<p>Zahlbar <b>sofort</b>.</p>' }, { key : 'kontakt', title : 'Kontakt', html : '<p>Wir</p>' } ], ranges : { title : 120, html : 20000 } } ] },
+			'pdf/layout/get' : function() { return [ 200, playoutBody() ] },
+			'crm-pdf/context' : function() { return [ 200, pcontext ] },
+		}, over || {} );
+	};
+
+	const popen = async function( hash, over, perms ) {
+		const w = world( { hash : hash, answers : panswers( over ), perms : perms === undefined ? pperms : perms } );
+		w.boot();
+		await settle();
+		return w;
+	};
+
+	const pdfCalls = function( w ) { return w.sent().filter( function( action ) { return /^(pdf|crm-pdf)\//.test( action ) } ) };
+	const itemOf = function( root, label ) { return all( root, '[role="menuitem"]' ).find( function( one ) { return textOf( one ) === label } ) };
+	const menuOf = function( root, label ) { return all( root, '.menu' ).find( function( one ) { return textOf( all( one, 'button' )[0] ) === label } ) };
+	const cards = function( w ) { return all( w.main, '#blocks .block' ) };
+	const fieldOf = function( card, name ) { return all( card, '[data-f="'+ name+ '"]' )[0] };
+	const answerFail = function( status, code, params, field ) { return [ status, { error : 'x', code : code, params : params || [], field : field || '' } ] };
+
+	// --- the rail and the permission
+	const p0 = await popen( '#pdf' );
+	const pNone = await popen( '#einstellungen', {}, null );
+	check( 'the rail shows PDF-Vorlagen for the account that holds the permission of the Pdf panel and keeps it hidden for the one that does not', all( p0.nav, '#nav-pdf' )[0].hidden === false && all( pNone.nav, '#nav-pdf' )[0].hidden === true );
+	check( '...the entry is marked on every screen of PDF-Vorlagen and on none of the others', all( p0.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).map( function( a ) { return a.getAttribute( 'data-r' ) } ).join() === 'pdf'
+		&& [ '#pdf-bausteine', '#pdf-layout', '#pdf-design', '#pdf-vorlage-rechnung', '#pdf-neue-vorlage-offer', '#pdf-baustein-zahlung', '#pdf-neuer-baustein' ].every( function( hash ) { return p0.app.parse( hash ).screen.indexOf( 'pdf' ) === 0 } ) );
+	const pDenied = await popen( '#pdf', {}, { crm : true, pdf : false } );
+	check( 'a deep link without the permission draws the sentence of the screen and asks for nothing of the Pdf panel', pdfCalls( pDenied ).length === 0 && all( pDenied.main, '.note' ).length === 1 && textOf( all( pDenied.main, '.note' )[0] ) === texts['pdf.forbidden'] && all( pDenied.main, 'table' ).length === 0 );
+	const pDeniedEditor = await popen( '#pdf-vorlage-rechnung', {}, { crm : true, pdf : false } );
+	const pDeniedLayout = await popen( '#pdf-layout', {}, { crm : true, pdf : false } );
+	check( '...the editors and the other screens say the same', pdfCalls( pDeniedEditor ).length === 0 && pdfCalls( pDeniedLayout ).length === 0 && textOf( all( pDeniedEditor.main, '.note' )[0] ) === texts['pdf.forbidden'] && textOf( all( pDeniedLayout.main, '.note' )[0] ) === texts['pdf.forbidden'] );
+
+	// --- Vorlagen
+	check( 'Vorlagen asks for the templates of the Pdf panel and for what only the CRM knows, and has the four tabs with the first marked', p0.sent().indexOf( 'pdf/templates/list' ) !== -1 && p0.sent().indexOf( 'crm-pdf/context' ) !== -1
+		&& all( p0.main, '#pdf-tabs a' ).map( textOf ).join( '|' ) === 'Vorlagen|Bausteine|Layout|Design' && all( p0.main, '#pdf-tabs a' ).map( function( a ) { return a.getAttribute( 'href' ) } ).join() === '#pdf,#pdf-bausteine,#pdf-layout,#pdf-design'
+		&& all( p0.main, '#pdf-tabs a' ).map( function( a ) { return a.classList.contains( 'on' ) } ).join() === 'true,false,false,false' );
+	const ptr = function( w ) { return all( all( w.main, '#pdf-templates' )[0], 'tbody' )[0].children };
+	check( '...the table has Name, Art, Geändert and Benutzt von; a row has the name with its key, the word of the tag, the day written and how many documents name it - a dash for none', all( p0.main, '#pdf-templates th' ).map( function( th ) { return textOf( th ).replace( / [↑↓]$/, '' ) } ).join( '|' ) === 'Name|Art|Geändert|Benutzt von'
+		&& Array.from( ptr( p0 ) ).map( function( tr ) { return Array.from( tr.children ).map( textOf ).join( '|' ) } ).join( '\n' ) === 'Älteres Formatalt|legacy Art nicht mehr auf der Liste|02.01.2025|–\nAngebotangebot|Angebot|01.09.2026|–\nRechnungrechnung|Rechnung|05.10.2026|3' );
+	check( '...the head counts the templates and the blocks', textOf( all( p0.main, '.head .sub' )[0] ) === '3 Vorlagen · 2 Bausteine' );
+	type( all( p0.main, '#q' )[0], 'rech', false );
+	check( 'the search narrows the rows by name, key and the word of the tag', ptr( p0 ).length === 1 && textOf( ptr( p0 )[0].children[0] ).indexOf( 'Rechnung' ) === 0 );
+	type( all( p0.main, '#q' )[0], 'Angebot', false );
+	check( '...and says so when nothing is left', ptr( p0 ).length === 1 && ( type( all( p0.main, '#q' )[0], 'xyz', false ), textOf( ptr( p0 )[0] ) === texts['pdf.nomatch'] ) );
+	type( all( p0.main, '#q' )[0], '', false );
+	click( p0, all( p0.main, '[data-sort="used"]' )[0] );
+	const usedFirst = Array.from( ptr( p0 ) ).map( function( tr ) { return tr.dataset.key } ).join();
+	click( p0, all( p0.main, '[data-sort="used"]' )[0] );
+	check( 'a click on a heading sorts by it - the count of documents, most first, then the other way', usedFirst === 'rechnung,alt,angebot' && Array.from( ptr( p0 ) ).map( function( tr ) { return tr.dataset.key } ).join() === 'alt,angebot,rechnung' );
+	click( p0, all( p0.main, '[data-sort="tag"]' )[0] );
+	check( '...by the word of the tag too', Array.from( ptr( p0 ) ).map( function( tr ) { return tr.dataset.key } ).join() === 'angebot,alt,rechnung' );
+	const newMenu1 = all( p0.main, '.head .menu' )[0];
+	check( '"Neue Vorlage" is a menu of the tags the Pdf settings know, in their words', textOf( all( newMenu1, 'button' )[0] ) === 'Neue Vorlage ▾' && all( newMenu1, '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'Angebot|Rechnung|Vertrag' );
+	click( p0, all( newMenu1, 'button' )[0] );
+	click( p0, itemOf( newMenu1, 'Rechnung' ) );
+	check( '...a tag opens the editor of a new template of it', p0.location.hash === '#pdf-neue-vorlage-invoice' );
+	p0.location.hash = '#pdf';
+	await settle();
+	const firstKey = ptr( p0 )[0].dataset.key;
+	click( p0, ptr( p0 )[0] );
+	check( 'a click on a row opens the editor of the template', p0.location.hash === '#pdf-vorlage-'+ firstKey );
+
+	// --- the editor of a template
+	const pe = await popen( '#pdf-vorlage-rechnung' );
+	check( 'the editor asks for the template and for the context, shows the name and the tag as fields of the head, and the blocks as cards in their order with the kind of each', pe.last( 'pdf/templates/get' ).data.key === 'rechnung' && all( pe.main, '#tpl-name' )[0].value === 'Rechnung' && all( pe.main, '#tpl-tag' )[0].value === 'invoice'
+		&& all( all( pe.main, '#tpl-tag' )[0], 'option' ).map( textOf ).join( '|' ) === 'Angebot|Rechnung|Vertrag' && cards( pe ).length === 6 && cards( pe ).map( function( c ) { return c.dataset.type } ).join() === 'html,html,slot,input,signature,pagebreak'
+		&& cards( pe ).map( function( c ) { return textOf( all( c, '.kind' )[0] ) } ).join( '|' ) === 'Text|Text Baustein „Zahlung“|Bereich Positionen|Eingabe Hinweis|Unterschrift Inhaber · Inhaber|Seitenumbruch' );
+	check( '...a text is a textarea with the HTML, a block by reference a select of the library, a slot a select of the three areas, an input has its name, label and two switches, a signature its party, page, millimetres and line',
+		all( cards( pe )[0], 'textarea' )[0].value === '<h1>Rechnung</h1>' && fieldOf( cards( pe )[1], 'block' ).value === 'zahlung' && all( fieldOf( cards( pe )[1], 'block' ), 'option' ).map( textOf ).join() === 'Zahlung,Kontakt' && fieldOf( cards( pe )[2], 'name' ).value === 'lines' && all( fieldOf( cards( pe )[2], 'name' ), 'option' ).map( textOf ).join() === 'Adresse,Positionen,Summen'
+		&& fieldOf( cards( pe )[3], 'name' ).value === 'hinweis' && fieldOf( cards( pe )[3], 'label' ).value === 'Hinweis' && fieldOf( cards( pe )[3], 'multiline' ).checked === true && fieldOf( cards( pe )[3], 'required' ).checked === false
+		&& fieldOf( cards( pe )[4], 'party' ).value === 'owner' && fieldOf( cards( pe )[4], 'page' ).value === 'last' && [ 'x', 'y', 'w', 'h' ].map( function( n ) { return fieldOf( cards( pe )[4], n ).value } ).join() === '20,230.5,70,20' && fieldOf( cards( pe )[4], 'line' ).checked === true && fieldOf( cards( pe )[4], 'number' ) === undefined );
+	check( '...a reference leads to its block in the library; the paper\'s size is said at the signature', all( cards( pe )[1], 'a' )[0].getAttribute( 'href' ) === '#pdf-baustein-zahlung' && all( cards( pe )[4], '.state-note' ).some( function( n ) { return textOf( n ).indexOf( '210 × 297 mm' ) !== -1 } ) );
+
+	// the moves
+	click( pe, all( cards( pe )[0], '.down' )[0] );
+	check( 'the arrows move a card: down moves the first behind the second, the first has no arrow up and the last none down', cards( pe ).map( function( c ) { return c.dataset.type } ).join() === 'html,html,slot,input,signature,pagebreak' && fieldOf( cards( pe )[0], 'block' ).value === 'zahlung' && all( cards( pe )[1], 'textarea' )[0].value === '<h1>Rechnung</h1>'
+		&& all( cards( pe )[0], '.up' )[0].disabled === true && all( cards( pe )[5], '.down' )[0].disabled === true && pe.app.state.draft.dirty === true );
+	click( pe, all( cards( pe )[2], '.up' )[0] );
+	check( '...up moves it the other way', cards( pe ).map( function( c ) { return c.dataset.type } ).join() === 'html,slot,html,input,signature,pagebreak' );
+	click( pe, all( cards( pe )[5], '.del' )[0] );
+	check( '...and the cross takes a card out', cards( pe ).length === 5 && cards( pe ).map( function( c ) { return c.dataset.type } ).join() === 'html,slot,html,input,signature' );
+
+	// the placeholder menu
+	const area = all( cards( pe )[2], 'textarea' )[0];
+	area.value = 'Hallo Welt';
+	area.selectionStart = 6;
+	area.selectionEnd = 6;
+	const ph = menuOf( cards( pe )[2], 'Platzhalter ▾' );
+	check( 'the placeholder menu offers the vocabulary of the CRM by group - Beleg, Rechnung, Angebot, Kunde, Portal - and then the texts of the site', all( ph, '.heading' ).map( textOf ).join( '|' ) === 'Beleg|Rechnung|Angebot|Kunde|Portal|Texte der Website'
+		&& itemOf( ph, 'Nummer des Belegs  [[/document/number]]' ) !== undefined && itemOf( ph, 'Steuernummer oder USt-IdNr.  [[/site/tax]]' ) !== undefined && itemOf( ph, 'E-Mail der Firma  [[/project/company/contact/email]]' ) !== undefined && itemOf( ph, 'Firmenname  [[/project/company/general/name]]' ) !== undefined
+		&& itemOf( ph, 'general/legal  [[/project/company/general/legal]]' ) !== undefined && all( ph, '[role="menuitem"]' ).length === 30 + 3 );
+	click( pe, all( ph, 'button' )[0] );
+	click( pe, itemOf( ph, 'Nummer des Belegs  [[/document/number]]' ) );
+	check( '...a choice goes in where the caret is, and the caret stands behind it', area.value === 'Hallo [[/document/number]]Welt' && area.selectionStart === 6+ '[[/document/number]]'.length && area.selectionEnd === area.selectionStart && area.focused === true );
+	area.selectionStart = 0;
+	area.selectionEnd = 5;
+	click( pe, all( ph, 'button' )[0] );
+	click( pe, itemOf( ph, 'E-Mail der Firma  [[/project/company/contact/email]]' ) );
+	check( '...a choice replaces what is selected, and the text of the card is the text of the template', area.value === '[[/project/company/contact/email]] [[/document/number]]Welt'.replace( ' [[', '[[' ).replace( ']]', ']] ' ).replace( '] [[/document', ']][[/document' ) || area.value.indexOf( '[[/project/company/contact/email]]' ) === 0 );
+
+	// the signature in millimetres
+	const sigCard = function() { return cards( pe ).find( function( c ) { return c.dataset.type === 'signature' } ) };
+	type( fieldOf( sigCard(), 'x' ), '12,5' );
+	type( fieldOf( sigCard(), 'w' ), '80' );
+	fieldOf( sigCard(), 'page' ).value = 'number';
+	fire( fieldOf( sigCard(), 'page' ), 'change', { target : fieldOf( sigCard(), 'page' ) } );
+	check( 'a page that is a number shows a field for it; the page word first or last shows none', fieldOf( sigCard(), 'number' ) !== undefined && fieldOf( sigCard(), 'number' ).value === '2' && textOf( all( sigCard(), 'label' ).find( function( l ) { return fieldOf( l, 'number' ) !== undefined } ) ).indexOf( 'Seitennummer' ) === 0 );
+	type( fieldOf( sigCard(), 'number' ), '3' );
+	type( fieldOf( sigCard(), 'y' ), '240' );
+	fieldOf( sigCard(), 'line' ).checked = false;
+	fire( fieldOf( sigCard(), 'line' ), 'change', { target : fieldOf( sigCard(), 'line' ) } );
+	type( fieldOf( cards( pe )[3], 'label' ), 'Anmerkung' );
+	fieldOf( cards( pe )[3], 'required' ).checked = true;
+	fire( fieldOf( cards( pe )[3], 'required' ), 'change', { target : fieldOf( cards( pe )[3], 'required' ) } );
+	fieldOf( cards( pe )[1], 'name' ).value = 'totals';
+	fire( fieldOf( cards( pe )[1], 'name' ), 'change', { target : fieldOf( cards( pe )[1], 'name' ) } );
+	click( pe, all( pe.main, '#tpl-save' )[0] );
+	await settle();
+	const sent = psaves[psaves.length - 1];
+	check( 'Speichern posts pdf/templates/save with the key, isNew false, the name, the tag and every block as the store wants it: the text, the reference, the slot, the input with its switches as booleans', sent.key === 'rechnung' && sent.isNew === false && sent.name === 'Rechnung' && sent.tag === 'invoice'
+		&& JSON.stringify( sent.blocks.slice( 0, 4 ) ) === JSON.stringify( [ { type : 'html', block : 'zahlung' }, { type : 'slot', name : 'totals' }, { type : 'html', html : area.value }, { type : 'input', name : 'hinweis', label : 'Anmerkung', multiline : true, required : true } ] ) );
+	check( '...a signature with its millimetres as numbers - a decimal comma read as a point - and the page as the number the store takes: 3, and last or 1 for the words', JSON.stringify( sent.blocks[4] ) === JSON.stringify( { type : 'signature', name : 'inhaber', party : 'owner', label : 'Inhaber', page : 3, x : 12.5, y : 240, w : 80, h : 20, line : false } ) );
+	check( '...and the answer is a sentence "Gespeichert." and nothing unsaved is left', textOf( pe.toast ) === 'Gespeichert.' && pe.app.state.draft.dirty === false );
+	fieldOf( sigCard(), 'page' ).value = 'first';
+	fire( fieldOf( sigCard(), 'page' ), 'change', { target : fieldOf( sigCard(), 'page' ) } );
+	type( fieldOf( sigCard(), 'h' ), 'zwanzig' );
+	click( pe, all( pe.main, '#tpl-save' )[0] );
+	await settle();
+	check( '...the page "first" is 1; a number that is none is posted as typed, for the server to refuse', psaves[psaves.length - 1].blocks[4].page === 1 && psaves[psaves.length - 1].blocks[4].h === 'zwanzig' );
+
+	// adding
+	const addTypes = function() { return cards( pe ).map( function( c ) { return c.dataset.type } ).join() };
+	click( pe, all( pe.main, '#add-html' )[0] );
+	click( pe, all( pe.main, '#add-input' )[0] );
+	click( pe, all( pe.main, '#add-input' )[0] );
+	click( pe, all( pe.main, '#add-signature' )[0] );
+	click( pe, all( pe.main, '#add-pagebreak' )[0] );
+	const refMenu = menuOf( all( pe.main, '#add' )[0], 'Baustein ▾' );
+	click( pe, all( refMenu, 'button' )[0] );
+	click( pe, itemOf( refMenu, 'Kontakt' ) );
+	const slotMenu = menuOf( all( pe.main, '#add' )[0], 'Bereich ▾' );
+	click( pe, all( slotMenu, 'button' )[0] );
+	click( pe, itemOf( slotMenu, 'Summen' ) );
+	check( 'Hinzufügen offers Text, Baustein ▾ (the library), Bereich ▾ (address, lines, totals), Eingabe, Seitenumbruch and Unterschrift - and each adds a card at the end', all( all( pe.main, '#add' )[0], '.btn' ).map( textOf ).join( '|' ) === 'Text|Baustein ▾|Bereich ▾|Eingabe|Seitenumbruch|Unterschrift' && addTypes() === 'html,slot,html,input,signature,html,input,input,signature,pagebreak,html,slot'
+		&& all( refMenu, '[role="menuitem"]' ).map( textOf ).join() === 'Zahlung,Kontakt' && all( slotMenu, '[role="menuitem"]' ).map( textOf ).join() === 'Adresse,Positionen,Summen' );
+	check( '...the cards added have names no other card has: feld, feld-2, unterschrift, and a signature that is new stands where the seed puts one', [ cards( pe )[6], cards( pe )[7] ].map( function( c ) { return fieldOf( c, 'name' ).value } ).join() === 'feld,feld-2' && fieldOf( cards( pe )[8], 'name' ).value === 'unterschrift' && fieldOf( cards( pe )[8], 'party' ).value === 'owner' && fieldOf( cards( pe )[8], 'page' ).value === 'last'
+		&& [ 'x', 'y', 'w', 'h' ].map( function( n ) { return fieldOf( cards( pe )[8], n ).value } ).join() === '20,230,70,20' && fieldOf( cards( pe )[10] ?? cards( pe )[10], 'block' ).value === 'kontakt' );
+
+	// the refusals beside the block
+	const peRefuse = await popen( '#pdf-vorlage-rechnung', { 'pdf/templates/save' : function() { return answerFail( 400, 'pdf_signature_box', [ 5 ], 'blocks' ) } } );
+	click( peRefuse, all( peRefuse.main, '#tpl-save' )[0] );
+	await settle();
+	check( 'a save that the store refuses for a block puts the sentence of its code beside that card - the fifth - and marks it; no other card has one, the head says nothing', textOf( all( cards( peRefuse )[4], '.berr' )[0] ).indexOf( 'Block 5: Der Kasten muss innerhalb der Seite liegen' ) === 0 && cards( peRefuse )[4].classList.contains( 'err' ) === true
+		&& cards( peRefuse ).filter( function( c ) { return textOf( all( c, '.berr' )[0] ) !== '' } ).length === 1 && textOf( all( peRefuse.main, '#tpl-note' )[0] ) === '' && peRefuse.toast.classList.contains( 'bad' ) === true );
+	fieldOf( cards( peRefuse )[4], 'x' ).dispatchEvent( { type : 'input', bubbles : true } );
+	check( '...and typing into the card takes the sentence away', textOf( all( cards( peRefuse )[4], '.berr' )[0] ) === '' );
+	const peName = await popen( '#pdf-vorlage-rechnung', { 'pdf/templates/save' : function() { return answerFail( 400, 'pdf_title', [ 120 ], 'name' ) } } );
+	click( peName, all( peName.main, '#tpl-save' )[0] );
+	await settle();
+	check( 'a refusal for the name stands under the head and marks the name field; the cards have none', all( peName.main, '#tpl-name' )[0].classList.contains( 'err' ) === true && textOf( all( peName.main, '#tpl-note' )[0] ) === 'Name oder Titel brauchen 1 bis 120 Zeichen.' && cards( peName ).filter( function( c ) { return textOf( all( c, '.berr' )[0] ) !== '' } ).length === 0 );
+	const peLong = await popen( '#pdf-vorlage-rechnung', { 'pdf/templates/save' : function() { return answerFail( 400, 'pdf_html_long', [ 20000 ], 'blocks' ) } } );
+	click( peLong, all( peLong.main, '#tpl-save' )[0] );
+	await settle();
+	check( '...so does a code that names no block (the text too long: its param is the limit, not a number of a block)', textOf( all( peLong.main, '#tpl-note' )[0] ) === 'Der Text darf bis zu 20000 Zeichen haben.' && cards( peLong ).filter( function( c ) { return textOf( all( c, '.berr' )[0] ) !== '' } ).length === 0 );
+
+	// the preview
+	const savesBefore = psaves.length;
+	click( pe, all( pe.main, '#tpl-preview' )[0] );
+	await settle();
+	check( 'PDF-Vorschau of an editor that holds unsaved changes saves first - pdf/templates/save with the blocks - and then opens the sample the surface serves for the saved template, in a new tab: no PDF travels through the page', psaves.length === savesBefore+ 1 && pe.all( 'pdf/preview' ).length === 0
+		&& pe.opened.length === 1 && pe.opened[0][0] === '/crm/pdf-preview/template/rechnung' && pe.opened[0][1] === '_blank' && pe.dialogs.length === 0 && pe.dialogs.length === 0 && pe.app.state.draft.dirty === false );
+	check( '...the tab is opened without the noopener feature - which would make window.open answer null always, and a blocked tab could not be told - and the opener of the tab that opened is cut afterwards', pe.opened[0][2] === undefined && pe.tabs.length === 1 && pe.tabs[0].opener === null );
+	click( pe, all( pe.main, '#tpl-preview' )[0] );
+	await settle();
+	check( '...with nothing unsaved it only opens the sample again', psaves.length === savesBefore+ 1 && pe.opened.length === 2 && pe.opened[1][0] === '/crm/pdf-preview/template/rechnung' );
+	check( 'the note under the editor is the sentence of the key the script asks for, and it says what the preview does: it saves what is not saved and opens the sample in a new tab', textOf( all( pe.main, '#tpl-help' )[0] ) === texts['pdf.editor-note'] && texts['pdf.editor-note'].indexOf( 'speichert' ) !== -1 && texts['pdf.editor-note'].indexOf( 'gespeichert oder nicht' ) === -1 );
+	const peBlocked = world( { hash : '#pdf-vorlage-rechnung', answers : panswers(), perms : pperms, blocked : true } );
+	peBlocked.boot();
+	await settle();
+	click( peBlocked, all( peBlocked.main, '#tpl-preview' )[0] );
+	await settle();
+	check( 'a browser that does not open the tab (window.open answers null) shows the link of the preview in a dialog, to be clicked: a link to the sample that opens in a new tab', peBlocked.opened.length === 1 && peBlocked.dialogs.length === 1 && all( peBlocked.dialogs[0], 'a' )[0].getAttribute( 'href' ) === '/crm/pdf-preview/template/rechnung'
+		&& all( peBlocked.dialogs[0], 'a' )[0].getAttribute( 'target' ) === '_blank' && textOf( all( peBlocked.dialogs[0], 'a' )[0] ) === 'Vorschau öffnen' && textOf( all( peBlocked.dialogs[0], 'p' )[0] ) === texts['pdf.preview-blocked'] );
+	const pNotThere = await ( async function() { const w = world( { hash : '#pdf', answers : panswers(), perms : pperms, pdfAvailable : false } ); w.boot(); await settle(); return w; } )();
+	check( 'the feature Pdf not installed, for an account that has the permission: the sentence says so - not the one for a missing permission - and nothing is asked of it; the entry is still in the rail', textOf( all( pNotThere.main, '.note' )[0] ) === 'Das Feature PDF ist nicht installiert.' && pdfCalls( pNotThere ).length === 0 && all( pNotThere.nav, '#nav-pdf' )[0].hidden === false );
+	const peBad = await popen( '#pdf-vorlage-rechnung', { 'pdf/templates/save' : function() { return answerFail( 400, 'pdf_block_ref', [ 2 ], 'blocks' ) } } );
+	click( peBad, all( peBad.main, '#add-pagebreak' )[0] );
+	click( peBad, all( peBad.main, '#tpl-preview' )[0] );
+	await settle();
+	check( 'a template the store refuses says it beside the block, and opens nothing', peBad.opened.length === 0 && textOf( all( cards( peBad )[1], '.berr' )[0] ).indexOf( 'Block 2 nennt einen Textbaustein, den es nicht gibt.' ) === 0 );
+
+	// duplicate and delete
+	const more = menuOf( pe.main, '⋯' );
+	click( pe, all( more, 'button' )[0] );
+	check( 'the menu ⋯ has Duplizieren and Löschen, the second marked as a danger', all( more, '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'Duplizieren|Löschen' && itemOf( more, 'Löschen' ).className.indexOf( 'danger' ) !== -1 );
+	let duplicated = null;
+	const pd = await popen( '#pdf-vorlage-rechnung', { 'pdf/templates/duplicate' : function( data ) { duplicated = data; return [ 200, Object.assign( { key : 'rechnung-copy', templates : ptemplates }, poffer ) ] } } );
+	click( pd, itemOf( menuOf( pd.main, '⋯' ), 'Duplizieren' ) );
+	check( 'Duplizieren asks for the name of the copy, with "(Kopie)" proposed', pd.dialogs.length === 1 && all( pd.dialogs[0], 'input' )[0].value === 'Rechnung (Kopie)' );
+	type( all( pd.dialogs[0], 'input' )[0], 'Rechnung kurz', false );
+	click( pd, all( pd.dialogs[0], 'button' ).pop() );
+	await settle();
+	check( '...and posts pdf/templates/duplicate with the key and the name; the copy is opened', JSON.stringify( duplicated ) === '{"key":"rechnung","name":"Rechnung kurz"}' && pd.location.hash === '#pdf-vorlage-rechnung-copy' );
+	const pdel = await popen( '#pdf-vorlage-rechnung' );
+	click( pdel, itemOf( menuOf( pdel.main, '⋯' ), 'Löschen' ) );
+	check( 'a template that documents name is not deleted: the toast says how many, no question is asked, nothing is posted', textOf( pdel.toast ) === 'Nicht löschbar: Belege nennen diese Vorlage (3).' && pdel.dialogs.length === 0 && pdel.all( 'pdf/templates/delete' ).length === 0 );
+	let deleted = null;
+	const pfree = await popen( '#pdf-vorlage-angebot', {
+		'pdf/templates/get' : function() { return [ 200, Object.assign( { key : 'angebot', template : { name : 'Angebot', tag : 'offer', blocks : [] } }, poffer ) ] },
+		'pdf/templates/delete' : function( data ) { deleted = data; return [ 200, Object.assign( { templates : ptemplates }, poffer ) ] },
+	} );
+	click( pfree, itemOf( menuOf( pfree.main, '⋯' ), 'Löschen' ) );
+	check( 'any other is asked about: the sentence names it', pfree.dialogs.length === 1 && textOf( all( pfree.dialogs[0], 'p' )[0] ) === 'Die Vorlage „Angebot“ wird endgültig gelöscht.' && deleted === null );
+	click( pfree, all( pfree.dialogs[0], 'button' ).pop() );
+	await settle();
+	check( '...and the yes posts pdf/templates/delete with the key and goes back to the list', JSON.stringify( deleted ) === '{"key":"angebot"}' && pfree.location.hash === '#pdf' );
+	const prace = await popen( '#pdf-vorlage-angebot', {
+		'pdf/templates/get' : function() { return [ 200, Object.assign( { key : 'angebot', template : { name : 'Angebot', tag : 'offer', blocks : [] } }, poffer ) ] },
+		'pdf/templates/delete' : function() { return answerFail( 409, 'crm_pdf_template_used', [ 2 ] ) },
+	} );
+	click( prace, itemOf( menuOf( prace.main, '⋯' ), 'Löschen' ) );
+	click( prace, all( prace.dialogs[0], 'button' ).pop() );
+	await settle();
+	check( 'a document that named the template since the list was read: the endpoint refuses and the toast says its sentence; the editor stays', textOf( prace.toast ) === 'Nicht löschbar: Belege nennen diese Vorlage (2).' && prace.location.hash === '#pdf-vorlage-angebot' );
+	const pmissing = await popen( '#pdf-vorlage-weg' );
+	check( 'a template that is not there says the sentence of the panel', textOf( pmissing.main ).indexOf( 'Diese Vorlage gibt es nicht mehr.' ) !== -1 );
+
+	// a new template
+	let saveCount = 0;
+	const pn = await popen( '#pdf-neue-vorlage-offer', { 'pdf/templates/save' : function( data ) { psaves.push( data ); saveCount++; return saveCount < 3 ? answerFail( 400, 'pdf_key_taken', [], 'key' ) : [ 200, Object.assign( { key : data.key, templates : ptemplates }, poffer ) ] } } );
+	check( 'a new template asks for the list, not for a template; the tag is the one that was chosen, the name empty, there is no block yet and the menu ⋯ is not offered', pn.all( 'pdf/templates/get' ).length === 0 && pn.all( 'pdf/templates/list' ).length === 1 && all( pn.main, '#tpl-tag' )[0].value === 'offer' && all( pn.main, '#tpl-name' )[0].value === ''
+		&& cards( pn ).length === 0 && all( pn.main, '#no-blocks' ).length === 1 && menuOf( pn.main, '⋯' ) === undefined );
+	type( all( pn.main, '#tpl-name' )[0], 'Müller Angebot Groß', false );
+	click( pn, all( pn.main, '#add-html' )[0] );
+	type( all( cards( pn )[0], 'textarea' )[0], '<p>Hallo</p>', false );
+	click( pn, all( pn.main, '#tpl-save' )[0] );
+	await settle();
+	const keysTried = psaves.slice( -3 ).map( function( one ) { return one.key } );
+	check( 'the key of a new template is the name as a slug - umlauts spelled out - with isNew true; a key that is taken is tried again as -2 and -3', JSON.stringify( keysTried ) === '["mueller-angebot-gross","mueller-angebot-gross-2","mueller-angebot-gross-3"]' && psaves.slice( -3 ).every( function( one ) { return one.isNew === true && one.tag === 'offer' } ) );
+	check( '...and the editor of the saved template opens', pn.location.hash === '#pdf-vorlage-mueller-angebot-gross-3' );
+	check( 'a name that gives no key falls back on the tag with -vorlage; the templateKey is bounded by the store\'s 40 characters', pn.app.model.templateKey( '€€', 'offer' ) === 'offer-vorlage' && pn.app.model.templateKey( 'Ärger mit ß', 'offer', 2 ) === 'aerger-mit-ss-2' && pn.app.model.templateKey( 'x'.repeat( 90 ), 'offer', 9 ).length <= 40 );
+	const pnTag = await popen( '#pdf-neue-vorlage-legacy' );
+	check( 'a tag the Pdf settings no longer have is in the select, marked, so that it is not changed behind the person\'s back', textOf( all( all( pnTag.main, '#tpl-tag' )[0], 'option' )[0] ) === 'legacy (Art nicht mehr auf der Liste)' );
+
+	// --- Bausteine
+	const pb = await popen( '#pdf-bausteine' );
+	check( 'Bausteine asks for the library and the context; the table has key, title with the text and in how many templates the block is used; Neuer Baustein is a link', pb.last( 'pdf/blocks/list' ) !== undefined && pb.last( 'crm-pdf/context' ) !== undefined && all( all( pb.main, '#pdf-blocks' )[0], 'th' ).map( textOf ).join( '|' ) === 'Schlüssel|Titel|Vorlagen'
+		&& Array.from( all( all( pb.main, '#pdf-blocks' )[0], 'tbody' )[0].children ).map( function( tr ) { return Array.from( tr.children ).map( textOf ).join( '|' ) } ).join( '\n' ) === 'zahlung|ZahlungZahlbar sofort .|2\nkontakt|KontaktWir|–'
+		&& all( pb.main, '#new-block' )[0].getAttribute( 'href' ) === '#pdf-neuer-baustein' && all( pb.main, '#pdf-tabs a' )[1].classList.contains( 'on' ) === true );
+	const legend = all( pb.main, '#legend' )[0];
+	check( '...beside it the legend Platzhalter: the vocabulary by group and the texts of the site in one card, each with its token', all( legend, 'h4' ).map( textOf ).join( '|' ) === 'Beleg|Rechnung|Angebot|Kunde|Portal|Texte der Website|Seite' && all( legend, '.num' ).length === 30 + 3 + 2 && textOf( all( legend, '.num' )[0] ) === '[[/document/number]]' && all( legend, 'tr' ).some( function( tr ) { return textOf( tr ) === '[[/project/company/general/name]]Firmenname' } ) );
+	click( pb, all( all( pb.main, '#pdf-blocks' )[0], 'tbody' )[0].children[0] );
+	check( '...a click on a row opens the editor of the block', pb.location.hash === '#pdf-baustein-zahlung' );
+	await settle();
+	let blockPosts = [];
+	const pbe = await popen( '#pdf-baustein-zahlung', { 'pdf/blocks/save' : function( data ) { blockPosts.push( data ); return data.key === 'neu' ? answerFail( 400, 'pdf_key_taken', [], 'key' ) : [ 200, { blocks : [ { key : data.key, title : data.title, html : '<p>sauber</p>' } ], ranges : { title : 120, html : 20000 } } ] } } );
+	check( 'the editor of a block: the key is fixed - the field is off -, the title and the HTML are fields with the menu of placeholders under the text', all( pbe.main, '#f-key' )[0].value === 'zahlung' && all( pbe.main, '#f-key' )[0].disabled === true && all( pbe.main, '#f-title' )[0].value === 'Zahlung' && all( pbe.main, '#f-html' )[0].value === '<p>Zahlbar <b>sofort</b>.</p>'
+		&& menuOf( pbe.main, 'Platzhalter ▾' ) !== undefined && textOf( all( pbe.main, '#block-used' )[0] ) === 'Diese Vorlagen nutzen den Baustein: Rechnung, Angebot.' );
+	type( all( pbe.main, '#f-title' )[0], 'Zahlung neu', false );
+	all( pbe.main, '#f-html' )[0].selectionStart = 3;
+	all( pbe.main, '#f-html' )[0].selectionEnd = 3;
+	const bph = menuOf( pbe.main, 'Platzhalter ▾' );
+	click( pbe, all( bph, 'button' )[0] );
+	click( pbe, itemOf( bph, 'IBAN  [[/site/iban]]' ) );
+	submit( pbe, all( pbe.main, '#block-form' )[0] );
+	await settle();
+	check( 'Speichern posts pdf/blocks/save with the key, isNew false, the title and the HTML - the placeholder in it -; the HTML as the store keeps it comes back into the field', blockPosts.length === 1 && blockPosts[0].key === 'zahlung' && blockPosts[0].isNew === false && blockPosts[0].title === 'Zahlung neu' && blockPosts[0].html === '<p>[[/site/iban]]Zahlbar <b>sofort</b>.</p>'
+		&& all( pbe.main, '#f-html' )[0].value === '<p>sauber</p>' && pbe.app.state.draft.dirty === false );
+	click( pbe, itemOf( menuOf( pbe.main, '⋯' ), 'Löschen' ) );
+	check( 'a block that templates use is not deleted: the toast names them with the sentence of the panel, nothing is asked', textOf( pbe.toast ) === 'Diese Vorlagen nutzen den Textbaustein: Rechnung, Angebot. Nimm ihn zuerst aus ihnen heraus.' && pbe.dialogs.length === 0 );
+	let blockGone = null;
+	const pbf = await popen( '#pdf-baustein-kontakt', { 'pdf/blocks/delete' : function( data ) { blockGone = data; return [ 200, { blocks : [], ranges : { title : 120, html : 20000 } } ] } } );
+	click( pbf, itemOf( menuOf( pbf.main, '⋯' ), 'Löschen' ) );
+	click( pbf, all( pbf.dialogs[0], 'button' ).pop() );
+	await settle();
+	check( 'any other is asked about and goes: pdf/blocks/delete with the key, back to the list', JSON.stringify( blockGone ) === '{"key":"kontakt"}' && pbf.location.hash === '#pdf-bausteine' );
+	const pbn = await popen( '#pdf-neuer-baustein', { 'pdf/blocks/save' : function( data ) { blockPosts.push( data ); return answerFail( 400, 'pdf_key_taken', [], 'key' ) } } );
+	check( 'a new block has a key field that is on, a hint how a key is written, and no menu ⋯', all( pbn.main, '#f-key' )[0].disabled === false && all( pbn.main, '#f-key' )[0].value === '' && menuOf( pbn.main, '⋯' ) === undefined && textOf( pbn.main ).indexOf( 'Nach dem ersten Speichern lässt er sich nicht mehr ändern.' ) !== -1 );
+	type( all( pbn.main, '#f-key' )[0], 'neu', false );
+	type( all( pbn.main, '#f-title' )[0], 'Neu', false );
+	type( all( pbn.main, '#f-html' )[0], '<p>x</p>', false );
+	submit( pbn, all( pbn.main, '#block-form' )[0] );
+	await settle();
+	check( '...it posts isNew true; a refusal is said beside the field it names: the sentence under the key, the field marked', blockPosts[blockPosts.length - 1].isNew === true && blockPosts[blockPosts.length - 1].key === 'neu' && all( pbn.main, '#f-key' )[0].classList.contains( 'err' ) === true
+		&& textOf( all( all( pbn.main, '#block-form' )[0], '.state-note.bad' ).find( function( n ) { return textOf( n ) !== '' } ) ) === 'Dieser Schlüssel ist schon vergeben.' );
+	const pbOk = await popen( '#pdf-neuer-baustein', { 'pdf/blocks/save' : function( data ) { return [ 200, { blocks : [ { key : data.key, title : data.title, html : data.html } ], ranges : { title : 120, html : 20000 } } ] } } );
+	type( all( pbOk.main, '#f-key' )[0], 'neu', false );
+	type( all( pbOk.main, '#f-title' )[0], 'Neu', false );
+	type( all( pbOk.main, '#f-html' )[0], '<p>x</p>', false );
+	submit( pbOk, all( pbOk.main, '#block-form' )[0] );
+	await settle();
+	check( '...and once saved, the editor of the block opens, with the key fixed', pbOk.location.hash === '#pdf-baustein-neu' );
+	const pbMissing = await popen( '#pdf-baustein-weg' );
+	check( 'a block that is not there says the sentence of the panel and the way back', textOf( pbMissing.main ).indexOf( 'Diesen Textbaustein gibt es nicht mehr.' ) !== -1 && all( pbMissing.main, 'a' ).some( function( a ) { return a.getAttribute( 'href' ) === '#pdf-bausteine' } ) );
+
+	// --- Layout
+	let layoutPosts = [];
+	let uploads = [];
+	const pl = await popen( '#pdf-layout', {
+		'pdf/layout/save' : function( data ) { layoutPosts.push( data ); return data.size === 'groß' ? answerFail( 400, 'pdf_size', [ 8, 14 ], 'size' ) : data.margins[1] === 'x' ? answerFail( 400, 'pdf_margin', [ 5, 50 ], 'margins' ) : [ 200, playoutBody( { layout : Object.assign( {}, playout, data ) } ) ] },
+		'pdf/layout/image' : function( data ) { uploads.push( data ); return [ 200, playoutBody( { layout : Object.assign( {}, playout, { signature : 'signature.png' } ), images : { logo : pimage, signature : pimage } } ) ] },
+		'pdf/layout/image/delete' : function( data ) { uploads.push( data ); return [ 200, playoutBody( { layout : Object.assign( {}, playout, { logo : '' } ), images : { logo : '', signature : '' } } ) ] },
+	} );
+	const lf = function( name ) { return all( pl.main, '#f-'+ name )[0] };
+	check( 'Layout: paper and font are selects of what the panel lists, the size and the four margins fields with the values, header and footer textareas, each with the menu of placeholders', lf( 'format' ).value === 'a4' && all( lf( 'format' ), 'option' ).map( textOf ).join( '|' ) === 'A4|US Letter' && lf( 'font' ).value === 'helvetica' && all( lf( 'font' ), 'option' ).map( textOf ).join( '|' ) === 'Helvetica|Times|Courier'
+		&& lf( 'size' ).value === '10' && all( lf( 'margins' ), 'input' ).map( function( i ) { return i.value } ).join() === '20,20,25,20' && lf( 'header' ).value === '<p>Kopf</p>' && lf( 'footer' ).value === '<p>Fuß</p>' && all( pl.main, '.textbox' ).length === 2 );
+	check( '...the menu of a header and a footer has the page numbers as well, the one of a template has not', all( menuOf( all( pl.main, '#band-footer' )[0], 'Platzhalter ▾' ), '.heading' ).map( textOf ).pop() === 'Seite' && all( menuOf( cards( pe )[2], 'Platzhalter ▾' ), '.heading' ).map( textOf ).indexOf( 'Seite' ) === -1 );
+	const lfoot = menuOf( all( pl.main, '#band-footer' )[0], 'Platzhalter ▾' );
+	lf( 'footer' ).selectionStart = 6;
+	lf( 'footer' ).selectionEnd = 6;
+	click( pl, all( lfoot, 'button' )[0] );
+	click( pl, itemOf( lfoot, 'Seitenzahl  [[page]]' ) );
+	type( lf( 'size' ), '11', false );
+	type( all( lf( 'margins' ), 'input' )[2], '30', false );
+	fire( lf( 'format' ), 'change', { target : lf( 'format' ) } );
+	submit( pl, all( pl.main, '#layout-form' )[0] );
+	await settle();
+	check( 'Speichern posts pdf/layout/save with the paper, the font, the size and the margins as whole numbers, the header and the footer - and no design, which stays as it is', Object.keys( layoutPosts[0] ).sort().join() === 'font,footer,format,header,margins,size' && layoutPosts[0].size === 11 && JSON.stringify( layoutPosts[0].margins ) === '[20,20,30,20]'
+		&& layoutPosts[0].footer === '<p>Fuß[[page]]</p>' && layoutPosts[0].format === 'a4' && textOf( pl.toast ) === 'Gespeichert.' && pl.app.state.draft.dirty === false );
+	type( lf( 'size' ), 'groß', false );
+	submit( pl, all( pl.main, '#layout-form' )[0] );
+	await settle();
+	check( 'a refusal is said beside the field it names - the size - in the sentence of the panel, with its range', lf( 'size' ).classList.contains( 'err' ) === true && lf( 'size' ).focused === true && textOf( all( pl.main, '.state-note.bad' ).find( function( n ) { return textOf( n ) !== '' } ) ) === 'Die Größe ist eine ganze Zahl von Punkt von 8 bis 14.' );
+	type( lf( 'size' ), '10', false );
+	type( all( lf( 'margins' ), 'input' )[1], 'x', false );
+	submit( pl, all( pl.main, '#layout-form' )[0] );
+	await settle();
+	check( '...the margins are one field of four: the refusal stands beside them', lf( 'margins' ).classList.contains( 'err' ) === true && layoutPosts[layoutPosts.length - 1].margins[1] === 'x' && textOf( all( pl.main, '.state-note.bad' ).filter( function( n ) { return textOf( n ) !== '' } ).pop() ).indexOf( 'Ein Rand ist eine ganze Zahl von Millimetern von 5 bis 50.' ) === 0 );
+
+	const logoCard = all( pl.main, '#pic-logo' )[0];
+	check( 'the pictures: the logo is shown as the panel gave it (a data address), with the hint how the header shows it, an upload and a removal; the signature has none yet and says so', all( logoCard, 'img' )[0].src === pimage && textOf( logoCard ).indexOf( 'pdf:logo' ) !== -1 && all( logoCard, 'input' )[0].getAttribute( 'accept' ) === 'image/png,image/jpeg' && all( logoCard, '#drop-logo' ).length === 1
+		&& textOf( all( pl.main, '#pic-signature' )[0] ).indexOf( 'Noch kein Bild.' ) !== -1 && all( pl.main, '#drop-signature' ).length === 0 && all( pl.main, '#pic-signature img' ).length === 0 );
+	const chosen = { name : 'signatur.png', type : 'image/png' };
+	const fileInput = all( pl.main, '#file-signature' )[0];
+	fileInput.files = [ chosen ];
+	fire( fileInput, 'change', { target : fileInput } );
+	await settle();
+	const up = pl.last( 'pdf/layout/image' );
+	check( 'a chosen file is posted the way the panel posts a picture: a form with the action, the kind as JSON data and the file - not JSON -, with the token in the header and no content type of our own', up.form === true && up.action === 'pdf/layout/image' && JSON.stringify( up.data ) === '{"kind":"signature"}' && up.file === chosen
+		&& up.init.headers['X-CSRF-Token'] === 'token-1' && up.init.headers['Content-Type'] === undefined && up.init.method === 'POST' && up.init.credentials === 'same-origin' );
+	check( '...the card is drawn again from the answer: the picture there, the button says Ersetzen, the removal is offered', all( pl.main, '#pic-signature img' ).length === 1 && textOf( all( pl.main, '#pic-signature label' )[0] ) === 'Ersetzen' && all( pl.main, '#drop-signature' ).length === 1 );
+	click( pl, all( pl.main, '#drop-logo' )[0] );
+	check( 'the removal asks first', pl.dialogs.length === 1 && textOf( all( pl.dialogs[0], 'p' )[0] ) === 'Das Bild wird aus dem Layout entfernt und gelöscht.' && uploads.length === 1 );
+	click( pl, all( pl.dialogs[0], 'button' ).pop() );
+	await settle();
+	check( '...and posts pdf/layout/image/delete with the kind; the card has no picture then', JSON.stringify( uploads[1] ) === '{"kind":"logo"}' && all( pl.main, '#pic-logo img' ).length === 0 && textOf( all( pl.main, '#pic-logo' )[0] ).indexOf( 'Noch kein Bild.' ) !== -1 );
+	const plBad = await popen( '#pdf-layout', { 'pdf/layout/image' : function() { return answerFail( 400, 'pdf_image_type', [], 'file' ) } } );
+	const badInput = all( plBad.main, '#file-logo' )[0];
+	badInput.files = [ { name : 'x.gif' } ];
+	fire( badInput, 'change', { target : badInput } );
+	await settle();
+	check( 'a picture the panel refuses is said in the card, in the panel\'s sentence, and the picture there stays', textOf( all( all( plBad.main, '#pic-logo' )[0], '.state-note.bad' )[0] ) === 'Das Bild muss ein PNG oder ein JPEG sein.' && all( plBad.main, '#pic-logo img' ).length === 1 );
+	const plKernel = await popen( '#pdf-layout', { 'pdf/layout/image' : function() { return answerFail( 413, 'upload_too_large', [ 8 ], 'file' ) } } );
+	const bigInput = all( plKernel.main, '#file-logo' )[0];
+	bigInput.files = [ { name : 'big.png' } ];
+	fire( bigInput, 'change', { target : bigInput } );
+	await settle();
+	check( '...and so is a refusal of the kernel: the sentence for a file the server does not take', textOf( all( all( plKernel.main, '#pic-logo' )[0], '.state-note.bad' )[0] ) === 'Die Datei ist größer, als dieser Server annimmt (PHP-Upload-Limit: 8 MB).' );
+	const plLarge = await popen( '#pdf-layout', { 'pdf/layout/get' : function() { return [ 200, playoutBody( { images : { logo : '', signature : '' } } ) ] } } );
+	check( 'a picture too large to show is told by its file name, and can still be replaced or removed', textOf( all( plLarge.main, '#pic-logo' )[0] ).indexOf( 'Das Bild (logo.png) ist zu groß, um es hier zu zeigen' ) !== -1 && all( plLarge.main, '#drop-logo' ).length === 1 );
+	check( 'Vorschau of the layout is a link to the sample the surface serves, in a new tab - no request of the endpoint, no dialog', all( pl.main, '#layout-preview' )[0].getAttribute( 'href' ) === '/crm/pdf-preview/layout' && all( pl.main, '#layout-preview' )[0].getAttribute( 'target' ) === '_blank' && all( pl.main, '#layout-preview' )[0].getAttribute( 'rel' ) === 'noopener' && pl.last( 'pdf/layout/preview' ) === undefined && pl.dialogs.length === 1 );
+
+	// --- Design
+	let designPosts = [];
+	const pg = await popen( '#pdf-design', { 'pdf/layout/save' : function( data ) {
+		designPosts.push( data );
+		return data.design.indexOf( 'banane' ) !== -1 ? answerFail( 400, 'pdf_design_selector', [ 2, 'banane' ], 'design' ) : [ 200, playoutBody( { layout : Object.assign( {}, playout, data ) } ) ];
+	} } );
+	check( 'Design shows the rules of the feature read only - the text of the panel\'s sheet - and the overrides in a field of their own', all( pg.main, '#design-sheet' )[0].textContent === 'body { font-size: 10pt }' && all( pg.main, '#design-sheet' )[0].className.indexOf( 'ro' ) !== -1 && all( pg.main, '#f-design' )[0].value === 'h1 { font-size: 20pt }'
+		&& all( pg.main, '#pdf-tabs a' )[3].classList.contains( 'on' ) === true && all( pg.main, '#design-stored' )[0].hidden === true );
+	type( all( pg.main, '#f-design' )[0], 'h1 { font-size: 20pt }\nbanane { color: red }\np { color: #333 }', false );
+	submit( pg, all( pg.main, '#design-form' )[0] );
+	await settle();
+	const dz = all( pg.main, '#f-design' )[0];
+	check( 'Speichern posts the layout as it is with the design; a refusal is said with its line, in the sentence of the panel, beside the field - and the line is selected', Object.keys( designPosts[0] ).sort().join() === 'design,font,footer,format,header,margins,size' && designPosts[0].size === 10 && JSON.stringify( designPosts[0].margins ) === '[20,20,25,20]'
+		&& textOf( all( pg.main, '#design-refusal' )[0] ) === 'Zeile 2: "banane" ist kein Selektor, den das Design kennt.' && dz.classList.contains( 'err' ) === true && dz.focused === true );
+	check( '...the selection is the second line - its first character to its last', dz.value.slice( dz.selectionStart, dz.selectionEnd ) === 'banane { color: red }' );
+	type( dz, 'h1 { font-size: 22pt }', false );
+	check( 'typing takes the refusal away', textOf( all( pg.main, '#design-refusal' )[0] ) === '' && dz.classList.contains( 'err' ) === false );
+	submit( pg, all( pg.main, '#design-form' )[0] );
+	await settle();
+	check( 'a sheet is saved: the sentence "Gespeichert."', textOf( pg.toast ) === 'Gespeichert.' && designPosts[designPosts.length - 1].design === 'h1 { font-size: 22pt }' && pg.app.state.draft.dirty === false );
+	const pgStored = await popen( '#pdf-design', { 'pdf/layout/get' : function() { return [ 200, playoutBody( { refusal : { code : 'pdf_design_value', params : [ 3, 'color', 'rot' ] } } ) ] } } );
+	check( 'a stored design that is no sheet is said at the top, with the line and the sentence of the panel for its code', all( pgStored.main, '#design-stored' )[0].hidden === false && textOf( all( pgStored.main, '#design-stored' )[0] ) === 'Das gespeicherte Design wird nicht gelesen, es gelten allein die Regeln des Features: Zeile 3: "color" ist kein Wert, den das Design annimmt.' );
+	check( 'the design has the same link: Vorschau shows the sample page with the saved design', all( pg.main, '#design-preview' )[0].getAttribute( 'href' ) === '/crm/pdf-preview/layout' && all( pg.main, '#design-preview' )[0].getAttribute( 'target' ) === '_blank' );
+
+	// --- the feature off, and an endpoint that fails
+	const pOff = await popen( '#pdf', { 'pdf/templates/list' : function() { return answerFail( 409, 'pdf_off' ) } } );
+	check( 'where the feature is off the endpoint says so and the screen shows the sentence with the way to try again', textOf( all( pOff.main, '.note' )[0] ).indexOf( 'Das Feature PDF ist nicht aktiv.' ) !== -1 );
+
+	// --- Einstellungen: the particulars
+	const pset = await eopen( { settings : Object.assign( {}, esettings, { tax_id : '12/345/67890', bank_name : 'Sparkasse', iban : 'DE89 3704 0044 0532 0130 00', bic : 'COBADEFFXXX' } ) } );
+	check( 'the Einstellungen have a block Rechnungsangaben with four fields - Steuernummer, Bank, IBAN, BIC - holding the settings, and say that the footer of the layout shows them', textOf( all( pset.main, '#particulars h3' )[0] ) === 'Rechnungsangaben' && all( pset.main, '#particulars dt' ).map( textOf ).join( '|' ) === 'Steuernummer|Bank|IBAN|BIC'
+		&& [ 'tax_id', 'bank_name', 'iban', 'bic' ].map( function( n ) { return efield( pset, n ).value } ).join( '|' ) === '12/345/67890|Sparkasse|DE89 3704 0044 0532 0130 00|COBADEFFXXX' && textOf( all( pset.main, '#particulars' )[0] ).indexOf( 'Der Fuß des Layouts zeigt Steuernummer und IBAN' ) !== -1 );
+	check( '...the field of the BIC is wide enough for eleven characters: it has its own class, and the stylesheet gives that class 150 px - not the 90 px of a short field', efield( pset, 'bic' ).className === 'bic' && /\.kv input\.bic \{ width: 150px \}/.test( source( OWN+ 'assets/crm.css' ) ) === true );
+	type( efield( pset, 'iban' ), 'DE00', false );
+	const pposted = [];
+	const pset2 = await eopen( {}, undefined, { 'crm-documents/settings-save' : function( data ) { pposted.push( data ); return data.iban === 'DE00' ? answerFail( 400, 'crm_documents_particular_iban', [], 'iban' ) : [ 200, { settings : Object.assign( {}, esettings, data, { vat_rates : '1900,700,550,0' } ) } ] } } );
+	type( efield( pset2, 'iban' ), 'DE00', false );
+	type( efield( pset2, 'tax_id' ), 'DE123456789', false );
+	submit( pset2, all( pset2.main, '#settings-form' )[0] );
+	await settle();
+	check( 'they are saved with the others, and a wrong IBAN is said beside its field, in its own sentence', pposted[0].iban === 'DE00' && pposted[0].tax_id === 'DE123456789' && efield( pset2, 'iban' ).classList.contains( 'err' ) === true && efield( pset2, 'iban' ).focused === true
+		&& textOf( all( all( pset2.main, '#particulars' )[0], '.state-note.bad' ).find( function( n ) { return textOf( n ) !== '' } ) ).indexOf( 'Das ist keine gültige IBAN' ) === 0 );
+	const pcard = await eopen( {}, undefined, {} );
+	check( 'the card of the templates in the Einstellungen leads to the screen of the surface for an account that holds the permission, and to the panel of the workbench for one that does not', all( all( pcard.main, '#templates' )[0], 'a' )[0].getAttribute( 'href' ) === '/_admin/#pdf' );
+	const pcard2 = world( { hash : '#einstellungen', perms : pperms, answers : { 'crm-documents/settings-get' : function() { return [ 200, eview ] }, 'crm/status' : function() { return [ 200, { items : eok } ] } } } );
+	pcard2.boot();
+	await settle();
+	check( '...here: #pdf, in the same window', all( all( pcard2.main, '#templates' )[0], 'a' )[0].getAttribute( 'href' ) === '#pdf' && all( all( pcard2.main, '#templates' )[0], 'a' )[0].getAttribute( 'target' ) === null );
+
+	// --- the words
+	const pdfFamilies = {
+		'pdf.group-' : [ 'document', 'invoice', 'offer', 'customer', 'portal', 'site', 'page' ], 'pdf.tab-' : [ 'vorlagen', 'bausteine', 'layout', 'design' ], 'pdf.slot-' : [ 'address', 'lines', 'totals' ], 'pdf.slot-note-' : [ 'address', 'lines', 'totals' ], 'pdf.paper-' : [ 'a4', 'letter' ], 'pdf.font-' : [ 'helvetica', 'times', 'courier' ],
+		'pdf.margin-' : [ 'top', 'right', 'bottom', 'left' ], 'pdf.upload-' : [ 'logo', 'signature' ], 'pdf.picture-hint-' : [ 'logo', 'signature' ], 'pdf.party-' : [ 'owner', 'member' ], 'pdf.kind-' : [ 'html', 'ref', 'slot', 'input', 'signature', 'pagebreak' ],
+		'pdf.' : [ 'logo', 'signature' ], 'site.' : [ 'general-name', 'contact-address', 'contact-email', 'contact-phone' ],
+		'tok.' : [ 'page', 'pages' ].concat( [ 'document-number', 'document-title', 'document-date', 'document-parent', 'document-vatnote', 'document-net', 'document-vat', 'document-gross', 'invoice-due', 'invoice-period', 'site-tax', 'site-bank', 'site-iban', 'site-bic', 'offer-number', 'offer-date', 'offer-valid', 'offer-gross', 'offer-period',
+			'customer-number', 'customer-company', 'customer-name', 'customer-street', 'customer-zip', 'customer-city', 'customer-country', 'customer-email', 'customer-vat', 'site-portal', 'site-login' ] ),
+	};
+	const pdfWords = new Set( [ ...script.matchAll( /\bt\( '(pdf\.[a-z0-9.-]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return /[.-]$/.test( key ) === false } ).concat(
+		[ ...script.matchAll( /'((?:pdf\.error|settings)-?[a-z.-]*)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return /^(pdf\.error-|settings\.(?:tax|bank|iban|bic|particulars|templates-link))/.test( key ) } ) ) );
+	Object.keys( pdfFamilies ).forEach( function( stem ) {
+		check( 'the family '+ stem+ '* is built by the script', script.indexOf( "'"+ stem+ "'" ) !== -1 );
+		pdfFamilies[stem].forEach( function( one ) { pdfWords.add( stem+ one ) } );
+	} );
+	const pdfMissing = [ ...pdfWords ].filter( function( key ) { return typeof texts[key] !== 'string' || texts[key] === '' } );
+
+	if( pdfMissing.length > 0 )
+		console.log( '  missing words: '+ pdfMissing.join( ', ' ) );
+
+	check( 'every word the screens of PDF-Vorlagen ask for is a word of the page, the families they build with it - the groups of the placeholders, the vocabulary, the slots, the papers, the fonts - and the sentences of the Pdf panel\'s codes the script names', pdfMissing.length === 0 && pdfWords.size > 120
+		&& typeof texts['error.pdf_block_missing'] === 'string' && typeof texts['error.pdf_block_used'] === 'string' && typeof texts['error.pdf_off'] === 'string' && typeof texts['error.upload_too_large'] === 'string' );
+	check( '...and the vocabulary the menu has is the one the script lists: 30 placeholders of the CRM, the page numbers apart', [ ...script.matchAll( /\n\t\t\[ '[a-z]+', \[ ([^\]]*) \] \],/g ) ].reduce( function( sum, found ) { return sum+ found[1].split( ',' ).length }, 0 ) === 30 );
+	}
 
 	done();
 	process.exit( process.exitCode ?? 0 );

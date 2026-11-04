@@ -16,6 +16,7 @@ declare(strict_types=1);
  *													  /offer/number, /date, /valid, /gross, /period (an offer: its own; /period says "nach Absprache" where it has none, as an invoice's says its own sentence)
  *													  /customer/number, /company, /name, /street, /zip, /city, /country, /email, /vat
  *													  /site/portal, /site/login (the absolute addresses of /portal and of the site, whose start page is the login; empty where the site has none)
+ *													  /site/tax, /site/bank, /site/iban, /site/bic (the invoice particulars of the settings: tax number, bank, IBAN, BIC; empty where unset)
  *													Slots: address, lines, totals. Inputs: the ones the template declares.
  *
  *													A template of the tags contract, privacy and information (a document without lines and without a
@@ -137,6 +138,12 @@ class Render {
 		$plain = in_array( $category, Documents::PLAIN, true );
 
 		$tokens = [ '/site/portal' => \Nino\Html::absoluteUrl( $appData, '/portal' ), '/site/login' => \Nino\Html::absoluteUrl( $appData ) ];
+
+		// The particulars of the owner's invoices, which the settings hold: the footer of the layout shows them (empty where unset)
+		$particulars = Settings::all( $appData );
+
+		foreach( [ 'tax' => 'tax_id', 'bank' => 'bank_name', 'iban' => 'iban', 'bic' => 'bic' ] as $token => $key )
+			$tokens['/site/'. $token] = $particulars[$key];
 
 		// The client's field vat_id is the token /customer/vat
 		foreach( [ 'number', 'company', 'name', 'street', 'zip', 'city', 'country', 'email' ] as $field )
