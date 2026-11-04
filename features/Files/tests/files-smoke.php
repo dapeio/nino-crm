@@ -805,13 +805,57 @@ function filesUpload( array &$appData, string $send, string $name, string $bytes
 }
 
 /**
+ *	A file posted in chunks of a size of the script's choosing (a script that found the web server takes less than the setting): the first chunk sets
+ *	the chunk of the upload
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$send					filesOwnerSend or filesMemberSend
+ *	@param		string		$name
+ *	@param		string		$bytes
+ *	@param		int				$chunk				The bytes of a chunk
+ *	@param		array 		$extra				More fields, folder among them
+ *
+ *	@return 	array										The answers [ status, body, request ] - it stops at the first that is not a 200
+ */
+function filesUploadIn( array &$appData, string $send, string $name, string $bytes, int $chunk, array $extra = [] ): array {
+
+	$count = max( 1, (int) ceil( strlen( $bytes ) / $chunk ) );
+	$upload = '';
+	$answers = [];
+
+	for( $index = 0; $index < $count; $index++ ) {
+
+		$answer = $send( $appData, $extra + [ 'name' => $name, 'size' => strlen( $bytes ), 'upload' => $upload, 'index' => $index, 'count' => $count ], filesPart( $appData, substr( $bytes, $index * $chunk, $chunk ) ) );
+		$answers[] = $answer;
+
+		if( $answer[0] !== 200 )
+			break;
+
+		$upload = (string) ( $answer[1]['upload'] ?? '' );
+	}
+
+	return $answers;
+}
+
+/**
  *	@param		array 		&$appData
  *
- *	@return 	array										The upload parts that lie in the directory, by name
+ *
+ *	@return 	array										The upload parts that lie in the directory, by name (the .chunk files beside them are filesKept()'s)
  */
 function filesParts( array &$appData ): array {
 
-	return array_map( 'basename', glob( \Nino\Filesystem::path( $appData, '/data/files/.upload' ). '/*' ) ?: [] );
+	return array_map( 'basename', glob( \Nino\Filesystem::path( $appData, '/data/files/.upload' ). '/*.part' ) ?: [] );
+}
+
+/**
+ *	@param		array 		&$appData
+ *
+ *	@return 	array										The files that keep the length of a first chunk beside the parts, by name
+ */
+function filesKept( array &$appData ): array {
+
+	return array_map( 'basename', glob( \Nino\Filesystem::path( $appData, '/data/files/.upload' ). '/*.chunk' ) ?: [] );
 }
 
 /**
@@ -958,6 +1002,7 @@ check( '...a later chunk like that leaves the part as long as it was, so that th
 $again = filesOwnerSend( $appData, [ 'folder' => $room['id'], 'name' => 'Lie.mp3', 'size' => strlen( $mp3 ), 'upload' => $honest[1]['upload'], 'index' => 1, 'count' => 3 ], filesPart( $appData, substr( $mp3, $chunkBytes, $chunkBytes ) ) );
 check( '...and it is taken when it comes whole', $again[0] === 200 && filesSize( $lieFile ) === 2 * $chunkBytes );
 unlink( $lieFile );
+unlink( $partsDir. '/'. $honest[1]['upload']. '.chunk' );
 
 // The directory of the parts is a file: nothing can be put there, and that is a 500 files_write - the directory is made again when the file is gone
 rmdir( $partsDir );
@@ -1207,6 +1252,128 @@ $tries = \Nino\Filesystem::getFileContent( $appData, '/data/files-tries.php', []
 check( 'with the default of 300 the 301st chunk request of a visitor in an hour is 429 files_limit, and the 300 before it were answered', count( array_unique( array_slice( $statuses, 0, 300 ) ) ) === 1 && $statuses[299] === 404 && $statuses[300] === 429 );
 check( '...the counter has a file of its own - not the index, which a counter would have emptied - hashed: neither the address of the visitor nor a name is written in it, and the index is what it was', is_file( \Nino\Filesystem::path( $appData, '/data/files-tries.php' ) ) === true
 	&& count( $tries ) === 1 && str_contains( (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/files-tries.php' ) ), '127.0.0.1' ) === false && filesIndex( $appData ) === $indexBefore && count( filesIndex( $appData )['files'] ) > 5 );
+filesFresh( $appData );
+
+// The chunk of an upload is the one its first chunk had: a script that found the web server takes less than the setting sends smaller chunks
+filesAs( 'ada' );
+filesFresh( $appData );
+$told = [];
+$small = filesUploadIn( $appData, 'filesMemberSend', 'Small Parts.mp3', $mp3, 300000, [ 'folder' => $room['id'] ] );
+$smallDone = $small[8][1] ?? [];
+$smallEntry = \Nino\Modules\Files::file( $appData, (string) ( $smallDone['id'] ?? '' ) );
+check( 'an upload in chunks smaller than the setting is taken and assembled: 2500000 bytes in chunks of 300000 are nine requests, the last has what is left, and the entry has the size, the sha256 and the bytes of the file',
+	array_column( $small, 0 ) === array_fill( 0, 9, 200 ) && $smallEntry !== null && $smallEntry['size'] === strlen( $mp3 ) && $smallEntry['sha256'] === hash( 'sha256', $mp3 ) && $smallEntry['mime'] === 'audio/mpeg'
+	&& file_get_contents( (string) \Nino\Modules\Files::path( $appData, $smallEntry['id'] ) ) === $mp3 && filesParts( $appData ) === [] );
+
+filesWorkbench( 'admin' );
+$ownerSmall = filesUploadIn( $appData, 'filesOwnerSend', 'Owner Small.mp3', $mp3, 700000, [ 'folder' => $room['id'] ] );
+$ownerSmallEntry = \Nino\Modules\Files::file( $appData, (string) ( $ownerSmall[3][1]['id'] ?? '' ) );
+check( '...the owner\'s upload through the panel is the same protocol: chunks of 700000 are four requests and the file is whole', array_column( $ownerSmall, 0 ) === [ 200, 200, 200, 200 ] && $ownerSmallEntry !== null && $ownerSmallEntry['sha256'] === hash( 'sha256', $mp3 ) && filesParts( $appData ) === [] );
+
+filesAs( 'ada' );
+filesFresh( $appData );
+$tiny = filesUploadIn( $appData, 'filesMemberSend', 'Tiny.txt', 'abc', 1, [ 'folder' => $room['id'] ] );
+$tinyEntry = \Nino\Modules\Files::file( $appData, (string) ( $tiny[2][1]['id'] ?? '' ) );
+check( '...a chunk can be one byte long: three requests make a file of three bytes', array_column( $tiny, 0 ) === [ 200, 200, 200 ] && $tinyEntry !== null && $tinyEntry['size'] === 3 && $tinyEntry['sha256'] === hash( 'sha256', 'abc' ) );
+
+// The first chunk sets the size: every later one but the last has to be as long
+$first = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Parts.mp3', 'size' => strlen( $mp3 ), 'upload' => '', 'index' => 0, 'count' => 9 ], filesPart( $appData, substr( $mp3, 0, 300000 ) ) );
+$partId = (string) ( $first[1]['upload'] ?? '' );
+$partFile = \Nino\Filesystem::path( $appData, '/data/files/.upload' ). '/'. $partId. '.part';
+$other = [];
+
+foreach( [ 'shorter' => 299999, 'longer' => 300001, 'the setting' => 1048576 ] as $kind => $length )
+	$other[$kind] = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Parts.mp3', 'size' => strlen( $mp3 ), 'upload' => $partId, 'index' => 1, 'count' => 9 ], filesPart( $appData, substr( $mp3, 300000, $length ) ) );
+
+$other['count up'] = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Parts.mp3', 'size' => strlen( $mp3 ), 'upload' => $partId, 'index' => 1, 'count' => 10 ], filesPart( $appData, substr( $mp3, 300000, 300000 ) ) );
+$other['count down'] = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Parts.mp3', 'size' => strlen( $mp3 ), 'upload' => $partId, 'index' => 1, 'count' => 8 ], filesPart( $appData, substr( $mp3, 300000, 300000 ) ) );
+$other['last too long'] = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Parts.mp3', 'size' => strlen( $mp3 ), 'upload' => $partId, 'index' => 8, 'count' => 9 ], filesPart( $appData, substr( $mp3, 2400000, 300000 ) ) );
+check( 'a later chunk of another length than the first (shorter, longer, the setting\'s), a count that does not fit the chunk (one more, one less) and a last chunk that is not what is left are all 400 files_chunk - and the part stays as the first chunk made it',
+	array_values( array_unique( array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $other ) ) ) === [ '400 files_chunk' ] && count( $other ) === 6 && filesSize( $partFile ) === 300000 );
+
+check( '...the length of the first chunk is kept beside the part for as long as the upload is under way', filesKept( $appData ) === [ $partId. '.chunk' ] && file_get_contents( dirname( $partFile ). '/'. $partId. '.chunk' ) === '300000' );
+
+// The chunk of the upload is the first chunk's, not what the part makes of it: a skipped index with a new count is refused
+$skip = [
+	'an index skipped, with the count of another chunk' => [ 'index' => 2, 'count' => 17, 'bytes' => substr( $mp3, 300000, 150000 ) ],
+	'the next index with that count' => [ 'index' => 1, 'count' => 17, 'bytes' => substr( $mp3, 300000, 150000 ) ],
+	'an index skipped, as long as the first' => [ 'index' => 2, 'count' => 9, 'bytes' => substr( $mp3, 600000, 300000 ) ],
+];
+$skipped = [];
+
+foreach( $skip as $kind => $each )
+	$skipped[$kind] = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Parts.mp3', 'size' => strlen( $mp3 ), 'upload' => $partId, 'index' => $each['index'], 'count' => $each['count'] ], filesPart( $appData, $each['bytes'] ) );
+
+check( 'after a first chunk of 300000 bytes an index that is skipped is 400 files_chunk whatever the count and the length it brings (150000 and 17 chunks included) - the part stays 300000 bytes',
+	array_values( array_unique( array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $skipped ) ) ) === [ '400 files_chunk' ] && filesSize( $partFile ) === 300000 && filesKept( $appData ) === [ $partId. '.chunk' ] );
+
+// Each refusal says what is wrong
+$tail = static fn( int $index, int $count, string $bytes, string $upload = '' ): array => filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Parts.mp3', 'size' => strlen( $mp3 ), 'upload' => $upload, 'index' => $index, 'count' => $count ], filesPart( $appData, $bytes ) );
+$said = [
+	'over the setting' => $tail( 0, 3, substr( $mp3, 0, 1048577 ) ),
+	'another size' => $tail( 1, 9, substr( $mp3, 300000, 299999 ), $partId ),
+	'out of order' => $tail( 2, 9, substr( $mp3, 600000, 300000 ), $partId ),
+	'a count that does not fit' => $tail( 1, 10, substr( $mp3, 300000, 300000 ), $partId ),
+	'no such upload' => $tail( 1, 9, substr( $mp3, 300000, 300000 ), 'aaaaaaaaaaaaaaaa' ),
+	'a chunk that did not arrive' => filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Parts.mp3', 'size' => strlen( $mp3 ), 'upload' => $partId, 'index' => 1, 'count' => 9 ], array_replace( filesPart( $appData, substr( $mp3, 300000, 300000 ) ), [ 'error' => UPLOAD_ERR_PARTIAL ] ) ),
+];
+$errors = array_map( static fn( array $answer ): string => ( $answer[0] === 400 && ( $answer[1]['code'] ?? '' ) === 'files_chunk' ) ? (string) ( $answer[1]['error'] ?? '' ) : '', $said );
+check( '...and every refusal has its own sentence, the code staying files_chunk: a first chunk over the setting, a chunk of another size, one out of order, a count that does not fit, an upload that is not there and a chunk that did not arrive whole are six different words',
+	count( array_unique( $errors ) ) === 6 && in_array( '', $errors, true ) === false );
+$goes = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Parts.mp3', 'size' => strlen( $mp3 ), 'upload' => $partId, 'index' => 1, 'count' => 9 ], filesPart( $appData, substr( $mp3, 300000, 300000 ) ) );
+check( '...and the chunk that fits is taken after all of them', $goes[0] === 200 && filesSize( $partFile ) === 600000 );
+@unlink( $partFile );
+@unlink( dirname( $partFile ). '/'. $partId. '.chunk' );
+
+// The last chunk longer than what is left has its own word as well, and the part stays
+$lastA = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Last.txt', 'size' => 5, 'upload' => '', 'index' => 0, 'count' => 3 ], filesPart( $appData, 'ab' ) );
+filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Last.txt', 'size' => 5, 'upload' => $lastA[1]['upload'] ?? '', 'index' => 1, 'count' => 3 ], filesPart( $appData, 'cd' ) );
+$lastLong = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Last.txt', 'size' => 5, 'upload' => $lastA[1]['upload'] ?? '', 'index' => 2, 'count' => 3 ], filesPart( $appData, 'efg' ) );
+check( '...the last chunk that is longer than what is left has a word of its own, other than the six', $lastLong[0] === 400 && ( $lastLong[1]['code'] ?? '' ) === 'files_chunk' && in_array( (string) ( $lastLong[1]['error'] ?? '' ), $errors, true ) === false && $lastLong[1]['error'] !== '' );
+filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Last.txt', 'size' => 5, 'upload' => $lastA[1]['upload'] ?? '', 'index' => 2, 'count' => 3 ], filesPart( $appData, 'e' ) );
+check( '...and nothing is kept once an upload is whole: no part and no kept length', filesParts( $appData ) === [] && filesKept( $appData ) === [] );
+
+// A part without the length of its first chunk is no upload of this protocol; a length without a part is swept
+$bare = dirname( $partFile ). '/bbbbbbbbbbbbbbbb.part';
+file_put_contents( $bare, str_repeat( 'x', 300000 ) );
+file_put_contents( dirname( $partFile ). '/cccccccccccccccc.chunk', '300000' );
+$noKept = $tail( 1, 9, substr( $mp3, 300000, 300000 ), 'bbbbbbbbbbbbbbbb' );
+unlink( $bare );
+$tail( 0, 9, substr( $mp3, 0, 300000 ) );
+check( 'a part with no length kept beside it is refused as an upload that is not there, and a length without its part is swept when the next upload starts', $noKept[0] === 400 && $noKept[1]['code'] === 'files_chunk' && is_file( dirname( $partFile ). '/cccccccccccccccc.chunk' ) === false && count( filesKept( $appData ) ) === 1 );
+$stalePair = dirname( $partFile ). '/dddddddddddddddd';
+file_put_contents( $stalePair. '.part', 'x' );
+file_put_contents( $stalePair. '.chunk', '1' );
+touch( $stalePair. '.part', time() - 90000 );
+$tail( 0, 9, substr( $mp3, 0, 300000 ) );
+check( '...a stale part goes with the length kept beside it', is_file( $stalePair. '.part' ) === false && is_file( $stalePair. '.chunk' ) === false );
+
+foreach( glob( dirname( $partFile ). '/*' ) ?: [] as $left )
+	@unlink( $left );
+
+// A first chunk that does not fit the file or the setting
+$firsts = [
+	'a count that does not fit' => [ 'count' => 8, 'length' => 300000 ],
+	'a count that is one too many' => [ 'count' => 10, 'length' => 300000 ],
+	'longer than the setting' => [ 'count' => 3, 'length' => 1048577 ],
+	'one chunk that is not the file' => [ 'count' => 1, 'length' => 300000 ],
+];
+$refusedFirst = [];
+
+foreach( $firsts as $kind => $each )
+	$refusedFirst[$kind] = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Parts.mp3', 'size' => strlen( $mp3 ), 'upload' => '', 'index' => 0, 'count' => $each['count'] ], filesPart( $appData, substr( $mp3, 0, $each['length'] ) ) );
+
+// A last chunk longer than what is left is refused at once, and the part stays so that the right one can follow
+$tail = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Tail.txt', 'size' => 5, 'upload' => '', 'index' => 0, 'count' => 3 ], filesPart( $appData, 'ab' ) );
+$tailPart = \Nino\Filesystem::path( $appData, '/data/files/.upload' ). '/'. ( $tail[1]['upload'] ?? 'x' ). '.part';
+$tailMid = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Tail.txt', 'size' => 5, 'upload' => $tail[1]['upload'] ?? '', 'index' => 1, 'count' => 3 ], filesPart( $appData, 'cd' ) );
+$tailLong = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Tail.txt', 'size' => 5, 'upload' => $tail[1]['upload'] ?? '', 'index' => 2, 'count' => 3 ], filesPart( $appData, 'efg' ) );
+$tailState = [ is_file( $tailPart ), filesSize( $tailPart ) ];
+$tailEnd = filesMemberSend( $appData, [ 'folder' => $room['id'], 'name' => 'Tail.txt', 'size' => 5, 'upload' => $tail[1]['upload'] ?? '', 'index' => 2, 'count' => 3 ], filesPart( $appData, 'e' ) );
+check( '...a last chunk longer than what is left is 400 files_chunk before it is written - the part stays as long as it was and the right last chunk is taken after it', [ $tail[0], $tailMid[0], $tailLong[0], $tailLong[1]['code'] ?? '' ] === [ 200, 200, 400, 'files_chunk' ] && $tailState === [ true, 4 ] && $tailEnd[0] === 200 && ( $tailEnd[1]['size'] ?? 0 ) === 5 );
+
+check( 'a first chunk is checked against the file it starts: a count that does not fit its length, a chunk longer than the setting and a single chunk that is not the whole file are 400 files_chunk, and no part is made',
+	array_values( array_unique( array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $refusedFirst ) ) ) === [ '400 files_chunk' ] && filesParts( $appData ) === [] );
 filesFresh( $appData );
 
 // The one-step post without script

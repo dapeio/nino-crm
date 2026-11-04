@@ -26,7 +26,7 @@ namespace Nino\Modules\Files {
 	 *										ID and an extension that matched EXTENSION and from nothing a
 	 *										request sends. A file is deleted from the index first and from
 	 *										the disk second. An upload that is not finished lies in
-	 *										/data/files/.upload/<upload id>.part (see Files\Upload).
+	 *										/data/files/.upload/<upload id>.part and <upload id>.chunk (see Files\Upload).
 	 *
 	 *										The class holds the rules the panel and the route share: the
 	 *										extensions and the MIME types they may carry (MIME), the name of
@@ -739,6 +739,11 @@ namespace Nino\Modules\Files {
 			foreach( glob( \Nino\Filesystem::path( $appData, self::PARTS ). '/*.part' ) ?: [] as $part )
 				if( is_file( $part ) === true && (int) @filemtime( $part ) < time() - self::STALE && @unlink( $part ) === true )
 					$gone++;
+
+			// The length kept with a part goes with the part (the part went above, or with its upload), and what was left without one is not kept
+			foreach( glob( \Nino\Filesystem::path( $appData, self::PARTS ). '/*.chunk' ) ?: [] as $kept )
+				if( is_file( substr( $kept, 0, -6 ). '.part' ) === false )
+					@unlink( $kept );
 
 			return $gone;
 		}

@@ -22,7 +22,7 @@ return [
 
 	// Was der Schirm über sich und die Grenzen sagt, in denen er arbeitet
 	'[[/_admin/files/hint/intro]]'					=> 'Ordner und Dateien für die Gruppen des Features Mitglieder. Ein Mitglied sieht die Ordner seiner Gruppe und lädt herunter, was für es sichtbar ist; in den Ordner, den Du als Upload-Ordner markierst, kann ein Mitglied hochladen.',
-	'[[/_admin/files/hint/limits]]'					=> 'Der Server nimmt %s in einer Anfrage. Eine Datei wird in Teile von %s geschnitten; die größte Datei ist %s.',
+	'[[/_admin/files/hint/limits]]'					=> 'Der Server nimmt %s in einer Anfrage. Eine Datei wird in Teile von %s geschnitten; die größte Datei ist %s. Eine Grenze des Webservers (etwa client_max_body_size) steht hier nicht: Ein Upload findet sie selbst, indem er seine Teile halbiert, wenn der Server sie mit 413 abweist.',
 	'[[/_admin/files/hint/quota]]'					=> 'Die Gruppe belegt %s von %s.',
 	'[[/_admin/files/hint/backup]]'					=> 'Die tägliche Sicherung enthält den Index der Dateien, nicht die Dateien selbst – sie liegen in data/files/ und werden mit dem Server gesichert.',
 	'[[/_admin/files/hint/nogroup]]'				=> 'Das Feature Mitglieder hat noch keine Gruppe. Gib einem Mitglied im Panel Mitglieder eine Gruppe, dann lege hier Ordner dafür an.',
@@ -77,6 +77,7 @@ return [
 	'[[/_admin/files/label/upload]]'				=> 'Hochladen',
 	'[[/_admin/files/label/waiting]]'				=> 'Wartet',
 	'[[/_admin/files/label/sending]]'				=> 'Lädt hoch',
+	'[[/_admin/files/label/smaller]]'				=> 'Der Server nimmt so große Anfragen nicht an. Die Datei wird in kleineren Teilen noch einmal gesendet.',
 	'[[/_admin/files/label/done]]'					=> 'Hochgeladen',
 	'[[/_admin/files/msg/uploaded-file]]'			=> 'Die Datei ist hochgeladen.',
 	'[[/_admin/files/msg/uploaded]]'				=> '%s Dateien hochgeladen.',
@@ -84,6 +85,7 @@ return [
 	'[[/_admin/files/error/empty]]'					=> '%s ist leer.',
 	'[[/_admin/files/error/toolarge]]'				=> '%s ist größer als die größte Datei (%s).',
 	'[[/_admin/files/error/upload]]'				=> 'Die Datei konnte nicht hochgeladen werden.',
+	'[[/_admin/files/error/floor]]'					=> 'Der Server nimmt auch Anfragen dieser kleinen Größe nicht an. Frage Deinen Hoster, wie groß eine Anfrage sein darf.',
 
 	// Was das Panel zu einer Liste sagt, die nicht geladen werden konnte: der Schlüssel, den Nino.adminUi.panel() für einen Fehler beim Laden nimmt
 	'[[/_admin/files/error/load]]'					=> 'Die Dateien konnten nicht geladen werden.',

@@ -37,6 +37,8 @@ return [
 	// Der Rest von dem, was das Skript zu einer Datei in seiner Liste sagt
 	'[[/feature/files/script/waiting]]'	=> 'Wartet',
 	'[[/feature/files/script/sending]]'	=> 'Lädt hoch',
+	'[[/feature/files/script/smaller]]'	=> 'Der Server nimmt so große Anfragen nicht an. Die Datei wird in kleineren Teilen noch einmal gesendet.',
+	'[[/feature/files/script/floor]]'	=> 'Der Server nimmt auch Anfragen dieser kleinen Größe nicht an. Bitte frage den Betreiber, wie groß eine Anfrage sein darf.',
 	'[[/feature/files/script/done]]'		=> 'Hochgeladen',
 	'[[/feature/files/script/expired]]'	=> 'Deine Sitzung ist abgelaufen. Bitte lade die Seite neu.',
 	'[[/feature/files/script/offline]]'	=> 'Die Verbindung ist fehlgeschlagen. Bitte versuche es noch einmal.',

@@ -751,6 +751,104 @@ console.log( '\nNino.admin.files - unsaved input, and both languages\n' );
 		&& german.word('/_admin/files/unit/separator') !== english.word('/_admin/files/unit/separator') );
 }
 
+{
+	// A web server that takes less than the chunk: its 413 makes the upload start again in halves
+	const w = drawn('en_US');
+	const box = w.find( w.mount, function( el ) { return el.id === 'files-upload' } );
+	const input = w.find( box, function( el ) { return el.id === 'files-upload-input' } );
+	const send = w.find( box, function( el ) { return el.id === 'files-upload-send' } );
+	const list = w.find( box, function( el ) { return el.id === 'files-upload-list' } );
+	const rowsOf = function() { return w.all( list, function( el ) { return el.tagName === 'LI' } ) };
+	const shape = function( request ) { return request.payload.index+ '/'+ request.payload.count+ ':'+ ( request.extra.chunk.to - request.extra.chunk.from )+ ':'+ request.payload.upload };
+	// The chunk the server of the test takes at most
+	const takes = 300000;
+	const serve = function() {
+		const request = w.last();
+		const size = request.extra.chunk.to - request.extra.chunk.from;
+		if( size > takes )
+			w.answer( 413, null );
+		else if( request.payload.index + 1 < request.payload.count )
+			w.answer( 200, { upload : 'abcdef0123456789', index : request.payload.index } );
+		else
+			w.answer( 200, { id : 'ffffffffffff', name : request.payload.name, size : request.payload.size } );
+	};
+
+	check( 'the halving is pure: half of the chunk that was refused, a file shorter than the chunk halves its own length, and nothing below 128 KiB - 0 where the chunk is there already',
+		w.panel._halve( 2500000, 1048576 ) === 524288 && w.panel._halve( 2500000, 262144 ) === 131072 && w.panel._halve( 2500000, 131072 ) === 0 && w.panel._halve( 200000, 1048576 ) === 131072 && w.panel._halve( 100000, 1048576 ) === 0 && w.panel._halve( 0, 1048576 ) === 0 );
+
+	input.files = [ stood( 'Big.mp3', 2500000 ), stood( 'Next.mp3', 1500000 ) ];
+	send.click();
+	w.answer( 200, { upload : 'abcdef0123456789', index : 0 } );
+	const before = w.requests.length;
+	serve();
+	check( 'a chunk the server answers 413 starts the file again from its first chunk with no upload id, in chunks of half the size',
+		w.requests.length === before + 1 && shape( w.last() ) === '0/5:524288:' && rowsOf()[0].dataset.state === 'sending' );
+	check( '...and the row says the parts were made smaller, with its own word, and starts its bar again', copyOf( w, rowsOf()[0] )[1] === w.word('/_admin/files/label/smaller') && w.has('/_admin/files/label/smaller') === true
+		&& w.word('/_admin/files/label/smaller') !== w.word('/_admin/files/label/sending') && Number( w.find( rowsOf()[0], function( el ) { return el.tagName === 'PROGRESS' } ).value ) === 0 );
+	serve();
+	check( '...a chunk of that size is refused again: half once more, again from the first chunk', shape( w.last() ) === '0/10:262144:' && w.requests.filter( function( request ) { return request.payload.index === 0 } ).length === 3 );
+
+	while( w.last().payload.name === 'Big.mp3' )
+		serve();
+
+	check( 'the file goes on at the size that passes and is whole: ten chunks of 262144 were not too large', w.requests.filter( function( request ) { return request.payload.name === 'Big.mp3' && request.payload.upload === 'abcdef0123456789' } ).length > 0
+		&& rowsOf()[0].dataset.state === 'done' && copyOf( w, rowsOf()[0] )[1] === w.word('/_admin/files/label/done') );
+	check( '...the next file of the session starts at the size that worked - 262144, not the setting\'s - and needs no halving', shape( w.last() ) === '0/6:262144:' );
+
+	while( w.last().action === 'files/upload' )
+		serve();
+
+	check( '...and so does the next upload of the same session (the panel keeps the working size)', rowsOf().every( function( row ) { return row.dataset.state === 'done' } ) && w.last().action === 'files/list' );
+
+	input.files = [ stood( 'Third.mp3', 2500000 ) ];
+	send.click();
+	check( '...a third, pressed again, begins at the working size as well', shape( w.last() ) === '0/10:262144:' );
+	w.answer( 200, { upload : 'abcdef0123456789', index : 0 } );
+	w.answer( 500, { code : 'offline' } );
+	check( 'a connection that dropped (the panel is given 500 and the code offline) is not a 413: the file fails with the sentence of the shell and nothing is sent again', rowsOf()[0].dataset.state === 'failed'
+		&& copyOf( w, rowsOf()[0] )[1] === w.said( '/_admin/common/error/offline' ) + '' && w.requests.filter( function( request ) { return request.action === 'files/upload' && request.payload.name === 'Third.mp3' } ).length === 2 );
+}
+
+{
+	// At the floor a 413 is a failure that names the cause
+	const w = drawn('en_US');
+	const box = w.find( w.mount, function( el ) { return el.id === 'files-upload' } );
+	const input = w.find( box, function( el ) { return el.id === 'files-upload-input' } );
+	const send = w.find( box, function( el ) { return el.id === 'files-upload-send' } );
+	const list = w.find( box, function( el ) { return el.id === 'files-upload-list' } );
+	const sizes = [];
+
+	input.files = [ stood( 'Never.mp3', 2500000 ), stood( 'After.txt', 10 ) ];
+	send.click();
+
+	while( w.last().payload.name === 'Never.mp3' && sizes.length < 20 ) {
+		sizes.push( w.last().extra.chunk.to - w.last().extra.chunk.from );
+		w.answer( 413, null );
+	}
+
+	const rows = w.all( list, function( el ) { return el.tagName === 'LI' } );
+	check( 'a server that refuses every size is tried at the setting and at each half down to 128 KiB, and no further', sizes.join() === '1048576,524288,262144,131072' );
+	check( '...the file then fails with the sentence of the floor, which is not the sentence of any code - and the next file goes on', rows[0].dataset.state === 'failed' && copyOf( w, rows[0] )[1] === w.word('/_admin/files/error/floor') && w.has('/_admin/files/error/floor') === true
+		&& w.last().payload.name === 'After.txt' && w.last().payload.count === 1 );
+}
+
+{
+	// A refusal that is not a 413 is not a sign of a web server limit: nothing is halved
+	[ [ 400, { error : 'x', code : 'files_type', field : 'name' } ], [ 429, { error : 'x', code : 'files_limit' } ], [ 500, { error : 'x' } ] ].forEach( function( each ) {
+		const w = drawn('en_US');
+		const box = w.find( w.mount, function( el ) { return el.id === 'files-upload' } );
+		const input = w.find( box, function( el ) { return el.id === 'files-upload-input' } );
+		const send = w.find( box, function( el ) { return el.id === 'files-upload-send' } );
+		const list = w.find( box, function( el ) { return el.id === 'files-upload-list' } );
+
+		input.files = [ stood( 'Plain.mp3', 2500000 ) ];
+		send.click();
+		w.answer( each[0], each[1] );
+		const row = w.all( list, function( el ) { return el.tagName === 'LI' } )[0];
+		check( 'the panel does not halve a '+ each[0]+ ': one request, the row is failed and does not say the parts were made smaller', w.requests.filter( function( request ) { return request.action === 'files/upload' } ).length === 1 && row.dataset.state === 'failed' && copyOf( w, row )[1] !== w.word('/_admin/files/label/smaller') );
+	} );
+}
+
 
 // --- The site's script ----------------------------------------------------------
 
@@ -766,9 +864,10 @@ console.log( '\nNino.files - the script of the form on the site\n' );
  */
 function site( options ) {
 
-	options = Object.assign( { chunk : '1048576', max : '5242880', multiple : '1', supported : true }, options );
+	options = Object.assign( { chunk : '1048576', max : '5242880', multiple : '1', supported : true, without : [], storage : undefined }, options );
 
 	const words = Object.assign( fills( own( 'install/text/en_US.php' ) ) );
+	options.without.forEach( function( key ) { delete words[key] } );
 	const requests = [];
 	const ready = [];
 	const assigned = [];
@@ -776,6 +875,7 @@ function site( options ) {
 
 	const form = element('form');
 	form.className = 'files-upload';
+	form.setAttribute( 'action', '/club/.files/upload' );
 	form.setAttribute( 'data-files-chunk', options.chunk );
 	form.setAttribute( 'data-files-max', options.max );
 	form.setAttribute( 'data-files-multiple', options.multiple );
@@ -831,6 +931,7 @@ function site( options ) {
 		Nino : Nino,
 		location : { href : 'https://example.org/club/files?x=1', assign : function( to ) { assigned.push( to ) } },
 		FormData : options.supported === true ? function() {} : undefined,
+		sessionStorage : options.storage,
 		File : options.supported === true ? function() {} : undefined,
 	};
 
@@ -976,6 +1077,162 @@ function site( options ) {
 
 	check( 'the name of a file is text in its row: markup in it is a string and no element', findAll( s.rows()[0], function( el ) { return el.tagName === 'SPAN' } )[0].textContent === '<img src=x onerror=alert(1)>.mp3' && findAll( s.list, function( el ) { return el.tagName === 'IMG' } ).length === 0 );
 	check( 'every word the script asked for is a fill of the unit\'s text file', s.missing.length === 0 );
+}
+
+{
+	// A web server that takes less than the chunk: its 413 makes the upload start again in halves
+	const s = site();
+	const halve = s.window.Nino.files.halve;
+	const takes = 300000;
+	const say = function( row ) { return findAll( row, function( el ) { return el.tagName === 'SPAN' } )[1].textContent };
+	const shape = function( request ) { return request.data.index+ '/'+ request.data.count+ ':'+ ( request.data.chunk.to - request.data.chunk.from )+ ':'+ request.data.upload };
+	const serve = function() {
+		const request = s.requests[s.requests.length - 1];
+		const size = request.data.chunk.to - request.data.chunk.from;
+		if( size > takes )
+			s.answer( 413, null );
+		else if( request.data.index + 1 < request.data.count )
+			s.answer( 200, { upload : 'abcdef0123456789', index : request.data.index } );
+		else
+			s.answer( 200, { id : 'ffffffffffff', name : request.data.name, size : request.data.size } );
+	};
+
+	check( 'the halving is pure: half of the chunk that was refused, a file shorter than the chunk halves its own length, and nothing below 128 KiB - 0 where the chunk is there already',
+		halve( 2500000, 1048576 ) === 524288 && halve( 2500000, 262144 ) === 131072 && halve( 2500000, 131072 ) === 0 && halve( 200000, 1048576 ) === 131072 && halve( 100000, 1048576 ) === 0 && s.window.Nino.files.floor === 131072 );
+
+	s.ready[0].callback();
+	s.input.files = [ stood( 'Big.mp3', 2500000 ), stood( 'Next.mp3', 1500000 ) ];
+	s.submit();
+	s.answer( 200, { upload : 'abcdef0123456789', index : 0 } );
+	const before = s.requests.length;
+	serve();
+	check( 'a chunk the web server answers 413 starts the file again from its first chunk with no upload id, in chunks of half the size - and the row says the parts were made smaller',
+		s.requests.length === before + 1 && shape( s.requests[s.requests.length - 1] ) === '0/5:524288:' && s.rows()[0].dataset.state === 'sending' && say( s.rows()[0] ) === s.word('/feature/files/script/smaller')
+		&& s.word('/feature/files/script/smaller') !== s.word('/feature/files/script/sending') && Number( findAll( s.rows()[0], function( el ) { return el.tagName === 'PROGRESS' } )[0].value ) === 0 );
+	serve();
+	check( '...refused again, half once more, from the first chunk again', shape( s.requests[s.requests.length - 1] ) === '0/10:262144:' && s.requests.filter( function( request ) { return request.data.index === 0 } ).length === 3 );
+
+	while( s.requests[s.requests.length - 1].data.name === 'Big.mp3' )
+		serve();
+
+	check( '...the file goes on with the upload id of the new upload and is done; the next file of the form begins at the size that worked, not at the setting', s.rows()[0].dataset.state === 'done' && say( s.rows()[0] ) === s.word('/feature/files/script/done')
+		&& shape( s.requests[s.requests.length - 1] ) === '0/6:262144:' );
+
+	while( s.assigned.length === 0 )
+		serve();
+
+	check( '...and when every file is in the page is loaded again as before', s.rows().every( function( row ) { return row.dataset.state === 'done' } ) && s.assigned.length === 1 );
+
+	s.input.files = [ stood( 'Third.mp3', 2500000 ) ];
+	s.submit();
+	check( '...a later submit of the same page starts at the working size too', shape( s.requests[s.requests.length - 1] ) === '0/10:262144:' );
+	s.answer( 200, { upload : 'abcdef0123456789', index : 0 } );
+	const sent = s.requests.length;
+	s.answer( 500, null, '' );
+	check( 'a connection that dropped (no headers at all) is not a 413: the file fails as it did, with the word of the connection, and nothing is sent again', s.requests.length === sent && s.rows()[2].dataset.state === 'failed' && say( s.rows()[2] ) === s.word('/feature/files/script/offline') );
+}
+
+{
+	// At the floor a 413 is a failure that names the cause
+	const s = site();
+	const sizes = [];
+
+	s.ready[0].callback();
+	s.input.files = [ stood( 'Never.mp3', 2500000 ), stood( 'After.txt', 10 ) ];
+	s.submit();
+
+	while( s.requests[s.requests.length - 1].data.name === 'Never.mp3' && sizes.length < 20 ) {
+		const request = s.requests[s.requests.length - 1];
+		sizes.push( request.data.chunk.to - request.data.chunk.from );
+		s.answer( 413, null );
+	}
+
+	check( 'a server that refuses every size is tried at the setting and at each half down to 128 KiB, and no further', sizes.join() === '1048576,524288,262144,131072' );
+	check( '...the file then fails with the sentence of the floor, the next file goes on and the page is not loaded again',
+		s.rows()[0].dataset.state === 'failed' && findAll( s.rows()[0], function( el ) { return el.tagName === 'SPAN' } )[1].textContent === s.word('/feature/files/script/floor') && s.word('/feature/files/script/floor') !== s.word('/feature/files/state/write')
+		&& s.requests[s.requests.length - 1].data.name === 'After.txt' );
+
+	s.answer( 200, { id : 'ffffffffffff', name : 'After.txt', size : 10 } );
+	check( '...and a small file of 10 bytes follows at the floor without a word of halving', s.rows()[1].dataset.state === 'done' && s.assigned.length === 0 && s.missing.length === 0 );
+}
+
+{
+	// A 413 that carries a code the script has a word for says that word: the cause is named
+	const s = site();
+	s.ready[0].callback();
+	s.input.files = [ stood( 'Tiny.txt', 10 ) ];
+	s.submit();
+	s.answer( 413, { code : 'files_size' } );
+	check( 'a 413 at the floor that names a code the script knows says the word of the code, not the sentence of the web server', findAll( s.rows()[0], function( el ) { return el.tagName === 'SPAN' } )[1].textContent === s.word('/feature/files/state/size') );
+}
+
+{
+	// A site whose texts were stored before the two new words existed
+	const s = site( { without : [ '/feature/files/script/smaller', '/feature/files/script/floor' ] } );
+	s.ready[0].callback();
+	s.input.files = [ stood( 'Old.mp3', 300000 ) ];
+	s.submit();
+	s.answer( 413, null );
+	check( 'a site that has not the word for the smaller parts yet shows the word of the upload in its row, and the file goes on in halves', findAll( s.rows()[0], function( el ) { return el.tagName === 'SPAN' } )[1].textContent === s.word('/feature/files/script/sending') && s.requests[s.requests.length - 1].data.count === 2 );
+	s.answer( 413, null );
+	s.answer( 413, null );
+	check( '...and at the floor, without the word of the floor, the word for a chunk that did not arrive whole - never an empty row', s.rows()[0].dataset.state === 'failed' && findAll( s.rows()[0], function( el ) { return el.tagName === 'SPAN' } )[1].textContent === s.word('/feature/files/state/chunk') );
+}
+
+{
+	// The working size is kept over the reload that ends a submit, in the storage of the tab, by the action of the form
+	const store = { data : {}, getItem : function( key ) { return Object.prototype.hasOwnProperty.call( this.data, key ) ? this.data[key] : null }, setItem : function( key, value ) { this.data[key] = String( value ) } };
+	const takes = 300000;
+	const run = function( s ) {
+		s.ready[0].callback();
+		s.input.files = [ stood( 'Kept.mp3', 2500000 ) ];
+		s.submit();
+		while( s.assigned.length === 0 && s.rows()[s.rows().length - 1].dataset.state !== 'failed' ) {
+			const request = s.requests[s.requests.length - 1];
+			if( request.data.chunk.to - request.data.chunk.from > takes )
+				s.answer( 413, null );
+			else
+				s.answer( 200, request.data.index + 1 < request.data.count ? { upload : 'abcdef0123456789', index : request.data.index } : { id : 'ffffffffffff', name : 'Kept.mp3', size : 2500000 } );
+		}
+		return s;
+	};
+	const first = run( site( { storage : store } ) );
+	check( 'the size that worked is written to the storage of the tab, once, under a key of its own', Object.keys( store.data ).length === 1 && store.data[Object.keys( store.data )[0]] === '262144' && first.assigned.length === 1 );
+
+	const second = site( { storage : store } );
+	second.ready[0].callback();
+	second.input.files = [ stood( 'Again.mp3', 2500000 ) ];
+	second.submit();
+	check( '...and the next submit, on the page the reload loaded, starts at that size - no request is wasted on the setting', second.requests.length === 1 && second.requests[0].data.count === 10 && second.requests[0].data.chunk.to - second.requests[0].data.chunk.from === 262144 );
+
+	const odd = [ 'abc', '10', '-5', '', '99999999999' ].map( function( value ) {
+		const bad = { getItem : function() { return value }, setItem : function() {} };
+		const s = site( { storage : bad } );
+		s.ready[0].callback();
+		s.input.files = [ stood( 'Odd.mp3', 2500000 ) ];
+		s.submit();
+		return s.requests[0].data.chunk.to - s.requests[0].data.chunk.from;
+	} );
+	check( '...a value that is no chunk (words, below the floor, negative, empty) is not taken: the submit starts at the setting; one above the setting is held to it', odd.slice( 0, 4 ).every( function( size ) { return size === 1048576 } ) && odd[4] === 1048576 );
+
+	const none = [ undefined, { getItem : function() { throw new Error('blocked') }, setItem : function() { throw new Error('blocked') } } ].map( function( broken ) {
+		const s = run( site( { storage : broken } ) );
+		return s.assigned.length === 1 && s.rows()[0].dataset.state === 'done';
+	} );
+	check( '...storage that is missing or throws is harmless: the upload halves, goes through and the page is loaded again', none.every( function( ok ) { return ok === true } ) );
+}
+
+{
+	// A refusal that is not a 413 is not a sign of a web server limit: nothing is halved
+	[ [ 429, { code : 'files_limit' }, 'limit' ], [ 400, { code : 'files_chunk' }, 'chunk' ], [ 404, { code : 'files_folder' }, 'folder' ] ].forEach( function( each ) {
+		const s = site();
+		s.ready[0].callback();
+		s.input.files = [ stood( 'Plain.mp3', 2500000 ) ];
+		s.submit();
+		s.answer( each[0], each[1] );
+		const said = findAll( s.rows()[0], function( el ) { return el.tagName === 'SPAN' } )[1].textContent;
+		check( 'a '+ each[0]+ ' is not halved: one request, the file fails with the word of its code, no word about smaller parts', s.requests.length === 1 && s.rows()[0].dataset.state === 'failed' && said === s.word('/feature/files/state/'+ each[2]) && said !== s.word('/feature/files/script/smaller') );
+	} );
 }
 
 done();

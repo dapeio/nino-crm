@@ -6,7 +6,11 @@
  *						every file is cut into chunks of data-files-chunk bytes and posted in
  *						order with the fields of the form (folder, the csrf token) and the
  *						ones of the upload (name, size, upload, index and count), so that a
- *						file is not bound by the post size of the server. Each file has a row
+ *						file is not bound by the post size of the server. A web server that
+ *						takes less than that (its own limit, which php does not see) answers
+ *						a chunk with 413: the file then starts again as a new upload in chunks
+ *						of half the size, down to 128 KiB, and the size that works is kept
+ *						for the files after it. Each file has a row
  *						in the list of the form with its progress and, when it is done or
  *						refused, the word of the answer: a refusal names its code, and the
  *						word of the code is one of the fills the Jstext module hands the
@@ -37,6 +41,44 @@
 		multiple	: { type : 'flag', fallback : false },
 	};
 
+	// The smallest chunk a file is cut into when the web server refuses a request with 413: 128 KiB
+	const FLOOR = 131072;
+
+	/**
+	 *	The chunk an earlier upload of this tab found the web server takes, kept over the reload that ends a submit. Storage may be missing or full:
+	 *	then nothing is kept and the next submit starts at the setting
+	 *
+	 *	@param		{string}	key
+	 *
+	 *	@return		{number}									The bytes; 0 for none, or for a value that is none a chunk can be
+	 */
+	const kept = function( key ) {
+
+		try {
+			const value = parseInt( wn.sessionStorage.getItem( key ), 10 );
+			return Number.isInteger( value ) === true && value >= FLOOR ? value : 0;
+		}
+		catch( e ) {
+			return 0;
+		}
+	};
+
+	/**
+	 *	@param		{string}	key
+	 *	@param		{number}	chunk
+	 *
+	 *	@return		{void}
+	 */
+	const keep = function( key, chunk ) {
+
+		try {
+			wn.sessionStorage.setItem( key, String( chunk ) );
+		}
+		catch( e ) {
+			// Storage is not there: the next submit starts at the setting again
+		}
+	};
+
 	// A code of a refusal is files_ and a word; its sentence is /feature/files/state/<word>
 	const CODE = /^files_([a-z]+)$/;
 
@@ -59,6 +101,22 @@
 			parts.push( [ start, Math.min( start + chunk, size ) ] );
 
 		return parts;
+	};
+
+	/**
+	 *	The chunk to try after a request of the chunk's size was answered 413 (the web server takes no request so large): half of it,
+	 *	not below the floor. A file shorter than the chunk is sent in one piece, so it is its length that is halved. Pure
+	 *
+	 *	@param		{number}	size						The bytes of the file
+	 *	@param		{number}	chunk						The bytes of the chunk that was refused
+	 *
+	 *	@return		{number}									The smaller chunk; 0 when the chunk is at the floor already - nothing smaller is tried
+	 */
+	const halve = function( size, chunk ) {
+
+		const sent = Math.min( size, chunk );
+
+		return Number.isInteger( sent ) === true && sent > FLOOR ? Math.max( FLOOR, Math.floor( sent / 2 ) ) : 0;
 	};
 
 	/**
@@ -156,7 +214,10 @@
 
 	/**
 	 *	Send one file, chunk after chunk: the next is posted when the answer of the one before has come, and the upload id
-	 *	the first one was answered with goes with every one after it
+	 *	the first one was answered with goes with every one after it. A chunk the web server answers 413 is the sign that the
+	 *	server takes no request of this size (its own limit, which php does not see): the file starts again from its first
+	 *	chunk, as a new upload, in chunks of half the size - down to the floor, where it fails - and the size that works is
+	 *	left in form.chunk for the files after it
 	 *
 	 *	@param		{Object}		form						The form's settings: { element, folder, token, chunk }
 	 *	@param		{File}			file
@@ -167,7 +228,7 @@
 	 */
 	const send = function( form, file, line, finished ) {
 
-		const parts = chunks( file.size, form.chunk );
+		let parts = chunks( file.size, form.chunk );
 		let upload = '';
 
 		mark( line, 'sending', word('script/sending') );
@@ -177,6 +238,30 @@
 			Nino.http.sendRequest( Nino.dir+ '/.files/upload', 'POST', function( xhr ) {
 
 				const body = xhr.responseJSON !== null && typeof xhr.responseJSON === 'object' ? xhr.responseJSON : {};
+
+				if( xhr.status === 413 ) {
+
+					const smaller = halve( file.size, form.chunk );
+
+					if( smaller === 0 ) {
+
+						// A refusal that names its cause (a code the script has a word for) says it; one that does not is the web server's
+						const found = typeof body.code === 'string' ? CODE.exec( body.code ) : null;
+
+						mark( line, 'failed', found !== null && word( 'state/'+ found[1] ) !== '' ? refusal( xhr ) : ( word('script/floor') !== '' ? word('script/floor') : word('state/chunk') ) );
+						finished( false );
+						return;
+					}
+
+					form.chunk = smaller;
+					parts = chunks( file.size, smaller );
+					upload = '';
+					line.bar.value = 0;
+					// A site that took the feature in before these words existed has them only once its texts are brought up to date: until then the word of the upload stands
+					mark( line, 'sending', word('script/smaller') !== '' ? word('script/smaller') : word('script/sending') );
+					next( 0 );
+					return;
+				}
 
 				if( xhr.status !== 200 ) {
 					mark( line, 'failed', refusal( xhr ) );
@@ -251,6 +336,9 @@
 		input.multiple = options.multiple;
 
 		let busy = false;
+		// Kept per form, by its action, over the reload at the end of a submit
+		const memory = 'nino-files-chunk:'+ ( element.getAttribute('action') || '' );
+		let working = kept( memory );
 
 		element.addEventListener( 'submit', function( event ) {
 
@@ -274,7 +362,7 @@
 			if( button !== null )
 				button.disabled = true;
 
-			const settings = { element : element, folder : folder.value, token : token === null ? '' : token.value, chunk : options.chunk };
+			const settings = { element : element, folder : folder.value, token : token === null ? '' : token.value, chunk : working > 0 ? Math.min( working, options.chunk ) : options.chunk };
 			let ok = true;
 
 			// Every file has its row from the start - the ones that are not at their turn yet wait in it
@@ -309,6 +397,10 @@
 
 				send( settings, file, line, function( sent ) {
 					ok = ok === true && sent === true;
+					working = settings.chunk;
+
+					if( working < options.chunk )
+						keep( memory, working );
 					go( at + 1 );
 				} );
 			};
@@ -326,7 +418,7 @@
 		Array.from( dc.querySelectorAll('form.files-upload') ).forEach( take );
 	};
 
-	wn.Nino.files = { chunks : chunks, percent : percent, init : init };
+	wn.Nino.files = { chunks : chunks, halve : halve, floor : FLOOR, percent : percent, init : init };
 
 	Nino.events.bindCallback( 'ready', init );
 

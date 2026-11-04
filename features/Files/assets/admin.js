@@ -8,7 +8,8 @@
  *													move, delete) and
  *													the owner's upload, which cuts every file into chunks of the
  *													size the server gives and posts them in order through the
- *													action files/upload. See Modules\Files\Admin beside this file.
+ *													action files/upload; a chunk the web server answers 413 makes it
+ *													start the file again in halves. See Modules\Files\Admin beside this file.
  *													Draws into the one region of templates/panel.tpl with the
  *													workbench's own builders; every word is a fill, every
  *													server-sent value goes in as text, and every request goes
@@ -53,6 +54,8 @@
 		_editing	: '',
 		// Whether an upload is under way: a second press of the button does nothing while it is
 		_busy		: false,
+		// The chunk an upload of this session found the web server takes, in bytes - 0 while no request was refused with 413
+		_working	: 0,
 		// The form for a new folder and the open form of a change, drawn with the screen and thrown away with it
 		_add		: null,
 		_edit		: null,
@@ -805,8 +808,27 @@
 		},
 
 		/**
+		 *	The chunk to try after a request of the chunk's size was answered 413 (the web server takes no request so large):
+		 *	half of it, not below the floor of 128 KiB. A file shorter than the chunk is sent in one piece, so it is its length
+		 *	that is halved. Pure
+		 *
+		 *	@param		{number}	size						The bytes of the file
+		 *	@param		{number}	chunk						The bytes of the chunk that was refused
+		 *
+		 *	@return		{number}									The smaller chunk; 0 when the chunk is at the floor already
+		 */
+		_halve : function( size, chunk ) {
+
+			const sent = Math.min( size, chunk );
+
+			return Number.isInteger( sent ) === true && sent > 131072 ? Math.max( 131072, Math.floor( sent / 2 ) ) : 0;
+		},
+
+		/**
 		 *	Send the files the owner chose, one after the other and each in chunks. A file over the largest size, and an
-		 *	empty one, is refused before a byte is sent. When all are done the screen asks for the list again
+		 *	empty one, is refused before a byte is sent. A chunk the web server answers 413 starts the file again as a new
+		 *	upload in chunks of half the size (files._working keeps the size that works, for the files after it and for the
+		 *	next uploads of the session); at the floor it fails. When all are done the screen asks for the list again
 		 *
 		 *	@param		{Object}		folder
 		 *	@param		{Array}			chosen					The File objects
@@ -886,7 +908,7 @@
 				if( limits.max > 0 && file.size > limits.max )
 					return fail( files._text( '/_admin/files/error/toolarge', file.name, files._size( limits.max ) ) );
 
-				const parts = files._chunks( file.size, limits.chunk );
+				let parts = files._chunks( file.size, files._working > 0 ? Math.min( files._working, limits.chunk ) : limits.chunk );
 				let upload = '';
 
 				row.dataset.state = 'sending';
@@ -895,6 +917,23 @@
 				const next = function( index ) {
 
 					files.call( 'upload', { folder : folder.id, name : file.name, size : file.size, upload : upload, index : index, count : parts.length, visible : visible }, function( answered, response ) {
+
+						if( answered === 413 ) {
+
+							const smaller = files._halve( file.size, parts[0][1] - parts[0][0] );
+
+							// A refusal that names its cause (a code the panel has a sentence for) says it; one that does not is the web server's
+							if( smaller === 0 )
+								return fail( response !== null && typeof response === 'object' && typeof response.code === 'string' && Nino.content.getText( '/_admin/error/'+ response.code ) !== '' ? Nino.adminUi.api.errorText( answered, response, '/_admin/files/error/upload' ) : Nino.content.getText('/_admin/files/error/floor') );
+
+							files._working = smaller;
+							parts = files._chunks( file.size, smaller );
+							upload = '';
+							bar.value = 0;
+							status.textContent = Nino.content.getText('/_admin/files/label/smaller');
+							next( 0 );
+							return;
+						}
 
 						if( answered !== 200 )
 							return fail( Nino.adminUi.api.errorText( answered, response, '/_admin/files/error/upload' ) );

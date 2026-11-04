@@ -599,6 +599,8 @@ return [
 	'projects.up-empty' => 'Die Datei ist leer.',
 	'projects.up-large' => 'Die Datei ist größer als die größte Datei (%s).',
 	'projects.up-failed' => 'Die Datei konnte nicht hochgeladen werden.',
+	'projects.up-smaller' => 'Der Server nimmt so große Anfragen nicht an. Die Datei wird in kleineren Teilen noch einmal gesendet.',
+	'projects.up-floor' => 'Der Server nimmt auch Anfragen dieser kleinen Größe nicht an. Frage Deinen Hoster, wie groß eine Anfrage sein darf.',
 	'projects.uploaded-one' => 'Eine Datei ist hochgeladen.',
 	'projects.uploaded' => '%s Dateien sind hochgeladen.',
 

@@ -4252,6 +4252,24 @@
 		return parts;
 	};
 
+	// The smallest chunk an upload is cut into when the web server refuses a request with 413: 128 KiB
+	const CHUNK_FLOOR = 131072;
+
+	// The chunk the uploads of this page found the web server takes, in bytes - 0 while no request was refused with 413
+	let workingChunk = 0;
+
+	/**
+	 *	The chunk to try after a request of the chunk's size was answered 413 (the web server's, or the endpoint's post_too_large): half of it, not
+	 *	below the floor. As the Files panel's own script halves
+	 *
+	 *	@param		{number}	chunk						The bytes of the chunk that was refused - the length it really had, which is the file's for a file shorter than the setting
+	 *
+	 *	@return		{number}									The smaller chunk; 0 when the chunk is at the floor already
+	 */
+	const halveChunk = function( chunk ) {
+		return Number.isInteger( chunk ) === true && chunk > CHUNK_FLOOR ? Math.max( CHUNK_FLOOR, Math.floor( chunk / 2 ) ) : 0;
+	};
+
 	/**
 	 *	@param		{number}	bytes
 	 *
@@ -4780,7 +4798,8 @@
 	/**
 	 *	Send the files a person chose, one after the other and each in chunks, as the Files panel's own script sends them: a post with the action files/upload,
 	 *	the fields of the chunk as the data and the bytes as the part chunk. The progress is drawn per file. A file over the largest size and an empty one are
-	 *	refused before a byte is sent
+	 *	refused before a byte is sent. A chunk answered 413 starts the file again as a new upload in chunks of half the size, down to the floor, where it
+	 *	fails; the size that works is kept for the files after it and for the next uploads of the page
 	 *
 	 *	@param		{Object}		view
 	 *	@param		{Array}			chosen					The File objects
@@ -4858,7 +4877,7 @@
 			if( limits.max > 0 && file.size > limits.max )
 				return fail( t( 'projects.up-large', sizeText( limits.max ) ) );
 
-			const parts = chunksOf( file.size, limits.chunk );
+			let parts = chunksOf( file.size, workingChunk > 0 ? Math.min( workingChunk, limits.chunk ) : limits.chunk );
 			let id = '';
 
 			if( parts.length === 0 )
@@ -4870,6 +4889,23 @@
 			const next = function( index ) {
 
 				upload( 'files/upload', { folder : view.folder.id, name : file.name, size : file.size, upload : id, index : index, count : parts.length, visible : true }, file.slice( parts[index][0], parts[index][1] ), 'chunk' ).then( function( answer ) {
+
+					if( answer.status === 413 ) {
+
+						const smaller = halveChunk( parts[0][1] - parts[0][0] );
+
+						// A refusal that names its cause (a code with a sentence) says it; one that does not is the web server's
+						if( smaller === 0 )
+							return fail( answer.body !== null && typeof answer.body === 'object' && typeof answer.body.code === 'string' && typeof state.texts['error.'+ answer.body.code] === 'string' ? errorText( answer, 'projects.up-failed' ) : t( 'projects.up-floor' ) );
+
+						workingChunk = smaller;
+						parts = chunksOf( file.size, smaller );
+						id = '';
+						line.bar.value = 0;
+						line.status.textContent = t( 'projects.up-smaller' );
+						next( 0 );
+						return;
+					}
 
 					if( answer.ok !== true )
 						return fail( errorText( answer, 'projects.up-failed' ) );

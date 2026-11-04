@@ -22,7 +22,7 @@ return [
 
 	// What the screen says of itself and of the limits it works within
 	'[[/_admin/files/hint/intro]]'					=> 'Folders and files for the groups of the Members feature. A member sees the folders of their group and downloads what is visible to them; in the folder you mark as the upload folder, a member can upload.',
-	'[[/_admin/files/hint/limits]]'					=> 'The server takes %s in one request. A file is cut into chunks of %s; the largest file is %s.',
+	'[[/_admin/files/hint/limits]]'					=> 'The server takes %s in one request. A file is cut into chunks of %s; the largest file is %s. A limit of the web server (client_max_body_size, for one) is not among them: an upload finds it itself, by halving its chunks when the server refuses them with 413.',
 	'[[/_admin/files/hint/quota]]'					=> 'The group uses %s of %s.',
 	'[[/_admin/files/hint/backup]]'					=> 'The daily backup carries the index of the files, not the files themselves - they lie in data/files/ and are backed up with the server.',
 	'[[/_admin/files/hint/nogroup]]'				=> 'The Members feature has no group yet. Give a member a group in the panel Members, then add folders for it here.',
@@ -77,6 +77,7 @@ return [
 	'[[/_admin/files/label/upload]]'				=> 'Upload',
 	'[[/_admin/files/label/waiting]]'				=> 'Waiting',
 	'[[/_admin/files/label/sending]]'				=> 'Uploading',
+	'[[/_admin/files/label/smaller]]'				=> 'The server does not take requests of this size. The file is sent again in smaller parts.',
 	'[[/_admin/files/label/done]]'					=> 'Uploaded',
 	'[[/_admin/files/msg/uploaded-file]]'			=> 'The file is uploaded.',
 	'[[/_admin/files/msg/uploaded]]'				=> '%s files uploaded.',
@@ -84,6 +85,7 @@ return [
 	'[[/_admin/files/error/empty]]'					=> '%s is empty.',
 	'[[/_admin/files/error/toolarge]]'				=> '%s is larger than the largest file (%s).',
 	'[[/_admin/files/error/upload]]'				=> 'The file could not be uploaded.',
+	'[[/_admin/files/error/floor]]'					=> 'The server takes no request of even this small size. Ask your host how large a request may be.',
 
 	// What the panel says of a list that could not be loaded: the key Nino.adminUi.panel() takes for a failed load
 	'[[/_admin/files/error/load]]'					=> 'The files could not be loaded.',

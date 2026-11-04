@@ -37,6 +37,8 @@ return [
 	// The rest of what the script says of a file in its list
 	'[[/feature/files/script/waiting]]'	=> 'Waiting',
 	'[[/feature/files/script/sending]]'	=> 'Uploading',
+	'[[/feature/files/script/smaller]]'	=> 'The server does not take requests of this size. The file is sent again in smaller parts.',
+	'[[/feature/files/script/floor]]'	=> 'The server takes no request of even this small size. Please ask the operator how large a request may be.',
 	'[[/feature/files/script/done]]'		=> 'Uploaded',
 	'[[/feature/files/script/expired]]'	=> 'Your session has run out. Please reload the page.',
 	'[[/feature/files/script/offline]]'	=> 'The connection failed. Please try again.',

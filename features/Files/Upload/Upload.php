@@ -13,19 +13,25 @@ namespace Nino\Modules\Files {
 	/**
 	 *	Nino							A compact filesystembased php framework
 	 *	Files\Upload			The protocol of an upload in chunks, written once. A file is cut into
-	 *										chunks of the size the setting chunk gives (Store::chunkBytes()) - every
-	 *										chunk but the last is exactly that long, the last is what is left - and
-	 *										the chunks are posted in order, each with the fields
+	 *										chunks - the first one sets the size of the chunk of its upload, from one
+	 *										byte up to what the setting chunk gives (Store::chunkBytes()); every
+	 *										chunk but the last is exactly as long as the first, the last is what is
+	 *										left, and count is the number of chunks that size makes. A script that
+	 *										finds the web server takes less than the setting starts again with a
+	 *										smaller chunk. The chunks are posted in order, each with the fields
 	 *
 	 *											folder, name, size (of the whole file, in bytes), upload, index, count
 	 *
 	 *										and the bytes as the file part `chunk`. The first chunk (index 0) has
 	 *										no upload id and is answered with one, 16 hex characters of random_bytes(8),
 	 *										which every chunk after it names. The chunks are appended to
-	 *										/data/files/.upload/<upload id>.part under a lock.
+	 *										/data/files/.upload/<upload id>.part under a lock; beside it, the file
+	 *										<upload id>.chunk keeps the length of the first chunk, which every later
+	 *										request is checked against (its index, its length and its count).
 	 *
 	 *										Nothing is kept of an upload but the part: every request is checked
-	 *										whole, by what it says and by the size the part has when it comes.
+	 *										whole, by what it says and by the size the part has when it comes - the
+	 *										part holds index chunks, so its size over index is the chunk of the upload.
 	 *										That is the order - the part has to be exactly index chunks long
 	 *										before chunk index is appended, so a chunk out of order, a chunk
 	 *										twice and a chunk of an upload that is gone are all one refusal -
@@ -84,20 +90,52 @@ namespace Nino\Modules\Files {
 			if( $quota > 0 && Store::used( $appData, $folder['group'] ) + $size > $quota )
 				return self::_fail( 400, 'the quota of the group is used up', 'files_quota', [ intdiv( $quota, Store::MEGABYTE ) ] );
 
-			$chunk = Store::chunkBytes( $appData );
-
-			if( $count !== intdiv( $size + $chunk - 1, $chunk ) )
-				return self::_fail( 400, 'the number of chunks does not fit the size of the file', 'files_chunk' );
-
-			$length = $index < $count - 1 ? $chunk : $size - ( $count - 1 ) * $chunk;
-
-			if( is_array( $file ) === false || ( $file['error'] ?? null ) !== UPLOAD_ERR_OK || is_string( $file['tmp_name'] ?? null ) === false || ( $file['size'] ?? null ) !== $length )
-				return self::_fail( 400, 'the chunk did not arrive whole', 'files_chunk' );
+			$limit = Store::chunkBytes( $appData );
+			$has = is_array( $file ) === true && ( $file['error'] ?? null ) === UPLOAD_ERR_OK && is_string( $file['tmp_name'] ?? null ) === true && is_int( $file['size'] ?? null ) === true;
 
 			if( $index === 0 ) {
 
 				if( $upload !== '' )
 					return self::_fail( 400, 'the first chunk has no upload yet', 'files_chunk' );
+
+				// The first chunk is the chunk of the upload: as long as it is, so is every one after it but the last
+				$chunk = $has === true ? $file['size'] : 0;
+
+				if( $chunk > $limit )
+					return self::_fail( 400, 'the first chunk is larger than the setting allows', 'files_chunk' );
+
+				if( $chunk < 1 )
+					return self::_fail( 400, 'the chunk did not arrive whole', 'files_chunk' );
+			}
+			else {
+
+				if( preg_match( self::UPLOAD, $upload ) !== 1 || is_file( self::_part( $appData, $upload ) ) === false )
+					return self::_fail( 400, 'there is no such upload', 'files_chunk' );
+
+				// The first chunk's length is kept with the part; a part with none is no upload of this protocol
+				$chunk = (int) @file_get_contents( self::_size( $appData, $upload ) );
+
+				if( $chunk < 1 || $chunk > $limit )
+					return self::_fail( 400, 'there is no such upload', 'files_chunk' );
+
+				clearstatcache( true, self::_part( $appData, $upload ) );
+
+				if( (int) @filesize( self::_part( $appData, $upload ) ) !== $index * $chunk )
+					return self::_fail( 400, 'the chunk is not the next of the upload', 'files_chunk' );
+			}
+
+			if( $count !== intdiv( $size + $chunk - 1, $chunk ) )
+				return self::_fail( 400, 'the number of chunks does not fit the size of the file and the chunk of the upload', 'files_chunk' );
+
+			$length = $index < $count - 1 ? $chunk : $size - ( $count - 1 ) * $chunk;
+
+			if( $has === false )
+				return self::_fail( 400, 'the chunk did not arrive whole', 'files_chunk' );
+
+			if( $file['size'] !== $length )
+				return self::_fail( 400, $index === $count - 1 && $index > 0 ? 'the last chunk is not what is left of the file' : 'the chunk is not as long as the first one', 'files_chunk' );
+
+			if( $index === 0 ) {
 
 				Store::sweep( $appData );
 				\Nino\Filesystem::forceDir( $appData, Store::PARTS );
@@ -106,11 +144,15 @@ namespace Nino\Modules\Files {
 					$upload = bin2hex( random_bytes( 8 ) );
 				while( is_file( self::_part( $appData, $upload ) ) === true );
 			}
-			else if( preg_match( self::UPLOAD, $upload ) !== 1 || is_file( self::_part( $appData, $upload ) ) === false )
-				return self::_fail( 400, 'there is no such upload', 'files_chunk' );
 
 			$part = self::_part( $appData, $upload );
 			$appended = self::_append( $part, (string) $file['tmp_name'], $index * $chunk, $length, $index === 0 );
+
+			// The length of the first chunk stays with the part, for every request after it
+			if( $appended === '' && $index === 0 && @file_put_contents( self::_size( $appData, $upload ), (string) $chunk ) === false ) {
+				self::_drop( $part );
+				return self::_fail( 500, 'the chunk could not be stored', 'files_write' );
+			}
 
 			if( $appended !== '' )
 				return $appended === 'order' ? self::_fail( 400, 'the chunk is not the next of the upload', 'files_chunk' ) : self::_fail( 500, 'the chunk could not be stored', 'files_write' );
@@ -189,21 +231,21 @@ namespace Nino\Modules\Files {
 			clearstatcache( true, $part );
 
 			if( (int) @filesize( $part ) !== $name['size'] ) {
-				@unlink( $part );
+				self::_drop( $part );
 				return self::_fail( 400, 'the upload is not as long as the file says', 'files_chunk' );
 			}
 
 			$mime = Store::sniff( $part, $name['ext'] );
 
 			if( $mime === '' ) {
-				@unlink( $part );
+				self::_drop( $part );
 				return self::_fail( 400, 'the bytes are not what the name says', 'files_type', [], 'name' );
 			}
 
 			$sha256 = hash_file( 'sha256', $part );
 
 			if( $sha256 === false ) {
-				@unlink( $part );
+				self::_drop( $part );
 				return self::_fail( 500, 'the file could not be read', 'files_write' );
 			}
 
@@ -216,9 +258,11 @@ namespace Nino\Modules\Files {
 			$target = (string) Store::bytes( $appData, $id, $name['ext'] );
 
 			if( @rename( $part, $target ) === false ) {
-				@unlink( $part );
+				self::_drop( $part );
 				return self::_fail( 500, 'the file could not be stored', 'files_write' );
 			}
+
+			@unlink( substr( $part, 0, -5 ). '.chunk' );
 
 			$added = Store::addFile( $appData, $id, [
 				'folder'	=> $folder['id'],
@@ -242,6 +286,30 @@ namespace Nino\Modules\Files {
 				'quota'		=> self::_fail( 400, 'the quota of the group is used up', 'files_quota', [ intdiv( $quota, Store::MEGABYTE ) ] ),
 				default		=> self::_fail( 500, 'the file could not be stored', 'files_write' ),
 			};
+		}
+
+		/**
+		 *	@param		array 		&$appData
+		 *	@param		string		$upload
+		 *
+		 *	@return 	string										The path of the file that keeps the length of the first chunk of an upload, beside its part (Store::sweep() takes both)
+		 */
+		private static function _size( array &$appData, string $upload ): string {
+
+			return \Nino\Filesystem::path( $appData, Store::PARTS ). '/'. $upload. '.chunk';
+		}
+
+		/**
+		 *	Remove a part and the length kept with it
+		 *
+		 *	@param		string		$part
+		 *
+		 *	@return 	void
+		 */
+		private static function _drop( string $part ): void {
+
+			@unlink( $part );
+			@unlink( substr( $part, 0, -5 ). '.chunk' );
 		}
 
 		/**

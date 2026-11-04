@@ -255,7 +255,7 @@ function world( options ) {
 
 			const form = init.body instanceof win.FormData;
 			const request = form ? { action : init.body.get( 'action' ), data : JSON.parse( init.body.get( 'data' ) ), file : init.body.get( 'file' ) ?? init.body.get( 'chunk' ), part : init.body.get( 'chunk' ) === null ? 'file' : 'chunk' } : JSON.parse( init.body );
-			const answer = typeof opts.answers[request.action] === 'function' ? opts.answers[request.action]( request.data ) : [ 404, { error : 'no answer in the test for '+ request.action, code : 'action' } ];
+			const answer = typeof opts.answers[request.action] === 'function' ? opts.answers[request.action]( request.data, request.file ) : [ 404, { error : 'no answer in the test for '+ request.action, code : 'action' } ];
 
 			calls.push( { url : url, init : init, action : request.action, data : request.data, file : request.file, part : request.part, form : form } );
 
@@ -3962,6 +3962,85 @@ function press( w, key, target, mods ) {
 	await settle();
 	check( 'a chunk the panel refuses stops that file with the sentence of its code (the other chunks of it are not sent); the next file goes on', jup2.all( 'files/upload' ).map( function( c ) { return c.data.name+ c.data.index } ).join() === 'voll.txt0,danach.txt0' && all( jf( jup2, 'up-list' ), 'li' ).map( function( li ) { return li.dataset.state } ).join() === 'failed,done'
 		&& textOf( all( all( jf( jup2, 'up-list' ), 'li' )[0], 'small' )[0] ) === texts['error.files_quota'].replace( '%s', '10' ) && jup2.toast.textContent === texts['projects.uploaded-one'] );
+	// --- the upload finds the size of a request the web server takes: a chunk answered 413 is sent again in halves
+	const jbig = function( takes, extra ) {
+		return Object.assign( {
+			'files/list' : function() { return [ 200, { groups : [ 'k-0001' ], group : 'k-0001', folders : [], files : [], types : [ 'mp3', 'txt' ], limits : { chunk : 1048576, max : 5242880, php : 0, quota : 0, used : 0 } } ] },
+			'files/upload' : function( data, file ) { return file.size > takes ? [ 413, null ] : [ 200, data.index + 1 < data.count ? { upload : 'abcdef0123456789', index : data.index } : { id : 'b00000000005', name : data.name, size : data.size } ] },
+		}, extra );
+	};
+	const jshape = function( c ) { return c.data.name+ ' '+ c.data.index+ '/'+ c.data.count+ ':'+ ( c.file.to - c.file.from )+ ':'+ c.data.upload };
+	const jsay = function( w, at ) { return textOf( all( all( jf( w, 'up-list' ), 'li' )[at], 'small' )[0] ) };
+	const jhalf = await jopen( '#projekt-00001-dateien', jbig( 300000 ) );
+	jf( jhalf, 'up-input' ).files = [ jfile( 'album.mp3', 2500000 ), jfile( 'bonus.mp3', 1500000 ) ];
+	click( jhalf, jf( jhalf, 'up-send' ) );
+	await settle();
+	const jfirsts = jhalf.all( 'files/upload' ).filter( function( c ) { return c.data.index === 0 } );
+	check( 'a chunk the web server answers 413 (no body at all) starts the file again from its first chunk with a new upload (no id), in chunks of half the size, and again until a size passes: 1048576, 524288, 262144 for the first file',
+		jfirsts.slice( 0, 3 ).map( jshape ).join() === 'album.mp3 0/3:1048576:,album.mp3 0/5:524288:,album.mp3 0/10:262144:' );
+	check( '...the file is whole in the end (ten chunks of the size that passed, the last with what is left) and done; the broken uploads are not continued', jhalf.all( 'files/upload' ).filter( function( c ) { return c.data.name === 'album.mp3' && c.data.count === 10 } ).map( function( c ) { return c.data.index } ).join() === '0,1,2,3,4,5,6,7,8,9'
+		&& jhalf.all( 'files/upload' ).filter( function( c ) { return c.data.name === 'album.mp3' && c.data.count !== 10 && c.data.index > 0 } ).length === 0 && all( jf( jhalf, 'up-list' ), 'li' )[0].dataset.state === 'done' );
+	check( '...the working size is kept for the next file, which starts at it and is not refused: 1500000 bytes in chunks of 262144 are six', jhalf.all( 'files/upload' ).filter( function( c ) { return c.data.name === 'bonus.mp3' } ).map( jshape ).join() === [ 0, 1, 2, 3, 4, 5 ].map( function( n ) { return 'bonus.mp3 '+ n+ '/6:'+ ( n < 5 ? 262144 : 1500000 - 5 * 262144 )+ ':'+ ( n === 0 ? '' : 'abcdef0123456789' ) } ).join() );
+	check( '...the row said the parts were made smaller while it was at it - the word is its own - and the toast counts both files', texts['projects.up-smaller'] !== undefined && texts['projects.up-smaller'] !== texts['projects.sending'] && all( jf( jhalf, 'up-list' ), 'li' ).map( function( li ) { return li.dataset.state } ).join() === 'done,done' && jhalf.toast.textContent === texts['projects.uploaded'].replace( '%s', '2' ) );
+
+	// the word in the line is seen while the file is under way: a request held back after the first 413
+	const jmid = hold();
+	let jtoo = 0;
+	const jwatch = await jopen( '#projekt-00001-dateien', jbig( 300000, { 'files/upload' : function( data, file ) { if( data.index > 0 && file.size > 300000 ) { jtoo++; return [ 413, null ]; } return file.size > 300000 ? [ 200, { upload : 'abcdef0123456789', index : data.index } ] : jmid.promise; } } ) );
+	jf( jwatch, 'up-input' ).files = [ jfile( 'slow.mp3', 2500000 ) ];
+	click( jwatch, jf( jwatch, 'up-send' ) );
+	await settle();
+	check( 'while the file is on its way again (its first chunk of the third try is out, the second chunk of the two tries before was refused) the line says the parts were made smaller, the bar is at the start and the state is sending', jtoo === 2 && jsay( jwatch, 0 ) === texts['projects.up-smaller'] && Number( all( jf( jwatch, 'up-list' ), 'progress' )[0].value ) === 0 && all( jf( jwatch, 'up-list' ), 'li' )[0].dataset.state === 'sending' );
+	check( '...every try began with no upload id, though the chunks before the refusal had been answered with one', jwatch.all( 'files/upload' ).filter( function( c ) { return c.data.index === 0 } ).length === 3 && jwatch.all( 'files/upload' ).filter( function( c ) { return c.data.index === 0 } ).every( function( c ) { return c.data.upload === '' } ) );
+	jmid.release( [ 200, { id : 'b00000000006', name: 'slow.mp3', size : 2500000 } ] );
+	await settle();
+
+	// a file shorter than the chunk is halved by its own length: 200000 bytes sent in one chunk, refused above 150000, go in two of 131072
+	const jshort = await jopen( '#projekt-00001-dateien', jbig( 150000 ) );
+	jf( jshort, 'up-input' ).files = [ jfile( 'short.mp3', 200000 ) ];
+	click( jshort, jf( jshort, 'up-send' ) );
+	await settle();
+	check( 'a file shorter than the chunk is halved by its own length, not by the chunk: 200000 bytes refused in one piece go on in two chunks of 131072 at once', jshort.all( 'files/upload' ).map( function( c ) { return c.data.index+ '/'+ c.data.count+ ':'+ ( c.file.to - c.file.from ) } ).join() === '0/1:200000,0/2:131072,1/2:68928' && all( jf( jshort, 'up-list' ), 'li' )[0].dataset.state === 'done' );
+
+	// the endpoint's own 413, post_too_large (php dropped the body), is the same sign
+	const jphp = await jopen( '#projekt-00001-dateien', jbig( 300000, { 'files/upload' : function( data, file ) { return file.size > 300000 ? [ 413, { error : 'x', code : 'post_too_large', params : [ 2 ] } ] : [ 200, data.index + 1 < data.count ? { upload : 'abcdef0123456789', index : data.index } : { id : 'b00000000007', name : data.name, size : data.size } ]; } } ) );
+	jf( jphp, 'up-input' ).files = [ jfile( 'php.mp3', 1000000 ) ];
+	click( jphp, jf( jphp, 'up-send' ) );
+	await settle();
+	check( 'the 413 post_too_large the endpoint answers when php dropped the body is the same sign: the file is sent again in halves and done', jphp.all( 'files/upload' ).filter( function( c ) { return c.data.index === 0 } ).map( function( c ) { return c.data.count } ).join() === '1,2,4' && all( jf( jphp, 'up-list' ), 'li' )[0].dataset.state === 'done' );
+
+	// at the floor
+	const jfloor = await jopen( '#projekt-00001-dateien', jbig( 10 ) );
+	jf( jfloor, 'up-input' ).files = [ jfile( 'never.mp3', 2500000 ), jfile( 'ok.txt', 5 ) ];
+	click( jfloor, jf( jfloor, 'up-send' ) );
+	await settle();
+	check( 'a server that takes nothing is tried at 1048576, 524288, 262144 and 131072, and no further - the file fails with the sentence that names the cause, which is not the generic one nor the one of the code', jfloor.all( 'files/upload' ).filter( function( c ) { return c.data.name === 'never.mp3' } ).map( function( c ) { return c.file.to - c.file.from } ).join() === '1048576,524288,262144,131072'
+		&& all( jf( jfloor, 'up-list' ), 'li' )[0].dataset.state === 'failed' && jsay( jfloor, 0 ) === texts['projects.up-floor'] && texts['projects.up-floor'] !== texts['projects.up-failed'] && texts['projects.up-floor'] !== texts['error.post_too_large']
+		&& jfloor.all( 'files/upload' ).filter( function( c ) { return c.data.name === 'ok.txt' } ).length === 1 );
+
+	// at the floor a 413 that carries a code with a sentence says that sentence
+	const jcode = await jopen( '#projekt-00001-dateien', jbig( 10, { 'files/upload' : function() { return [ 413, { error : 'x', code : 'post_too_large', params : [ 2 ] } ] } } ) );
+	jf( jcode, 'up-input' ).files = [ jfile( 'tiny.txt', 10 ) ];
+	click( jcode, jf( jcode, 'up-send' ) );
+	await settle();
+	check( 'a 413 at the floor that names a code with a sentence of its own (the endpoint\'s post_too_large) says that sentence, not the one of the web server', jcode.all( 'files/upload' ).length === 1 && jsay( jcode, 0 ) === texts['error.post_too_large'].replace( '%s', '2' ) && jsay( jcode, 0 ) !== texts['projects.up-floor'] );
+
+	// a refusal that is not a 413 is not halved
+	for( const refusal of [ [ 400, { error : 'x', code : 'files_quota', params : [ 10 ] } ], [ 429, { error : 'x', code : 'files_limit' } ], [ 500, { error : 'x' } ] ] ) {
+		const jplain = await jopen( '#projekt-00001-dateien', jbig( 10, { 'files/upload' : function() { return refusal } } ) );
+		jf( jplain, 'up-input' ).files = [ jfile( 'plain.mp3', 2500000 ) ];
+		click( jplain, jf( jplain, 'up-send' ) );
+		await settle();
+		check( 'a '+ refusal[0]+ ' is not a sign of a web server limit: one request, the file fails, and the line does not say the parts were made smaller', jplain.all( 'files/upload' ).length === 1 && all( jf( jplain, 'up-list' ), 'li' )[0].dataset.state === 'failed' && jsay( jplain, 0 ) !== texts['projects.up-smaller'] );
+	}
+
+	// a dropped connection is not a 413
+	const jdrop = await jopen( '#projekt-00001-dateien', jbig( 10, { 'files/upload' : function() { return 'offline' } } ) );
+	jf( jdrop, 'up-input' ).files = [ jfile( 'gone.mp3', 2500000 ) ];
+	click( jdrop, jf( jdrop, 'up-send' ) );
+	await settle();
+	check( 'a connection that dropped (status 0) is not a 413: the file fails as before, with the sentence of the offline code, and is not sent again', jdrop.all( 'files/upload' ).length === 1 && jsay( jdrop, 0 ) === texts['error.offline'] && all( jf( jdrop, 'up-list' ), 'li' )[0].dataset.state === 'failed' );
+
 	const jholdup = hold();
 	const jup3 = await jopen( '#projekt-00001-dateien', { 'files/upload' : function() { return jholdup.promise } } );
 	jf( jup3, 'up-input' ).files = [ jfile( 'warten.txt', 10 ) ];
