@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 // The install unit of the CRM module, found by the kernel's setup wizard (\Nino\Install\Setup::units() scans app/ for
 // install/manifest.php; tests/install-smoke.php of the kernel holds it to that): the wizard offers it pre-checked, lists the
-// module class in /nino/modules and applies the unit with overwrite on - the pages of the customer portal, their words, the
+// module class in /nino/modules and applies the unit with overwrite on - the pages of the customer portal (the start and the areas Meine Daten, Projekte, Upload, Belege and Termine), their words, the
 // element type of the items. The door of the portal (the start page of the site) is no part of it: the screen Einrichtung of the
 // surface writes the route GET:// when the owner presses Einrichten, and the same step applies this unit again, add-only (the
 // panel CRM and the settings of the surface keep the button Portal einrichten, through \Nino\Features::applyUnit(): a route,
@@ -18,19 +18,19 @@ return [
 	'moduleClass'     => '\\Crm\\Crm',
 	'routes'          => [
 		'GET://portal'               => [ 'uri' => '/portal', 'body' => '[template /templates/page-portal]' ],
-		'GET://portal/dateien'       => [ 'uri' => '/portal/dateien', 'body' => '[template /templates/page-portal-files]' ],
-		'GET://portal/review'        => [ 'uri' => '/portal/review', 'body' => '[template /templates/page-portal-review]' ],
-		'GET://portal/unterschriften' => [ 'uri' => '/portal/unterschriften', 'body' => '[template /templates/page-portal-sign]' ],
-		'GET://portal/dokumente'     => [ 'uri' => '/portal/dokumente', 'body' => '[template /templates/page-portal-documents]' ],
-		'GET://portal/konto'         => [ 'uri' => '/portal/konto', 'body' => '[template /templates/page-portal-account]' ],
+		'GET://portal/meine-daten'   => [ 'uri' => '/portal/meine-daten', 'body' => '[template /templates/page-portal-meine-daten]' ],
+		'GET://portal/projekte'      => [ 'uri' => '/portal/projekte', 'body' => '[template /templates/page-portal-projekte]' ],
+		'GET://portal/upload'        => [ 'uri' => '/portal/upload', 'body' => '[template /templates/page-portal-upload]' ],
+		'GET://portal/belege'        => [ 'uri' => '/portal/belege', 'body' => '[template /templates/page-portal-belege]' ],
+		'GET://portal/termine'       => [ 'uri' => '/portal/termine', 'body' => '[template /templates/page-portal-termine]' ],
 	],
 	'templates'       => [
 		'page-portal.tpl',
-		'page-portal-files.tpl',
-		'page-portal-review.tpl',
-		'page-portal-sign.tpl',
-		'page-portal-documents.tpl',
-		'page-portal-account.tpl',
+		'page-portal-meine-daten.tpl',
+		'page-portal-projekte.tpl',
+		'page-portal-upload.tpl',
+		'page-portal-belege.tpl',
+		'page-portal-termine.tpl',
 		'page-door.tpl',
 	],
 	'elementTypes'    => [ 'positionen.php', 'projekte.php' ],

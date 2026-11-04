@@ -940,7 +940,7 @@ class Documents {
 		if( in_array( $accountId, Clients::accounts( $appData, $document['client_id'] ), true ) === false )
 			return 'account';
 
-		$options = [ 'title' => $document['title'], 'page' => '/portal/dokumente' ] + ( $days === null ? [] : [ 'days' => $days ] );
+		$options = [ 'title' => $document['title'], 'page' => '/portal/belege' ] + ( $days === null ? [] : [ 'days' => $days ] );
 		$request = \Nino\Modules\Sign::request( $appData, $document['template_key'], self::dataOf( $appData, $document ), $accountId, $options );
 
 		if( is_string( $request ) === true )
@@ -1049,20 +1049,28 @@ class Documents {
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		int				$clientId
+	 *	@param		string		$project			Only the documents of this project ('' for all of them)
 	 *
-	 *	@return 	array											id, category, number, title, state, expired, date, sign_id, sign_state
+	 *	@return 	array											id, category, number, title, state, expired, date, valid_until, sign_id, sign_state, project, project_title
 	 */
-	public static function released( array &$appData, int $clientId ): array {
+	public static function released( array &$appData, int $clientId, string $project = '' ): array {
 
 		self::syncSign( $appData, 'client_id = :client', [ 'client' => $clientId ] );
 
 		$today = date( 'Y-m-d' );
-		$rows = Db::rows( $appData, 'SELECT id, category, number, title, state, date, valid_until, sign_id, sign_state FROM documents
-			WHERE client_id = :client AND released = 1 AND state != \'draft\' AND pdf_path != \'\' ORDER BY date DESC, id DESC', [ 'client' => $clientId ] );
+		$params = [ 'client' => $clientId ];
+
+		if( $project !== '' )
+			$params['project'] = $project;
+
+		$rows = Db::rows( $appData, 'SELECT id, category, number, title, state, date, valid_until, sign_id, sign_state, project FROM documents
+			WHERE client_id = :client AND released = 1 AND state != \'draft\' AND pdf_path != \'\''. ( $project !== '' ? ' AND project = :project' : '' ). ' ORDER BY date DESC, id DESC', $params );
+		$titles = array_filter( $rows, static fn( array $row ): bool => (string) $row['project'] !== '' ) === [] ? [] : Projekte::titles( $appData );
 
 		return array_map( static fn( array $row ): array => [
 			'id' => (int) $row['id'], 'category' => (string) $row['category'], 'number' => (string) ( $row['number'] ?? '' ), 'title' => (string) $row['title'], 'state' => (string) $row['state'],
-			'expired' => self::expired( $row, $today ), 'date' => (string) $row['date'], 'sign_id' => (string) $row['sign_id'], 'sign_state' => (string) $row['sign_state'],
+			'expired' => self::expired( $row, $today ), 'date' => (string) $row['date'], 'valid_until' => (string) ( $row['valid_until'] ?? '' ), 'sign_id' => (string) $row['sign_id'], 'sign_state' => (string) $row['sign_state'],
+			'project' => (string) $row['project'], 'project_title' => (string) ( $titles[(string) $row['project']] ?? '' ),
 		], $rows );
 	}
 

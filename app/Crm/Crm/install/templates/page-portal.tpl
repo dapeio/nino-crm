@@ -5,14 +5,16 @@
 <section id="intro" class="nino-section">
 	<div class="nino-grid-row">
 		<div class="nino-grid-100">
+			[crm-portal-nav]
 			[title /template/page-portal/intro/title tag="h2"]
 			[text /template/page-portal/intro/text]
 			[members-name] [crm-client]
-			[button /template/page-portal/link-files/label href="/template/page-portal/link-files/href" style="primary"]
-			[button /template/page-portal/link-review/label href="/template/page-portal/link-review/href" style="primary"]
-			[button /template/page-portal/link-documents/label href="/template/page-portal/link-documents/href" style="primary"]
-			[button /template/page-portal/link-sign/label href="/template/page-portal/link-sign/href" style="primary"]
-			[button /template/page-portal/link-account/label href="/template/page-portal/link-account/href" style="primary"]
+			[crm-projects open="1" short="1"]
+			[button /template/page-portal/link-projekte/label href="/template/page-portal/link-projekte/href" style="primary"]
+			[button /template/page-portal/link-upload/label href="/template/page-portal/link-upload/href" style="primary"]
+			[button /template/page-portal/link-belege/label href="/template/page-portal/link-belege/href" style="primary"]
+			[button /template/page-portal/link-termine/label href="/template/page-portal/link-termine/href" style="primary"]
+			[button /template/page-portal/link-meine-daten/label href="/template/page-portal/link-meine-daten/href" style="outline"]
 		</div>
 	</div>
 </section>

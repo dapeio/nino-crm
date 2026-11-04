@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-// Die Worte der Liste [crm-documents] im Kundenportal, eine Datei je Sprache der Seite (siehe Portal::words()): als Fills für die Dauer
+// Die Worte der Komponenten des Kundenportals ([crm-documents], [crm-projects], [crm-uploads], [crm-client-data], [crm-portal-nav]), eine Datei je Sprache der Seite (siehe Portal::words()): als Fills für die Dauer
 // des Aufrufs hinzugefügt, solange das Modul aktiv ist, nie in die Textdateien des Projekts geschrieben
 return [
 
@@ -23,4 +23,53 @@ return [
 	'[[/project/crm-documents/list/sign]]' => 'Jetzt unterschreiben',
 	'[[/project/crm-documents/list/signed]]' => 'Unterschriebene Datei',
 	'[[/project/crm-documents/list/empty]]' => 'Für Dich liegen noch keine Dokumente bereit.',
+
+	'[[/project/crm-portal/nav/label]]' => 'Bereiche des Portals',
+	'[[/project/crm-portal/projects/none]]' => 'Für Dich ist noch kein Projekt angelegt.',
+	'[[/project/crm-portal/projects/unknown]]' => 'Dieses Projekt kennen wir nicht.',
+	'[[/project/crm-portal/projects/done]]' => 'Abgeschlossen',
+	'[[/project/crm-portal/projects/started]]' => 'Beginn',
+	'[[/project/crm-portal/projects/file-one]]' => 'Datei',
+	'[[/project/crm-portal/projects/file-many]]' => 'Dateien',
+	'[[/project/crm-portal/projects/document-one]]' => 'Beleg',
+	'[[/project/crm-portal/projects/document-many]]' => 'Belege',
+	'[[/project/crm-portal/projects/back]]' => 'Alle Projekte',
+	'[[/project/crm-portal/projects/state-open]]' => 'Läuft',
+	'[[/project/crm-portal/projects/state-done]]' => 'Abgeschlossen',
+	'[[/project/crm-portal/projects/section-offer]]' => 'Angebot',
+	'[[/project/crm-portal/projects/section-files]]' => 'Dateien',
+	'[[/project/crm-portal/projects/section-documents]]' => 'Belege',
+	'[[/project/crm-portal/projects/section-upload]]' => 'Upload',
+	'[[/project/crm-portal/projects/offer-none]]' => 'Zu diesem Projekt liegt noch kein Angebot für Dich bereit.',
+	'[[/project/crm-portal/projects/offer-valid]]' => 'gültig bis',
+	'[[/project/crm-portal/projects/offer-each]]' => 'je',
+	'[[/project/crm-portal/projects/files-off]]' => 'Die Dateien sind gerade nicht erreichbar.',
+	'[[/project/crm-portal/projects/files-none]]' => 'Für dieses Projekt ist noch kein Ordner mit Dateien da.',
+	'[[/project/crm-portal/projects/files-empty]]' => 'Für Dich liegen in diesem Projekt noch keine Dateien bereit.',
+	'[[/project/crm-portal/projects/upload-text]]' => 'Dateien lädst Du für alle Deine Projekte gemeinsam hoch.',
+	'[[/project/crm-portal/projects/upload-link]]' => 'Zum Upload',
+	'[[/project/crm-portal/files/new]]' => 'neu',
+	'[[/project/crm-portal/files/download]]' => 'Herunterladen',
+	'[[/project/crm-portal/files/listen]]' => 'Anhören',
+	'[[/project/crm-portal/uploads/heading]]' => 'Hochgeladen',
+	'[[/project/crm-portal/uploads/note]]' => 'Hochgeladene Dateien liegen nur vorübergehend auf dem Server. Wir nehmen sie heraus, sobald sie im Projekt sind.',
+	'[[/project/crm-portal/uploads/empty]]' => 'Du hast noch nichts hochgeladen.',
+	'[[/project/crm-portal/uploads/none]]' => 'Für Dich ist noch kein Upload-Ordner eingerichtet. Wir müssen ihn erst für Dich anlegen: Melde Dich bei uns.',
+	'[[/project/crm-portal/uploads/off]]' => 'Der Upload ist gerade nicht erreichbar.',
+	'[[/project/crm-portal/data/none]]' => 'Für Dein Konto sind keine Kundendaten hinterlegt.',
+	'[[/project/crm-portal/data/field/company]]' => 'Firma',
+	'[[/project/crm-portal/data/field/name]]' => 'Name',
+	'[[/project/crm-portal/data/field/street]]' => 'Straße',
+	'[[/project/crm-portal/data/field/zip]]' => 'PLZ',
+	'[[/project/crm-portal/data/field/city]]' => 'Ort',
+	'[[/project/crm-portal/data/field/country]]' => 'Land (Kürzel, z. B. DE)',
+	'[[/project/crm-portal/data/field/phone]]' => 'Telefon',
+	'[[/project/crm-portal/data/field/vat_id]]' => 'USt-IdNr.',
+	'[[/project/crm-portal/data/field/email]]' => 'E-Mail Deines Kontos',
+	'[[/project/crm-portal/data/email-hint]]' => 'Die E-Mail-Adresse gehört zu Deinem Konto, hier kannst Du sie nicht ändern. Sag uns Bescheid, dann ändern wir sie.',
+	'[[/project/crm-portal/data/field-error]]' => 'Bitte prüfe diese Angabe.',
+	'[[/project/crm-portal/data/save]]' => 'Speichern',
+	'[[/project/crm-portal/data/state-saved]]' => 'Gespeichert. Danke!',
+	'[[/project/crm-portal/data/state-expired]]' => 'Die Seite war zu lange offen. Bitte speichere noch einmal.',
+	'[[/project/crm-portal/data/state-invalid]]' => 'Gespeichert wurde nichts. Bitte prüfe die Angabe bei:',
 ];

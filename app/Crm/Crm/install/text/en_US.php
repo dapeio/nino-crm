@@ -8,70 +8,61 @@ return [
 	// The details of the pages: name, title and description, read by the head of every page
 	'[[/_nino/webpage/portal/name]]' => 'Portal',
 	'[[/_nino/webpage/portal/title]]' => 'Client portal',
-	'[[/_nino/webpage/portal/description]]' => 'Your files, recordings and signatures in one place.',
-	'[[/_nino/webpage/portal/dateien/name]]' => 'Files',
-	'[[/_nino/webpage/portal/dateien/title]]' => 'Your files',
-	'[[/_nino/webpage/portal/dateien/description]]' => 'The files shared with you.',
-	'[[/_nino/webpage/portal/review/name]]' => 'Recordings',
-	'[[/_nino/webpage/portal/review/title]]' => 'Listen to recordings',
-	'[[/_nino/webpage/portal/review/description]]' => 'The recordings that are ready for you.',
-	'[[/_nino/webpage/portal/unterschriften/name]]' => 'Signatures',
-	'[[/_nino/webpage/portal/unterschriften/title]]' => 'Signatures',
-	'[[/_nino/webpage/portal/unterschriften/description]]' => 'The documents that wait for your signature.',
-	'[[/_nino/webpage/portal/dokumente/name]]' => 'Documents',
-	'[[/_nino/webpage/portal/dokumente/title]]' => 'Your documents',
-	'[[/_nino/webpage/portal/dokumente/description]]' => 'The documents shared with you: offers, invoices, contracts and more.',
-	'[[/_nino/webpage/portal/konto/name]]' => 'My account',
-	'[[/_nino/webpage/portal/konto/title]]' => 'My account',
-	'[[/_nino/webpage/portal/konto/description]]' => 'Your account in the client portal.',
+	'[[/_nino/webpage/portal/description]]' => 'Your projects, documents, dates and data in one place.',
+	'[[/_nino/webpage/portal/meine-daten/name]]' => 'My data',
+	'[[/_nino/webpage/portal/meine-daten/title]]' => 'My data',
+	'[[/_nino/webpage/portal/meine-daten/description]]' => 'Your details as a client.',
+	'[[/_nino/webpage/portal/projekte/name]]' => 'Projects',
+	'[[/_nino/webpage/portal/projekte/title]]' => 'Your projects',
+	'[[/_nino/webpage/portal/projekte/description]]' => 'Your projects with offer, files and documents.',
+	'[[/_nino/webpage/portal/upload/name]]' => 'Upload',
+	'[[/_nino/webpage/portal/upload/title]]' => 'Upload files',
+	'[[/_nino/webpage/portal/upload/description]]' => 'Upload files for your projects.',
+	'[[/_nino/webpage/portal/belege/name]]' => 'Documents',
+	'[[/_nino/webpage/portal/belege/title]]' => 'Your documents',
+	'[[/_nino/webpage/portal/belege/description]]' => 'Offers, invoices, contracts and more that are shared with you.',
+	'[[/_nino/webpage/portal/termine/name]]' => 'Dates',
+	'[[/_nino/webpage/portal/termine/title]]' => 'Your dates',
+	'[[/_nino/webpage/portal/termine/description]]' => 'The dates that are coming up for you.',
+
 	// The details of the start page, the door (its Element-URI is '/', as the wizard writes it for a start page): the head reads them
 	'[[/_nino/webpage//name]]' => 'Sign in',
 	'[[/_nino/webpage//title]]' => 'Sign in',
 	'[[/_nino/webpage//description]]' => 'Sign in with the link we send you by email.',
 
-	// The portal's start page, page-portal.tpl
-	'[[/template/page-portal/intro/title]]'              => 'Welcome to the client portal',
-	'[[/template/page-portal/intro/text]]'               => 'Here you find your files, recordings and signatures.',
-	'[[/template/page-portal/link-files/label]]'         => 'Files',
-	'[[/template/page-portal/link-files/href]]'          => '/portal/dateien',
-	'[[/template/page-portal/link-review/label]]'        => 'Listen to recordings',
-	'[[/template/page-portal/link-review/href]]'         => '/portal/review',
-	'[[/template/page-portal/link-documents/label]]'      => 'Documents',
-	'[[/template/page-portal/link-documents/href]]'       => '/portal/dokumente',
-	'[[/template/page-portal/link-sign/label]]'          => 'Signatures',
-	'[[/template/page-portal/link-sign/href]]'           => '/portal/unterschriften',
-	'[[/template/page-portal/link-account/label]]'       => 'My account',
-	'[[/template/page-portal/link-account/href]]'        => '/portal/konto',
+	// Start, page-portal.tpl
+	'[[/template/page-portal/intro/title]]' => 'Welcome to the client portal',
+	'[[/template/page-portal/intro/text]]' => 'Here you find your projects, documents and dates, and you can upload files.',
+	'[[/template/page-portal/link-projekte/label]]' => 'Projects',
+	'[[/template/page-portal/link-projekte/href]]' => '/portal/projekte',
+	'[[/template/page-portal/link-upload/label]]' => 'Upload',
+	'[[/template/page-portal/link-upload/href]]' => '/portal/upload',
+	'[[/template/page-portal/link-belege/label]]' => 'Documents',
+	'[[/template/page-portal/link-belege/href]]' => '/portal/belege',
+	'[[/template/page-portal/link-termine/label]]' => 'Dates',
+	'[[/template/page-portal/link-termine/href]]' => '/portal/termine',
+	'[[/template/page-portal/link-meine-daten/label]]' => 'My data',
+	'[[/template/page-portal/link-meine-daten/href]]' => '/portal/meine-daten',
 
-	// Files, page-portal-files.tpl
-	'[[/template/page-portal-files/intro/title]]'        => 'Files',
-	'[[/template/page-portal-files/intro/text]]'         => 'The files shared with you. You can upload where your group has an upload folder.',
-	'[[/template/page-portal-files/back/label]]'         => 'Back to the portal',
-	'[[/template/page-portal-files/back/href]]'          => '/portal',
+	// My data, page-portal-meine-daten.tpl
+	'[[/template/page-portal-meine-daten/intro/title]]' => 'My data',
+	'[[/template/page-portal-meine-daten/intro/text]]' => 'These are your details as a client. They go on your next documents; documents that are already final do not change.',
 
-	// Review, page-portal-review.tpl
-	'[[/template/page-portal-review/intro/title]]'       => 'Listen to recordings',
-	'[[/template/page-portal-review/intro/text]]'        => 'Listen to the recordings that are ready for you.',
-	'[[/template/page-portal-review/back/label]]'        => 'Back to the portal',
-	'[[/template/page-portal-review/back/href]]'         => '/portal',
+	// Projects, page-portal-projekte.tpl
+	'[[/template/page-portal-projekte/intro/title]]' => 'Your projects',
+	'[[/template/page-portal-projekte/intro/text]]' => 'Here you see what we are working on for you: the offer, the files to listen to and download, and the documents of a project.',
 
-	// Signatures, page-portal-sign.tpl
-	'[[/template/page-portal-sign/intro/title]]'         => 'Signatures',
-	'[[/template/page-portal-sign/intro/text]]'          => 'The documents that wait for your signature.',
-	'[[/template/page-portal-sign/back/label]]'          => 'Back to the portal',
-	'[[/template/page-portal-sign/back/href]]'           => '/portal',
+	// Upload, page-portal-upload.tpl
+	'[[/template/page-portal-upload/intro/title]]' => 'Upload files',
+	'[[/template/page-portal-upload/intro/text]]' => 'Upload files for us here.',
 
-	// Documents, page-portal-documents.tpl
-	'[[/template/page-portal-documents/intro/title]]' => 'Your documents',
-	'[[/template/page-portal-documents/intro/text]]' => 'Everything shared with you, with where it stands: offers, invoices, contracts and privacy documents. You sign the contracts and privacy documents that need your signature here.',
-	'[[/template/page-portal-documents/back/label]]' => 'Back to the portal',
-	'[[/template/page-portal-documents/back/href]]' => '/portal',
+	// Documents, page-portal-belege.tpl
+	'[[/template/page-portal-belege/intro/title]]' => 'Your documents',
+	'[[/template/page-portal-belege/intro/text]]' => 'Everything shared with you, with where it stands: offers, invoices, contracts and privacy documents. You sign what needs your signature here.',
 
-	// Account, page-portal-account.tpl
-	'[[/template/page-portal-account/intro/title]]'      => 'My account',
-	'[[/template/page-portal-account/intro/text]]'       => 'You are signed in as:',
-	'[[/template/page-portal-account/back/label]]'       => 'Back to the portal',
-	'[[/template/page-portal-account/back/href]]'        => '/portal',
+	// Dates, page-portal-termine.tpl
+	'[[/template/page-portal-termine/intro/title]]' => 'Your dates',
+	'[[/template/page-portal-termine/intro/text]]' => 'The dates that are coming up for you.',
 
 	// The portal's door - the site's start page, page-door.tpl
 	'[[/template/page-door/intro/title]]'               => 'Sign in',

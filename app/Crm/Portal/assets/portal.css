@@ -1,10 +1,12 @@
 /**
  *	Crm - Portal
- *	portal.css		What [crm-documents] needs on the site itself: the list of the released documents of a member's client. Bundled
- *								into the project's own /.cache/style.css by \Crm\Crm::init() (the module adds it with \Nino\Html::addAsset()) -
- *								never rendered through the fill/shortcode engine, so nothing in here is a textfill.
+ *	portal.css		What the components of the client portal need on the site itself: the navigation of the areas, the list of the
+ *								released documents of a member's client, the projects with the page of one project (its offer, its files), the
+ *								uploads and the form of the client's data. Bundled into the project's own /.cache/style.css by \Crm\Crm::init()
+ *								(the module adds it with \Nino\Html::addAsset()) - never rendered through the fill/shortcode engine, so nothing in
+ *								here is a textfill.
  *
- *								The list is drawn from three properties, --crm-documents-space, --crm-documents-corners and
+ *								Everything is drawn from three properties, --crm-documents-space, --crm-documents-corners and
  *								--crm-documents-border, whose defaults are the page's own roles (--space-*, --radius, --color-*), which
  *								every site has, so they look at home whatever the site's theme says. The defaults stand in :where(), which
  *								has no specificity: a rule of the project that moves a property wins over them by order.
@@ -78,5 +80,378 @@
 }
 
 .crm-documents__empty {
+	margin: 0;
+}
+
+.crm-documents__project {
+	font-size: .875em;
+	overflow-wrap: anywhere;
+}
+
+.crm-documents__project:empty {
+	display: none;
+}
+
+a.crm-documents__project {
+	color: var(--color-accent);
+}
+
+/*	The navigation of the areas: a row of links that wraps, the area the request is in marked	*/
+
+.crm-nav {
+	margin: 0 0 var(--space-3);
+}
+
+.crm-nav__list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.crm-nav__link {
+	display: block;
+	padding: .35em .9em;
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+	color: var(--color-accent);
+	text-decoration: none;
+}
+
+.crm-nav__link:hover {
+	border-color: var(--color-accent);
+}
+
+.crm-nav__link[aria-current="page"] {
+	border-color: var(--color-accent);
+	font-weight: 600;
+	box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+.crm-portal__who {
+	margin: 0 0 var(--space-2);
+}
+
+/*	The projects: the list, and the page of one	*/
+
+.crm-projects,
+.crm-uploads,
+.crm-project {
+	box-sizing: border-box;
+	max-width: 48rem;
+	margin: 0 0 var(--space-2);
+}
+
+.crm-projects__list,
+.crm-files__list {
+	display: grid;
+	gap: var(--space-1);
+	margin: 0 0 var(--space-2);
+	padding: 0;
+	list-style: none;
+}
+
+.crm-projects__heading,
+.crm-uploads__heading {
+	margin: var(--space-3) 0 var(--space-1);
+	font-size: 1em;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+}
+
+.crm-projects__row,
+.crm-files__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-2);
+	padding: var(--crm-documents-space);
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+}
+
+.crm-projects__title,
+.crm-files__name {
+	flex: 1 1 12rem;
+	font-weight: 600;
+	color: var(--color-accent);
+	overflow-wrap: anywhere;
+}
+
+.crm-projects__started,
+.crm-projects__count,
+.crm-files__size,
+.crm-files__date {
+	font-size: .875em;
+}
+
+.crm-projects__list--done .crm-projects__row {
+	opacity: .75;
+}
+
+.crm-projects__unknown,
+.crm-projects__empty,
+.crm-uploads__empty,
+.crm-data__empty,
+.crm-files__empty,
+.crm-project__message {
+	margin: 0 0 var(--space-2);
+}
+
+.crm-projects__unknown {
+	padding: var(--crm-documents-space);
+	border: 1px solid var(--color-warning);
+	border-radius: var(--crm-documents-corners);
+}
+
+.crm-files__new {
+	padding: 0 .5em;
+	border: 1px solid var(--color-success);
+	border-radius: var(--crm-documents-corners);
+	font-size: .875em;
+}
+
+.crm-files__download,
+.crm-files__listen,
+.crm-offer__download,
+.crm-project__link {
+	color: var(--color-accent);
+}
+
+.crm-project__back {
+	margin: 0 0 var(--space-1);
+	font-size: .875em;
+}
+
+.crm-project__title {
+	margin: 0 0 var(--space-1);
+	overflow-wrap: anywhere;
+}
+
+.crm-project__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-2);
+	margin: 0 0 var(--space-1);
+	font-size: .875em;
+}
+
+.crm-project__state {
+	padding: 0 .5em;
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+}
+
+.crm-project[data-state="done"] .crm-project__state {
+	border-color: var(--color-success);
+}
+
+.crm-project__description {
+	margin: 0 0 var(--space-2);
+	overflow-wrap: anywhere;
+}
+
+.crm-project__section {
+	margin: var(--space-3) 0 0;
+	padding-top: var(--space-2);
+	border-top: 1px solid var(--crm-documents-border);
+}
+
+.crm-project__heading {
+	margin: 0 0 var(--space-1);
+}
+
+/*	The offer: its lines as a list that stacks at a narrow width, its sums as a list of terms	*/
+
+.crm-offer {
+	margin: 0 0 var(--space-2);
+	padding: var(--crm-documents-space);
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+}
+
+.crm-offer__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-2);
+	margin: 0 0 var(--space-1);
+}
+
+.crm-offer__title {
+	flex: 1 1 12rem;
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.crm-offer__date,
+.crm-offer__valid {
+	font-size: .875em;
+}
+
+.crm-offer__state {
+	padding: 0 .5em;
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+	font-size: .875em;
+}
+
+.crm-offer[data-state="accepted"] .crm-offer__state {
+	border-color: var(--color-success);
+}
+
+.crm-offer[data-state="declined"] .crm-offer__state,
+.crm-offer[data-state="expired"] .crm-offer__state {
+	border-color: var(--color-warning);
+}
+
+.crm-offer__lines {
+	display: grid;
+	margin: 0 0 var(--space-1);
+	padding: 0;
+	list-style: none;
+}
+
+.crm-offer__line {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 0 var(--space-2);
+	padding: var(--space-1) 0;
+	border-top: 1px solid var(--crm-documents-border);
+}
+
+.crm-offer__line-title {
+	grid-column: 1;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.crm-offer__line-amount {
+	grid-column: 2;
+	grid-row: 1;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.crm-offer__line-description,
+.crm-offer__line-meta {
+	grid-column: 1 / -1;
+	font-size: .875em;
+	overflow-wrap: anywhere;
+}
+
+.crm-offer__line-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0 var(--space-2);
+}
+
+.crm-offer__sums {
+	margin: 0;
+	padding: var(--space-1) 0 0;
+	border-top: 1px solid var(--crm-documents-border);
+}
+
+.crm-offer__sum {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+
+.crm-offer__sum dt,
+.crm-offer__sum dd {
+	margin: 0;
+}
+
+.crm-offer__sum dd {
+	font-variant-numeric: tabular-nums;
+}
+
+.crm-offer__sum--gross {
+	font-weight: 600;
+}
+
+.crm-offer__note {
+	margin: var(--space-1) 0 0;
+	font-size: .875em;
+}
+
+.crm-offer__actions {
+	margin: var(--space-1) 0 0;
+}
+
+/*	The uploads	*/
+
+.crm-uploads__note {
+	margin: 0 0 var(--space-1);
+	font-size: .875em;
+}
+
+/*	The form of the client's data	*/
+
+.crm-data {
+	box-sizing: border-box;
+	max-width: 36rem;
+	margin: 0 0 var(--space-2);
+}
+
+.crm-data__fields {
+	display: grid;
+	gap: var(--space-2);
+	margin: 0 0 var(--space-2);
+}
+
+.crm-data__field {
+	display: grid;
+	gap: .25em;
+	margin: 0;
+}
+
+.crm-data__label {
+	font-weight: 600;
+}
+
+.crm-data__input {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+}
+
+.crm-data__input[readonly] {
+	opacity: .75;
+}
+
+.crm-data__hint {
+	font-size: .875em;
+}
+
+.crm-data__field--invalid .crm-data__input {
+	border-color: var(--color-error);
+}
+
+.crm-data__error {
+	color: var(--color-error);
+	font-size: .875em;
+}
+
+.crm-data__state {
+	margin: 0 0 var(--space-2);
+	padding: var(--crm-documents-space);
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+}
+
+.crm-data__state--saved {
+	border-color: var(--color-success);
+}
+
+.crm-data__state--invalid,
+.crm-data__state--expired {
+	border-color: var(--color-warning);
+}
+
+.crm-data__actions {
 	margin: 0;
 }

@@ -2,9 +2,12 @@
 declare(strict_types=1);
 /**
  *	Crm\Portal		What the portal pages read of the CRM: the client of the member who is signed in, the component
- *								[crm-client] that says its company and the component [crm-documents] that lists the documents released
- *								to that client. A visitor has no client, and a page view of a visitor never opens the database. The
- *								lookup is kept for the request and dropped when a member signs in or out.
+ *								[crm-client] that says its company, the component [crm-documents] that lists the documents released
+ *								to that client (all of them, or those of one project) and the navigation [crm-portal-nav] of the areas of
+ *								the portal. The areas themselves are the components of Portal\Projects ([crm-projects]), Portal\Files
+ *								([crm-uploads]) and Portal\Data ([crm-client-data] and the route that saves it). A visitor has no
+ *								client, and a page view of a visitor never opens the database. The lookup is kept for the request and
+ *								dropped when a member signs in or out.
  */
 namespace Crm;
 
@@ -20,6 +23,9 @@ class Portal {
 	// The style sheet of the list, as the bundle of the site names it, and where the markup and the words of the list are
 	public const string STYLE = '/app/Crm/Portal/assets/portal.css';
 	private const string NAME = '/^[a-z]{1,20}$/D';
+
+	// The areas of the portal, in the order of the navigation: the last part of the address, which is also the key of the page's name
+	public const array AREAS = [ 'meine-daten', 'projekte', 'upload', 'belege', 'termine' ];
 
 	/**
 	 *	The client of the signed-in member
@@ -45,6 +51,18 @@ class Portal {
 	}
 
 	/**
+	 *	Drop the lookup of this request: the client was changed, and a page drawn after it reads the client as it is now
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	void
+	 */
+	public static function forget( array &$appData ): void {
+
+		unset( $appData[self::CACHE] );
+	}
+
+	/**
 	 *	[crm-client] - the company of the member's client, its name where it has no company; nothing for a visitor
 	 *
 	 *	@param		array 		&$appData
@@ -67,12 +85,48 @@ class Portal {
 	}
 
 	/**
-	 *	[crm-documents] - the documents released to the client of the member, the newest first: the kind, the title (the number where there
-	 *	is none), the day, the state, the download and - where a signature is asked for - the way to it, or - once it is signed - the way
-	 *	to the signed file. A member of no client and a visitor are told there is none. Every value enters the markup escaped
+	 *	[crm-portal-nav] - the areas of the portal as links, the one the request is in marked with aria-current. The names are the words
+	 *	of the pages (/_nino/webpage/portal/<area>/name). Nothing for a visitor
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$args
+	 *
+	 *	@return 	string
+	 */
+	public static function componentCrmPortalNav( array &$appData, array $args ): string {
+
+		if( Crm::featureOn( $appData, 'members' ) === false || \Nino\Modules\Members::current( $appData ) === null )
+			return '';
+
+		self::words( $appData );
+
+		$request = \Nino\Http::getRequest( $appData );
+		$path = $request === false ? '' : rtrim( (string) ( $request['/nino/http/request']['uri'] ?? '' ), '/' );
+		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
+		$items = '';
+
+		foreach( self::AREAS as $area ) {
+
+			$here = $path === '/portal/'. $area || str_starts_with( $path, '/portal/'. $area. '/' ) === true;
+
+			$items .= str_replace(
+				[ '[[dir]]', '[[area]]', '[[current]]' ],
+				[ $dir, $area, $here === true ? ' aria-current="page"' : '' ],
+				self::template( 'nav-item' )
+			);
+		}
+
+		return str_replace( [ '[[classes]]', '[[items]]' ], [ \Nino\Feature::classes( $args ), $items ], self::template( 'nav' ) );
+	}
+
+	/**
+	 *	[crm-documents] - the documents released to the client of the member, the newest first: the kind, the title (the number where there
+	 *	is none), the project (its title, a link to the project page; empty where the document has none), the day, the state, the download and -
+	 *	where a signature is asked for - the way to it, or - once it is signed - the way to the signed file. With project="<id>" only the documents of that
+	 *	project, and no column for the project. A member of no client and a visitor are told there is none. Every value enters the markup escaped
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$args					project (the id of a project of the client, '' for all)
 	 *
 	 *	@return 	string
 	 */
@@ -80,52 +134,89 @@ class Portal {
 
 		self::words( $appData );
 
-		$classes = \Nino\Feature::classes( $args );
+		$project = trim( (string) ( $args['project'] ?? '' ) );
 		$client = self::client( $appData );
-		$documents = $client === null ? [] : Documents::released( $appData, $client['id'] );
+		$documents = [];
 
-		if( $documents === [] )
-			return str_replace( '[[classes]]', $classes, self::template( 'documents-empty' ) );
+		if( $client !== null && ( $project === '' || preg_match( Projekte::ID, $project ) === 1 ) )
+			$documents = Documents::released( $appData, $client['id'], $project );
+
+		return self::documentList( $appData, $documents, \Nino\Feature::classes( $args ), $project === '' );
+	}
+
+	/**
+	 *	The list of documents as the portal draws it: [crm-documents] and the project page both
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$documents		As Documents::released() has them
+	 *	@param		string		$classes			The class attribute's tail, see \Nino\Feature::classes()
+	 *	@param		bool			$withProject	Whether each row names its project
+	 *
+	 *	@return 	string										The list, or the sentence that there is none
+	 */
+	public static function documentList( array &$appData, array $documents, string $classes, bool $withProject ): string {
 
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 		$rows = '';
 
-		foreach( $documents as $document ) {
-
-			$state = $document['expired'] === true ? 'expired' : $document['state'];
-
-			// The names the module writes are lower case letters; they are the end of the key of a word
-			if( preg_match( self::NAME, $document['category'] ) !== 1 || preg_match( self::NAME, $state ) !== 1 )
-				continue;
-
-			$request = preg_match( '/^[a-f0-9]{12}$/D', $document['sign_id'] ) === 1 ? $document['sign_id'] : '';
-			$sign = '';
-
-			if( $request !== '' && in_array( $document['sign_state'], Documents::PENDING, true ) === true )
-				$sign = 'document-sign';
-			elseif( $request !== '' && $document['state'] === 'signed' && $document['sign_state'] === 'signed' )
-				$sign = 'document-signed';
-
-			$rows .= str_replace(
-				[ '[[category]]', '[[state]]', '[[id]]', '[[title]]', '[[iso]]', '[[date]]', '[[dir]]', '[[sign]]' ],
-				[
-					$document['category'],
-					$state,
-					(string) $document['id'],
-					\Nino\Modules\Components::escape( $document['title'] !== '' ? $document['title'] : $document['number'] ),
-					\Nino\Modules\Components::escape( $document['date'] ),
-					\Nino\Modules\Components::escape( Documents\Render::day( $document['date'] ) ),
-					$dir,
-					$sign === '' ? '' : str_replace( [ '[[dir]]', '[[request]]' ], [ $dir, $request ], self::template( $sign ) ),
-				],
-				self::template( 'document' )
-			);
-		}
+		foreach( $documents as $document )
+			$rows .= self::documentRow( $document, $dir, $withProject );
 
 		if( $rows === '' )
 			return str_replace( '[[classes]]', $classes, self::template( 'documents-empty' ) );
 
 		return str_replace( [ '[[classes]]', '[[rows]]' ], [ $classes, $rows ], self::template( 'documents' ) );
+	}
+
+	/**
+	 *	One row of the list of documents
+	 *
+	 *	@param		array 		$document			As Documents::released() has it
+	 *	@param		string		$dir					The directory the project is served from, escaped
+	 *	@param		bool			$withProject	Whether the row names its project
+	 *
+	 *	@return 	string										'' for a document whose names the words do not know
+	 */
+	private static function documentRow( array $document, string $dir, bool $withProject ): string {
+
+		$state = $document['expired'] === true ? 'expired' : $document['state'];
+
+		// The names the module writes are lower case letters; they are the end of the key of a word
+		if( preg_match( self::NAME, $document['category'] ) !== 1 || preg_match( self::NAME, $state ) !== 1 )
+			return '';
+
+		$request = preg_match( '/^[a-f0-9]{12}$/D', $document['sign_id'] ) === 1 ? $document['sign_id'] : '';
+		$sign = '';
+
+		if( $request !== '' && in_array( $document['sign_state'], Documents::PENDING, true ) === true )
+			$sign = 'document-sign';
+		elseif( $request !== '' && $document['state'] === 'signed' && $document['sign_state'] === 'signed' )
+			$sign = 'document-signed';
+
+		$project = '';
+
+		if( $withProject === true )
+			$project = str_replace(
+				[ '[[dir]]', '[[id]]', '[[title]]' ],
+				[ $dir, \Nino\Modules\Components::escape( $document['project'] ), \Nino\Modules\Components::escape( $document['project_title'] ) ],
+				self::template( $document['project_title'] === '' ? 'document-project-none' : ( preg_match( Projekte::ID, $document['project'] ) === 1 ? 'document-project' : 'document-project-text' ) )
+			);
+
+		return str_replace(
+			[ '[[category]]', '[[state]]', '[[id]]', '[[title]]', '[[project]]', '[[iso]]', '[[date]]', '[[dir]]', '[[sign]]' ],
+			[
+				$document['category'],
+				$state,
+				(string) $document['id'],
+				\Nino\Modules\Components::escape( $document['title'] !== '' ? $document['title'] : $document['number'] ),
+				$project,
+				\Nino\Modules\Components::escape( $document['date'] ),
+				\Nino\Modules\Components::escape( Documents\Render::day( $document['date'] ) ),
+				$dir,
+				$sign === '' ? '' : str_replace( [ '[[dir]]', '[[request]]' ], [ $dir, $request ], self::template( $sign ) ),
+			],
+			self::template( 'document' )
+		);
 	}
 
 	/**
@@ -199,27 +290,42 @@ class Portal {
 	}
 
 	/**
-	 *	The words of the list, as fills of the languages that have a file, added when a list is drawn
+	 *	The query of the request that is being answered
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											name => value; none for a request without a query
+	 */
+	public static function query( array &$appData ): array {
+
+		$request = \Nino\Http::getRequest( $appData );
+		$query = $request === false ? null : ( $request['/nino/http/request']['query'] ?? null );
+
+		return is_array( $query ) === true ? $query : [];
+	}
+
+	/**
+	 *	The words of the portal's components, as fills of the languages that have a file, added when a component is drawn
 	 *
 	 *	@param		array 		&$appData
 	 *
 	 *	@return 	void
 	 */
-	private static function words( array &$appData ): void {
+	public static function words( array &$appData ): void {
 
 		foreach( glob( __DIR__. '/text/*.php' ) ?: [] as $file )
 			\Nino\Html::addFills( $appData, (array) include $file, basename( $file, '.php' ) );
 	}
 
 	/**
-	 *	The markup of the list, read from the templates/ beside this class (the module's own directory, which is where the class is wherever
+	 *	The markup of a component, read from the templates/ beside this class (the module's own directory, which is where the class is wherever
 	 *	the project is served from)
 	 *
 	 *	@param		string		$name					A file of templates/ without .tpl: lower case letters and hyphens
 	 *
 	 *	@return 	string
 	 */
-	private static function template( string $name ): string {
+	public static function template( string $name ): string {
 
 		if( preg_match( '/^[a-z]+(-[a-z]+)*$/D', $name ) !== 1 )
 			throw new \InvalidArgumentException( 'There is no portal template "'. $name. '"' );

@@ -8,70 +8,61 @@ return [
 	// Die Angaben der Seiten: Name, Titel und Beschreibung, die der Kopf jeder Seite liest
 	'[[/_nino/webpage/portal/name]]' => 'Portal',
 	'[[/_nino/webpage/portal/title]]' => 'Kundenportal',
-	'[[/_nino/webpage/portal/description]]' => 'Deine Dateien, Aufnahmen und Unterschriften an einem Ort.',
-	'[[/_nino/webpage/portal/dateien/name]]' => 'Dateien',
-	'[[/_nino/webpage/portal/dateien/title]]' => 'Deine Dateien',
-	'[[/_nino/webpage/portal/dateien/description]]' => 'Die Dateien, die für Dich freigegeben sind.',
-	'[[/_nino/webpage/portal/review/name]]' => 'Aufnahmen',
-	'[[/_nino/webpage/portal/review/title]]' => 'Aufnahmen anhören',
-	'[[/_nino/webpage/portal/review/description]]' => 'Die Aufnahmen, die für Dich bereitliegen.',
-	'[[/_nino/webpage/portal/unterschriften/name]]' => 'Unterschriften',
-	'[[/_nino/webpage/portal/unterschriften/title]]' => 'Unterschriften',
-	'[[/_nino/webpage/portal/unterschriften/description]]' => 'Die Dokumente, die auf Deine Unterschrift warten.',
-	'[[/_nino/webpage/portal/dokumente/name]]' => 'Dokumente',
-	'[[/_nino/webpage/portal/dokumente/title]]' => 'Deine Dokumente',
-	'[[/_nino/webpage/portal/dokumente/description]]' => 'Die Dokumente, die für Dich freigegeben sind: Angebote, Rechnungen, Verträge und mehr.',
-	'[[/_nino/webpage/portal/konto/name]]' => 'Mein Konto',
-	'[[/_nino/webpage/portal/konto/title]]' => 'Mein Konto',
-	'[[/_nino/webpage/portal/konto/description]]' => 'Dein Konto im Kundenportal.',
+	'[[/_nino/webpage/portal/description]]' => 'Deine Projekte, Belege, Termine und Daten an einem Ort.',
+	'[[/_nino/webpage/portal/meine-daten/name]]' => 'Meine Daten',
+	'[[/_nino/webpage/portal/meine-daten/title]]' => 'Meine Daten',
+	'[[/_nino/webpage/portal/meine-daten/description]]' => 'Deine Angaben als Kunde.',
+	'[[/_nino/webpage/portal/projekte/name]]' => 'Projekte',
+	'[[/_nino/webpage/portal/projekte/title]]' => 'Deine Projekte',
+	'[[/_nino/webpage/portal/projekte/description]]' => 'Deine Projekte mit Angebot, Dateien und Belegen.',
+	'[[/_nino/webpage/portal/upload/name]]' => 'Upload',
+	'[[/_nino/webpage/portal/upload/title]]' => 'Dateien hochladen',
+	'[[/_nino/webpage/portal/upload/description]]' => 'Lade Dateien für Deine Projekte hoch.',
+	'[[/_nino/webpage/portal/belege/name]]' => 'Belege',
+	'[[/_nino/webpage/portal/belege/title]]' => 'Deine Belege',
+	'[[/_nino/webpage/portal/belege/description]]' => 'Angebote, Rechnungen, Verträge und mehr, die für Dich freigegeben sind.',
+	'[[/_nino/webpage/portal/termine/name]]' => 'Termine',
+	'[[/_nino/webpage/portal/termine/title]]' => 'Deine Termine',
+	'[[/_nino/webpage/portal/termine/description]]' => 'Die Termine, die für Dich anstehen.',
+
 	// Die Angaben der Startseite, des Tors (der Element-URI ist '/', wie ihn der Assistent für die Startseite schreibt): der Kopf liest sie
 	'[[/_nino/webpage//name]]' => 'Anmelden',
 	'[[/_nino/webpage//title]]' => 'Anmelden',
 	'[[/_nino/webpage//description]]' => 'Melde Dich mit dem Link an, den wir Dir per E-Mail schicken.',
 
-	// Die Startseite des Portals, page-portal.tpl
-	'[[/template/page-portal/intro/title]]'              => 'Willkommen im Kundenportal',
-	'[[/template/page-portal/intro/text]]'               => 'Hier findest Du Deine Dateien, Aufnahmen und Unterschriften.',
-	'[[/template/page-portal/link-files/label]]'         => 'Dateien',
-	'[[/template/page-portal/link-files/href]]'          => '/portal/dateien',
-	'[[/template/page-portal/link-review/label]]'        => 'Aufnahmen anhören',
-	'[[/template/page-portal/link-review/href]]'         => '/portal/review',
-	'[[/template/page-portal/link-documents/label]]'      => 'Dokumente',
-	'[[/template/page-portal/link-documents/href]]'       => '/portal/dokumente',
-	'[[/template/page-portal/link-sign/label]]'          => 'Unterschriften',
-	'[[/template/page-portal/link-sign/href]]'           => '/portal/unterschriften',
-	'[[/template/page-portal/link-account/label]]'       => 'Mein Konto',
-	'[[/template/page-portal/link-account/href]]'        => '/portal/konto',
+	// Start, page-portal.tpl
+	'[[/template/page-portal/intro/title]]' => 'Willkommen im Kundenportal',
+	'[[/template/page-portal/intro/text]]' => 'Hier findest Du Deine Projekte, Belege und Termine und kannst Dateien hochladen.',
+	'[[/template/page-portal/link-projekte/label]]' => 'Projekte',
+	'[[/template/page-portal/link-projekte/href]]' => '/portal/projekte',
+	'[[/template/page-portal/link-upload/label]]' => 'Upload',
+	'[[/template/page-portal/link-upload/href]]' => '/portal/upload',
+	'[[/template/page-portal/link-belege/label]]' => 'Belege',
+	'[[/template/page-portal/link-belege/href]]' => '/portal/belege',
+	'[[/template/page-portal/link-termine/label]]' => 'Termine',
+	'[[/template/page-portal/link-termine/href]]' => '/portal/termine',
+	'[[/template/page-portal/link-meine-daten/label]]' => 'Meine Daten',
+	'[[/template/page-portal/link-meine-daten/href]]' => '/portal/meine-daten',
 
-	// Dateien, page-portal-files.tpl
-	'[[/template/page-portal-files/intro/title]]'        => 'Dateien',
-	'[[/template/page-portal-files/intro/text]]'         => 'Die Dateien, die für Dich freigegeben sind. Hochladen kannst Du, wenn für Deine Gruppe ein Upload-Ordner da ist.',
-	'[[/template/page-portal-files/back/label]]'         => 'Zurück zum Portal',
-	'[[/template/page-portal-files/back/href]]'          => '/portal',
+	// Meine Daten, page-portal-meine-daten.tpl
+	'[[/template/page-portal-meine-daten/intro/title]]' => 'Meine Daten',
+	'[[/template/page-portal-meine-daten/intro/text]]' => 'Das sind Deine Angaben als Kunde. Sie stehen auf Deinen nächsten Belegen; Belege, die schon fertig sind, ändern sich nicht mehr.',
 
-	// Review, page-portal-review.tpl
-	'[[/template/page-portal-review/intro/title]]'       => 'Aufnahmen anhören',
-	'[[/template/page-portal-review/intro/text]]'        => 'Hör Dir die Aufnahmen an, die für Dich bereitliegen.',
-	'[[/template/page-portal-review/back/label]]'        => 'Zurück zum Portal',
-	'[[/template/page-portal-review/back/href]]'         => '/portal',
+	// Projekte, page-portal-projekte.tpl
+	'[[/template/page-portal-projekte/intro/title]]' => 'Deine Projekte',
+	'[[/template/page-portal-projekte/intro/text]]' => 'Hier siehst Du, woran wir für Dich arbeiten: das Angebot, die Dateien zum Anhören und Laden und die Belege eines Projekts.',
 
-	// Unterschriften, page-portal-sign.tpl
-	'[[/template/page-portal-sign/intro/title]]'         => 'Unterschriften',
-	'[[/template/page-portal-sign/intro/text]]'          => 'Die Dokumente, die auf Deine Unterschrift warten.',
-	'[[/template/page-portal-sign/back/label]]'          => 'Zurück zum Portal',
-	'[[/template/page-portal-sign/back/href]]'           => '/portal',
+	// Upload, page-portal-upload.tpl
+	'[[/template/page-portal-upload/intro/title]]' => 'Dateien hochladen',
+	'[[/template/page-portal-upload/intro/text]]' => 'Lade hier Dateien für uns hoch.',
 
-	// Dokumente, page-portal-documents.tpl
-	'[[/template/page-portal-documents/intro/title]]' => 'Deine Dokumente',
-	'[[/template/page-portal-documents/intro/text]]' => 'Alles, was für Dich freigegeben ist, mit seinem Stand: Angebote, Rechnungen, Verträge und Datenschutzdokumente. Verträge und Datenschutzdokumente, die Deine Unterschrift brauchen, unterschreibst Du hier.',
-	'[[/template/page-portal-documents/back/label]]' => 'Zurück zum Portal',
-	'[[/template/page-portal-documents/back/href]]' => '/portal',
+	// Belege, page-portal-belege.tpl
+	'[[/template/page-portal-belege/intro/title]]' => 'Deine Belege',
+	'[[/template/page-portal-belege/intro/text]]' => 'Alles, was für Dich freigegeben ist, mit seinem Stand: Angebote, Rechnungen, Verträge und Datenschutzdokumente. Was Deine Unterschrift braucht, unterschreibst Du hier.',
 
-	// Konto, page-portal-account.tpl
-	'[[/template/page-portal-account/intro/title]]'      => 'Mein Konto',
-	'[[/template/page-portal-account/intro/text]]'       => 'Du bist angemeldet als:',
-	'[[/template/page-portal-account/back/label]]'       => 'Zurück zum Portal',
-	'[[/template/page-portal-account/back/href]]'        => '/portal',
+	// Termine, page-portal-termine.tpl
+	'[[/template/page-portal-termine/intro/title]]' => 'Deine Termine',
+	'[[/template/page-portal-termine/intro/text]]' => 'Die Termine, die für Dich anstehen.',
 
 	// Das Tor des Portals - die Startseite der Website, page-door.tpl
 	'[[/template/page-door/intro/title]]'               => 'Anmelden',

@@ -3,9 +3,9 @@ declare(strict_types=1);
 /**
  *	Crm\Crm		The project module of the CRM. Listed in /nino/modules by the setup wizard, which finds its install unit (install/);
  *						init() registers behaviour and writes nothing: the panel CRM (adminPanels()), the
- *						components [crm-client] and [crm-documents], the callbacks that keep the portal's lookup true when a member signs in or
- *						out and the ones that let a document follow its request in Sign, the style sheet of the portal's list, and the route
- *						/.crm/pdf/<id> that answers the PDF of a finalised document; and the surface at /crm, one page of the project with its
+ *						components [crm-client], [crm-documents], [crm-portal-nav], [crm-projects], [crm-uploads] and [crm-client-data], the callbacks that keep the portal's lookup true when a member signs in or
+ *						out and the ones that let a document follow its request in Sign, the style sheet of the portal, the route
+ *						/.crm/pdf/<id> that answers the PDF of a finalised document and the route POST /.crm/daten of the page Meine Daten; and the surface at /crm, one page of the project with its
  *						endpoint and assets (Surface::init()). The database is opened on first use, the portal pages come with the install unit
  *						the wizard applies, and the screen Einrichtung of the surface completes the product (see Admin::apiSetup()).
  */
@@ -40,7 +40,17 @@ class Crm {
 			'label'      => [ 'en_US' => 'Documents of the member', 'de_DE' => 'Dokumente des Mitglieds' ],
 			'source'     => 'none',
 			'loop'       => false,
-			'attributes' => [],
+			'attributes' => [
+				'project' => [
+					'type'    => 'string',
+					'default' => '',
+					'label'   => [ 'en_US' => 'Project', 'de_DE' => 'Projekt' ],
+					'hint'    => [
+						'en_US' => 'The id of a project of the client: only the documents of that project, and no column for the project. Empty: all of them.',
+						'de_DE' => 'Die Kennung eines Projekts des Kunden: nur die Belege dieses Projekts und keine Spalte für das Projekt. Leer: alle.',
+					],
+				],
+			],
 			'preview'    => 'block',
 			'draws'      => 'div .crm-documents',
 			'in'         => [ 'section', 'card' ],
@@ -51,6 +61,69 @@ class Crm {
 				[ 'path', [ 'd' => 'M16 13H8' ] ],
 				[ 'path', [ 'd' => 'M16 17H8' ] ],
 			],
+			'group'      => 'global',
+		] );
+
+		\Nino\Modules\Components::addComponent( $appData, 'crm-portal-nav', [ Portal::class, 'componentCrmPortalNav' ], [
+			'label'      => [ 'en_US' => 'Navigation of the portal', 'de_DE' => 'Navigation des Portals' ],
+			'source'     => 'none',
+			'loop'       => false,
+			'attributes' => [],
+			'preview'    => 'block',
+			'draws'      => 'nav .crm-nav',
+			'in'         => [ 'section', 'card' ],
+			'group'      => 'global',
+		] );
+
+		\Nino\Modules\Components::addComponent( $appData, 'crm-projects', [ Portal\Projects::class, 'componentCrmProjects' ], [
+			'label'      => [ 'en_US' => 'Projects of the member', 'de_DE' => 'Projekte des Mitglieds' ],
+			'source'     => 'none',
+			'loop'       => false,
+			'attributes' => [
+				'open'  => [
+					'type'    => 'bool',
+					'default' => false,
+					'label'   => [ 'en_US' => 'Only open projects', 'de_DE' => 'Nur laufende Projekte' ],
+					'hint'    => [
+						'en_US' => 'Leave out the projects that are done. The list is shown whatever the address says.',
+						'de_DE' => 'Lässt die abgeschlossenen Projekte weg. Die Liste steht da, was auch immer die Adresse sagt.',
+					],
+				],
+				'short' => [
+					'type'    => 'bool',
+					'default' => false,
+					'label'   => [ 'en_US' => 'Short list', 'de_DE' => 'Kurze Liste' ],
+					'hint'    => [
+						'en_US' => 'At most five projects. The list is shown whatever the address says.',
+						'de_DE' => 'Höchstens fünf Projekte. Die Liste steht da, was auch immer die Adresse sagt.',
+					],
+				],
+			],
+			'preview'    => 'block',
+			'draws'      => 'div .crm-projects',
+			'in'         => [ 'section', 'card' ],
+			'group'      => 'global',
+		] );
+
+		\Nino\Modules\Components::addComponent( $appData, 'crm-uploads', [ Portal\Files::class, 'componentCrmUploads' ], [
+			'label'      => [ 'en_US' => 'Uploads of the member', 'de_DE' => 'Uploads des Mitglieds' ],
+			'source'     => 'none',
+			'loop'       => false,
+			'attributes' => [],
+			'preview'    => 'block',
+			'draws'      => 'div .crm-uploads',
+			'in'         => [ 'section', 'card' ],
+			'group'      => 'global',
+		] );
+
+		\Nino\Modules\Components::addComponent( $appData, 'crm-client-data', [ Portal\Data::class, 'componentCrmClientData' ], [
+			'label'      => [ 'en_US' => 'Data of the client', 'de_DE' => 'Daten des Kunden' ],
+			'source'     => 'none',
+			'loop'       => false,
+			'attributes' => [],
+			'preview'    => 'block',
+			'draws'      => 'form .crm-data',
+			'in'         => [ 'section', 'card' ],
 			'group'      => 'global',
 		] );
 
@@ -70,6 +143,10 @@ class Crm {
 		// The PDF of a document is answered to the workbench session that may manage the documents and, once it is released, to the member of its client (see Render::callbackDownload())
 		$appData['/nino/http/routes']['GET://.crm/pdf/*'] = [ 'uri' => '/.crm/pdf/*' ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.crm/pdf/*', [ \Crm\Documents\Render::class, 'callbackDownload' ] );
+
+		// The form of the page Meine Daten posts here: a member of a client changes the data of the client (see Portal\Data::callbackSave())
+		$appData['/nino/http/routes']['POST://.crm/daten'] = [ 'uri' => Portal\Data::ROUTE ];
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/daten', [ Portal\Data::class, 'callbackSave' ] );
 
 		// The projects: a project that a document names is not deleted, and its client is a client that is there and stays - the kernel's vetoes, so that
 		// the Elements panel of the workbench refuses as the endpoint of the surface does
