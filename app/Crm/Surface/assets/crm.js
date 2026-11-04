@@ -53,12 +53,12 @@
 		Object.keys( state ).forEach( function( key ) { delete state[key] } );
 
 		Object.assign( state, {
-			base : '', csrf : '', perm : '', perms : { crm : true, pdf : false, elements : false }, user : '', texts : {}, links : {},
+			base : '', csrf : '', perm : '', perms : { crm : true, pdf : false, elements : false, text : false }, user : '', texts : {}, links : {},
 			settings : { currency : '', vat_mode : 'small_business', rates : [], payment_days : '14', offer_days : '30' },
 			clients : [], items : [], offers : [], years : [], docs : [], summary : null, people : [], owed : {},
 			filter : { chip : 'all', q : '', sort : 'date', dir : -1, year : 0, page : 1 },
 			cfilter : { q : '', sort : 'number', dir : 1, page : 1 },
-			pfilter : { q : '', sort : 'name', dir : 1 }, ifilter : { q : '', sort : 'sort', dir : 1, page : 1 }, pbody : null, busy : null, pdf : { site : [] },
+			pfilter : { q : '', sort : 'name', dir : 1 }, ifilter : { q : '', sort : 'sort', dir : 1, page : 1 }, pbody : null, busy : null, pdf : { site : [] }, saver : {}, company : null,
 			view : 0, entered : false, seen : null, tab : '', draft : null, saving : false, queued : false, pending : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
 		} );
 	};
@@ -920,6 +920,103 @@
 		state.main.setAttribute( 'aria-busy', 'false' );
 	};
 
+	// --- Strg+S / Cmd+S -----------------------------------------------------------------------------------------------
+
+	/**
+	 *	Make a save of the screen known to the shell: what Strg+S (Cmd+S) runs. A screen has one for each form it holds, by a name of its own; a form that is
+	 *	drawn again takes its name again, and a screen that is left has none (route() forgets them all)
+	 *
+	 *	@param		{string}		slot						The name of the form on the screen
+	 *	@param		{Object}		node						The form or the card; the form that holds the focus is the one that is saved
+	 *	@param		{Function}	run							Saves it
+	 *	@param		{Function}	[dirty]					Whether it holds input that was not stored; without it the form is always the one to save - on a screen with one form
+	 *	@param		{Function}	[busy]					Whether a save of it is running; without it the shell cannot tell
+	 *	@param		{boolean}		[strict]				A form with nothing unstored is nothing to save even where it holds the focus
+	 *
+	 *	@return		{void}
+	 */
+	const saver = function( slot, node, run, dirty, busy, strict ) {
+		state.saver[slot] = { node : node, run : run, dirty : dirty, busy : busy, strict : strict === true };
+	};
+
+	const unsaver = function( slot ) {
+		delete state.saver[slot];
+	};
+
+	/**
+	 *	The save of a form that has a Speichern: the form is submitted as its button would, and a button that is disabled is a save that is running
+	 *
+	 *	@param		{string}		slot
+	 *	@param		{Object}		form
+	 *	@param		{Object}		button
+	 *	@param		{Function}	[dirty]
+	 *
+	 *	@return		{void}
+	 */
+	const submitter = function( slot, form, button, dirty ) {
+		saver( slot, form, function() { form.requestSubmit() }, dirty, function() { return button.disabled === true } );
+	};
+
+	/**
+	 *	Whether the node holds the one that has the focus (or is it)
+	 *
+	 *	@param		{Object}	node
+	 *	@param		{Object}	inner
+	 *
+	 *	@return		{boolean}
+	 */
+	const holds = function( node, inner ) {
+
+		for( let at = inner; at !== null && at !== undefined; at = at.parentNode )
+			if( at === node )
+				return true;
+
+		return false;
+	};
+
+	/**
+	 *	The form Strg+S saves: of the forms of the screen the one that holds the focused field, else the first that holds input that was not stored (a form that cannot
+	 *	say is always one), else none
+	 *
+	 *	@return		{Object|null}
+	 */
+	const chosenSaver = function() {
+
+		const all = Object.keys( state.saver ).map( function( slot ) { return state.saver[slot] } );
+		const focused = all.find( function( one ) { return holds( one.node, dc.activeElement ) && ( one.strict !== true || one.dirty() === true ) } );
+
+		if( focused !== undefined )
+			return focused;
+
+		return all.find( function( one ) { return typeof one.dirty !== 'function' || one.dirty() === true } ) ?? null;
+	};
+
+	/**
+	 *	Strg+S or Cmd+S: the save of the form on screen. The browser's own save of the page is kept off only where a form took the key; a save that is running is not
+	 *	started a second time; a question that stands over the page is not what the key is for
+	 *
+	 *	@param		{Event}		event
+	 *
+	 *	@return		{void}
+	 */
+	const shortcut = function( event ) {
+
+		if( Array.from( state.dialogs.children ).some( function( box ) { return box.open === true } ) === true )
+			return;
+
+		const one = chosenSaver();
+
+		if( one === null )
+			return;
+
+		event.preventDefault();
+
+		if( typeof one.busy === 'function' && one.busy() === true )
+			return;
+
+		one.run();
+	};
+
 	/**
 	 *	A screen that could not load: the sentence and a button to try again
 	 *
@@ -1670,14 +1767,28 @@
 
 		const area = el( 'textarea', { id: 'notes', rows: 5, class: 'area', 'aria-label': t( 'notes.title' ), value: view.document.notes } );
 
-		return card( t( 'notes.title' ), area, el( 'div', { class: 'actions top' }, el( 'button', { type: 'button', class: 'btn sm', id: 'notes-save', text: t( 'notes.save' ), on: { click: function() {
+		let running = false;
+
+		const save = function() {
+
+			running = true;
+
 			step( 'crm-documents/save', { id : String( view.document.id ), notes : area.value }, 'error.save' ).then( function( answer ) {
+
+				running = false;
+
 				if( answer.ok === true ) {
 					view.document.notes = answer.body.document.notes;
 					toast( t( 'notes.done' ) );
 				}
 			} );
-		} } } ) ) );
+		};
+
+		const box = card( t( 'notes.title' ), area, el( 'div', { class: 'actions top' }, el( 'button', { type: 'button', class: 'btn sm', id: 'notes-save', title: t( 'save.shortcut' ), text: t( 'notes.save' ), on: { click: save } } ) ) );
+
+		saver( 'notes', box, save, function() { return area.value !== String( view.document.notes ?? '' ) }, function() { return running }, true );
+
+		return box;
 	};
 
 	const tabHistory = function( view ) {
@@ -1770,6 +1881,7 @@
 
 		state.main.appendChild( strip );
 		state.main.appendChild( body );
+		unsaver( 'notes' );
 		body.appendChild( { lines : tabLines, document : tabDocument, portal : tabPortal, sign : signCard, notes : tabNotes, history : tabHistory }[start]( view ) );
 	};
 
@@ -2077,10 +2189,13 @@
 
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#belege', t( 'list.title' ) ), ' › '+ t( 'category.'+ draft.category )+ ' · '+ t( 'state.draft' ) ) );
 		state.main.appendChild( head( heading, badge( 'draft', t( 'state.draft' ) ), savedAt, el( 'span', { class: 'grow' } ), plain ? null : gross,
-			el( 'button', { type: 'button', class: 'btn', id: 'save', text: t( 'editor.save' ), on: { click: function() { save( false ) } } } ),
+			el( 'button', { type: 'button', class: 'btn', id: 'save', title: t( 'save.shortcut' ), text: t( 'editor.save' ), on: { click: function() { save( false ) } } } ),
 			el( 'button', { type: 'button', class: 'btn primary', id: 'finalise', text: t( 'editor.finalise' ), on: { click: finalise } } ),
 			menu( { label : '⋯', items : [ { label : t( 'editor.preview' ), run : preview }, 'sep', { label : t( 'editor.delete' ), danger : true, run : remove } ] } ) ) );
 		state.main.appendChild( message );
+
+		// Strg+S is the button Speichern; the autosave that is running is a save that is running
+		saver( 'draft', state.main, function() { save( false ) }, undefined, function() { return state.saving === true } );
 
 		// --- the block Beleg
 		const clientOptions = state.clients.filter( function( one ) { return one.active === true || String( one.id ) === draft.client_id } );
@@ -2448,7 +2563,7 @@
 			row.control.addEventListener( 'input', clear );
 			row.control.addEventListener( 'change', clear );
 
-			return [ el( 'dt', {}, el( 'label', { for : row.control.id, text : row.label } ) ), el( 'dd', {}, row.control, row.hint === undefined ? null : el( 'span', { class: 'state-note', text: row.hint } ), note ) ];
+			return [ el( 'dt', { class: row.control.tagName === 'TEXTAREA' ? 'top' : null }, el( 'label', { for : row.control.id, text : row.label } ) ), el( 'dd', {}, row.control, row.hint === undefined ? null : el( 'span', { class: 'state-note', text: row.hint } ), note ) ];
 		} ) );
 	};
 
@@ -2700,7 +2815,8 @@
 
 		const client = view.client;
 
-		if( view.editing === false )
+		if( view.editing === false ) {
+			unsaver( 'master' );
 			return el( 'div', { class: 'card pad', id: 'master' }, el( 'h3', { text: t( 'card.master' ) } ), kv( [
 				[ t( 'client.company' ), client.company ],
 				[ t( 'client.name' ), client.name ],
@@ -2710,12 +2826,13 @@
 				[ t( 'client.vat' ), client.vat_id ],
 				[ t( 'card.since' ), dmy( client.created ) ],
 			] ) );
+		}
 
 		const form = formOf();
 		const rows = CLIENT_FIELDS.map( function( name ) { return { name : name, label : t( 'clientfield.'+ name ), control : clientControl( name, client[name] ) } } );
-		const save = el( 'button', { type: 'submit', class: 'btn sm primary', id: 'client-save', text: t( 'form.save' ) } );
+		const save = el( 'button', { type: 'submit', class: 'btn sm primary', id: 'client-save', title: t( 'save.shortcut' ), text: t( 'form.save' ) } );
 
-		return el( 'form', { class: 'card pad', id: 'master', novalidate: 'novalidate', on: { submit: function( event ) {
+		const box = el( 'form', { class: 'card pad', id: 'master', novalidate: 'novalidate', on: { submit: function( event ) {
 
 			event.preventDefault();
 			save.disabled = true;
@@ -2745,6 +2862,10 @@
 			view.master.replaceWith( view.master = masterCard( view ) );
 		} } } ) ),
 		el( 'datalist', { id: 'countries' }, [ 'DE', 'AT', 'CH' ].map( function( code ) { return el( 'option', { value: code } ) } ) ) );
+
+		submitter( 'master', box, save, function() { return form.dirty === true } );
+
+		return box;
 	};
 
 	/**
@@ -2776,6 +2897,9 @@
 
 		const client = view.client;
 		const box = el( 'div', { class: 'card pad accounts', id: 'accounts' }, el( 'h3', { text: t( 'card.accounts' ) } ) );
+
+		if( view.inviting !== true || client.active === false )
+			unsaver( 'invite' );
 		const members = link( state.links.members, t( 'acc.members-link' ), { target : '_blank', rel : 'noopener' } );
 
 		// Without the feature Members nothing is known of the accounts: one sentence instead of rows that would all read "deleted"
@@ -2929,7 +3053,7 @@
 			{ name : 'email', label : t( 'invite.email' ), control : el( 'input', { id : 'f-invite-email', type : 'email', maxlength : '160', autocomplete : 'off' } ) },
 			{ name : 'name', label : t( 'invite.name' ), control : el( 'input', { id : 'f-invite-name', type : 'text', maxlength : '120', autocomplete : 'off' } ) },
 		];
-		const send = el( 'button', { type: 'submit', class: 'btn sm primary', id: 'invite-send', text: t( 'invite.send' ) } );
+		const send = el( 'button', { type: 'submit', class: 'btn sm primary', id: 'invite-send', title: t( 'save.shortcut' ), text: t( 'invite.send' ) } );
 
 		const box = el( 'form', { id : 'invite', novalidate : 'novalidate', on : { submit : function( event ) {
 
@@ -2966,6 +3090,8 @@
 					state.draft = form;
 			} );
 		} );
+
+		submitter( 'invite', box, send, function() { return form.dirty === true } );
 
 		// Opened from the Übersicht the cursor is in the form already
 		wn.setTimeout( function() { if( form.controls.email.parentNode !== null && state.view === view.mine ) form.controls.email.focus() }, 0 );
@@ -3080,15 +3206,28 @@
 	const tabClientNotes = function( view ) {
 
 		const area = el( 'textarea', { id: 'notes', rows: 5, maxlength: '2000', class: 'area', 'aria-label': t( 'cnotes.title' ), value: view.client.notes } );
+		let running = false;
 
-		return card( t( 'cnotes.title' ), area, el( 'div', { class: 'actions top' }, el( 'button', { type: 'button', class: 'btn sm', id: 'notes-save', text: t( 'notes.save' ), on: { click: function() {
+		const save = function() {
+
+			running = true;
+
 			call( 'crm-clients/save', clientPayload( view.client, { notes : area.value } ), 'error.client-save' ).then( function( answer ) {
+
+				running = false;
+
 				if( answer.ok === true ) {
 					view.client = answer.body.client;
 					toast( t( 'notes.done' ) );
 				}
 			} );
-		} } } ) ) );
+		};
+
+		const box = card( t( 'cnotes.title' ), area, el( 'div', { class: 'actions top' }, el( 'button', { type: 'button', class: 'btn sm', id: 'notes-save', title: t( 'save.shortcut' ), text: t( 'notes.save' ), on: { click: save } } ) ) );
+
+		saver( 'tab', box, save, function() { return area.value !== String( view.client.notes ?? '' ) }, function() { return running } );
+
+		return box;
 	};
 
 	/**
@@ -3162,6 +3301,7 @@
 				button.classList.toggle( 'on', button.dataset.tab === key );
 			} );
 			clear( body );
+			unsaver( 'tab' );
 			body.appendChild( { belege : tabClientDocuments, portal : tabClientPortal, notizen : tabClientNotes }[key]( view ) );
 		};
 
@@ -3193,7 +3333,7 @@
 			{ name : 'account_email', label : t( 'clientfield.account_email' ), control : el( 'input', { id : 'f-account_email', type : 'email', maxlength : '160', autocomplete : 'off' } ) },
 			{ name : 'account_name', label : t( 'clientfield.account_name' ), control : el( 'input', { id : 'f-account_name', type : 'text', maxlength : '120', autocomplete : 'off', placeholder : t( 'form.optional' ) } ) },
 		];
-		const create = el( 'button', { type: 'submit', class: 'btn primary', id: 'client-create', text: t( 'newclient.create' ) } );
+		const create = el( 'button', { type: 'submit', class: 'btn primary', id: 'client-create', title: t( 'save.shortcut' ), text: t( 'newclient.create' ) } );
 		const master = formList( rows, form );
 		const account = formList( first, form );
 
@@ -3239,13 +3379,16 @@
 
 		reveal();
 
-		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#kunden', t( 'clients.title' ) ), ' › '+ t( 'newclient.title' ).toLowerCase() ) );
-		state.main.appendChild( el( 'form', { id: 'new-client-form', novalidate: 'novalidate', on: { submit: submit } },
+		const box = el( 'form', { id: 'new-client-form', novalidate: 'novalidate', on: { submit: submit } },
 			head( t( 'newclient.title' ), el( 'span', { class: 'grow' } ), link( '#kunden', t( 'form.cancel' ), { class: 'btn', id: 'client-abort' } ), create ),
 			el( 'div', { class: 'cols' },
 				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'newclient.master' ) } ), master ),
 				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'newclient.first' ) } ), el( 'p', { class: 'state-note', text: t( 'newclient.first-text' ) } ), account ) ),
-			el( 'datalist', { id: 'countries' }, [ 'DE', 'AT', 'CH' ].map( function( code ) { return el( 'option', { value: code } ) } ) ) ) );
+			el( 'datalist', { id: 'countries' }, [ 'DE', 'AT', 'CH' ].map( function( code ) { return el( 'option', { value: code } ) } ) ) );
+
+		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#kunden', t( 'clients.title' ) ), ' › '+ t( 'newclient.title' ).toLowerCase() ) );
+		state.main.appendChild( box );
+		submitter( 'new', box, create );
 
 		form.controls.company.focus();
 	};
@@ -3672,7 +3815,7 @@
 		], form ) );
 
 		const uriNote = el( 'span', { class: 'sub num', id: 'position-uri', text: uri === undefined ? '' : '/'+ POSITION_TYPE+ '/'+ uri } );
-		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'position-save', text: t( 'form.save' ) } );
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'position-save', title: t( 'save.shortcut' ), text: t( 'form.save' ) } );
 
 		/**
 		 *	Put the sentence of a refusal beside a control
@@ -3869,9 +4012,12 @@
 		reveal();
 
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#positionen', t( 'items.title' ) ), ' › ', heading ) );
-		state.main.appendChild( el( 'form', { id: 'position-form', novalidate: 'novalidate', on: { submit: submit } },
+		const box = el( 'form', { id: 'position-form', novalidate: 'novalidate', on: { submit: submit } },
 			head( heading, uriNote, el( 'span', { class: 'grow' } ), given === undefined ? null : menu( { label : '⋯', aria : t( 'items.more' ), items : [ { label : t( 'items.delete' ), danger : true, run : remove } ] } ), save ),
-			el( 'div', { class: 'tpl-grid' }, el( 'div', { class: 'stack' }, locales.map( cardOf ) ), shared ) ) );
+			el( 'div', { class: 'tpl-grid' }, el( 'div', { class: 'stack' }, locales.map( cardOf ) ), shared ) );
+
+		state.main.appendChild( box );
+		submitter( 'position', box, save );
 	};
 
 
@@ -3986,6 +4132,7 @@
 	const einstellungen = function( where, mine ) {
 
 		loading();
+		state.company = null;
 
 		const seen = state.seen;
 
@@ -4098,6 +4245,306 @@
 		return card;
 	};
 
+	// --- Firmendaten -------------------------------------------------------------------------------------------------
+
+	// The texts of the company the wizard writes: the surface edits these six through the Text panel's actions (text/keys, text/savebatch), for the keys below the prefix alone
+	const COMPANY_PREFIX = '/project/company/';
+	const COMPANY_KEYS = [ 'general/name', 'general/description', 'contact/address', 'contact/country', 'contact/email', 'contact/phone' ];
+	const COMPANY_AREAS = [ 'general/description', 'contact/address' ];
+
+	/**
+	 *	What the block shows: a field for each of the six texts in each language that has it - a text of all languages in the first card (the native language's) alone
+	 *
+	 *	@param		{Object}	body						The answer of text/keys (for an account with the Text panel) or of settings-get (company): keys, locales, native
+	 *	@param		{boolean}	editable				Whether the answer is the panel's, which says for each key whether it may be written
+	 *
+	 *	@return		{Object}									locales (the native first), fields ([ { id, name, locale, value, writable } ] - locale '*' for a text of all), base and typed (id => text)
+	 */
+	const companyOf = function( body, editable ) {
+
+		const entries = {};
+		const locales = nativeFirst( ( body.locales || [] ).map( function( one ) { return typeof one === 'string' ? one : one.locale } ), body.native );
+		const fields = [];
+		const base = {};
+
+		( body.keys || [] ).forEach( function( entry ) {
+			if( typeof entry.key === 'string' && entry.key.indexOf( COMPANY_PREFIX ) === 0 )
+				entries[entry.key.slice( COMPANY_PREFIX.length )] = entry;
+		} );
+
+		locales.forEach( function( locale, index ) {
+			COMPANY_KEYS.forEach( function( name ) {
+
+				const entry = entries[name];
+
+				if( entry === undefined || ( entry.global === true && index > 0 ) )
+					return;
+
+				const where = entry.global === true ? '*' : locale;
+				const id = name+ '|'+ where;
+				const value = String( ( entry.values || {} )[where] ?? '' );
+
+				base[id] = value;
+				fields.push( { id : id, name : name, locale : where, card : locale, value : value, writable : editable === true && entry.writable !== false } );
+			} );
+		} );
+
+		return { locales : locales, fields : fields, base : base, typed : {}, editable : editable };
+	};
+
+	/**
+	 *	What the person changed: the fields whose text is not the stored one, as the items of a batch of the Text panel
+	 *
+	 *	@param		{Object}	company
+	 *
+	 *	@return		{Array}										[ { id, key, locale, value } ]
+	 */
+	const companyChanges = function( company ) {
+
+		return company.fields.filter( function( field ) {
+			return field.writable === true && company.typed[field.id] !== undefined && company.typed[field.id] !== company.base[field.id];
+		} ).map( function( field ) {
+			return { id : field.id, key : COMPANY_PREFIX+ field.name, locale : field.locale, value : company.typed[field.id] };
+		} );
+	};
+
+	/**
+	 *	The sentence beside a field the panel refused: its answer for a key is a word of its own ("not allowed" for a key of a role that may not write it), the sentence of
+	 *	the panel's own failure otherwise
+	 *
+	 *	@param		{*}				result
+	 *
+	 *	@return		{string}
+	 */
+	const companySentence = function( result ) {
+		return result !== undefined && result !== null && result.error === 'not allowed' ? t( 'firma.error-denied' ) : t( 'text.error-save' );
+	};
+
+	/**
+	 *	The block Firmendaten: a card for each language of the site, the native one first, with the fields of the company; Speichern posts the changed ones (the texts that are the
+	 *	same in all languages with the first language that changed, then each other language that changed, since the panel answers one result to a key). Without the permission of
+	 *	the Text panel the values are read, and the sentence says what is missing
+	 *
+	 *	@param		{Object}	company
+	 *	@param		{Object}	sibling					The form of the screen next to it, which keeps the page's guard when this one is saved
+	 *
+	 *	@return		{Object}
+	 */
+	const firmaCard = function( company, sibling ) {
+
+		const later = [];
+		const form = { controls : {}, notes : {}, dirty : false, form : true };
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'firma-save', title: t( 'save.shortcut' ), text: t( 'firma.save' ) } );
+		const cards = company.locales.map( function( locale, index ) {
+
+			const mine = company.fields.filter( function( field ) { return field.card === locale } );
+
+			if( mine.length === 0 )
+				return null;
+
+			const title = el( 'h4', { text: index === 0 ? t( 'items.card-native', languageName( locale ) ) : languageName( locale ) } );
+
+			if( company.editable === false )
+				return el( 'div', { class: 'card pad', id: 'firma-lang-'+ locale, dataset: { locale: locale } }, title, kv( mine.map( function( field ) { return [ t( 'firma.'+ field.name.replace( '/', '-' ) ), field.value === '' ? '' : stacked( field.value.split( '\n' ) ) ] } ) ) );
+
+			const rows = mine.map( function( field ) {
+
+				const id = 'f-firma-'+ field.name.replace( '/', '-' )+ ( field.locale === '*' ? '' : '-'+ locale );
+				const shown = company.typed[field.id] ?? field.value;
+				const control = COMPANY_AREAS.includes( field.name ) === true
+					? el( 'textarea', { id: id, rows: 3, maxlength: '2000', value: shown } )
+					: el( 'input', { id: id, type: field.name === 'contact/email' ? 'email' : 'text', value: shown, maxlength: '2000', autocomplete: 'off', inputmode: field.name === 'contact/phone' ? 'tel' : null } );
+
+				if( field.writable === false ) {
+					control.setAttribute( 'readonly', 'readonly' );
+					control.classList.add( 'ro' );
+				}
+
+				// What is typed is kept over a drawing of the screen; the form is dirty while a text differs from the stored one (after the listener of formList(), which marks it for any input)
+				later.push( function() {
+					[ 'input', 'change' ].forEach( function( name ) {
+						control.addEventListener( name, function() {
+							company.typed[field.id] = control.value;
+							form.dirty = companyChanges( company ).length > 0;
+
+							if( form.dirty === true && ( state.draft === null || state.draft.dirty !== true ) )
+								state.draft = form;
+						} );
+					} );
+				} );
+
+				return { name : field.id, label : t( 'firma.'+ field.name.replace( '/', '-' ) ), control : control, hint : field.locale === '*' ? t( 'firma.shared' ) : undefined };
+			} );
+
+			const list = formList( rows, form );
+
+			later.forEach( function( watch ) { watch() } );
+			later.length = 0;
+
+			return el( 'div', { class: 'card pad', id: 'firma-lang-'+ locale, dataset: { locale: locale } }, title, list );
+		} ).filter( function( one ) { return one !== null } );
+
+		if( cards.length === 0 )
+			return el( 'div', { class: 'card pad gap', id: 'firma' }, el( 'h3', { text: t( 'firma.title' ) } ), el( 'p', { class: 'state-note', text: t( 'firma.none' ) } ) );
+
+		if( company.editable === false )
+			return el( 'div', { class: 'card pad gap', id: 'firma' }, el( 'h3', { text: t( 'firma.title' ) } ), el( 'p', { class: 'state-note', id: 'firma-readonly', text: t( 'firma.readonly' ) } ), el( 'div', { class: 'cols' }, cards ) );
+
+		const mine = state.view;
+
+		const submit = function( event ) {
+
+			event.preventDefault();
+
+			const changes = companyChanges( company );
+
+			// Nothing was changed: nothing is posted
+			if( changes.length === 0 )
+				return;
+
+			// One batch to a language: the globals ride with the first language that changed
+			const order = company.locales.filter( function( locale ) { return changes.some( function( change ) { return change.locale === locale } ) } );
+			const batches = ( order.length > 0 ? order : [ '*' ] ).map( function( locale, index ) {
+				return changes.filter( function( change ) { return change.locale === locale || ( index === 0 && change.locale === '*' ) } );
+			} );
+
+			save.disabled = true;
+			Object.keys( form.notes ).forEach( function( id ) {
+				form.notes[id].textContent = '';
+				form.controls[id].classList.remove( 'err' );
+				form.controls[id].removeAttribute( 'aria-invalid' );
+			} );
+
+			const send = function( index ) {
+
+				if( index >= batches.length ) {
+					save.disabled = false;
+					form.dirty = companyChanges( company ).length > 0;
+
+					if( form.dirty === false && state.draft === form )
+						state.draft = sibling.dirty === true ? sibling : null;
+
+					toast( t( 'firma.saved' ) );
+					return;
+				}
+
+				call( 'text/savebatch', { items : batches[index].map( function( change ) { return { key : change.key, locale : change.locale, value : change.value } } ) }, 'text.error-save' ).then( function( answer ) {
+
+					const results = answer.ok === true && answer.body !== null && typeof answer.body === 'object' && answer.body.results !== null && typeof answer.body.results === 'object' ? answer.body.results : {};
+					let refused = false;
+
+					batches[index].forEach( function( change ) {
+
+						const result = results[change.key];
+
+						if( result !== undefined && result !== null && result.ok === true ) {
+							company.base[change.id] = String( result.value ?? '' );
+							delete company.typed[change.id];
+
+							if( form.controls[change.id] !== undefined && form.controls[change.id].parentNode !== null )
+								form.controls[change.id].value = company.base[change.id];
+
+							return;
+						}
+
+						// A key the panel did not write: its sentence beside the field. A request that failed as a whole has said so in the toast
+						refused = true;
+
+						if( answer.ok === true && form.controls[change.id] !== undefined ) {
+							form.controls[change.id].classList.add( 'err' );
+							form.controls[change.id].setAttribute( 'aria-invalid', 'true' );
+							form.notes[change.id].textContent = companySentence( result );
+						}
+					} );
+
+					if( answer.ok !== true || refused === true ) {
+						save.disabled = false;
+						form.dirty = companyChanges( company ).length > 0;
+
+						if( answer.ok === true && state.view === mine ) {
+							const first = batches[index].find( function( change ) { return form.controls[change.id] !== undefined && form.notes[change.id].textContent !== '' } );
+
+							toast( companySentence( results[first === undefined ? '' : first.key] ), true );
+
+							if( first !== undefined && form.controls[first.id].parentNode !== null )
+								form.controls[first.id].focus();
+						}
+
+						return;
+					}
+
+					send( index+ 1 );
+				} );
+			};
+
+			send( 0 );
+		};
+
+		form.dirty = companyChanges( company ).length > 0;
+
+		const box = el( 'form', { class: 'card pad gap', id: 'firma', novalidate: 'novalidate', on: { submit: submit } },
+			el( 'h3', { text: t( 'firma.title' ) } ), el( 'p', { class: 'state-note', text: t( 'firma.note' ) } ),
+			el( 'div', { class: 'cols' }, cards ),
+			el( 'div', { class: 'actions top' }, save ) );
+
+		if( form.dirty === true )
+			state.draft = form;
+
+		submitter( 'firma', box, save, function() { return companyChanges( company ).length > 0 } );
+
+		return box;
+	};
+
+	/**
+	 *	Draw the block Firmendaten into its place: from what the screen holds already, from the Text panel (for an account with its permission: the texts and whether each may be
+	 *	written), else from the CRM's own read of the texts
+	 *
+	 *	@param		{Object}	holder
+	 *	@param		{Object}	view						The answer of settings-get
+	 *	@param		{Object}	sibling					The form of the screen next to it
+	 *	@param		{number}	mine
+	 *
+	 *	@return		{void}
+	 */
+	const drawFirma = function( holder, view, sibling, mine ) {
+
+		const draw = function( company ) {
+			clear( holder );
+			holder.appendChild( firmaCard( company, sibling ) );
+		};
+
+		if( state.company !== null ) {
+			draw( state.company );
+			return;
+		}
+
+		if( state.perms.text !== true ) {
+			draw( companyOf( view.company, false ) );
+			return;
+		}
+
+		holder.appendChild( el( 'p', { class: 'state-note', role: 'status', text: t( 'loading' ) } ) );
+
+		api( 'text/keys' ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			clear( holder );
+
+			if( answer.ok !== true ) {
+				holder.appendChild( note( 'bad', el( 'span', { text: errorText( answer, 'text.error-load' ) } ), el( 'button', { type: 'button', class: 'btn sm', id: 'firma-retry', text: t( 'retry' ), on: { click: function() {
+					clear( holder );
+					drawFirma( holder, view, sibling, mine );
+				} } } ) ) );
+				return;
+			}
+
+			state.company = companyOf( answer.body, true );
+			draw( state.company );
+		} );
+	};
+
 	const drawEinstellungen = function( view, items, said ) {
 
 		const settings = view.settings;
@@ -4127,7 +4574,7 @@
 
 		const next = el( 'p', { class: 'state-note' }, el( 'b', { text: t( 'settings.next' )+ ': ' } ), el( 'span', { class: 'num', id: 'next-numbers', text: [ 'offer', 'invoice', 'credit' ].map( function( category ) { return view.next[category] } ).filter( function( number ) { return number !== '' } ).join( ' · ' ) } ) );
 
-		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'settings-save', text: t( 'settings.save' ) } );
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'settings-save', title: t( 'save.shortcut' ), text: t( 'settings.save' ) } );
 
 		const submit = function( event ) {
 
@@ -4160,12 +4607,21 @@
 		};
 
 		reveal();
-		state.main.appendChild( el( 'form', { id: 'settings-form', novalidate: 'novalidate', on: { submit: submit } },
+
+		const box = el( 'form', { id: 'settings-form', novalidate: 'novalidate', on: { submit: submit } },
 			head( t( 'settings.title' ), el( 'span', { class: 'grow' } ), save ),
 			el( 'div', { class: 'cols' },
 				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'settings.vat' ) } ), taxes ),
 				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'settings.numbers' ) } ), numbers, next, el( 'p', { class: 'state-note', text: t( 'settings.numbers-note' ) } ) ) ),
-			el( 'div', { class: 'card pad gap', id: 'particulars' }, el( 'h3', { text: t( 'settings.particulars' ) } ), particulars, el( 'p', { class: 'state-note', text: t( 'settings.particulars-note' ) } ) ) ) );
+			el( 'div', { class: 'card pad gap', id: 'particulars' }, el( 'h3', { text: t( 'settings.particulars' ) } ), particulars, el( 'p', { class: 'state-note', text: t( 'settings.particulars-note' ) } ) ) );
+
+		state.main.appendChild( box );
+		submitter( 'settings', box, save, function() { return form.dirty === true } );
+
+		const firma = el( 'div', { class: 'gap', id: 'firma-holder' } );
+
+		state.main.appendChild( firma );
+		drawFirma( firma, view, form, mine );
 
 		// Vorlagen of the feature PDF: the assignment, read only
 		const templates = el( 'div', { class: 'card pad', id: 'templates' }, el( 'h3', { text: t( 'settings.templates' ) } ),
@@ -4853,7 +5309,7 @@
 			}
 		};
 
-		const saveButton = el( 'button', { type: 'button', class: 'btn primary', id: 'tpl-save', text: t( 'pdf.save' ), on: { click: function() { save( 1 ) } } } );
+		const saveButton = el( 'button', { type: 'button', class: 'btn primary', id: 'tpl-save', title: t( 'save.shortcut' ), text: t( 'pdf.save' ), on: { click: function() { save( 1 ) } } } );
 		const previewButton = el( 'button', { type: 'button', class: 'btn', id: 'tpl-preview', text: t( 'pdf.preview' ), on: { click: function() {
 
 			// The sample is the saved template's: what is not saved is saved first, as the preview of a draft does
@@ -4951,6 +5407,7 @@
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#pdf', t( 'pdf.title' ) ), ' › ', draft.isNew === true ? t( 'pdf.new-title' ) : draft.name ) );
 		state.main.appendChild( el( 'div', { class: 'head' }, el( 'div', { class: 'tagline' }, nameField, tagField ), el( 'span', { class: 'grow' } ), previewButton, saveButton, more ) );
 		append( state.main, [ message, box, adder, el( 'p', { class: 'state-note top', id: 'tpl-help', text: t( 'pdf.editor-note' ) } ) ] );
+		saver( 'template', state.main, function() { save( 1 ) }, undefined, function() { return saveButton.disabled === true } );
 	};
 
 	// --- Bausteine ---------------------------------------------------------------------------------------------------
@@ -5049,7 +5506,7 @@
 			{ name : 'title', label : t( 'pdf.block-title' ), control : el( 'input', { id: 'f-title', type: 'text', value: block.title, maxlength: String( ranges.title ), autocomplete: 'off' } ) },
 		], form );
 
-		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'block-save', text: t( 'pdf.save' ) } );
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'block-save', title: t( 'save.shortcut' ), text: t( 'pdf.save' ) } );
 
 		const remove = function() {
 
@@ -5108,12 +5565,15 @@
 		reveal();
 
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#pdf-bausteine', t( 'pdf.blocks-title' ) ), ' › ', isNew === true ? t( 'pdf.new-block' ) : block.title ) );
-		state.main.appendChild( el( 'form', { id: 'block-form', novalidate: 'novalidate', on: { submit: submit } },
+		const box = el( 'form', { id: 'block-form', novalidate: 'novalidate', on: { submit: submit } },
 			head( isNew === true ? t( 'pdf.new-block' ) : block.title, el( 'span', { class: 'grow' } ),
 				isNew === true ? null : menu( { label : '⋯', aria : t( 'pdf.more' ), items : [ { label : t( 'pdf.delete' ), danger : true, run : remove } ] } ), save ),
 			el( 'div', { class: 'card pad' }, rows,
 				el( 'div', { class: 'field' }, el( 'span', { text: t( 'pdf.html' ) } ), withPlaceholders( area, false, function() { form.dirty = true }, el( 'span', { class: 'state-note', text: t( 'pdf.html-note' ) } ) ), areaNote ),
-				isNew === true ? null : el( 'p', { class: 'state-note', id: 'block-used', text: users.length === 0 ? t( 'pdf.block-unused' ) : t( 'pdf.block-used-by', users.join( ', ' ) ) } ) ) ) );
+				isNew === true ? null : el( 'p', { class: 'state-note', id: 'block-used', text: users.length === 0 ? t( 'pdf.block-unused' ) : t( 'pdf.block-used-by', users.join( ', ' ) ) } ) ) );
+
+		state.main.appendChild( box );
+		submitter( 'block', box, save );
 	};
 
 	// --- Layout ------------------------------------------------------------------------------------------------------
@@ -5258,7 +5718,7 @@
 			return el( 'div', { class: 'card pad', id: 'band-'+ name }, el( 'h3', { text: label } ), withPlaceholders( control, true, function() { form.dirty = true }, el( 'span', { class: 'state-note', text: t( 'pdf.band-note' ) } ) ), said );
 		};
 
-		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'layout-save', text: t( 'pdf.save' ) } );
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'layout-save', title: t( 'save.shortcut' ), text: t( 'pdf.save' ) } );
 		const preview = previewLink( 'layout-preview' );
 
 		const submit = function( event ) {
@@ -5288,7 +5748,7 @@
 
 		reveal();
 
-		state.main.appendChild( el( 'form', { id: 'layout-form', novalidate: 'novalidate', on: { submit: submit } },
+		const box = el( 'form', { id: 'layout-form', novalidate: 'novalidate', on: { submit: submit } },
 			head( t( 'pdf.layout-title' ), el( 'span', { class: 'sub', text: t( 'pdf.layout-sub' ) } ), el( 'span', { class: 'grow' } ), preview, save ),
 			pdfTabs( 'layout' ),
 			el( 'div', { class: 'stack' },
@@ -5296,7 +5756,10 @@
 				band( 'header', header, t( 'pdf.header' ) ),
 				band( 'footer', footer, t( 'pdf.footer' ) ),
 				el( 'div', { class: 'cols' }, pictureCard( 'logo', view ), pictureCard( 'signature', view ) ),
-				el( 'p', { class: 'state-note', text: t( 'pdf.layout-note' ) } ) ) ) );
+				el( 'p', { class: 'state-note', text: t( 'pdf.layout-note' ) } ) ) );
+
+		state.main.appendChild( box );
+		submitter( 'layout', box, save );
 	};
 
 	// --- Design ------------------------------------------------------------------------------------------------------
@@ -5355,7 +5818,7 @@
 			form.dirty = true;
 		} );
 
-		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'design-save', text: t( 'pdf.save' ) } );
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'design-save', title: t( 'save.shortcut' ), text: t( 'pdf.save' ) } );
 		const preview = previewLink( 'design-preview' );
 
 		const submit = function( event ) {
@@ -5394,13 +5857,16 @@
 
 		reveal();
 
-		state.main.appendChild( el( 'form', { id: 'design-form', novalidate: 'novalidate', on: { submit: submit } },
+		const box = el( 'form', { id: 'design-form', novalidate: 'novalidate', on: { submit: submit } },
 			head( t( 'pdf.design-title' ), el( 'span', { class: 'sub', text: t( 'pdf.design-sub' ) } ), el( 'span', { class: 'grow' } ), preview, save ),
 			pdfTabs( 'design' ),
 			stored,
 			el( 'div', { class: 'cols' },
 				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'pdf.design-sheet' ) } ), el( 'pre', { class: 'sheet ro', id: 'design-sheet', tabIndex: 0, text: body.sheet } ), el( 'p', { class: 'state-note', text: t( 'pdf.design-sheet-note' ) } ) ),
-				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'pdf.design-own' ) } ), area, said, el( 'p', { class: 'state-note', text: t( 'pdf.design-own-note' ) } ) ) ) ) );
+				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'pdf.design-own' ) } ), area, said, el( 'p', { class: 'state-note', text: t( 'pdf.design-own-note' ) } ) ) ) );
+
+		state.main.appendChild( box );
+		submitter( 'design', box, save );
 	};
 
 
@@ -5508,6 +5974,7 @@
 
 		state.view++;
 		state.draft = null;
+		state.saver = {};
 		closeMenus();
 
 		// An item is being saved: the screen that was asked for is drawn once the posts are through, so that it holds what they made
@@ -5578,7 +6045,7 @@
 		state.base = data.base;
 		state.csrf = data.csrf;
 		state.perm = data.perm;
-		state.perms = Object.assign( { crm : true, pdf : false, elements : false }, data.perms );
+		state.perms = Object.assign( { crm : true, pdf : false, elements : false, text : false }, data.perms );
 		state.pdfAvailable = data.pdf_available !== false;
 		state.user = data.user.name;
 		state.texts = data.texts;
@@ -5632,6 +6099,12 @@
 		} );
 
 		dc.addEventListener( 'keydown', function( event ) {
+
+			// Strg+S or Cmd+S, not with Alt or Shift: as the workbench has it
+			if( ( event.ctrlKey === true || event.metaKey === true ) && event.altKey !== true && event.shiftKey !== true && String( event.key ).toLowerCase() === 's' ) {
+				shortcut( event );
+				return;
+			}
 
 			if( event.key === 'Escape' ) {
 				closeMenus();

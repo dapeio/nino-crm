@@ -52,7 +52,7 @@ function words() {
 	while( ( found = re.exec( text ) ) )
 		map[found[1]] = found[2].replace( /\\(['\\])/g, '$1' );
 
-	[ 'app/Crm/Clients/Admin/text/de_DE.php', 'app/Crm/Documents/Admin/text/de_DE.php', 'app/Crm/Crm/Admin/text/de_DE.php', 'features/Pdf/text/de_DE.php', '_admin/Nino/Modules/Elements/text/de_DE.php' ].forEach( function( file ) {
+	[ 'app/Crm/Clients/Admin/text/de_DE.php', 'app/Crm/Documents/Admin/text/de_DE.php', 'app/Crm/Crm/Admin/text/de_DE.php', 'features/Pdf/text/de_DE.php', '_admin/Nino/Modules/Elements/text/de_DE.php', '_admin/Nino/Modules/Text/text/de_DE.php' ].forEach( function( file ) {
 		const sentences = fills( file );
 		Object.keys( sentences ).forEach( function( key ) {
 
@@ -60,6 +60,8 @@ function words() {
 
 			if( key.indexOf( '/_admin/error/' ) === 0 )
 				map['error.'+ key.slice( '/_admin/error/'.length )] = sentences[key];
+			else if( /^\/_admin\/text\/error\/(save|load)$/.test( key ) )
+				map['text.error-'+ key.slice( '/_admin/text/error/'.length )] = sentences[key];
 			else if( found !== null )
 				map[found[1]+ '.'+ found[2]] = sentences[key];
 		} );
@@ -198,6 +200,10 @@ function world( options ) {
 
 	page.createElement = function( tag ) {
 		const el = make( tag );
+
+		// A form submits as the browser's requestSubmit() does: its listeners of submit hear it
+		if( tag === 'form' )
+			el.requestSubmit = function() { fire( el, 'submit', { target : el, preventDefault : function() {} } ) };
 
 		if( tag === 'dialog' ) {
 			el.open = false;
@@ -374,9 +380,9 @@ function type( el, value, leave ) {
  *
  *	@return		{boolean}									Whether the key was kept from its default
  */
-function press( w, key, target ) {
+function press( w, key, target, mods ) {
 	let prevented = false;
-	( w.documentListeners.keydown || [] ).forEach( function( fn ) { fn( { type : 'keydown', key : key, target : target || null, preventDefault : function() { prevented = true } } ) } );
+	( w.documentListeners.keydown || [] ).forEach( function( fn ) { fn( Object.assign( { type : 'keydown', key : key, target : target || null, preventDefault : function() { prevented = true } }, mods || {} ) ) } );
 	return prevented;
 }
 
@@ -2065,6 +2071,18 @@ function press( w, key, target ) {
 		templates : { offer : [ 'Angebot Standard' ], invoice : [ 'Rechnung Standard', 'Rechnung Englisch' ], contract : [ 'Dienstleistungsvertrag' ], privacy : [], information : [] },
 		portal : { address : 'https://studio.example/portal', pages : [ { uri : '/portal', present : true }, { uri : '/portal/dokumente', present : false } ], members : [ { key : 'paths', label : 'Geschützte Pfade', value : '/portal', unit : '' }, { key : 'linkMinutes', label : 'Login-Link gültig für', value : '15', unit : 'minutes' }, { key : 'inviteDays', label : 'Einladung gültig für', value : '7', unit : 'days' }, { key : 'attempts', label : 'Anforderungen', value : '5', unit : 'per-hour' } ], mail_cap : 50 },
 	};
+	const ecompany = {
+		native : 'de_DE', locales : [ { locale : 'en_US', active : true }, { locale : 'de_DE', active : true } ],
+		keys : [
+			{ key : '/project/company/contact/address', global : true, values : { '*' : 'Hafenstraße 12\n20457 Hamburg' } },
+			{ key : '/project/company/contact/country', global : false, values : { de_DE : 'Deutschland', en_US : 'Germany' } },
+			{ key : '/project/company/contact/email', global : true, values : { '*' : 'hallo@studio.example' } },
+			{ key : '/project/company/contact/phone', global : true, values : { '*' : '+49 40 123456' } },
+			{ key : '/project/company/general/description', global : false, values : { de_DE : 'Ein Tonstudio.', en_US : 'A recording studio.' } },
+			{ key : '/project/company/general/name', global : true, values : { '*' : 'Studio Nordlicht' } },
+		],
+	};
+	eview.company = ecompany;
 	const eok = [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'portal' ].map( function( key ) { return { key : key, state : 'ok' } } );
 	let posted = [];
 	const eopen = async function( viewOver, items, over, hash ) {
@@ -2903,6 +2921,28 @@ function press( w, key, target ) {
 	check( 'every word the screens of PDF-Vorlagen ask for is a word of the page, the families they build with it - the groups of the placeholders, the vocabulary, the slots, the papers, the fonts - and the sentences of the Pdf panel\'s codes the script names', pdfMissing.length === 0 && pdfWords.size > 120
 		&& typeof texts['error.pdf_block_missing'] === 'string' && typeof texts['error.pdf_block_used'] === 'string' && typeof texts['error.pdf_off'] === 'string' && typeof texts['error.upload_too_large'] === 'string' );
 	check( '...and the vocabulary the menu has is the one the script lists: 30 placeholders of the CRM, the page numbers apart', [ ...script.matchAll( /\n\t\t\[ '[a-z]+', \[ ([^\]]*) \] \],/g ) ].reduce( function( sum, found ) { return sum+ found[1].split( ',' ).length }, 0 ) === 30 );
+
+	// --- C13: Strg+S on the editors of PDF-Vorlagen
+	const pkey = function( w, mods ) { return press( w, 's', null, mods || { ctrlKey : true } ) };
+	const pk1 = await popen( '#pdf-vorlage-rechnung' );
+	check( 'Strg+S in the editor of a template saves it as the button does (pdf/templates/save), and the button carries the shortcut', all( pk1.main, '#tpl-save' )[0].title === 'Strg+S' && pkey( pk1 ) === true && ( await settle(), pk1.all( 'pdf/templates/save' ).length === 1 ) && pkey( pk1, { metaKey : true } ) === true && ( await settle(), pk1.all( 'pdf/templates/save' ).length === 2 ) );
+	const pkHold = ( function() { const held = {}; held.promise = new Promise( function( resolve ) { held.release = resolve } ); return held } )();
+	const pk2 = await popen( '#pdf-vorlage-rechnung', { 'pdf/templates/save' : function() { return pkHold.promise } } );
+	pkey( pk2 );
+	pkey( pk2 );
+	await settle();
+	check( '...a save that is running is not started again', pk2.all( 'pdf/templates/save' ).length === 1 );
+	pkHold.release( [ 200, Object.assign( { key : 'rechnung', templates : ptemplates }, poffer ) ] );
+	await settle();
+	const pk3 = await popen( '#pdf-baustein-zahlung', { 'pdf/blocks/save' : function() { return [ 200, { blocks : [ { key : 'zahlung', title : 'Zahlung', html : '<p>Zahlbar <b>sofort</b>.</p>' } ] } ] } } );
+	check( 'the editor of a block: Strg+S posts pdf/blocks/save, and the button carries the shortcut', all( pk3.main, '#block-save' )[0].title === 'Strg+S' && pkey( pk3 ) === true && ( await settle(), pk3.all( 'pdf/blocks/save' ).length === 1 ) );
+	const pk4 = await popen( '#pdf-layout', { 'pdf/layout/save' : function() { return [ 200, playoutBody() ] } } );
+	check( 'Layout: Strg+S posts pdf/layout/save, and the button carries the shortcut', all( pk4.main, '#layout-save' )[0].title === 'Strg+S' && pkey( pk4 ) === true && ( await settle(), pk4.all( 'pdf/layout/save' ).length === 1 ) );
+	const pk5 = await popen( '#pdf-design', { 'pdf/layout/save' : function() { return [ 200, playoutBody() ] } } );
+	check( 'Design: Strg+S posts pdf/layout/save with the design, and the button carries the shortcut', all( pk5.main, '#design-save' )[0].title === 'Strg+S' && pkey( pk5 ) === true && ( await settle(), pk5.all( 'pdf/layout/save' ).length === 1 && typeof pk5.last( 'pdf/layout/save' ).data.design === 'string' ) );
+	const pk6 = await popen( '#pdf-bausteine' );
+	check( 'the lists of PDF-Vorlagen have no form: the key does nothing there', pkey( pk6 ) === false );
+
 	}
 
 	// === C12: the Positionen are made, changed and removed in the surface - the Elements panel's own actions, for the type positionen
@@ -3290,7 +3330,295 @@ function press( w, key, target ) {
 	check( 'every word the screen and the editor of the Positionen ask for is a word of the page, and so are the sentences of the panel\'s code the editor shows and of the restriction', xmissing.length === 0 && xwords.length >= 40 && typeof texts['error.elements_fields_not_allowed'] === 'string' && texts['error.crm_positionen_type'] === 'Über diesen Weg lassen sich nur die Positionen bearbeiten.' );
 	check( 'the editor posts to the panel\'s actions for the type and to nothing else of it: elements/get, save and delete, with the type positionen', [ ...script.matchAll( /api\( '(elements\/[a-z]+)'/g ), ...script.matchAll( /call\( '(elements\/[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).sort().join() === 'elements/delete,elements/get,elements/save'
 		&& script.indexOf( "POSITION_TYPE = 'positionen'" ) !== -1 );
+
+	// --- C13: Strg+S in the editor of a Position
+	const xk = await xopen( '#position-mixing' );
+	type( xf( xk, 'f-title-de_DE' ), 'Mixing Pro', false );
+	check( 'Strg+S in the editor of a Position saves it as the button does - one post of the changed language - and the button carries the shortcut', xf( xk, 'position-save' ).title === 'Strg+S' && press( xk, 's', null, { ctrlKey : true } ) === true && ( await settle(), eposts.length === 1 && eposts[0].locale === 'de_DE' ) );
+	check( '...on the list of the Positionen there is no form and the key does nothing', press( await xopen( '#positionen' ), 's', null, { ctrlKey : true } ) === false );
 	}
+
+	// === C13: the company's texts are edited in the Einstellungen, and Strg+S / Cmd+S saves the form on screen
+	{
+	const CTRL = { ctrlKey : true };
+	const META = { metaKey : true };
+	const tperms = { crm : true, pdf : false, elements : false, text : true };
+	const writable = function( keys ) { return keys.map( function( entry ) { return Object.assign( { writable : true }, entry ) } ) };
+	const tsaves = [];
+	const tanswers = function( over ) {
+		return Object.assign( {
+			'crm-documents/settings-get' : function() { return [ 200, eview ] },
+			'crm/status' : function() { return [ 200, { items : eok } ] },
+			'crm-documents/settings-save' : function( data ) { tsaves.push( [ 'settings', data ] ); return [ 200, { settings : Object.assign( {}, esettings, { vat_mode : data.vat_mode, currency : data.currency } ) } ] },
+			'text/keys' : function() { return [ 200, Object.assign( {}, ecompany, { keys : writable( ecompany.keys ) } ) ] },
+			'text/savebatch' : function( data ) {
+				tsaves.push( [ 'text', data ] );
+				const results = {};
+				data.items.forEach( function( item ) { results[item.key] = { ok : true, value : item.value } } );
+				return [ 200, { results : results } ];
+			},
+		}, over || {} );
+	};
+	const topen = async function( over, perms, hash ) {
+		tsaves.length = 0;
+		const w = world( { hash : hash ?? '#einstellungen', perms : perms === undefined ? tperms : perms, answers : tanswers( over ) } );
+		w.boot();
+		await settle();
+		return w;
+	};
+	const tf = function( w, id ) { return all( w.main, '#'+ id )[0] };
+	const tnote = function( w, id ) { const notes = all( tf( w, id ).parentNode, '.state-note.bad' ); return notes.length === 0 ? '' : textOf( notes[0] ) };
+	const chord = function( w, mods ) { return press( w, 's', null, mods ) };
+	const focus = function( w, node ) { node.focus(); w.page.activeElement = node };
+	const texts_of = function( w ) { return all( w.main, '#firma dt' ).map( textOf ) };
+
+	// --- Firmendaten
+	const tf1 = await topen();
+	check( 'with the Text panel\'s permission the block asks for the keys through the panel\'s action, and has a card for each language of the site - the native one first, whatever order the panel lists them in - headed by the language', tf1.sent().filter( function( a ) { return a === 'text/keys' } ).length === 1 && JSON.stringify( tf1.last( 'text/keys' ).data ) === '{}'
+		&& all( tf1.main, '#firma .card' ).map( function( c ) { return c.dataset.locale } ).join() === 'de_DE,en_US' && textOf( all( tf( tf1, 'firma-lang-de_DE' ), 'h4' )[0] ).indexOf( 'Muttersprache der Website' ) !== -1
+		&& textOf( all( tf( tf1, 'firma-lang-en_US' ), 'h4' )[0] ).indexOf( 'Muttersprache' ) === -1 && textOf( all( tf( tf1, 'firma-lang-en_US' ), 'h4' )[0] ) !== '' );
+	check( '...the first card has the six texts in the order Firma, Beschreibung, Anschrift, Land, E-Mail, Telefon - a text of all languages once, here - and the card of another language has the ones that are per language', all( tf( tf1, 'firma-lang-de_DE' ), 'dt' ).map( textOf ).join( '|' ) === 'Firma|Beschreibung|Anschrift|Land|E-Mail|Telefon'
+		&& all( tf( tf1, 'firma-lang-en_US' ), 'dt' ).map( textOf ).join( '|' ) === 'Beschreibung|Land' && tf( tf1, 'f-firma-general-name' ).value === 'Studio Nordlicht' && tf( tf1, 'f-firma-general-description-de_DE' ).value === 'Ein Tonstudio.' && tf( tf1, 'f-firma-general-description-en_US' ).value === 'A recording studio.'
+		&& tf( tf1, 'f-firma-contact-country-en_US' ).value === 'Germany' && tf( tf1, 'f-firma-contact-phone' ).value === '+49 40 123456' );
+	check( '...the address and the description are multiline fields, the others one line, the mail is of type email; the texts of all languages say so', tf( tf1, 'f-firma-contact-address' ).tagName === 'TEXTAREA' && tf( tf1, 'f-firma-contact-address' ).value === 'Hafenstraße 12\n20457 Hamburg' && tf( tf1, 'f-firma-general-description-de_DE' ).tagName === 'TEXTAREA' && tf( tf1, 'f-firma-general-name' ).tagName === 'INPUT'
+		&& tf( tf1, 'f-firma-contact-email' ).type === 'email' && textOf( tf( tf1, 'f-firma-general-name' ).parentNode ).indexOf( texts['firma.shared'] ) !== -1 && textOf( tf( tf1, 'f-firma-general-description-de_DE' ).parentNode ).indexOf( texts['firma.shared'] ) === -1 );
+	check( '...it is a form of its own beside the settings\' form, with a Speichern that carries the shortcut', tf( tf1, 'firma' ).tagName === 'FORM' && tf( tf1, 'firma' ).parentNode !== tf( tf1, 'settings-form' ) && findAll( tf( tf1, 'settings-form' ), function( n ) { return n.id === 'firma' } ).length === 0
+		&& textOf( tf( tf1, 'firma-save' ) ) === 'Speichern' && tf( tf1, 'firma-save' ).title === 'Strg+S' );
+
+	submit( tf1, tf( tf1, 'firma' ) );
+	await settle();
+	check( 'Speichern with nothing changed posts nothing', tf1.all( 'text/savebatch' ).length === 0 );
+	type( tf( tf1, 'f-firma-general-name' ), 'Nordlicht Audio', false );
+	type( tf( tf1, 'f-firma-contact-phone' ), '+49 40 999', false );
+	type( tf( tf1, 'f-firma-general-description-en_US' ), 'A studio.', false );
+	type( tf( tf1, 'f-firma-contact-email' ), 'hallo@studio.example', false );
+	check( 'what is typed is unsaved input: the guard of the page holds it', tf1.app.state.draft !== null && tf1.app.state.draft.dirty === true && tf1.app.state.draft !== tf1.app.state.saver );
+	submit( tf1, tf( tf1, 'firma' ) );
+	await settle();
+	const batches = tf1.all( 'text/savebatch' ).map( function( c ) { return c.data.items } );
+	check( 'a save posts the changed keys only, with the locales that changed - the texts of all languages (locale *) with the first language that changed, then each other language that changed - in the batches the panel takes (key, locale, value), the key as the wizard writes it; an unchanged text (the mail, typed back to what it was) is not posted',
+		JSON.stringify( batches ) === JSON.stringify( [ [ { key : '/project/company/general/name', locale : '*', value : 'Nordlicht Audio' }, { key : '/project/company/contact/phone', locale : '*', value : '+49 40 999' }, { key : '/project/company/general/description', locale : 'en_US', value : 'A studio.' } ] ] ) );
+	check( '...the toast says it, the guard holds nothing, and a second save posts nothing', tf1.toast.textContent === texts['firma.saved'] && ( tf1.app.state.draft === null || tf1.app.state.draft.dirty !== true ) && ( submit( tf1, tf( tf1, 'firma' ) ), await settle(), tf1.all( 'text/savebatch' ).length === 1 ) );
+
+	// two languages changed: one batch each, since the panel answers one result to a key
+	const tf2 = await topen();
+	type( tf( tf2, 'f-firma-general-description-de_DE' ), 'Neu de', false );
+	type( tf( tf2, 'f-firma-general-description-en_US' ), 'New en', false );
+	type( tf( tf2, 'f-firma-general-name' ), 'Neu', false );
+	submit( tf2, tf( tf2, 'firma' ) );
+	await settle();
+	check( 'a key changed in two languages is two batches - the native language first, with the text of all languages - and each has one item for the key', tf2.all( 'text/savebatch' ).length === 2 && JSON.stringify( tf2.all( 'text/savebatch' ).map( function( c ) { return c.data.items.map( function( i ) { return i.locale+ ':'+ i.value } ) } ) ) === '[["*:Neu","de_DE:Neu de"],["en_US:New en"]]' );
+
+	// a refusal beside the field
+	const tf3 = await topen( { 'text/savebatch' : function( data ) {
+		tsaves.push( [ 'text', data ] );
+		return [ 200, { results : { '/project/company/general/name' : { ok : false, error : 'not allowed' }, '/project/company/contact/phone' : { ok : true, value : '1' }, '/project/company/contact/country' : { ok : false, error : 'invalid locale' } } } ];
+	} } );
+	type( tf( tf3, 'f-firma-general-name' ), 'X', false );
+	type( tf( tf3, 'f-firma-contact-phone' ), '1', false );
+	type( tf( tf3, 'f-firma-contact-country-de_DE' ), 'Y', false );
+	submit( tf3, tf( tf3, 'firma' ) );
+	await settle();
+	check( 'a key the panel refuses is marked beside its own field with a sentence - the one for a key the account may not write, the panel\'s own failure sentence for the others - and focused, while the ones it wrote stay written', tf( tf3, 'f-firma-general-name' ).classList.contains( 'err' ) === true && tnote( tf3, 'f-firma-general-name' ) === texts['firma.error-denied']
+		&& tnote( tf3, 'f-firma-contact-country-de_DE' ) === texts['text.error-save'] && texts['text.error-save'] !== '' && tf( tf3, 'f-firma-contact-phone' ).classList.contains( 'err' ) === false && tnote( tf3, 'f-firma-contact-phone' ) === '' && tf3.toast.classList.contains( 'bad' ) === true && tf( tf3, 'firma-save' ).disabled === false );
+	submit( tf3, tf( tf3, 'firma' ) );
+	await settle();
+	check( '...the next save posts what is still unsaved and not what was written', JSON.stringify( tf3.all( 'text/savebatch' ).pop().data.items.map( function( i ) { return i.key } ) ) === '["/project/company/general/name","/project/company/contact/country"]' );
+	const tf4 = await topen( { 'text/savebatch' : function() { return [ 500, { error : 'x' } ] } } );
+	type( tf( tf4, 'f-firma-general-name' ), 'X', false );
+	submit( tf4, tf( tf4, 'firma' ) );
+	await settle();
+	check( 'a refusal of the whole request is a toast with the panel\'s sentence, and the save can be tried again', tf4.toast.classList.contains( 'bad' ) === true && tf4.toast.textContent === texts['text.error-save'] && tf( tf4, 'firma-save' ).disabled === false && tf4.app.state.draft.dirty === true );
+
+	// a key the account may not write is shown and not offered
+	const tf5 = await topen( { 'text/keys' : function() { return [ 200, Object.assign( {}, ecompany, { keys : ecompany.keys.map( function( e ) { return Object.assign( { writable : e.key.indexOf( 'general/name' ) === -1 }, e ) } ) } ) ] } } );
+	type( tf( tf5, 'f-firma-general-name' ), 'X', true );
+	type( tf( tf5, 'f-firma-contact-phone' ), '1', false );
+	submit( tf5, tf( tf5, 'firma' ) );
+	await settle();
+	check( 'a key the panel says is not writable for the account is a read-only field and is never posted', tf( tf5, 'f-firma-general-name' ).getAttribute( 'readonly' ) === 'readonly' && tf( tf5, 'f-firma-contact-phone' ).getAttribute( 'readonly' ) === null && JSON.stringify( tf5.last( 'text/savebatch' ).data.items.map( function( i ) { return i.key } ) ) === '["/project/company/contact/phone"]' );
+	check( '...and it looks read-only: the field carries the class of the muted look, an editable one does not', tf( tf5, 'f-firma-general-name' ).classList.contains( 'ro' ) === true && tf( tf5, 'f-firma-contact-phone' ).classList.contains( 'ro' ) === false );
+
+	// what is typed survives the drawing of the screen after the settings were saved
+	const tf6 = await topen();
+	type( tf( tf6, 'f-firma-general-name' ), 'Halb getippt', false );
+	type( tf( tf6, 'f-currency' ), 'CHF', false );
+	submit( tf6, tf( tf6, 'settings-form' ) );
+	await settle();
+	check( 'the screen is drawn again after the settings were saved: the texts that are typed in Firmendaten are still there and still unsaved, the keys are not asked for a second time, and the guard still holds them', tf( tf6, 'f-firma-general-name' ).value === 'Halb getippt' && tf6.all( 'text/keys' ).length === 1 && tf6.app.state.draft !== null && tf6.app.state.draft.dirty === true && tf6.all( 'text/savebatch' ).length === 0 );
+
+	// without the permission
+	const tr = await topen( {}, { crm : true, pdf : false, elements : false, text : false } );
+	check( 'without the permission of the Text panel the block shows the values read only - from the CRM\'s own read in settings-get - with the sentence that says what is missing; no field, no Speichern, and the panel\'s actions are not asked', tr.sent().indexOf( 'text/keys' ) === -1 && all( tf( tr, 'firma' ), 'input' ).length === 0 && all( tf( tr, 'firma' ), 'textarea' ).length === 0 && tf( tr, 'firma-save' ) === undefined
+		&& textOf( tf( tr, 'firma-readonly' ) ) === texts['firma.readonly'] && texts['firma.readonly'].indexOf( 'Berechtigung des Panels Texte' ) !== -1 && texts_of( tr ).join( '|' ) === 'Firma|Beschreibung|Anschrift|Land|E-Mail|Telefon|Beschreibung|Land'
+		&& all( tf( tr, 'firma' ), 'dd' ).map( textOf ).indexOf( 'Studio Nordlicht' ) !== -1 && tr.app.state.perms.text === false );
+	check( 'the read-only block keeps the lines of a value: the two-line address is two text nodes with a br between, nothing built from markup', ( function() {
+		const dd = all( tf( tr, 'firma' ), 'dd' ).find( function( one ) { return textOf( one ).indexOf( 'Hafenstraße 12' ) === 0 } );
+		return dd !== undefined && findAll( dd, function( n ) { return n.tagName === 'BR' } ).length === 1 && textOf( dd ) === 'Hafenstraße 1220457 Hamburg';
+	} )() );
+	check( '...and Strg+S does nothing there but what the settings form does', ( await ( async function() { focus( tr, tf( tr, 'f-currency' ) ); tr.calls.length = 0; chord( tr, CTRL ); await settle(); return tr.sent()[0] } )() ) === 'crm-documents/settings-save' );
+	const tmarkup = await topen( { 'text/keys' : function() { return [ 200, { native : 'de_DE', locales : [ { locale : 'de_DE', active : true } ], keys : writable( [ { key : '/project/company/general/name', global : true, values : { '*' : '<img src=x onerror=alert(1)>' } } ] ) } ] } } );
+	check( 'a text with markup is text in the field, and a language with no key to show has no card; a site with no key of the company says so', tf( tmarkup, 'f-firma-general-name' ).value === '<img src=x onerror=alert(1)>' && findAll( tmarkup.main, function( n ) { return n.tagName === 'IMG' } ).length === 0 && all( tmarkup.main, '#firma .card' ).length === 1
+		&& textOf( tf( await topen( { 'text/keys' : function() { return [ 200, { native : 'de_DE', locales : [ { locale : 'de_DE', active : true } ], keys : [] } ] } } ), 'firma' ) ).indexOf( texts['firma.none'] ) !== -1 );
+	const tfail = await topen( { 'text/keys' : function() { return [ 500, { error : 'x' } ] } } );
+	check( 'where the keys cannot be read the block says so and offers to try again, which asks again', tf( tfail, 'firma-retry' ) !== undefined && textOf( tf( tfail, 'firma-holder' ) ).indexOf( texts['text.error-load'] ) !== -1 && ( click( tfail, tf( tfail, 'firma-retry' ) ), await settle(), tfail.all( 'text/keys' ).length === 2 ) );
+
+	// --- Strg+S: the shell
+	const tsAnswers = tanswers( {
+		'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+	} );
+	const tov = world( { hash : '#uebersicht', perms : tperms, answers : tsAnswers } );
+	tov.boot();
+	await settle();
+	const before = tov.calls.length;
+	check( 'on a screen without a form Strg+S and Cmd+S do nothing: nothing is posted and the key is left to the browser', chord( tov, CTRL ) === false && chord( tov, META ) === false && tov.calls.length === before );
+	const te = await topen();
+	type( tf( te, 'f-currency' ), 'CHF', false );
+	focus( te, tf( te, 'f-currency' ) );
+	tsaves.length = 0;
+	check( 'with Alt or Shift, or without Ctrl and Cmd, or another letter, the key saves nothing and is left alone', [ { ctrlKey : true, altKey : true }, { ctrlKey : true, shiftKey : true }, { metaKey : true, shiftKey : true } ].every( function( mods ) { return chord( te, mods ) === false } )
+		&& press( te, 's', null, {} ) === false && press( te, 'd', null, CTRL ) === false && te.calls.filter( function( c ) { return c.action === 'crm-documents/settings-save' || c.action === 'text/savebatch' } ).length === 0 );
+	check( 'Strg+S and Cmd+S, in either case of the letter, save the form that is open and keep the browser\'s own save away', chord( te, CTRL ) === true && ( await settle(), te.all( 'crm-documents/settings-save' ).length === 1 ) );
+	type( tf( te, 'f-currency' ), 'GBP', false );
+	check( '...Cmd+S the same, and the capital letter too', press( te, 'S', null, META ) === true && ( await settle(), te.all( 'crm-documents/settings-save' ).length === 2 ) );
+
+	// a question stands over the page
+	const tdlg = await topen();
+	type( tf( tdlg, 'f-currency' ), 'CHF', false );
+	click( tdlg, all( tdlg.nav, '[data-r]' )[0] );
+	const tdlgCalls = tdlg.calls.length;
+	check( 'while a question stands over the page (the guard asks to leave) the key saves nothing, and is not kept from the browser', tdlg.dialogs.length === 1 && tdlg.dialogs[0].open === true && chord( tdlg, CTRL ) === false && tdlg.calls.length === tdlgCalls );
+
+	// the screens, one by one: the form on screen is saved
+	const tl = await topen();
+	focus( tl, tf( tl, 'f-currency' ) );
+	check( 'Einstellungen: with the focus in the settings\' form that form is saved - and not the Firmendaten, which are not changed either', chord( tl, CTRL ) === true && ( await settle(), tsaves.map( function( one ) { return one[0] } ).join() === 'settings' ) );
+	const tm = await topen();
+	type( tf( tm, 'f-firma-general-name' ), 'Fokus', false );
+	type( tf( tm, 'f-currency' ), 'CHF', false );
+	focus( tm, tf( tm, 'f-firma-general-name' ) );
+	chord( tm, CTRL );
+	await settle();
+	check( '...with the focus in a field of Firmendaten that form is saved, though the settings are changed as well', tsaves.map( function( one ) { return one[0] } ).join() === 'text' );
+	const tn = await topen();
+	type( tf( tn, 'f-firma-general-name' ), 'Nur dieser', false );
+	focus( tn, tf( tn, 'settings-save' ) );
+	tn.page.activeElement = null;
+	chord( tn, CTRL );
+	await settle();
+	check( '...with no focus in either, the form that holds changes is saved - here Firmendaten - and with changes in both the first, the settings', tsaves.map( function( one ) { return one[0] } ).join() === 'text' && ( tsaves.length = 0, type( tf( tn, 'f-currency' ), 'CHF', false ), type( tf( tn, 'f-firma-general-name' ), 'Nochmal', false ), tn.page.activeElement = null, chord( tn, CTRL ), await settle(), tsaves.map( function( one ) { return one[0] } ).join() === 'settings' ) );
+	const tp = await topen();
+	check( '...and with nothing changed in either and no focus, nothing is saved and the browser keeps its key', ( tp.page.activeElement = null, chord( tp, CTRL ) === false ) && ( await settle(), tsaves.length === 0 ) );
+
+	// Entwurf: the explicit save; a running save is not doubled
+	const heldSave = hold();
+	const td = await editing( {}, { 'crm-documents/save' : function() { return heldSave.promise } } );
+	chord( td, CTRL );
+	chord( td, META );
+	await settle();
+	check( 'Entwurf: Strg+S is the button Speichern - one post of the draft - and a second press while it runs is no second post, though the key is still kept from the browser', td.all( 'crm-documents/save' ).length === 1 && field( td, 'save' ).title === 'Strg+S' );
+	heldSave.release( [ 200, { document : full( Object.assign( {}, draftDoc, { updated : '2026-11-03T14:30:00Z' } ) ) } ] );
+	await settle();
+	chord( td, CTRL );
+	await settle();
+	check( '...and once it is through the key saves again', td.all( 'crm-documents/save' ).length === 2 );
+	td.location.hash = '#uebersicht';
+	await settle();
+	check( 'a screen that is left has no save any more: on the Übersicht the key does nothing', chord( td, CTRL ) === false );
+
+	// Beleg: the notes
+	const tnotes = await stepper( { state : 'open' } );
+	await tabClick( tnotes, 'Notizen' );
+	type( all( body( tnotes ), '#notes' )[0], 'Per Tastatur', false );
+	check( 'Beleg, Notizen: Strg+S saves the notes as the button does, and the button carries the shortcut', all( body( tnotes ), '#notes-save' )[0].title === 'Strg+S' && chord( tnotes, CTRL ) === true && ( await settle(), JSON.stringify( tnotes.steps[0] ) === '["save",{"id":"11","notes":"Per Tastatur"}]' ) );
+	const tn2 = await stepper( { state : 'open' } );
+	await tabClick( tn2, 'Notizen' );
+	type( all( body( tn2 ), '#notes' )[0], 'Verworfen', false );
+	await tabClick( tn2, 'Verlauf' );
+	tn2.page.activeElement = null;
+	check( 'Beleg: notes that were typed on a tab that is left are no form on screen - Strg+S on another tab saves nothing and leaves the key to the browser', chord( tn2, CTRL ) === false && tn2.steps.length === 0 );
+	const tn3 = await stepper( { state : 'open' } );
+	await tabClick( tn3, 'Notizen' );
+	focus( tn3, all( body( tn3 ), '#notes' )[0] );
+	check( '...and unchanged notes, with the focus in the field, are nothing to save: nothing is posted and the key stays with the browser', chord( tn3, CTRL ) === false && tn3.steps.length === 0 );
+	const tdoc = await opened( { id : 11 } );
+	check( '...and a Beleg on another tab has no form: the key is left alone', chord( tdoc, CTRL ) === false );
+
+	// Kundenkarte: Stammdaten, Notizen, the invitation - the form that holds the focus, else the one that is dirty
+	const csaves = [];
+	const kk = await kopen( '#kunde-1-notizen', { 'crm-clients/save' : function( data ) { csaves.push( data ); return [ 200, { client : Object.assign( {}, kclient, data ) } ] }, 'crm-clients/invite' : function( data ) { csaves.push( { invite : data } ); return [ 200, { account : Object.assign( {}, kaccounts[0], { id : 'cccccccccccc' } ), mailed : true } ] } } );
+	chord( kk, CTRL );
+	await settle();
+	check( 'Kundenkarte: with the Notizen open and nothing typed the key saves nothing and is left to the browser', csaves.length === 0 && chord( kk, CTRL ) === false );
+	click( kk, kitem( kmenu( kk, '⋯' ), 'Stammdaten bearbeiten' ) );
+	click( kk, all( kk.main, '#invite-open' )[0] );
+	const kmaster = all( kk.main, '#master' )[0];
+	type( all( kmaster, '#f-city' )[0], 'Lübeck', false );
+	type( all( kk.main, '#notes' )[0], 'Notiert', false );
+	type( all( kk.main, '#f-invite-email' )[0], 'neu@example.org', false );
+	focus( kk, all( kk.main, '#notes' )[0] );
+	check( '...with the focus in the Notizen it is the notes that are saved - the other forms hold changes as well', chord( kk, CTRL ) === true && ( await settle(), csaves.length === 1 && csaves[0].notes === 'Notiert' && csaves[0].city === 'Hamburg' ) );
+	focus( kk, all( kk.main, '#f-invite-email' )[0] );
+	chord( kk, META );
+	await settle();
+	check( '...with the focus in the invitation it is the invitation', csaves.length === 2 && csaves[1].invite !== undefined && csaves[1].invite.email === 'neu@example.org' );
+	const kk2 = await kopen( '#kunde-1', { 'crm-clients/save' : function( data ) { csaves.push( data ); return [ 200, { client : Object.assign( {}, kclient, data ) } ] } } );
+	csaves.length = 0;
+	click( kk2, kitem( kmenu( kk2, '⋯' ), 'Stammdaten bearbeiten' ) );
+	kk2.page.activeElement = null;
+	check( 'Kundenkarte: the Stammdaten form open and nothing typed: nothing is saved', chord( kk2, CTRL ) === false && csaves.length === 0 );
+	type( all( all( kk2.main, '#master' )[0], '#f-city' )[0], 'Kiel', false );
+	kk2.page.activeElement = null;
+	check( '...typed, and no focus in any form: the one that holds changes is saved, with every field of the client', chord( kk2, CTRL ) === true && ( await settle(), csaves.length === 1 && csaves[0].city === 'Kiel' && csaves[0].company === kclient.company ) );
+	check( '...and after it the card is the facts again and the key has nothing to save', all( kk2.main, '#client-save' ).length === 0 && chord( kk2, CTRL ) === false );
+
+	// a tab, a closed form and a screen that is loading hold no save
+	const kt2 = await kopen( '#kunde-1-notizen' );
+	type( all( kt2.main, '#notes' )[0], 'Nur im Tab', false );
+	click( kt2, all( kt2.main, '.tabs button' )[0] );
+	kt2.page.activeElement = null;
+	check( 'Kundenkarte: the Notizen that were typed in a tab that is left are no form on screen: the key saves nothing', chord( kt2, CTRL ) === false && kt2.all( 'crm-clients/save' ).length === 0 );
+	const kt3 = await kopen( '#kunde-1' );
+	click( kt3, kitem( kmenu( kt3, '⋯' ), 'Stammdaten bearbeiten' ) );
+	type( all( kt3.main, '#f-city' )[0], 'Weg', false );
+	click( kt3, all( kt3.main, '#client-cancel' )[0] );
+	kt3.page.activeElement = null;
+	check( '...and neither is the Stammdaten form that was closed with Abbrechen', chord( kt3, CTRL ) === false && kt3.all( 'crm-clients/save' ).length === 0 );
+	const kt4 = await kopen( '#kunde-1' );
+	click( kt4, all( kt4.main, '#invite-open' )[0] );
+	type( all( kt4.main, '#f-invite-email' )[0], 'weg@example.org', false );
+	click( kt4, all( kt4.main, '#invite-cancel' )[0] );
+	kt4.page.activeElement = null;
+	check( '...nor the invitation that was closed', chord( kt4, CTRL ) === false && kt4.all( 'crm-clients/invite' ).length === 0 );
+	const tload = hold();
+	const tlw = await editing( {}, { 'crm-clients/list' : function() { return tload.promise } } );
+	tlw.location.hash = '#kunden';
+	await settle();
+	check( '...nor a screen that is loading: the draft that was left has no save any more', chord( tlw, CTRL ) === false && tlw.all( 'crm-documents/save' ).length === 0 );
+	tload.release( [ 200, { clients : kclients } ] );
+	await settle();
+
+	// Neuer Kunde
+	const created = [];
+	const kn = await kopen( '#kunde-neu', { 'crm-clients/save' : function( data ) { created.push( data ); return [ 200, { client : Object.assign( {}, kclient, { id : 9, number : 'K-0009' } ) } ] } } );
+	type( all( kn.main, '#f-company' )[0], 'Neu GmbH', false );
+	chord( kn, CTRL );
+	await settle();
+	check( 'Neuer Kunde: Strg+S creates the client as the button does', created.length === 1 && created[0].company === 'Neu GmbH' && kn.location.hash === '#kunde-9' );
+
+	// the shortcut on every Speichern
+	const titled = [];
+	const tkn = await kopen( '#kunde-neu' );
+	titled.push( [ 'client-create', all( tkn.main, '#client-create' )[0] ] );
+	const tkc = await kopen( '#kunde-1' );
+	click( tkc, kitem( kmenu( tkc, '⋯' ), 'Stammdaten bearbeiten' ) );
+	click( tkc, all( tkc.main, '#invite-open' )[0] );
+	titled.push( [ 'client-save', all( tkc.main, '#client-save' )[0] ], [ 'invite-send', all( tkc.main, '#invite-send' )[0] ] );
+	titled.push( [ 'notes-save', all( ( await kopen( '#kunde-1-notizen' ) ).main, '#notes-save' )[0] ], [ 'settings-save', tf( tp, 'settings-save' ) ], [ 'firma-save', tf( tp, 'firma-save' ) ], [ 'save', field( await editing(), 'save' ) ] );
+	check( 'every Speichern of the editors carries title="Strg+S": the draft, the Stammdaten, the invitation, the notes, the new client, the settings and the Firmendaten', titled.length === 7 && titled.every( function( pair ) { return pair[1] !== undefined && pair[1].title === 'Strg+S' } ) && texts['save.shortcut'] === 'Strg+S' );
+	check( 'the script carries no Speichern without it: every button made with one of the words of the save has a title', ( script.match( /id: '[a-z-]*(?:save|create|send)[a-z-]*', (?:title: t\( 'save\.shortcut' \), )?text: t\( '/g ) || [] ).every( function( found ) { return found.indexOf( 'title: t( \'save.shortcut\' )' ) !== -1 || /id: 'invite-cancel|client-cancel/.test( found ) } ) );
+	}
+
 
 	done();
 	process.exit( process.exitCode ?? 0 );

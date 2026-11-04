@@ -15,7 +15,8 @@ declare(strict_types=1);
  *																					token (the route says csrf, the page sends it in X-CSRF-Token); a refused token is the 403 with
  *																					the code csrf, no session the 401 with the code session, an action the table does not hold the
  *																					404 with the code action; the four actions of the Elements panel (elements/list, get, save, delete) are for the type positionen alone, any
- *																					other type is the 404 with the code crm_positionen_type. The upload of a picture (pdf/layout/image) comes as a multipart post with the action and the
+ *																					other type is the 404 with the code crm_positionen_type; the two of the Text panel (text/keys, text/savebatch) are for the keys below /project/company/
+ *																					alone, a batch with another key is the 404 with the code crm_texts_key. The upload of a picture (pdf/layout/image) comes as a multipart post with the action and the
  *																					data as fields and the file, which the method reads from $_FILES; no other action takes a file
  *								GET  /crm/assets/<hash>-<name>		a file of ASSETS whose content hash is the one in the name, for a year
  *								GET  /crm/preview/<id>		the PDF of a draft as its template makes it now, inline, nothing stored
@@ -77,14 +78,15 @@ class Surface {
 
 	/**
 	 *	The actions the endpoint answers: the API of the clients and of the documents, the two actions of the panel CRM and - where the feature Pdf is
-	 *	there - the actions of its panel and the context of the screens PDF-Vorlagen, and the four actions of the Elements panel that edit the Positionen
-	 *	(for that type alone, see Surface\Elements), by their names
+	 *	there - the actions of its panel and the context of the screens PDF-Vorlagen, the four actions of the Elements panel that edit the Positionen
+	 *	(for that type alone, see Surface\Elements) and the two of the Text panel that edit the texts of the company (for the keys below /project/company/
+	 *	alone, see Surface\Texts), by their names
 	 *
 	 *	@return 	array											action => [ class, method ]
 	 */
 	public static function actions(): array {
 
-		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions() );
+		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions(), Surface\Texts::actions() );
 	}
 
 	/**
@@ -113,10 +115,14 @@ class Surface {
 			if( Surface\Elements::textFile() !== '' )
 				$files[] = Surface\Elements::textFile();
 
+			// ...and those of the Text panel, whose actions edit the texts of the company
+			if( Surface\Texts::textFile() !== '' )
+				$files[] = Surface\Texts::textFile();
+
 			foreach( $files as $file )
 				foreach( (array) require $file as $key => $text )
-					if( preg_match( '~^\[\[/_admin/(?:(error)/([a-z][a-z0-9_]*)|crm/(status|setup)/([a-z][a-z0-9-]*))\]\]$~D', (string) $key, $found ) === 1 )
-						self::$_texts[( $found[1] !== '' ? 'error.'. $found[2] : $found[3]. '.'. $found[4] )] = (string) $text;
+					if( preg_match( '~^\[\[/_admin/(?:(error)/([a-z][a-z0-9_]*)|crm/(status|setup)/([a-z][a-z0-9-]*)|text/error/(save|load))\]\]$~D', (string) $key, $found ) === 1 )
+						self::$_texts[( ( $found[5] ?? '' ) !== '' ? 'text.error-'. $found[5] : ( $found[1] !== '' ? 'error.'. $found[2] : $found[3]. '.'. $found[4] ) )] = (string) $text;
 		}
 
 		return self::$_texts;
@@ -188,7 +194,7 @@ class Surface {
 			'csrf'  => \Nino\Csrf::getToken( $appData ),
 			'user'  => [ 'name' => (string) $user['mail'] ],
 			'perm'  => \Crm\Crm::MANAGE_PERM,
-			'perms' => [ 'crm' => true, 'pdf' => Surface\Pdf::allowed( $appData ), 'elements' => Surface\Elements::allowed( $appData ) ],
+			'perms' => [ 'crm' => true, 'pdf' => Surface\Pdf::allowed( $appData ), 'elements' => Surface\Elements::allowed( $appData ), 'text' => Surface\Texts::allowed( $appData ) ],
 			'pdf_available' => Surface\Pdf::available(),
 			'texts' => self::texts(),
 			'links' => $links + array_map( static fn( string $panel ): string => $dir. '/_admin/#'. $panel, self::PANELS ),

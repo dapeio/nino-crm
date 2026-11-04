@@ -687,8 +687,8 @@ foreach( [ 'not json', '[]', '{"action":["crm-documents/list"]}', '{"action":1}'
 	check( 'a body that is no action ('. $broken. ') is 404 action as well', $answer['statusCode'] === 404 && $answer['body']['code'] === 'action' );
 }
 
-check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen and the four actions of the Elements panel that edit the Positionen, and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ] )
-	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete))$~D', $action ) !== 1 ) === []
+check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the four actions of the Elements panel that edit the Positionen and the two of the Text panel that edit the company\'s texts, and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ] )
+	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch))$~D', $action ) !== 1 ) === []
 	&& in_array( 'crm-clients/setup', array_keys( Surface::actions() ), true ) === false && in_array( 'crm-clients/status', array_keys( Surface::actions() ), true ) === false );
 
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiList' ], [ 'year' => (string) date( 'Y' ) ], 'crm-documents/list' );
@@ -932,7 +932,7 @@ $perms = static function( string $mail, string $password ) use ( $asUser, &$appD
 	$asUser( $mail, $password );
 	return surfaceData( (string) surfaceServe( $appData, 'GET', '/crm' )['body'] )['perms'] ?? [];
 };
-check( 'the data block carries which permissions the account has: crm, pdf and elements - the account of the CRM alone has the first only, the account with both has both', $perms( 'crm@example.com', 'crm password' ) === [ 'crm' => true, 'pdf' => false, 'elements' => false ] && $perms( 'pdf@example.com', 'pdf password' ) === [ 'crm' => true, 'pdf' => true, 'elements' => false ] && $perms( 'admin@example.com', 'correct horse battery staple' )['pdf'] === true );
+check( 'the data block carries which permissions the account has: crm, pdf, elements and text - the account of the CRM alone has the first only, the account with both has both', $perms( 'crm@example.com', 'crm password' ) === [ 'crm' => true, 'pdf' => false, 'elements' => false, 'text' => false ] && $perms( 'pdf@example.com', 'pdf password' ) === [ 'crm' => true, 'pdf' => true, 'elements' => false, 'text' => false ] && $perms( 'admin@example.com', 'correct horse battery staple' )['pdf'] === true );
 $asPdf();
 $html = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
 check( '...the rail has the entry PDF-Vorlagen at #pdf, hidden in the markup (the script shows it for the permission), between Positionen and Einstellungen', preg_match( '~<a href="#pdf" data-r="pdf" id="nav-pdf" hidden>PDF-Vorlagen</a>~', $html ) === 1
@@ -1228,6 +1228,86 @@ $lineAfter = Documents::get( $appData, $copy['id'] )['lines'][0];
 check( 'a delete through the endpoint removes the element in every language, and Positionen::list(), the loop and all() have nothing of it; the line of a document that copied its words keeps them', $status === 200 && Positionen::get( $appData, 'mixing' ) === null && in_array( 'mixing', array_column( Positionen::all( $appData ), 'id' ), true ) === false
 	&& in_array( '/positionen/mixing', $loop(), true ) === false && \Nino\Elements::getElement( $appData, '/positionen/mixing', 'en_US' ) === false && $lineAfter['title'] === 'Mixing Pro' && $lineAfter['description'] === "Mischung eines Songs\nbis 48 Spuren" && $lineAfter === $lineBefore
 	&& $itemsLines( 'Delete Element /positionen/mixing' ) === 1 );
+$asCrm();
+
+// --- Firmendaten: the actions of the Text panel through the endpoint, for the keys below /project/company/ alone ------------
+
+echo "\nFirmendaten\n";
+
+\Nino\Auth::insertUser( $appData, 'texts@example.com', 'texts password', [ '/_admin/crm/manage', '/_admin/text/manage' ] );
+\Nino\Auth::insertUser( $appData, 'textsonly@example.com', 'textsonly password', [ '/_admin/text/manage' ] );
+\Nino\Auth::insertUser( $appData, 'textname@example.com', 'textname password', [ '/_admin/crm/manage', '/_admin/text/manage', '/_admin/text/update/project/company/general/name' ] );
+$asTexts = static function() use ( $asUser ): void { $asUser( 'texts@example.com', 'texts password' ); };
+$companyKeys = [ '/project/company/contact/address', '/project/company/contact/country', '/project/company/contact/email', '/project/company/contact/phone', '/project/company/general/description', '/project/company/general/name' ];
+$textFiles = static fn(): array => [ \Nino\Filesystem::getFileContent( $appData, '/text/global.php', [] ), \Nino\Filesystem::getFileContent( $appData, '/text/de_DE.php', [] ), \Nino\Filesystem::getFileContent( $appData, '/text/en_US.php', [] ) ];
+
+$asVisitor();
+check( 'text/keys and text/savebatch are in the table: nobody is told 401', surfaceApi( $appData, 'text/keys' )[0] === 401 && surfaceApi( $appData, 'text/savebatch', [ 'items' => [] ] )[0] === 401 );
+$asCrm();
+check( '...the account of the CRM alone is told 403 - the endpoint asks for the CRM\'s permission and the panel\'s', surfaceApi( $appData, 'text/keys' )[0] === 403 && surfaceApi( $appData, 'text/savebatch', [ 'items' => [ [ 'key' => $companyKeys[5], 'locale' => '*', 'value' => 'X' ] ] ] )[0] === 403 && $textFiles() === $textFiles() );
+$asUser( 'textsonly@example.com', 'textsonly password' );
+check( '...and so is the account of the Text panel alone: the endpoint is the CRM\'s', surfaceApi( $appData, 'text/keys' )[0] === 403 );
+
+$asTexts();
+[ $status, $keys ] = surfaceApi( $appData, 'text/keys' );
+$panel = ninoCall( $appData, [ \Nino\Modules\Text\Admin::class, 'apiKeys' ], [], 'text/keys' )[1];
+check( 'with both permissions text/keys is 200 and answers the six keys of the company and no other key of the site - the panel itself answers more', $status === 200 && array_column( $keys['keys'], 'key' ) === $companyKeys && count( $panel['keys'] ) > 6 && count( array_filter( $panel['keys'], static fn( array $one ): bool => str_starts_with( $one['key'], '/project/company/' ) === false ) ) > 0 );
+check( '...each with its values (a text of all languages under *, the others per language) and whether the account may write it; beside them the languages with a text file and the native one - and nothing of what arranges the panel\'s own form', array_keys( $keys ) === [ 'keys', 'locales', 'native' ] && $keys['native'] === \Nino\Locales::getNativeLocale( $appData ) && array_column( $keys['locales'], 'locale' ) === array_column( $panel['locales'], 'locale' )
+	&& array_filter( $keys['keys'], static fn( array $one ): bool => array_key_exists( 'writable', $one ) === false || array_key_exists( 'values', $one ) === false || array_key_exists( 'global', $one ) === false ) === [] && ( array_column( $keys['keys'], 'global', 'key' )['/project/company/general/name'] ?? null ) === true && isset( array_column( $keys['keys'], 'values', 'key' )['/project/company/general/name']['*'] )
+	&& array_column( $keys['keys'], 'writable', 'key' )['/project/company/general/name'] === true );
+
+$before = $textFiles();
+$linesBefore = $itemsLines( 'Edit Text' );
+foreach( [ 'a key of the site\'s other texts' => [ [ 'key' => '/project/website/general/url', 'locale' => '*', 'value' => 'https://evil.example' ] ],
+	'a company key and another one in the same batch' => [ [ 'key' => $companyKeys[5], 'locale' => '*', 'value' => 'Nicht geschrieben' ], [ 'key' => '/template/page-home/hero/title', 'locale' => 'de_DE', 'value' => 'X' ] ],
+	'a key with dots in it' => [ [ 'key' => '/project/company/../website/general/url', 'locale' => '*', 'value' => 'X' ] ],
+	'a key that holds the prefix but does not start with it' => [ [ 'key' => '/x/project/company/general/name', 'locale' => '*', 'value' => 'X' ] ],
+	'a key with a space at its end' => [ [ 'key' => '/project/company/general/name ', 'locale' => '*', 'value' => 'X' ] ],
+	'the bare prefix' => [ [ 'key' => '/project/company/', 'locale' => '*', 'value' => 'X' ] ],
+	'a key that only starts like the prefix' => [ [ 'key' => '/project/company', 'locale' => '*', 'value' => 'X' ] ],
+	'an item without a key' => [ [ 'locale' => '*', 'value' => 'X' ] ],
+	'an item that is no object' => [ 'x' ] ] as $what => $items ) {
+	[ $status, $refused ] = surfaceApi( $appData, 'text/savebatch', [ 'items' => $items ] );
+	check( 'a batch with '. $what. ' is refused as a whole: 404 crm_texts_key', $status === 404 && $refused['code'] === 'crm_texts_key' );
+}
+check( '...nothing was written to any text file, and the activity log has no line for them', $textFiles() === $before && $itemsLines( 'Edit Text' ) === $linesBefore );
+
+[ $status, $saved ] = surfaceApi( $appData, 'text/savebatch', [ 'items' => [ [ 'key' => $companyKeys[5], 'locale' => '*', 'value' => 'Studio Nordlicht' ], [ 'key' => $companyKeys[4], 'locale' => 'de_DE', 'value' => 'Ein Tonstudio.' ] ] ] );
+[ $statusEn, $savedEn ] = surfaceApi( $appData, 'text/savebatch', [ 'items' => [ [ 'key' => $companyKeys[4], 'locale' => 'en_US', 'value' => 'A recording studio.' ] ] ] );
+$files = $textFiles();
+// The next request reads the files again (the name that an earlier pin of this suite put in as a fill of the run is the files' to say now)
+unset( $appData['./nino/html/filecache'], $appData['./nino/html/fills']['*']['[['. $companyKeys[5]. ']]'] );
+check( 'a batch of company keys is the panel\'s: the text of all languages and one language in one batch, another language in the next - 200 and a result for each key', $status === 200 && $statusEn === 200 && $saved['results'][$companyKeys[5]] === [ 'ok' => true, 'value' => 'Studio Nordlicht' ] && $saved['results'][$companyKeys[4]]['ok'] === true && $savedEn['results'][$companyKeys[4]]['value'] === 'A recording studio.' );
+check( '...it is in the text files, and the fills the PDFs, the mails and the brand read give it back in each language', $files[0]['[['. $companyKeys[5]. ']]'] === 'Studio Nordlicht' && $files[1]['[['. $companyKeys[4]. ']]'] === 'Ein Tonstudio.' && $files[2]['[['. $companyKeys[4]. ']]'] === 'A recording studio.'
+	&& \Nino\Html::resolveTextfill( $appData, $companyKeys[5] ) === 'Studio Nordlicht' && \Nino\Html::getFills( $appData, 'de_DE' )['[['. $companyKeys[4]. ']]'] === 'Ein Tonstudio.' && \Nino\Html::getFills( $appData, 'en_US' )['[['. $companyKeys[4]. ']]'] === 'A recording studio.' );
+[ , $again ] = surfaceApi( $appData, 'text/keys' );
+check( '...and text/keys reads them back', array_column( $again['keys'], 'values', 'key' )[$companyKeys[4]] === [ 'de_DE' => 'Ein Tonstudio.', 'en_US' => 'A recording studio.' ] && array_column( $again['keys'], 'values', 'key' )[$companyKeys[5]] === [ '*' => 'Studio Nordlicht' ] );
+check( '...the activity log has the panel\'s line for the saves - by the account that did it, naming the group of the keys - and none for the refusals or the reads', $itemsLines( 'Edit Text /project/company' ) === 2 && count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ), static fn( string $entry ): bool => str_contains( $entry, 'Edit Text /project/company' ) && str_contains( $entry, 'texts@example.com' ) ) ) === 2 );
+
+// The brand of the page is the company's name, read when the page is made
+$brandPage = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
+check( 'the brand of the page is the saved name on the next load', str_contains( $brandPage, 'Studio Nordlicht' ) === true );
+
+// The sentences
+$texts = Surface::texts();
+check( 'the sentences are the page\'s: the code of the restriction has its own, and the panel\'s failure sentences come from its text file', ( $texts['error.crm_texts_key'] ?? '' ) !== '' && ( $texts['text.error-save'] ?? '' ) !== '' && ( $texts['text.error-load'] ?? '' ) !== '' && Surface\Texts::textFile() !== '' && str_ends_with( Surface\Texts::textFile(), '/Text/text/de_DE.php' ) === true
+	&& $texts['text.error-save'] === ( (array) require Surface\Texts::textFile() )['[[/_admin/text/error/save]]'] );
+
+// The scoped permission of the panel is its own: a key the role may not update says so in its result
+$asUser( 'textname@example.com', 'textname password' );
+[ $status, $scoped ] = surfaceApi( $appData, 'text/savebatch', [ 'items' => [ [ 'key' => $companyKeys[5], 'locale' => '*', 'value' => 'Nur der Name' ], [ 'key' => $companyKeys[3], 'locale' => '*', 'value' => '999' ] ] ] );
+check( 'a role that may update some keys only: the panel answers 200 with a result for each key - written for the one, "not allowed" for the other - and the other is not written', $status === 200 && $scoped['results'][$companyKeys[5]]['ok'] === true && $scoped['results'][$companyKeys[3]] === [ 'ok' => false, 'error' => 'not allowed' ] && ( $textFiles()[0]['[['. $companyKeys[3]. ']]'] ?? '' ) !== '999' );
+[ , $scopedKeys ] = surfaceApi( $appData, 'text/keys' );
+check( '...and text/keys says which keys it may write', array_column( $scopedKeys['keys'], 'writable', 'key' )[$companyKeys[5]] === true && array_column( $scopedKeys['keys'], 'writable', 'key' )[$companyKeys[3]] === false );
+
+// The permission in the data block
+check( 'the data block says whether the account holds the permission of the Text panel: perms.text is true for it and for the owner, false for the account of the CRM alone', $perms( 'texts@example.com', 'texts password' )['text'] === true && $perms( 'admin@example.com', 'correct horse battery staple' )['text'] === true && $perms( 'crm@example.com', 'crm password' )['text'] === false );
+
+// The account of the CRM alone reads the company in settings-get
+$asCrm();
+[ $status, $view ] = surfaceApi( $appData, 'crm-documents/settings-get' );
+check( 'an account of the CRM alone reads the company\'s texts in settings-get (the block shows them read-only): the six keys with their values, the languages and the native one - and cannot write them', $status === 200 && array_column( $view['company']['keys'], 'key' ) === $companyKeys && array_column( $view['company']['keys'], 'values', 'key' )[$companyKeys[5]] === [ '*' => 'Nur der Name' ]
+	&& array_keys( $view['company'] ) === [ 'keys', 'locales', 'native' ] && surfaceApi( $appData, 'text/savebatch', [ 'items' => [ [ 'key' => $companyKeys[5], 'locale' => '*', 'value' => 'Y' ] ] ] )[0] === 403 );
 $asCrm();
 
 // The vocabulary the menu offers is the vocabulary the documents hand a template

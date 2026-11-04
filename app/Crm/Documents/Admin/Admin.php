@@ -511,7 +511,7 @@ class Admin {
 
 	/**
 	 *	The settings of the documents, and what the screen of the settings shows beside them: the number each sequence gives next, the templates
-	 *	of Pdf by tag, whether Pdf is on, and the portal as the owner is told of it
+	 *	of Pdf by tag, whether Pdf is on, the portal as the owner is told of it and the texts of the company (the block Firmendaten reads them here)
 	 */
 	public static function apiSettingsGet( array &$appData, array &$request ): void {
 
@@ -525,6 +525,7 @@ class Admin {
 				'templates' => self::_tags( $appData ),
 				'pdf'       => \Crm\Crm::featureOn( $appData, 'pdf' ),
 				'portal'    => \Crm\Portal::overview( $appData ),
+				'company'   => \Crm\Surface\Texts::company( $appData ),
 			] );
 		} );
 	}

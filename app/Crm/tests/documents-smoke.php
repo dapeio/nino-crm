@@ -1339,10 +1339,10 @@ echo "\nSettings, templates, status\n";
 
 [ $status, $body ] = $post( 'crm-documents/settings-get' );
 check( 'settings-get answers the eight settings', $status === 200 && array_keys( $body['settings'] ) === array_keys( Settings::DEFAULTS ) && $body['settings']['vat_mode'] === 'small_business' );
-check( '...and what the screen shows beside them: the next number of each sequence in the year now - read, never taken -, the templates of Pdf by tag, whether Pdf is on, and the portal', array_keys( $body ) === [ 'settings', 'next', 'templates', 'pdf', 'portal' ]
+check( '...and what the screen shows beside them: the next number of each sequence in the year now - read, never taken -, the templates of Pdf by tag, whether Pdf is on, the portal and the company\'s texts (the block Firmendaten of the Einstellungen reads them for an account without the Text panel)', array_keys( $body ) === [ 'settings', 'next', 'templates', 'pdf', 'portal', 'company' ]
 	&& array_keys( $body['next'] ) === [ 'offer', 'invoice', 'credit' ] && preg_match( '~^G-'. date( 'Y' ). '-\d{4}$~D', $body['next']['credit'] ) === 1 && preg_match( '~^R-'. date( 'Y' ). '-\d{4}$~D', $body['next']['invoice'] ) === 1
 	&& array_keys( $body['templates'] ) === [ 'offer', 'invoice', 'contract', 'privacy', 'information' ] && $body['templates']['invoice'] === [ 'Rechnung' ] && $body['templates']['offer'] === [ 'Angebot' ] && $body['templates']['contract'] === [ 'Vertrag' ] && $body['templates']['privacy'] === []
-	&& $body['pdf'] === true && array_keys( $body['portal'] ) === [ 'address', 'pages', 'members', 'mail_cap' ] );
+	&& $body['pdf'] === true && array_keys( $body['portal'] ) === [ 'address', 'pages', 'members', 'mail_cap' ] && array_keys( $body['company'] ) === [ 'keys', 'locales', 'native' ] && array_filter( $body['company']['keys'], static fn( array $one ): bool => str_starts_with( $one['key'], '/project/company/' ) === false ) === [] );
 $rowsBefore = $sequences();
 $counter = (int) ( Db::row( $appData, 'SELECT next FROM sequences WHERE category = \'invoice\' AND year = :year', [ 'year' => (int) date( 'Y' ) ] )['next'] ?? 1 );
 $again = $post( 'crm-documents/settings-get' )[1]['next'];
