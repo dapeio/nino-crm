@@ -69,11 +69,12 @@ return [
 	'[[/_admin/elements/field/positionen/title]]' => 'Titel',
 	'[[/_admin/elements/field/positionen/description]]' => 'Beschreibung',
 	'[[/_admin/elements/field/positionen/unit]]' => 'Einheit',
+	'[[/_admin/elements/field/positionen/unit_code]]' => 'Einheit der E-Rechnung',
 	'[[/_admin/elements/field/positionen/price]]' => 'Preis (netto)',
 	'[[/_admin/elements/field/positionen/vat]]' => 'Steuersatz',
 	'[[/_admin/elements/field/positionen/hidden]]' => 'Ausgeblendet',
 	'[[/_admin/elements/field/positionen/sort]]' => 'Reihenfolge',
-	'[[/_admin/elements/type/positionen/hint]]' => 'Was Du verkaufst: Die Texte gelten je Sprache, Preis und Steuersatz für alle. Ausgeblendet nimmt eine Position aus dem Editor der Belege und von der Seite; steht Ausgeblendet auf Nein, ist sie angeboten.',
+	'[[/_admin/elements/type/positionen/hint]]' => 'Was Du verkaufst: Die Texte gelten je Sprache, Preis und Steuersatz für alle. Die Einheit der E-Rechnung ist eines der Kürzel H87 Stück, HUR Stunde, MIN Minute, DAY Tag, WEE Woche, MON Monat, LS Pauschale, C62 Einheit, KMT Kilometer. Ausgeblendet nimmt eine Position aus dem Editor der Belege und von der Seite; steht Ausgeblendet auf Nein, ist sie angeboten.',
 
 	// The Elements panel's own words for the type Projekte - the workbench's, not the site's (listed in the unit's blacklist)
 	'[[/_admin/elements/field/projekte/title]]' => 'Titel',

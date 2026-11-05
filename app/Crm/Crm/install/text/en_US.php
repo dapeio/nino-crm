@@ -69,11 +69,12 @@ return [
 	'[[/_admin/elements/field/positionen/title]]' => 'Title',
 	'[[/_admin/elements/field/positionen/description]]' => 'Description',
 	'[[/_admin/elements/field/positionen/unit]]' => 'Unit',
+	'[[/_admin/elements/field/positionen/unit_code]]' => 'Unit of the electronic invoice',
 	'[[/_admin/elements/field/positionen/price]]' => 'Price (net)',
 	'[[/_admin/elements/field/positionen/vat]]' => 'VAT rate',
 	'[[/_admin/elements/field/positionen/hidden]]' => 'Hidden',
 	'[[/_admin/elements/field/positionen/sort]]' => 'Order',
-	'[[/_admin/elements/type/positionen/hint]]' => 'What you sell: the texts are per language, price and VAT rate are the same for all. Hidden takes an item out of the editor of the documents and off the page; with Hidden at No it is offered.',
+	'[[/_admin/elements/type/positionen/hint]]' => 'What you sell: the texts are per language, price and VAT rate are the same for all. The unit of the electronic invoice is one of the codes H87 piece, HUR hour, MIN minute, DAY day, WEE week, MON month, LS lump sum, C62 one, KMT kilometre. Hidden takes an item out of the editor of the documents and off the page; with Hidden at No it is offered.',
 
 	// The Elements panel's own words for the type Projekte - the workbench's, not the site's (listed in the unit's blacklist)
 	'[[/_admin/elements/field/projekte/title]]' => 'Title',

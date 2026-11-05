@@ -15,7 +15,7 @@ declare(strict_types=1);
  *											  fixed                   the document is no draft any more
  *											  state                   the state does not allow it
  *											  date:<field>, period    a date that is none; a period of one day or from after to
- *											  long:<field>, format:<field>   notes, inputs, template_key; for the documents without lines also title, and lines
+ *											  long:<field>, format:<field>   notes, inputs, template_key, buyer_reference; for the documents without lines also title, and lines
  *											  empty:title             a document without lines has no title
  *											  reverse                 a reverse charge where the document has VAT mode small_business
  *											  lines, total            more than MAX_LINES lines; a net total past Money::MAX_TOTAL
@@ -23,12 +23,14 @@ declare(strict_types=1);
  *											  pdf, template, inputs:<name>, empty    at finalise: Pdf is off; no template of the tag; a required input is
  *											                          missing; the document has no line
  *											  number                  the number format is none or the number is taken
- *											  render, exists:<path>, write   the PDF could not be made, is there already (at that path), could not be written
+ *											  render, exists:<path>, write   the PDF could not be made, is there already (at that path), could not be written; exists:<path> and write are also what the electronic invoice (XRechnung) is refused with, its path ending in .xml
  *											  address, limit          at release: the site has no address to link to; the cap of mails an hour was reached (nothing changed)
  *											  pending, days, field, account, sign   at requestSignature: a request is waiting; the days are none; the template has no signature
  *											                          block for a member (Sign says so); the account is none of the client's; Sign, Pdf or Members is off
  *											  sign:<code>             Sign refused with template, input, render or write
  *											  released, mail          at remind(): the invoice is not released to the portal; at remindSignature(): the member was not mailed
+ *											Finalising an invoice or a credit note of a business client also writes its electronic invoice beside the PDF, where XRechnung::lacks() says nothing is
+ *											missing; otherwise the document keeps the list of what was missing (xml_lacks) and is finalised without a file. A finalised document never gets one later.
  *											A database failure is a \PDOException the caller answers. Beside the steps there are readings for the surface: overdue(), summary(), needs()
  *											(what needs the owner), recent(), order() (the customer orders an offer in the portal: the record of Records and the step to accepted in one transaction), and two things made of a document: copy() (a draft of it) and preview() (the PDF of a draft, stored nowhere).
  */
@@ -39,6 +41,7 @@ use Crm\Documents\Mail;
 use Crm\Documents\Money;
 use Crm\Documents\Numbers;
 use Crm\Documents\Render;
+use Crm\Documents\XRechnung;
 
 class Documents {
 
@@ -73,8 +76,14 @@ class Documents {
 	// How many days an order of the portal that no invoice has followed stays among the things that need the owner
 	public const int ORDER_DAYS = 14;
 
-	// The fields of the client that are frozen into a finalised document
-	private const array CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'number', 'vat_id', 'email' ];
+	// The fields of the client that are frozen into a finalised document: business is frozen as 1 or 0, the others as text. The electronic invoice
+	// reads the frozen client, so what it says is what the client was when the document was finalised
+	private const array CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'number', 'vat_id', 'email', 'business', 'buyer_reference' ];
+
+	public const int MAX_REFERENCE = 100;
+
+	// The categories that have a buyer reference of their own: those that can be an electronic invoice
+	public const array REFERENCING = [ 'invoice', 'credit' ];
 
 	/**
 	 *	The documents, the newest first
@@ -194,8 +203,8 @@ class Documents {
 		$document['project_title'] = $document['project'] === '' ? '' : (string) ( Projekte::get( $appData, $document['project'] )['title'] ?? '' );
 		$document['lines'] = array_map( [ self::class, 'shapeLine' ], Db::rows( $appData, 'SELECT * FROM document_lines WHERE document_id = :id ORDER BY sort, id', [ 'id' => $id ] ) );
 		$document['client'] = $document['state'] === 'draft' ? Clients::get( $appData, $document['client_id'] ) : $document['client_frozen'];
-		$parent = $document['parent_id'] === null ? null : Db::row( $appData, 'SELECT id, number, title, category, state FROM documents WHERE id = :id', [ 'id' => $document['parent_id'] ] );
-		$document['parent'] = $parent === null ? null : [ 'id' => (int) $parent['id'], 'number' => (string) ( $parent['number'] ?? '' ), 'title' => (string) $parent['title'], 'category' => $parent['category'], 'state' => $parent['state'] ];
+		$parent = $document['parent_id'] === null ? null : Db::row( $appData, 'SELECT id, number, title, category, state, date FROM documents WHERE id = :id', [ 'id' => $document['parent_id'] ] );
+		$document['parent'] = $parent === null ? null : [ 'id' => (int) $parent['id'], 'number' => (string) ( $parent['number'] ?? '' ), 'date' => (string) $parent['date'], 'title' => (string) $parent['title'], 'category' => $parent['category'], 'state' => $parent['state'] ];
 		$document['parent_number'] = $document['parent']['number'] ?? '';
 		$document['children'] = array_map( static fn( array $child ): array => [ 'id' => (int) $child['id'], 'number' => (string) ( $child['number'] ?? '' ), 'title' => (string) $child['title'], 'category' => $child['category'], 'state' => $child['state'], 'gross' => (int) $child['gross'] ],
 			Db::rows( $appData, 'SELECT id, number, title, category, state, gross FROM documents WHERE parent_id = :id ORDER BY id', [ 'id' => $id ] ) );
@@ -247,6 +256,7 @@ class Documents {
 		$base = [
 			'category' => $category, 'client_id' => $clientId, 'parent_id' => $parentId, 'vat_mode' => Settings::get( $appData, 'vat_mode' ), 'reverse_charge' => false, 'date' => $date, 'notes' => '', 'title' => '',
 			'template_key' => '', 'inputs' => [], 'period_from' => null, 'period_to' => null, 'due_date' => null, 'valid_until' => null, 'lines' => [], 'project' => '',
+			'buyer_reference' => in_array( $category, self::REFERENCING, true ) === true ? $client['buyer_reference'] : '',
 		];
 
 		if( is_string( $date ) === true && self::validDate( $date ) === true && in_array( $category, self::PLAIN, true ) === false ) {
@@ -307,6 +317,11 @@ class Documents {
 				return 'inactive';
 		}
 
+		// The reference of the new client takes the place of the old client's - not of one the person typed
+		if( isset( $input['client_id'] ) === true && $input['client_id'] !== $current['client_id'] && array_key_exists( 'buyer_reference', $input ) === false && is_array( $current['client'] ) === true
+			&& $current['buyer_reference'] === $current['client']['buyer_reference'] && ( $next = Clients::get( $appData, $input['client_id'] ) ) !== null )
+			$input['buyer_reference'] = $next['buyer_reference'];
+
 		$values = self::clean( $appData, $input, $current );
 
 		if( is_string( $values ) === true )
@@ -325,7 +340,7 @@ class Documents {
 			}
 
 			$pdo->prepare( 'UPDATE documents SET client_id = :client_id, parent_id = :parent_id, title = :title, date = :date, due_date = :due_date, valid_until = :valid_until, period_from = :period_from, period_to = :period_to,
-				reverse_charge = :reverse_charge, net = :net, vat = :vat, gross = :gross, template_key = :template_key, inputs_json = :inputs_json, notes = :notes, project = :project, updated = :now WHERE id = :id' )
+				reverse_charge = :reverse_charge, net = :net, vat = :vat, gross = :gross, template_key = :template_key, inputs_json = :inputs_json, notes = :notes, project = :project, buyer_reference = :buyer_reference, updated = :now WHERE id = :id' )
 				->execute( [ 'id' => $id, 'now' => gmdate( self::TIME ) ] + self::columns( $values ) );
 
 			self::writeLines( $pdo, $id, $values['lines'], $values['amounts'] );
@@ -456,7 +471,7 @@ class Documents {
 	public static function finalise( array &$appData, int $id ): array|string {
 
 		$pdo = Db::pdo( $appData );
-		$written = '';
+		$written = [];
 		$pdo->exec( 'BEGIN IMMEDIATE' );
 
 		try {
@@ -468,9 +483,10 @@ class Documents {
 			throw $e;
 		}
 
-		// Whatever finaliseIn() refuses with came before the PDF was written: there is no file to take back
+		// Most of what finaliseIn() refuses with came before the PDF was written; the files of the one that comes after it (the electronic invoice could not be written) are taken back
 		if( is_string( $outcome ) === true ) {
 			$pdo->exec( 'ROLLBACK' );
+			self::discard( $appData, $written );
 			return $outcome;
 		}
 
@@ -837,10 +853,10 @@ class Documents {
 
 			// A rate the setting does not list is refused by add(), as line:<i>:rate:vat_rate
 			$rate = $vatMode === 'small_business' || $reverse === true ? 0 : $line['vat_rate'];
-			$lines[] = [ 'title' => $line['title'], 'description' => $line['description'], 'unit' => $line['unit'], 'qty' => $line['qty'], 'price' => $line['price_net'], 'vat_rate' => $rate ];
+			$lines[] = [ 'title' => $line['title'], 'description' => $line['description'], 'unit' => $line['unit'], 'unit_code' => $line['unit_code'], 'qty' => $line['qty'], 'price' => $line['price_net'], 'vat_rate' => $rate ];
 		}
 
-		return self::add( $appData, $source['category'], $source['client_id'], $input + [ 'lines' => $lines, 'reverse_charge' => $reverse ] );
+		return self::add( $appData, $source['category'], $source['client_id'], $input + [ 'lines' => $lines, 'reverse_charge' => $reverse, 'buyer_reference' => $source['buyer_reference'] ] );
 	}
 
 	/**
@@ -923,11 +939,7 @@ class Documents {
 		if( $client === null )
 			return 'unknown';
 
-		$frozen = [];
-
-		foreach( self::CLIENT_FIELDS as $field )
-			$frozen[$field] = (string) $client[$field];
-
+		$frozen = self::freeze( $client );
 		$plain = in_array( $document['category'], self::PLAIN, true );
 
 		if( $plain === true )
@@ -1176,7 +1188,7 @@ class Documents {
 	 *	@param		int				$clientId
 	 *	@param		string		$project			Only the documents of this project ('' for all of them)
 	 *
-	 *	@return 	array											id, category, number, title, state, expired, date, valid_until, sign_id, sign_state, project, project_title, released_at
+	 *	@return 	array											id, category, number, title, state, expired, date, valid_until, sign_id, sign_state, project, project_title, released_at, xml (whether there is an electronic invoice to download)
 	 */
 	public static function released( array &$appData, int $clientId, string $project = '' ): array {
 
@@ -1188,7 +1200,7 @@ class Documents {
 		if( $project !== '' )
 			$params['project'] = $project;
 
-		$rows = Db::rows( $appData, 'SELECT id, category, number, title, state, date, valid_until, sign_id, sign_state, project, released_at FROM documents
+		$rows = Db::rows( $appData, 'SELECT id, category, number, title, state, date, valid_until, sign_id, sign_state, project, released_at, xml_path FROM documents
 			WHERE client_id = :client AND released = 1 AND state != \'draft\' AND pdf_path != \'\''. ( $project !== '' ? ' AND project = :project' : '' ). ' ORDER BY date DESC, id DESC', $params );
 		$titles = array_filter( $rows, static fn( array $row ): bool => (string) $row['project'] !== '' ) === [] ? [] : Projekte::titles( $appData );
 
@@ -1196,6 +1208,7 @@ class Documents {
 			'id' => (int) $row['id'], 'category' => (string) $row['category'], 'number' => (string) ( $row['number'] ?? '' ), 'title' => (string) $row['title'], 'state' => (string) $row['state'],
 			'expired' => self::expired( $row, $today ), 'date' => (string) $row['date'], 'valid_until' => (string) ( $row['valid_until'] ?? '' ), 'sign_id' => (string) $row['sign_id'], 'sign_state' => (string) $row['sign_state'],
 			'project' => (string) $row['project'], 'project_title' => (string) ( $titles[(string) $row['project']] ?? '' ), 'released_at' => (string) ( $row['released_at'] ?? '' ),
+			'xml' => (string) $row['xml_path'] !== '',
 		], $rows );
 	}
 
@@ -1427,11 +1440,11 @@ class Documents {
 	 *	@param		array 		&$appData
 	 *	@param		\PDO			$pdo
 	 *	@param		int				$id
-	 *	@param		string		&$written			The virtual path of the PDF this call wrote, for the caller to take back
+	 *	@param		array 		&$written			The virtual paths of the files this call wrote (the PDF, the electronic invoice), for the caller to take back
 	 *
 	 *	@return 	true|string
 	 */
-	private static function finaliseIn( array &$appData, \PDO $pdo, int $id, string &$written ): true|string {
+	private static function finaliseIn( array &$appData, \PDO $pdo, int $id, array &$written ): true|string {
 
 		$document = self::get( $appData, $id );
 
@@ -1463,11 +1476,7 @@ class Documents {
 			if( $input['required'] === true && trim( (string) ( $document['inputs'][$input['name']] ?? '' ) ) === '' )
 				return 'inputs:'. $input['name'];
 
-		$frozen = [];
-
-		foreach( self::CLIENT_FIELDS as $field )
-			$frozen[$field] = (string) $client[$field];
-
+		$frozen = self::freeze( $client );
 		$now = gmdate( self::TIME );
 
 		// A document without lines has no number and no totals: the PDF is named by its category and id, and a contract quotes its offer
@@ -1483,7 +1492,7 @@ class Documents {
 			if( is_string( $made ) === true )
 				return $made;
 
-			$written = $made['path'];
+			$written[] = $made['path'];
 
 			$pdo->prepare( 'UPDATE documents SET state = \'open\', client_json = :client, finalised = :now, updated = :now, pdf_path = :path, pdf_sha256 = :sha WHERE id = :id AND state = \'draft\'' )
 				->execute( [ 'client' => json_encode( $frozen, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR ), 'now' => $now, 'path' => $made['path'], 'sha' => $made['sha256'], 'id' => $id ] );
@@ -1516,11 +1525,16 @@ class Documents {
 		if( is_string( $made ) === true )
 			return $made;
 
-		$written = $made['path'];
+		$written[] = $made['path'];
+		$electronic = self::electronic( $appData, $document, $lines, $frozen, $made['path'], $written );
 
-		$pdo->prepare( 'UPDATE documents SET number = :number, state = \'open\', net = :net, vat = :vat, gross = :gross, client_json = :client, finalised = :now, updated = :now, pdf_path = :path, pdf_sha256 = :sha WHERE id = :id AND state = \'draft\'' )
+		if( is_string( $electronic ) === true )
+			return $electronic;
+
+		$pdo->prepare( 'UPDATE documents SET number = :number, state = \'open\', net = :net, vat = :vat, gross = :gross, client_json = :client, finalised = :now, updated = :now, pdf_path = :path, pdf_sha256 = :sha,
+			xml_path = :xml_path, xml_sha256 = :xml_sha, xml_lacks = :xml_lacks WHERE id = :id AND state = \'draft\'' )
 			->execute( [ 'number' => $number, 'net' => $totals['net'], 'vat' => $totals['vat'], 'gross' => $totals['gross'], 'client' => json_encode( $frozen, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR ),
-				'now' => $now, 'path' => $made['path'], 'sha' => $made['sha256'], 'id' => $id ] );
+				'now' => $now, 'path' => $made['path'], 'sha' => $made['sha256'], 'id' => $id ] + $electronic );
 
 		// A credit note that takes the whole of an invoice back cancels it; one that takes a part leaves its state
 		if( $parent !== null && (int) $parent['gross'] === -$totals['gross'] )
@@ -1530,19 +1544,75 @@ class Documents {
 	}
 
 	/**
-	 *	Take back a PDF a failed finalise() wrote
+	 *	The electronic invoice of a document that is being finalised: written beside its PDF where the document is an invoice or a credit of a business and nothing is
+	 *	missing, otherwise only the list of what is missing is kept. Nothing is made up and no document is held back: it is finalised either way
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		string		$path					'' for none
+	 *	@param		array 		$document			With its number and totals; its lines as get() has them
+	 *	@param		array 		$lines				The lines with their amounts
+	 *	@param		array 		$frozen				The client as freeze() has it
+	 *	@param		string		$pdfPath			The virtual path of the PDF just written, which names the file
+	 *	@param		array 		&$written			Gets the path of the file this call wrote
+	 *
+	 *	@return 	array|string							The values of xml_path, xml_sha and xml_lacks to store; or exists:<path>, write as XRechnung::make() has them
+	 */
+	private static function electronic( array &$appData, array $document, array $lines, array $frozen, string $pdfPath, array &$written ): array|string {
+
+		$document['client'] = $frozen;
+		$document['lines'] = $lines;
+
+		if( XRechnung::applies( $document ) === false )
+			return [ 'xml_path' => '', 'xml_sha' => '', 'xml_lacks' => '' ];
+
+		$lacks = XRechnung::lacks( $appData, $document );
+
+		if( $lacks !== [] )
+			return [ 'xml_path' => '', 'xml_sha' => '', 'xml_lacks' => json_encode( $lacks, JSON_THROW_ON_ERROR ) ];
+
+		$made = XRechnung::make( $appData, $document, $pdfPath );
+
+		if( is_string( $made ) === true )
+			return $made;
+
+		$written[] = $made['path'];
+
+		return [ 'xml_path' => $made['path'], 'xml_sha' => $made['sha256'], 'xml_lacks' => '[]' ];
+	}
+
+	/**
+	 *	The client as a finalised document keeps it
+	 *
+	 *	@param		array 		$client				As Clients::get() has it
+	 *
+	 *	@return 	array											The fields of CLIENT_FIELDS as text; business is '1' or '0'
+	 */
+	private static function freeze( array $client ): array {
+
+		$frozen = [];
+
+		foreach( self::CLIENT_FIELDS as $field )
+			$frozen[$field] = $field === 'business' ? ( $client[$field] === true ? '1' : '0' ) : (string) $client[$field];
+
+		return $frozen;
+	}
+
+	/**
+	 *	Take back the files a failed finalise() wrote (the PDF and the electronic invoice)
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$paths				The virtual paths; none for nothing written
 	 *
 	 *	@return 	void
 	 */
-	private static function discard( array &$appData, string $path ): void {
+	private static function discard( array &$appData, array $paths ): void {
 
-		$file = $path === '' ? null : Render::file( $appData, $path );
+		foreach( $paths as $path ) {
 
-		if( $file !== null )
-			unlink( $file );
+			$file = str_ends_with( $path, '.xml' ) === true ? XRechnung::file( $appData, $path ) : Render::file( $appData, $path );
+
+			if( $file !== null )
+				unlink( $file );
+		}
 	}
 
 	/**
@@ -1588,6 +1658,7 @@ class Documents {
 			'category' => $category, 'client_id' => $source['client_id'], 'parent_id' => $source['id'], 'title' => '', 'vat_mode' => $vatMode, 'reverse_charge' => $reverse,
 			'date' => $date, 'due_date' => $category === 'invoice' ? self::dayAfter( $appData, $date, 'payment_days' ) : null, 'valid_until' => null, 'period_from' => $source['period_from'], 'period_to' => $source['period_to'],
 			'template_key' => '', 'inputs' => [], 'notes' => '', 'lines' => $lines, 'amounts' => $totals['amounts'], 'project' => self::projectKept( $appData, (string) $source['project'], $source['client_id'] ),
+			'buyer_reference' => $category === 'credit' ? $source['buyer_reference'] : $client['buyer_reference'],
 		] + $totals;
 
 		return (array) self::get( $appData, self::insert( $appData, $values, 'draft', $joined ) );
@@ -1682,6 +1753,19 @@ class Documents {
 			return 'long:notes';
 
 		$values['notes'] = $notes;
+
+		// A buyer reference belongs to the documents that can be an electronic invoice; the others keep none
+		$reference = $input['buyer_reference'] ?? $current['buyer_reference'] ?? '';
+
+		if( is_string( $reference ) === false || mb_check_encoding( $reference, 'UTF-8' ) === false || preg_match( '/[\p{C}]/u', $reference ) === 1 )
+			return 'format:buyer_reference';
+
+		$reference = trim( $reference );
+
+		if( mb_strlen( $reference, 'UTF-8' ) > self::MAX_REFERENCE )
+			return 'long:buyer_reference';
+
+		$values['buyer_reference'] = in_array( $values['category'], self::REFERENCING, true ) === true ? $reference : '';
 
 		$project = $input['project'] ?? $current['project'] ?? '';
 
@@ -1797,8 +1881,8 @@ class Documents {
 			$pdo->exec( 'BEGIN IMMEDIATE' );
 
 		try {
-			$pdo->prepare( 'INSERT INTO documents ( category, client_id, parent_id, title, state, date, due_date, valid_until, period_from, period_to, vat_mode, reverse_charge, net, vat, gross, template_key, inputs_json, notes, project, created, updated )
-				VALUES ( :category, :client_id, :parent_id, :title, :state, :date, :due_date, :valid_until, :period_from, :period_to, :vat_mode, :reverse_charge, :net, :vat, :gross, :template_key, :inputs_json, :notes, :project, :now, :now )' )
+			$pdo->prepare( 'INSERT INTO documents ( category, client_id, parent_id, title, state, date, due_date, valid_until, period_from, period_to, vat_mode, reverse_charge, net, vat, gross, template_key, inputs_json, notes, project, buyer_reference, created, updated )
+				VALUES ( :category, :client_id, :parent_id, :title, :state, :date, :due_date, :valid_until, :period_from, :period_to, :vat_mode, :reverse_charge, :net, :vat, :gross, :template_key, :inputs_json, :notes, :project, :buyer_reference, :now, :now )' )
 				->execute( [ 'category' => $values['category'], 'vat_mode' => $values['vat_mode'], 'state' => $state, 'now' => $now ] + self::columns( $values ) );
 
 			$id = (int) $pdo->lastInsertId();
@@ -1831,6 +1915,7 @@ class Documents {
 			'period_from' => $values['period_from'], 'period_to' => $values['period_to'], 'reverse_charge' => $values['reverse_charge'] === true ? 1 : 0,
 			'net' => $values['net'], 'vat' => $values['vat'], 'gross' => $values['gross'], 'template_key' => $values['template_key'],
 			'inputs_json' => json_encode( $values['inputs'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_FORCE_OBJECT | JSON_THROW_ON_ERROR ), 'notes' => $values['notes'], 'project' => $values['project'],
+			'buyer_reference' => $values['buyer_reference'],
 		];
 	}
 
@@ -1847,10 +1932,10 @@ class Documents {
 	private static function writeLines( \PDO $pdo, int $id, array $lines, array $amounts ): void {
 
 		$pdo->prepare( 'DELETE FROM document_lines WHERE document_id = :id' )->execute( [ 'id' => $id ] );
-		$statement = $pdo->prepare( 'INSERT INTO document_lines ( document_id, sort, title, description, qty, unit, price_net, vat_rate, amount_net ) VALUES ( :id, :sort, :title, :description, :qty, :unit, :price_net, :vat_rate, :amount )' );
+		$statement = $pdo->prepare( 'INSERT INTO document_lines ( document_id, sort, title, description, qty, unit, unit_code, price_net, vat_rate, amount_net ) VALUES ( :id, :sort, :title, :description, :qty, :unit, :unit_code, :price_net, :vat_rate, :amount )' );
 
 		foreach( $lines as $position => $line )
-			$statement->execute( [ 'id' => $id, 'sort' => $position + 1, 'title' => $line['title'], 'description' => $line['description'], 'qty' => $line['qty'], 'unit' => $line['unit'],
+			$statement->execute( [ 'id' => $id, 'sort' => $position + 1, 'title' => $line['title'], 'description' => $line['description'], 'qty' => $line['qty'], 'unit' => $line['unit'], 'unit_code' => $line['unit_code'],
 				'price_net' => $line['price_net'], 'vat_rate' => $line['vat_rate'], 'amount' => $amounts[$position] ] );
 	}
 
@@ -1873,6 +1958,8 @@ class Documents {
 		$row['reminded_at'] = (string) ( $row['reminded_at'] ?? '' );
 		$row['reminded_mail'] = (int) ( $row['reminded_mail'] ?? 0 ) === 1;
 		$row['number'] = (string) ( $row['number'] ?? '' );
+		$lacks = json_decode( (string) $row['xml_lacks'], true );
+		$row['xml_lacks'] = is_array( $lacks ) === true ? array_values( array_filter( $lacks, 'is_string' ) ) : [];
 		$row['inputs'] = is_array( $inputs ) === true ? $inputs : [];
 		$row['client_frozen'] = is_array( $frozen ) === true ? $frozen : [];
 		$row['expired'] = self::expired( $row, date( 'Y-m-d' ) );

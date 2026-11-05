@@ -20,6 +20,7 @@ return [
 	'[[/project/crm-documents/state/signed]]' => 'signed',
 	'[[/project/crm-documents/state/expired]]' => 'expired',
 	'[[/project/crm-documents/list/download]]' => 'Download',
+	'[[/project/crm-documents/list/xml]]' => 'E-invoice (XML)',
 	'[[/project/crm-documents/list/sign]]' => 'Sign now',
 	'[[/project/crm-documents/list/signed]]' => 'Signed file',
 	'[[/project/crm-documents/list/empty]]' => 'There are no documents for you yet.',

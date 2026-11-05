@@ -5,7 +5,7 @@ declare(strict_types=1);
  *												(\Crm\Positionen) or typed, and what it holds is its own from then on.
  *
  *												clean() answers the values or a string: 'long:<field>', 'format:<field>' (a value that is no text),
- *												'empty:title', 'amount:price' or 'rate:vat_rate' (the field a value was refused for).
+ *												'empty:title', 'amount:price' or 'rate:vat_rate' (the field a value was refused for; 'format:unit_code' for a code that is none of UNIT_CODES).
  */
 namespace Crm\Documents;
 
@@ -16,14 +16,18 @@ class Lines {
 	// The texts of a line with the longest value each takes
 	public const array FIELDS = [ 'title' => 200, 'description' => 2000, 'unit' => 20 ];
 
+	// The unit codes of UN/ECE Recommendation 20 a line may carry, none being the other possibility: the electronic invoice names the unit by its code (the words of
+	// the screens are the surface's, unitcode.<code>); the text unit stays for the PDF. H87 piece, HUR hour, MIN minute, DAY day, WEE week, MON month, LS lump sum, C62 one, KMT kilometre
+	public const array UNIT_CODES = [ 'H87', 'HUR', 'MIN', 'DAY', 'WEE', 'MON', 'LS', 'C62', 'KMT' ];
+
 	/**
 	 *	The fields of a line: trimmed and checked
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$input				title, description, unit, price (text, or cents as an int), vat_rate
+	 *	@param		array 		$input				title, description, unit, unit_code (one of UNIT_CODES, or nothing), price (text, or cents as an int), vat_rate
 	 *	@param		string		$vatMode			Whose rates the rate is held to
 	 *
-	 *	@return 	array|string							title, description, unit, price_net, vat_rate; or why not
+	 *	@return 	array|string							title, description, unit, unit_code, price_net, vat_rate; or why not
 	 */
 	public static function clean( array &$appData, array $input, string $vatMode ): array|string {
 
@@ -46,6 +50,13 @@ class Lines {
 
 		if( $values['title'] === '' )
 			return 'empty:title';
+
+		$code = $input['unit_code'] ?? '';
+
+		if( is_string( $code ) === false || ( $code !== '' && in_array( $code, self::UNIT_CODES, true ) === false ) )
+			return 'format:unit_code';
+
+		$values['unit_code'] = $code;
 
 		$price = self::amount( $input['price'] ?? 0, 'price' );
 

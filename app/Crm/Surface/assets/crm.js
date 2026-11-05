@@ -31,9 +31,11 @@
 
 	const PLAIN = [ 'contract', 'privacy', 'information' ];
 	const SIGNABLE = [ 'contract', 'privacy' ];
+	const REFERENCING = [ 'invoice', 'credit' ];
+	const UNIT_CODES = [ 'H87', 'HUR', 'MIN', 'DAY', 'WEE', 'MON', 'LS', 'C62', 'KMT' ];
 	const PAGE_SIZE = 50;
 	const NEW_KINDS = [ 'invoice', 'offer', 'contract', 'privacy', 'information' ];
-	const CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id' ];
+	const CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id', 'buyer_reference' ];
 	const CLIENT_TABS = [ 'belege', 'projekte', 'portal', 'notizen' ];
 	const RELOAD_KEY = 'crm-reloaded';
 	const AUTOSAVE_MS = 800;
@@ -331,9 +333,9 @@
 	const lineOf = function( line, rate ) {
 
 		if( line === undefined )
-			return { title : '', description : '', unit : '', qty : '1', price : '', vat_rate : rate || 0 };
+			return { title : '', description : '', unit : '', unit_code : '', qty : '1', price : '', vat_rate : rate || 0 };
 
-		return { title : line.title, description : line.description, unit : line.unit, qty : money().formatQty( line.qty ), price : money().format( line.price_net ), vat_rate : line.vat_rate };
+		return { title : line.title, description : line.description, unit : line.unit, unit_code : line.unit_code, qty : money().formatQty( line.qty ), price : money().format( line.price_net ), vat_rate : line.vat_rate };
 	};
 
 	/**
@@ -373,6 +375,7 @@
 			id : doc.id, category : doc.category, vat_mode : doc.vat_mode, client_id : String( doc.client_id ), parent_id : doc.parent_id === null ? '' : String( doc.parent_id ),
 			date : doc.date, due_date : doc.due_date || '', valid_until : doc.valid_until || '', period_from : doc.period_from || '', period_to : doc.period_to || '',
 			template_key : doc.template_key, inputs : Object.assign( {}, doc.inputs ), reverse_charge : doc.reverse_charge === true, title : doc.title, notes : doc.notes, project : doc.project || '',
+			buyer_reference : doc.buyer_reference || '', erechnung : doc.erechnung || null,
 			lines : doc.lines.map( function( line ) { return lineOf( line ) } ), updated : doc.updated, dirty : false, templates : [],
 		};
 	};
@@ -393,7 +396,7 @@
 		return {
 			id : 0, category : category, vat_mode : settings.vat_mode, client_id : '', parent_id : offer || '', date : day,
 			due_date : category === 'invoice' ? daysAfter( day, settings.payment_days ) : '', valid_until : category === 'offer' ? daysAfter( day, settings.offer_days ) : '',
-			period_from : '', period_to : '', template_key : '', inputs : {}, reverse_charge : false, title : '', notes : '', project : '',
+			period_from : '', period_to : '', template_key : '', inputs : {}, reverse_charge : false, title : '', notes : '', project : '', buyer_reference : '', erechnung : null,
 			lines : [], updated : '', dirty : false, templates : [],
 		};
 	};
@@ -441,8 +444,11 @@
 			data.valid_until = draft.valid_until;
 
 		data.lines = draft.lines.map( function( line ) {
-			return { title : line.title, description : line.description, unit : line.unit, qty : line.qty, price : line.price, vat_rate : line.vat_rate };
+			return { title : line.title, description : line.description, unit : line.unit, unit_code : line.unit_code, qty : line.qty, price : line.price, vat_rate : line.vat_rate };
 		} );
+
+		if( REFERENCING.includes( draft.category ) === true )
+			data.buyer_reference = draft.buyer_reference;
 
 		return data;
 	};
@@ -473,6 +479,15 @@
 	 */
 	const pdfUrl = function( doc, saved ) {
 		return state.base+ '/.crm/pdf/'+ doc.id+ ( saved === true ? '?download=1' : '' );
+	};
+
+	/**
+	 *	@param		{Object}	doc
+	 *
+	 *	@return		{string}									The address of its electronic invoice, which the server answers as a file to save
+	 */
+	const xmlUrl = function( doc ) {
+		return state.base+ '/.crm/xml/'+ doc.id;
 	};
 
 
@@ -1679,8 +1694,12 @@
 		const items = [
 			{ label : t( 'menu.pdf' ), href : pdfUrl( doc ) },
 			{ label : t( 'menu.download' ), href : pdfUrl( doc, true ) },
-			'sep',
 		];
+
+		if( doc.xml_url !== undefined && doc.xml_url !== '' )
+			items.push( { label : t( 'menu.xml' ), href : xmlUrl( doc ) } );
+
+		items.push( 'sep' );
 
 		if( doc.state === 'open' )
 			items.push( { label : t( 'menu.mark-sent' ), run : function() { markSent( view ) } } );
@@ -1859,6 +1878,40 @@
 		const template = view.templates.find( function( one ) { return one.key === view.document.template_key } );
 
 		return template === undefined ? view.document.template_key : template.name;
+	};
+
+	/**
+	 *	What is missing of the electronic invoice of a document, as the sums box of the editor and the card of a finalised document say it
+	 *
+	 *	@param		{Object}	info						The document's erechnung: xml and lacks ( [ { key, text } ] )
+	 *
+	 *	@return		{Object}
+	 */
+	const checklist = function( info ) {
+
+		if( info.lacks.length === 0 )
+			return el( 'p', { class: 'state-note erechnung', id: 'erechnung', dataset: { state: 'complete' }, text: t( 'erechnung.complete' ) } );
+
+		return el( 'div', { class: 'erechnung', id: 'erechnung', dataset: { state: 'lacks' } },
+			el( 'p', { class: 'state-note bad', text: t( 'erechnung.lacks' ) } ),
+			el( 'ul', { class: 'list-mini' }, info.lacks.map( function( one ) { return el( 'li', { dataset: { key: one.key }, text: one.text } ) } ) ) );
+	};
+
+	/**
+	 *	@param		{Object}	doc							A finalised document
+	 *
+	 *	@return		{Object|string}							The button that saves its electronic invoice; the words and the list of what was missing where it has none; '' where it gets none
+	 */
+	const electronicOf = function( doc ) {
+
+		if( doc.erechnung === null || doc.erechnung === undefined )
+			return '';
+
+		if( doc.erechnung.xml === true )
+			return link( xmlUrl( doc ), t( 'erechnung.button' ), { class: 'btn sm', id: 'xml-download' } );
+
+		return el( 'div', { id: 'xml-none' }, el( 'span', { text: t( 'erechnung.none' ) } ),
+			el( 'ul', { class: 'list-mini' }, doc.erechnung.lacks.map( function( one ) { return el( 'li', { dataset: { key: one.key }, text: one.text } ) } ) ) );
 	};
 
 	const tabDocument = function( view ) {
@@ -2099,6 +2152,7 @@
 				[ t( 'document.from' ), doc.parent === null ? '' : link( '#beleg-'+ doc.parent.id, doc.parent.number || doc.parent.title ) ],
 				[ t( 'document.children' ), doc.children.length === 0 ? '' : el( 'span', {}, doc.children.map( function( child, index ) { return [ index === 0 ? null : ', ', link( hashOf( child ), docName( child ) ) ] } ) ) ],
 				[ t( 'document.pdf' ), doc.pdf_path === '' ? '' : external( pdfUrl( doc ), docFile( doc ) ) ],
+				[ t( 'document.xml' ), electronicOf( doc ) ],
 			] ) ) ) );
 
 		const body = el( 'div', { id: 'tab' } );
@@ -2298,9 +2352,13 @@
 				}
 
 				draft.updated = saved.updated;
+				draft.erechnung = saved.erechnung || null;
 				draft.dirty = false;
 				showSaved();
 				refresh();
+
+				if( plain === false )
+					refreshSums();
 
 				if( state.queued === true ) {
 					state.queued = false;
@@ -2563,10 +2621,33 @@
 			} );
 		};
 
+		// The buyer reference the field was last filled with by the client (or held when the editor opened): the field follows the client as long as the person has typed no other
+		let prefilled = draft.buyer_reference;
+
 		// Another client has other projects: the draft names none until one is chosen
 		const clientChanged = function() {
 			draft.project = '';
 			drawClient();
+			prefillReference();
+		};
+
+		/**
+		 *	Another client is chosen: the buyer reference of the draft follows it where the person has typed none of their own - the field is empty or holds the reference of the
+		 *	client before. The reference is part of what the list of the clients says of each
+		 *
+		 *	@return		{void}
+		 */
+		const prefillReference = function() {
+
+			const known = state.clients.find( function( one ) { return String( one.id ) === chosenClient() } );
+
+			if( REFERENCING.includes( draft.category ) === false || known === undefined || fields.buyer_reference === undefined || draft.buyer_reference !== prefilled )
+				return;
+
+			prefilled = known.buyer_reference;
+			draft.buyer_reference = prefilled;
+			fields.buyer_reference.value = prefilled;
+			touch();
 		};
 
 		clientSelect.addEventListener( 'change', clientChanged );
@@ -2602,6 +2683,11 @@
 			dl.appendChild( el( 'dd', { class: 'pair' },
 				bind( 'period_from', 'period_from', el( 'input', { id: 'f-period_from', type: 'date', value: draft.period_from, 'aria-label': t( 'field.period-from' ) } ) ),
 				bind( 'period_to', 'period_to', el( 'input', { id: 'f-period_to', type: 'date', value: draft.period_to, 'aria-label': t( 'field.period-to' ) } ) ) ) );
+
+			if( REFERENCING.includes( draft.category ) === true ) {
+				dl.appendChild( el( 'dt', {}, el( 'label', { for: 'f-buyer_reference', text: t( 'clientfield.buyer_reference' )+ ' ('+ t( 'form.optional' )+ ')' } ) ) );
+				dl.appendChild( el( 'dd', {}, bind( 'buyer_reference', 'buyer_reference', el( 'input', { id: 'f-buyer_reference', type: 'text', value: draft.buyer_reference, maxlength: '100', autocomplete: 'off' } ) ) ) );
+			}
 		}
 
 		dl.appendChild( el( 'dt', {}, el( 'label', { for: 'f-template_key', text: t( 'field.template' ) } ) ) );
@@ -2649,6 +2735,9 @@
 
 			box.appendChild( el( 'div', { class: 'row sum' }, el( 'span', { text: t( 'totals.gross' ) } ), el( 'span', { class: 'num', text: cash( totals.gross ) } ) ) );
 			box.appendChild( el( 'p', { class: 'state-note', text: draft.reverse_charge === true && regular === true ? t( 'vat.regular' )+ ' · '+ t( 'vat.reverse' ) : t( 'vat.'+ draft.vat_mode ) } ) );
+
+			if( draft.erechnung !== null )
+				box.appendChild( checklist( draft.erechnung ) );
 		};
 
 		const lineField = function( index, key, props, cls ) {
@@ -2687,7 +2776,7 @@
 				el( 'tbody', {}, draft.lines.map( function( line, index ) {
 
 					const rate = regular === true
-						? el( 'select', { 'aria-label': t( 'column.rate' ), value: String( draft.reverse_charge === true ? 0 : line.vat_rate ), disabled: draft.reverse_charge === true, on: { change: function( event ) {
+						? el( 'select', { 'aria-label': t( 'column.rate' ), class: 'rate', value: String( draft.reverse_charge === true ? 0 : line.vat_rate ), disabled: draft.reverse_charge === true, on: { change: function( event ) {
 							line.vat_rate = Number( event.target.value );
 							touch();
 							refreshSums();
@@ -2698,11 +2787,20 @@
 					if( rate !== null )
 						fields['lines.'+ index+ '.vat_rate'] = rate;
 
+					// The unit of the electronic invoice: the code of the position, which the line may change
+					const unitCode = el( 'select', { 'aria-label': t( 'column.unit-code' ), class: 'unit-code', value: line.unit_code, on: { change: function( event ) {
+						line.unit_code = event.target.value;
+						touch();
+					} } }, el( 'option', { value: '', text: t( 'unitcode.none' ) } ), UNIT_CODES.map( function( code ) { return el( 'option', { value: code, text: t( 'unitcode.'+ code.toLowerCase() ) } ) } ) );
+
+					fields['lines.'+ index+ '.unit_code'] = unitCode;
+					watch( unitCode );
+
 					return el( 'tr', { class: 'plain' },
 						el( 'td', { class: 'muted', text: String( index + 1 ) } ),
 						el( 'td', {}, lineField( index, 'title', { 'aria-label': t( 'column.title' ) } ), lineField( index, 'description', { placeholder: t( 'line.description' ), 'aria-label': t( 'column.description' ) } ) ),
 						el( 'td', {}, lineField( index, 'qty', { 'aria-label': t( 'column.qty' ) }, 'r' ) ),
-						el( 'td', {}, lineField( index, 'unit', { 'aria-label': t( 'column.unit' ) } ) ),
+						el( 'td', {}, lineField( index, 'unit', { 'aria-label': t( 'column.unit' ) } ), unitCode ),
 						el( 'td', {}, lineField( index, 'price', { 'aria-label': t( 'column.price' ) }, 'r' ) ),
 						rate === null ? null : el( 'td', {}, rate ),
 						el( 'td', { class: 'r num amount', text: '' } ),
@@ -2760,6 +2858,7 @@
 				if( item !== undefined ) {
 					line.description = item.description;
 					line.unit = item.unit;
+					line.unit_code = item.unit_code;
 					line.price = money().format( item.price_net );
 				}
 
@@ -2875,7 +2974,7 @@
 
 		const values = {};
 
-		Object.keys( form.controls ).forEach( function( name ) { values[name] = form.controls[name].value } );
+		Object.keys( form.controls ).forEach( function( name ) { values[name] = form.controls[name].type === 'checkbox' ? form.controls[name].checked : form.controls[name].value } );
 
 		return values;
 	};
@@ -2912,9 +3011,20 @@
 	 */
 	const clientControl = function( name, value, id ) {
 
-		const limit = name === 'country' ? '2' : '160';
+		const limit = name === 'country' ? '2' : ( name === 'buyer_reference' ? '100' : '160' );
 
 		return el( 'input', { id : id || 'f-'+ name, type : name === 'email' ? 'email' : 'text', value : value, maxlength : limit, autocomplete : 'off', inputmode : name === 'phone' ? 'tel' : null, list : name === 'country' ? 'countries' : null } );
+	};
+
+	/**
+	 *	The row of the form of a client that says whether it is a business, and so gets an electronic invoice
+	 *
+	 *	@param		{boolean}	on
+	 *
+	 *	@return		{Object}
+	 */
+	const businessRow = function( on ) {
+		return { name : 'business', label : t( 'clientfield.business' ), control : el( 'input', { id : 'f-business', type : 'checkbox', role : 'switch', checked : on } ), hint : t( 'clientfield.business-hint' ) };
 	};
 
 	/**
@@ -3110,12 +3220,14 @@
 				[ t( 'card.phone' ), client.phone ],
 				[ t( 'client.address' ), stacked( addressOf( client ) ) ],
 				[ t( 'client.vat' ), client.vat_id ],
+				[ t( 'card.business' ), client.business === true ? t( 'card.business-yes' ) : t( 'card.business-no' ) ],
+				[ t( 'card.buyer-reference' ), client.buyer_reference ],
 				[ t( 'card.since' ), dmy( client.created ) ],
 			] ) );
 		}
 
 		const form = formOf();
-		const rows = CLIENT_FIELDS.map( function( name ) { return { name : name, label : t( 'clientfield.'+ name ), control : clientControl( name, client[name] ) } } );
+		const rows = CLIENT_FIELDS.map( function( name ) { return { name : name, label : t( 'clientfield.'+ name ), control : clientControl( name, client[name] ) } } ).concat( [ businessRow( client.business === true ) ] );
 		const save = el( 'button', { type: 'submit', class: 'btn sm primary', id: 'client-save', title: t( 'save.shortcut' ), text: t( 'form.save' ) } );
 
 		const box = el( 'form', { class: 'card pad', id: 'master', novalidate: 'novalidate', on: { submit: function( event ) {
@@ -3167,6 +3279,7 @@
 		const data = { id : String( client.id ) };
 
 		CLIENT_FIELDS.concat( [ 'notes' ] ).forEach( function( name ) { data[name] = client[name] } );
+		data.business = client.business === true;
 
 		return Object.assign( data, over || {} );
 	};
@@ -3694,7 +3807,7 @@
 	const kundeNeu = function( where, mine ) {
 
 		const form = formOf();
-		const rows = CLIENT_FIELDS.map( function( name ) { return { name : name, label : t( 'clientfield.'+ name ), control : clientControl( name, name === 'country' ? 'DE' : '' ), hint : [ 'company', 'phone', 'vat_id' ].includes( name ) ? t( 'form.optional' ) : undefined } } );
+		const rows = CLIENT_FIELDS.map( function( name ) { return { name : name, label : t( 'clientfield.'+ name ), control : clientControl( name, name === 'country' ? 'DE' : '' ), hint : [ 'company', 'phone', 'vat_id', 'buyer_reference' ].includes( name ) ? t( 'form.optional' ) : undefined } } ).concat( [ businessRow( false ) ] );
 		const first = [
 			{ name : 'account_email', label : t( 'clientfield.account_email' ), control : el( 'input', { id : 'f-account_email', type : 'email', maxlength : '160', autocomplete : 'off' } ) },
 			{ name : 'account_name', label : t( 'clientfield.account_name' ), control : el( 'input', { id : 'f-account_name', type : 'text', maxlength : '120', autocomplete : 'off', placeholder : t( 'form.optional' ) } ) },
@@ -3988,7 +4101,7 @@
 	 *	@param		{Array}				locales
 	 *	@param		{Object}			defaults		vat and sort of a new item
 	 *
-	 *	@return		{Object}										words (locale => title, description, unit), price, vat, sort as typed, and active
+	 *	@return		{Object}										words (locale => title, description, unit), unit_code, price, vat, sort as typed, and active
 	 */
 	const positionDraftOf = function( got, locales, defaults ) {
 
@@ -4004,6 +4117,7 @@
 
 		return {
 			words : words,
+			unit_code : typeof shared.unit_code === 'string' ? shared.unit_code : '',
 			price : typeof shared.price === 'number' ? priceText( shared.price ) : '',
 			vat : typeof shared.vat === 'number' ? percentText( shared.vat ) : ( got === null ? defaults.vat : '' ),
 			active : got === null ? true : shared.hidden !== true,
@@ -4032,6 +4146,7 @@
 		const clean = function( one ) { return { title : one.title.trim(), description : one.description.trim(), unit : one.unit.trim() } };
 		const changed = {};
 		const touched = function( name ) { return isNew === true || String( read[name] ).trim() !== String( base[name] ).trim() };
+		const coded = read.unit_code !== undefined;
 
 		locales.forEach( function( locale, index ) {
 
@@ -4078,6 +4193,10 @@
 
 				if( touched( 'vat' ) === true )
 					fields.vat = rate / 100;
+
+				// The unit of the electronic invoice is posted where the type has the field, and then when it was changed (or the item is new and has one)
+				if( coded === true && touched( 'unit_code' ) === true && ( isNew === false || read.unit_code !== '' ) )
+					fields.unit_code = read.unit_code;
 
 				if( isNew === true || read.active !== base.active )
 					fields.hidden = read.active !== true;
@@ -4178,12 +4297,18 @@
 			return el( 'div', { class: 'card pad', id: 'position-lang-'+ locale, dataset: { locale: locale } }, el( 'h3', { text: index === 0 ? t( 'items.card-native', languageName( locale ) ) : languageName( locale ) } ), formList( rows, form ) );
 		};
 
-		const shared = el( 'div', { class: 'card pad', id: 'position-shared' }, el( 'h3', { text: t( 'items.card-shared' ) } ), formList( [
+		const unitCodes = list.unit_code === true
+			? el( 'select', { id: 'f-unit_code', value: draft.unit_code }, el( 'option', { value: '', text: t( 'unitcode.none' ) } ), UNIT_CODES.map( function( code ) { return el( 'option', { value: code, text: t( 'unitcode.'+ code.toLowerCase() ) } ) } ) )
+			: null;
+
+		const shared = el( 'div', { class: 'card pad', id: 'position-shared' }, el( 'h3', { text: t( 'items.card-shared' ) } ), formList( ( unitCodes === null ? [] : [
+			{ name : 'unit_code', label : t( 'items.f-unit-code' ), control : unitCodes, hint : t( 'items.hint-unit-code' ) },
+		] ).concat( [
 			{ name : 'price', label : t( 'items.f-price' ), control : el( 'input', { id: 'f-price', type: 'text', value: draft.price, inputmode: 'decimal', autocomplete: 'off', class: 'short' } ), hint : t( 'items.hint-price' ) },
 			{ name : 'vat', label : t( 'items.f-vat' ), control : el( 'input', { id: 'f-vat', type: 'text', value: draft.vat, inputmode: 'decimal', autocomplete: 'off', class: 'short' } ), hint : t( 'items.hint-vat' ) },
 			{ name : 'active', label : t( 'items.f-active' ), control : el( 'input', { id: 'f-active', type: 'checkbox', role: 'switch', checked: draft.active } ), hint : t( 'items.hint-active' ) },
 			{ name : 'sort', label : t( 'items.f-sort' ), control : el( 'input', { id: 'f-sort', type: 'text', value: draft.sort, inputmode: 'numeric', autocomplete: 'off', class: 'short' } ), hint : t( 'items.hint-sort' ) },
-		], form ) );
+		] ), form ), unitCodes === null ? el( 'p', { class: 'state-note', id: 'position-no-unit-code', text: t( 'items.no-unit-code' ) } ) : null );
 
 		const uriNote = el( 'span', { class: 'sub num', id: 'position-uri', text: uri === undefined ? '' : '/'+ POSITION_TYPE+ '/'+ uri } );
 		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'position-save', title: t( 'save.shortcut' ), text: t( 'form.save' ) } );
@@ -4210,7 +4335,7 @@
 
 		const read = function() {
 
-			const values = { words : {}, price : form.controls.price.value, vat : form.controls.vat.value, sort : form.controls.sort.value, active : form.controls.active.checked };
+			const values = { words : {}, unit_code : form.controls.unit_code === undefined ? undefined : form.controls.unit_code.value, price : form.controls.price.value, vat : form.controls.vat.value, sort : form.controls.sort.value, active : form.controls.active.checked };
 
 			locales.forEach( function( locale ) {
 				values.words[locale] = {};
@@ -6050,10 +6175,33 @@
 
 		const particulars = formList( [
 			{ name : 'tax_id', label : t( 'settings.tax-id' ), control : el( 'input', { id: 'f-tax_id', type: 'text', value: settings.tax_id ?? '', maxlength: '40', autocomplete: 'off' } ), hint : t( 'settings.tax-id-hint' ) },
+			{ name : 'vat_id', label : t( 'settings.vat-id' ), control : el( 'input', { id: 'f-vat_id', type: 'text', value: settings.vat_id ?? '', maxlength: '20', autocomplete: 'off', spellcheck: 'false' } ), hint : t( 'settings.vat-id-hint' ) },
 			{ name : 'bank_name', label : t( 'settings.bank-name' ), control : el( 'input', { id: 'f-bank_name', type: 'text', value: settings.bank_name ?? '', maxlength: '80', autocomplete: 'off' } ) },
 			{ name : 'iban', label : t( 'settings.iban' ), control : el( 'input', { id: 'f-iban', type: 'text', value: settings.iban ?? '', maxlength: '42', autocomplete: 'off', spellcheck: 'false' } ) },
 			{ name : 'bic', label : t( 'settings.bic' ), control : el( 'input', { id: 'f-bic', type: 'text', value: settings.bic ?? '', maxlength: '11', autocomplete: 'off', spellcheck: 'false', class: 'bic' } ) },
 		], form );
+
+		// The seller of an electronic invoice: who sends the invoice and whom the customer asks. The text of the exemption belongs to the VAT mode small_business and is there only while it is chosen
+		const sellerText = function( name, maxlength, extra ) {
+			return el( 'input', Object.assign( { id: 'f-'+ name, type: 'text', value: settings[name] ?? '', maxlength: maxlength, autocomplete: 'off' }, extra || {} ) );
+		};
+
+		const seller = formList( [
+			{ name : 'seller_name', label : t( 'settings.seller-name' ), control : sellerText( 'seller_name', '120' ) },
+			{ name : 'seller_street', label : t( 'settings.seller-street' ), control : sellerText( 'seller_street', '120' ) },
+			{ name : 'seller_zip', label : t( 'settings.seller-zip' ), control : sellerText( 'seller_zip', '12', { class: 'short' } ) },
+			{ name : 'seller_city', label : t( 'settings.seller-city' ), control : sellerText( 'seller_city', '80' ) },
+			{ name : 'seller_country', label : t( 'settings.seller-country' ), control : sellerText( 'seller_country', '2', { class: 'short' } ), hint : t( 'settings.seller-country-hint' ) },
+			{ name : 'seller_contact', label : t( 'settings.seller-contact' ), control : sellerText( 'seller_contact', '120' ), hint : t( 'settings.seller-contact-hint' ) },
+			{ name : 'seller_phone', label : t( 'settings.seller-phone' ), control : sellerText( 'seller_phone', '40', { inputmode: 'tel' } ) },
+			{ name : 'seller_email', label : t( 'settings.seller-email' ), control : sellerText( 'seller_email', '160', { type: 'email' } ) },
+		], form );
+
+		const exempt = el( 'div', { id: 'exempt-holder', hidden: settings.vat_mode !== 'small_business' }, formList( [
+			{ name : 'vat_exempt_text', label : t( 'settings.exempt-text' ), control : sellerText( 'vat_exempt_text', '200' ), hint : t( 'settings.exempt-text-hint' ) },
+		], form ) );
+
+		select.addEventListener( 'change', function() { exempt.hidden = select.value !== 'small_business' } );
 
 		const numbers = formList( [ 'offer', 'invoice', 'credit' ].map( function( category ) {
 			return { name : 'number_'+ category, label : t( 'settings.number-'+ category ), control : el( 'input', { id: 'f-number_'+ category, type: 'text', value: settings['number_'+ category], maxlength: '40', autocomplete: 'off' } ) };
@@ -6100,7 +6248,8 @@
 			el( 'div', { class: 'cols' },
 				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'settings.vat' ) } ), taxes ),
 				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'settings.numbers' ) } ), numbers, next, el( 'p', { class: 'state-note', text: t( 'settings.numbers-note' ) } ) ) ),
-			el( 'div', { class: 'card pad gap', id: 'particulars' }, el( 'h3', { text: t( 'settings.particulars' ) } ), particulars, el( 'p', { class: 'state-note', text: t( 'settings.particulars-note' ) } ) ) );
+			el( 'div', { class: 'card pad gap', id: 'particulars' }, el( 'h3', { text: t( 'settings.particulars' ) } ), particulars, el( 'p', { class: 'state-note', text: t( 'settings.particulars-note' ) } ) ),
+			el( 'div', { class: 'card pad gap', id: 'seller' }, el( 'h3', { text: t( 'settings.seller' ) } ), seller, exempt, el( 'p', { class: 'state-note', text: t( 'settings.seller-note' ) } ) ) );
 
 		state.main.appendChild( box );
 		submitter( 'settings', box, save, function() { return form.dirty === true } );

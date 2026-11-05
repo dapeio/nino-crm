@@ -25,6 +25,16 @@ class Settings {
 		'bank_name'      => '',
 		'iban'           => '',
 		'bic'            => '',
+		'seller_name'    => '',
+		'seller_street'  => '',
+		'seller_zip'     => '',
+		'seller_city'    => '',
+		'seller_country' => 'DE',
+		'seller_contact' => '',
+		'seller_phone'   => '',
+		'seller_email'   => '',
+		'vat_id'         => '',
+		'vat_exempt_text' => 'Kein Ausweis von Umsatzsteuer gemäß § 19 UStG',
 		'privacy_text'   => '',
 		'privacy_changed' => '',
 	];
@@ -44,6 +54,13 @@ class Settings {
 	public const int MAX_TAX = 40;
 	public const int MAX_BANK = 80;
 	public const int MAX_PRIVACY = 20000;
+
+	// The seller's particulars an electronic invoice names (the block Rechnungsaussteller): the longest value each takes. The text of the
+	// exemption is used under the VAT mode small_business only
+	public const array SELLER_TEXTS = [ 'seller_name' => 120, 'seller_street' => 120, 'seller_zip' => 12, 'seller_city' => 80, 'seller_contact' => 120, 'vat_exempt_text' => 200 ];
+
+	// The pattern of the seller's VAT id: the one of the clients'
+	public const string VAT_ID = '/^[A-Z]{2}[A-Za-z0-9]{2,18}$/D';
 
 	/**
 	 *	All settings, a key for every default
@@ -219,6 +236,33 @@ class Settings {
 			// The particulars of an invoice: each may stay empty, and what is written is a plausible one
 			case 'tax_id':
 				return mb_strlen( $value, 'UTF-8' ) <= self::MAX_TAX && preg_match( '/^[\p{L}\p{N} .\/-]*$/Du', $value ) === 1 ? $value : [ 'value:'. $key ];
+
+			case 'seller_name':
+			case 'seller_street':
+			case 'seller_city':
+			case 'seller_contact':
+			case 'vat_exempt_text':
+				return mb_strlen( $value, 'UTF-8' ) <= self::SELLER_TEXTS[$key] && preg_match( '/^[^\p{C}]*$/Du', $value ) === 1 ? $value : [ 'value:'. $key ];
+
+			case 'seller_zip':
+				return mb_strlen( $value, 'UTF-8' ) <= self::SELLER_TEXTS[$key] && ( $value === '' || preg_match( '/^[A-Za-z0-9][A-Za-z0-9 -]*$/D', $value ) === 1 ) ? $value : [ 'value:'. $key ];
+
+			// The country is a code of two capitals, as the clients' are; the seller's phone is written as theirs
+			case 'seller_country':
+				$value = strtoupper( $value );
+
+				return $value === '' || preg_match( '/^[A-Z]{2}$/D', $value ) === 1 ? $value : [ 'value:'. $key ];
+
+			case 'seller_phone':
+				return mb_strlen( $value, 'UTF-8' ) <= 40 && ( $value === '' || preg_match( '/^[0-9+][0-9 +()\/.-]*$/D', $value ) === 1 ) ? $value : [ 'value:'. $key ];
+
+			case 'seller_email':
+				return mb_strlen( $value, 'UTF-8' ) <= 160 && ( $value === '' || filter_var( $value, FILTER_VALIDATE_EMAIL ) !== false ) ? $value : [ 'value:'. $key ];
+
+			case 'vat_id':
+				$value = strtoupper( str_replace( ' ', '', $value ) );
+
+				return $value === '' || preg_match( self::VAT_ID, $value ) === 1 ? $value : [ 'value:'. $key ];
 
 			case 'bank_name':
 				return mb_strlen( $value, 'UTF-8' ) <= self::MAX_BANK && preg_match( '/^[^\p{C}]*$/Du', $value ) === 1 ? $value : [ 'value:'. $key ];

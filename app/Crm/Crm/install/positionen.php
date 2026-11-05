@@ -34,6 +34,12 @@ return [
 			'locale'		=> true,
 			'maxlength'	=> 20,
 		],
+		// The unit of the electronic invoice, by its code of UN/ECE Recommendation 20 (the words of the codes are in the surface): a line takes it from the item and may change it.
+		// Empty is none: a line without a code is missing in the checklist of the document. A project that had this type before the field came keeps the type as it was
+		'unit_code' => [
+			'type'			=> 'string',
+			'options'		=> [ '', 'H87', 'HUR', 'MIN', 'DAY', 'WEE', 'MON', 'LS', 'C62', 'KMT' ],
+		],
 		// The net price in euros
 		'price' => [
 			'type'			=> 'double',

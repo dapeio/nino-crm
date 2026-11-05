@@ -5,7 +5,7 @@ declare(strict_types=1);
  *						init() registers behaviour and writes nothing: the panel CRM (adminPanels()), the
  *						components [crm-client], [crm-documents], [crm-portal-nav], [crm-portal-start], [crm-projects], [crm-uploads], [crm-client-data] and [crm-privacy], the callbacks that keep the portal's lookup true when a member signs in or
  *						out and the ones that let a document follow its request in Sign, the style sheet of the portal, the route
- *						/.crm/pdf/<id> that answers the PDF of a finalised document and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/datenschutz of the page Datenschutz and POST /.crm/auftrag of the order under an offer; and the surface at /crm, one page of the project with its
+ *						/.crm/pdf/<id> that answers the PDF of a finalised document, /.crm/xml/<id> that answers its electronic invoice and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/datenschutz of the page Datenschutz and POST /.crm/auftrag of the order under an offer; and the surface at /crm, one page of the project with its
  *						endpoint and assets (Surface::init()). The database is opened on first use, the portal pages come with the install unit
  *						the wizard applies, and the screen Einrichtung of the surface completes the product (see Admin::apiSetup()).
  */
@@ -170,6 +170,10 @@ class Crm {
 		// The PDF of a document is answered to the workbench session that may manage the documents and, once it is released, to the member of its client (see Render::callbackDownload())
 		$appData['/nino/http/routes']['GET://.crm/pdf/*'] = [ 'uri' => '/.crm/pdf/*' ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.crm/pdf/*', [ \Crm\Documents\Render::class, 'callbackDownload' ] );
+
+		// The electronic invoice of a document is answered by the same rules: the workbench session that may manage the documents, the member of the client once it is released
+		$appData['/nino/http/routes']['GET://.crm/xml/*'] = [ 'uri' => '/.crm/xml/*' ];
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.crm/xml/*', [ \Crm\Documents\XRechnung::class, 'callbackDownload' ] );
 
 		// The form of the page Meine Daten posts here: a member of a client changes the data of the client (see Portal\Data::callbackSave())
 		$appData['/nino/http/routes']['POST://.crm/daten'] = [ 'uri' => Portal\Data::ROUTE ];

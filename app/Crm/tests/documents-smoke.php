@@ -19,6 +19,7 @@ use Crm\Documents;
 use Crm\Documents\Money;
 use Crm\Documents\Numbers;
 use Crm\Documents\Render;
+use Crm\Documents\XRechnung;
 use Crm\Positionen;
 use Crm\Settings;
 
@@ -73,7 +74,7 @@ echo "Migration 0002\n";
 $pdo = Db::pdo( $appData );
 $tables = array_column( Db::rows( $appData, 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' ORDER BY name' ), 'name' );
 check( 'the tables of C01 and of C02 are there - and the table of the items is not: migration 0005 dropped it', $tables === [ 'client_accounts', 'clients', 'document_lines', 'documents', 'records', 'sequences', 'settings' ] );
-check( 'user_version is 8 and the first boot ran the eight migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 8 && Db::migrated() === 8 );
+check( 'user_version is 9 and the first boot ran the nine migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 9 && Db::migrated() === 9 );
 
 Db::close();
 Db::pdo( $appData );
@@ -81,10 +82,11 @@ check( 'a second boot runs no migration', Db::migrated() === 0 );
 
 $settings = Settings::all( $appData );
 check( 'the settings are written where they were missing: the defaults of the plan', $settings === [ 'vat_mode' => 'small_business', 'vat_rates' => '1900,700,0', 'payment_days' => '14', 'offer_days' => '30', 'currency' => '€',
-	'number_offer' => 'A-{YYYY}-{NNNN}', 'number_invoice' => 'R-{YYYY}-{NNNN}', 'number_credit' => 'G-{YYYY}-{NNNN}', 'tax_id' => '', 'bank_name' => '', 'iban' => '', 'bic' => '', 'privacy_text' => '', 'privacy_changed' => '' ]);
+	'number_offer' => 'A-{YYYY}-{NNNN}', 'number_invoice' => 'R-{YYYY}-{NNNN}', 'number_credit' => 'G-{YYYY}-{NNNN}', 'tax_id' => '', 'bank_name' => '', 'iban' => '', 'bic' => '', 'seller_name' => '', 'seller_street' => '', 'seller_zip' => '', 'seller_city' => '', 'seller_country' => 'DE', 'seller_contact' => '', 'seller_phone' => '',
+	'seller_email' => '', 'vat_id' => '', 'vat_exempt_text' => 'Kein Ausweis von Umsatzsteuer gemäß § 19 UStG', 'privacy_text' => '', 'privacy_changed' => '' ]);
 check( 'the columns of documents are the ones of the plan', array_column( Db::rows( $appData, 'PRAGMA table_info( documents )' ), 'name' ) === [ 'id', 'category', 'client_id', 'parent_id', 'number', 'state', 'date', 'due_date', 'valid_until', 'period_from', 'period_to',
 	'vat_mode', 'reverse_charge', 'net', 'vat', 'gross', 'template_key', 'inputs_json', 'client_json', 'notes', 'pdf_path', 'pdf_sha256', 'finalised', 'sent_at', 'paid_at', 'created', 'updated',
-	'title', 'released', 'released_at', 'sign_id', 'sign_state', 'signed_at', 'project', 'reminded_at', 'reminded_mail' ] );
+	'title', 'released', 'released_at', 'sign_id', 'sign_state', 'signed_at', 'project', 'reminded_at', 'reminded_mail', 'buyer_reference', 'xml_path', 'xml_sha256', 'xml_lacks' ] );
 
 check( 'the table has no CHECK on category and state: the model lists them, a later patch adds to them', str_contains( (string) Db::row( $appData, 'SELECT sql FROM sqlite_master WHERE name = \'documents\'' )['sql'], 'CHECK' ) === false );
 
@@ -352,21 +354,21 @@ check( 'the setup of Kunden brings the type: it is among what was added, and the
 	&& \Nino\Filesystem::getFileContent( $appData, '/elements/positionen.php', [] ) === include $root. '/app/Crm/Crm/install/positionen.php' );
 
 $model = \Nino\Elements::getElementModel( $appData, '/positionen' );
-check( 'the model has the seven fields of the plan: the words per language, the numbers for all', array_keys( $model ) === [ 'title', 'description', 'unit', 'price', 'vat', 'hidden', 'sort' ]
+check( 'the model has the eight fields of the plan: the words per language, the unit code and the numbers for all', array_keys( $model ) === [ 'title', 'description', 'unit', 'unit_code', 'price', 'vat', 'hidden', 'sort' ]
 	&& array_keys( array_filter( $model, static fn( array $field ): bool => ( $field['locale'] ?? false ) === true ) ) === [ 'title', 'description', 'unit' ]
 	&& $model['title']['type'] === 'string' && $model['title']['required'] === true && $model['title']['maxlength'] === 200 && $model['description']['maxlength'] === 2000 && $model['description']['breaks'] === true && $model['description']['inputsize'] === 4 && $model['unit']['maxlength'] === 20 );
 check( '...the price is a double with the euro sign, required; the rate a double with the percent sign; hidden a boolean without a default - off is the normal case, which the bucket for all says; sort an integer', $model['price']['type'] === 'double' && $model['price']['required'] === true && $model['price']['suffix'] === '€'
 	&& $model['vat']['type'] === 'double' && $model['vat']['suffix'] === '%' && isset( $model['vat']['required'] ) === false && $model['hidden']['type'] === 'boolean' && isset( $model['hidden']['default'] ) === false && ( \Nino\Filesystem::getFileContent( $appData, '/elements/positionen.php', [] )['*']['*'] ?? null ) === [ 'hidden' => false ] && $model['sort']['type'] === 'integer' );
 check( '...and the status of Belege no longer names it', $positionenState() === 'ok' );
 
-$keys = [ 'field/positionen/title', 'field/positionen/description', 'field/positionen/unit', 'field/positionen/price', 'field/positionen/vat', 'field/positionen/hidden', 'field/positionen/sort', 'type/positionen/hint',
+$keys = [ 'field/positionen/title', 'field/positionen/description', 'field/positionen/unit', 'field/positionen/unit_code', 'field/positionen/price', 'field/positionen/vat', 'field/positionen/hidden', 'field/positionen/sort', 'type/positionen/hint',
 	'field/projekte/title', 'field/projekte/client', 'field/projekte/description', 'field/projekte/started', 'field/projekte/done', 'field/projekte/folder', 'type/projekte/hint' ];
 $blacklisted = (array) \Nino\Filesystem::getFileContent( $appData, '/text/blacklist.php', [] );
 check( 'the setup brings the words of the Elements form for the types: the labels of the fields and the hint of each, in both languages, and not empty', array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => array_filter( $keys, static fn( string $key ): bool => trim( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/_admin/elements/'. $key. ']]'] ?? '' ) ) === '' ) !== [] ) === []
 	&& \Nino\Filesystem::getFileContent( $appData, '/text/de_DE.php', [] )['[[/_admin/elements/field/positionen/hidden]]'] === 'Ausgeblendet' && \Nino\Filesystem::getFileContent( $appData, '/text/en_US.php', [] )['[[/_admin/elements/field/positionen/hidden]]'] === 'Hidden' );
 check( '...and they are on the blacklist of the texts, as the words of the workbench are, and the unit lists exactly those', array_diff( array_map( static fn( string $key ): string => '/_admin/elements/'. $key, $keys ), $blacklisted ) === []
 	&& ( \Nino\Features::readUnitManifest( $root. '/app/Crm/Crm/install' )['blacklist'] ?? [] ) === array_map( static fn( string $key ): string => '/_admin/elements/'. $key, $keys ) );
-check( '...added to the blacklist, not written over it: the key that was there before is still there, and the list grew by the unit\'s fifteen', in_array( '/_admin/elements/field/other/title', $blacklisted, true ) === true && count( $blacklisted ) === $foreignBefore + count( $keys ) );
+check( '...added to the blacklist, not written over it: the key that was there before is still there, and the list grew by the unit\'s sixteen', in_array( '/_admin/elements/field/other/title', $blacklisted, true ) === true && count( $blacklisted ) === $foreignBefore + count( $keys ) );
 
 $own = (array) \Nino\Filesystem::getFileContent( $appData, '/elements/positionen.php', [] );
 $own['model']['price']['suffix'] = 'EUR';
@@ -420,7 +422,7 @@ check( '...a field that is empty in German shows the text of another language: t
 	&& $byId['workshop']['title'] === 'Workshop' && $byId['workshop']['description'] === 'A day with your team' && $byId['workshop']['unit'] === 'day' && $byId['cent']['description'] === '' && $byId['cent']['unit'] === '' );
 check( '...the price in cents and the rate in hundredths: 90 is 9000, 90.5 is 9050, 85.5 is 8550, 19 is 1900, 7 is 700, 7.5 is 750, 0 is 0', array_column( $items, 'price' ) === [ 9000, 9050, 8550, 25000, 1, -1 ] && array_column( $items, 'vat' ) === [ 0, 1900, 0, 700, 750, 0 ] );
 check( '...0.005 is rounded half away from zero, to 1 cent, and -0.005 to -1', $byId['cent']['price'] === 1 && $byId['rabatt']['price'] === -1 );
-check( '...every answer has the eight keys, the id a string and the flag a bool', array_unique( array_map( static fn( array $item ): string => implode( ',', array_keys( $item ) ), $items ) ) === [ 'id,title,description,unit,price,vat,active,sort' ] && array_filter( $items, static fn( array $item ): bool => is_string( $item['id'] ) === false || $item['active'] !== true ) === [] );
+check( '...every answer has the nine keys, the id a string and the flag a bool', array_unique( array_map( static fn( array $item ): string => implode( ',', array_keys( $item ) ), $items ) ) === [ 'id,title,description,unit,unit_code,price,vat,active,sort' ] && array_filter( $items, static fn( array $item ): bool => is_string( $item['id'] ) === false || $item['active'] !== true ) === [] );
 $fresh = \Nino\Elements::insertElement( $appData, '/positionen/frisch', [ 'price' => 5, 'title' => 'Frisch' ], 'de_DE' );
 check( 'an item entered with a title and a price and nothing else - as the form of the Elements panel starts it - is offered in the list and in the editor', is_array( $fresh ) && in_array( 'frisch', array_column( Positionen::list( $appData ), 'id' ), true ) === true
 	&& in_array( 'Frisch', array_column( $post( 'crm-documents/list' )[1]['items'], 'title' ), true ) === true && Positionen::get( $appData, 'frisch' )['active'] === true );
@@ -431,7 +433,7 @@ $all = Positionen::all( $appData );
 $allById = array_column( $all, null, 'id' );
 check( 'all() answers every item, the hidden one too, in the order of the field sort, with the numbers for all and a flag for the active', array_column( $all, 'id' ) === [ 'hosting', 'beratung', 'webdesign', 'workshop', 'cent', 'rabatt', 'altlast' ] && array_column( $all, 'sort' ) === [ 1, 2, 3, 4, 5, 6, 7 ]
 	&& array_column( $all, 'price' ) === [ 9000, 9050, 8550, 25000, 1, -1, 100 ] && array_column( $all, 'vat' ) === [ 0, 1900, 0, 700, 750, 0, 0 ] && array_column( $all, 'active' ) === [ true, true, true, true, true, true, false ]
-	&& array_unique( array_map( static fn( array $item ): string => implode( ',', array_keys( $item ) ), $all ) ) === [ 'id,sort,price,vat,active,words' ] );
+	&& array_unique( array_map( static fn( array $item ): string => implode( ',', array_keys( $item ) ), $all ) ) === [ 'id,sort,unit_code,price,vat,active,words' ] );
 check( '...the words in every language of the site, as the element holds them in that language: German and English side by side', array_keys( $allById['webdesign']['words'] ) === [ 'de_DE', 'en_US' ] && $allById['webdesign']['words']['de_DE'] === [ 'title' => 'Webdesign', 'description' => 'Pro Stunde', 'unit' => 'Std.' ]
 	&& $allById['webdesign']['words']['en_US'] === [ 'title' => 'Web design', 'description' => 'Per hour', 'unit' => 'h' ] );
 check( '...a language that has no text shows empty and nothing of the other: no description in German for Beratung, and no word at all in German for Workshop, which has English only', $allById['beratung']['words']['de_DE']['description'] === '' && $allById['beratung']['words']['en_US']['description'] === 'Advice for one day'
@@ -658,7 +660,7 @@ $again = \Nino\Modules\Pdf::render( $appData, 'rechnung', $data, [ 'title' => 'R
 check( '...Pdf renders the same bytes again from the same data: a PDF can be made again and compared', $again === $bytes );
 check( '...the title of the file is the kind of document and its number', str_contains( $bytes, '/Title (Rechnung '. $expectedNumber. ')' ) === true );
 
-check( '...the client is frozen into the document: company, name, address, number, VAT id, email', $finalised['client_frozen'] === [ 'company' => 'Studio Nord GmbH', 'name' => 'Anna Nord', 'street' => 'Hafenstr. 1', 'zip' => '20095', 'city' => 'Hamburg', 'country' => 'DE', 'number' => 'K-0001', 'vat_id' => 'DE123456789', 'email' => 'anna@example.org' ] && $finalised['client'] === $finalised['client_frozen'] );
+check( '...the client is frozen into the document: company, name, address, number, VAT id, email', $finalised['client_frozen'] === [ 'company' => 'Studio Nord GmbH', 'name' => 'Anna Nord', 'street' => 'Hafenstr. 1', 'zip' => '20095', 'city' => 'Hamburg', 'country' => 'DE', 'number' => 'K-0001', 'vat_id' => 'DE123456789', 'email' => 'anna@example.org', 'business' => '0', 'buyer_reference' => '' ] && $finalised['client'] === $finalised['client_frozen'] );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Nord AG', 'city' => 'Bremen' ] );
 check( '...a change of the client afterwards leaves the address of the document as it was', Documents::get( $appData, $finalised['id'] )['client']['company'] === 'Studio Nord GmbH' && Documents::get( $appData, $finalised['id'] )['client']['city'] === 'Hamburg' );
 check( 'a draft shows the live client in the list, a finalised document its frozen one', in_array( 'Studio Nord GmbH', array_column( Documents::list( $appData ), 'client_title' ), true ) === true && in_array( 'Studio Nord AG', array_column( Documents::list( $appData ), 'client_title' ), true ) === true );
@@ -772,7 +774,7 @@ check( 'the inputs are the document\'s own', $data['inputs'] === $secondInvoice[
 // The particulars of the owner's invoices: the settings tax_id, bank_name, iban, bic, and the tokens a template reads them as
 check( 'the four particulars are tokens of every document, empty where the settings are not set: /site/tax, /site/bank, /site/iban, /site/bic', array_intersect_key( $tokens, array_flip( [ '/site/tax', '/site/bank', '/site/iban', '/site/bic' ] ) ) === [ '/site/tax' => '', '/site/bank' => '', '/site/iban' => '', '/site/bic' => '' ]
 	&& array_intersect_key( $offerTokens, array_flip( [ '/site/tax', '/site/iban' ] ) ) === [ '/site/tax' => '', '/site/iban' => '' ] );
-check( '...the settings are keys with an empty default: all() has them, get() reads them, and a key that is none is still refused', Settings::get( $appData, 'iban' ) === '' && array_slice( array_keys( Settings::all( $appData ) ), -6 ) === [ 'tax_id', 'bank_name', 'iban', 'bic', 'privacy_text', 'privacy_changed' ] && Settings::set( $appData, 'swift', 'x' ) === 'unknown' );
+check( '...the settings are keys with an empty default: all() has them, get() reads them, and a key that is none is still refused', Settings::get( $appData, 'iban' ) === '' && array_slice( array_keys( Settings::all( $appData ) ), -16 ) === [ 'tax_id', 'bank_name', 'iban', 'bic', 'seller_name', 'seller_street', 'seller_zip', 'seller_city', 'seller_country', 'seller_contact', 'seller_phone', 'seller_email', 'vat_id', 'vat_exempt_text', 'privacy_text', 'privacy_changed' ] && Settings::set( $appData, 'swift', 'x' ) === 'unknown' );
 $particulars = [ 'tax_id' => '12/345/67890', 'bank_name' => 'Sparkasse Hamburg', 'iban' => 'de89 3704 0044 0532 0130 00', 'bic' => 'cobadeffxxx' ];
 check( '...they are written where they pass their rule: an IBAN in capitals in groups of four, a BIC in capitals; set() answers true', array_filter( $particulars, static fn( string $value, string $key ): bool => Settings::set( $appData, $key, $value ) !== true, ARRAY_FILTER_USE_BOTH ) === []
 	&& Settings::get( $appData, 'iban' ) === 'DE89 3704 0044 0532 0130 00' && Settings::get( $appData, 'bic' ) === 'COBADEFFXXX' && Settings::get( $appData, 'tax_id' ) === '12/345/67890' && Settings::get( $appData, 'bank_name' ) === 'Sparkasse Hamburg' );
@@ -1562,7 +1564,7 @@ foreach( (array) include \Crm\Db::migrations()[1] as $statement )
 $file->exec( 'PRAGMA user_version = 1' );
 $file->exec( 'UPDATE settings SET value = \'regular\' WHERE key = \'vat_mode\'' );
 $file = null;
-check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 7 );
+check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 8 );
 Db::close();
 \Nino\Filesystem::removeDir( ninoSandboxDir( $old ) );
 
@@ -1572,7 +1574,7 @@ echo "\nThe items in the editor\n";
 
 [ $status, $body ] = $post( 'crm-documents/list' );
 $editor = $body['items'];
-check( 'list gives the editor the active items in the shape it reads: price_net in cents, vat_rate 0 in small_business', $status === 200 && array_column( $editor, 'title' ) === $catalogue && array_unique( array_map( static fn( array $item ): string => implode( ',', array_keys( $item ) ), $editor ) ) === [ 'id,title,description,unit,price_net,vat_rate,active,sort' ]
+check( 'list gives the editor the active items in the shape it reads: price_net in cents, vat_rate 0 in small_business', $status === 200 && array_column( $editor, 'title' ) === $catalogue && array_unique( array_map( static fn( array $item ): string => implode( ',', array_keys( $item ) ), $editor ) ) === [ 'id,title,description,unit,unit_code,price_net,vat_rate,active,sort' ]
 	&& array_column( $editor, 'price_net' ) === [ 9000, 9050, 8550, 25000, 1, -1 ] && array_column( $editor, 'vat_rate' ) === [ 0, 0, 0, 0, 0, 0 ] && $editor[2]['description'] === 'Pro Stunde' && $editor[2]['unit'] === 'Std.' );
 check( '...the templates of a new draft come with the items as they are now, so that an item entered meanwhile is offered', $post( 'crm-documents/templates', [ 'category' => 'invoice' ] )[1]['items'] === $editor );
 check( '...get gives it the same', $post( 'crm-documents/get', [ 'id' => (string) $target['id'] ] )[1]['items'] === $editor );
@@ -1622,7 +1624,7 @@ $file->exec( 'INSERT INTO document_lines ( document_id, sort, title, qty, price_
 check( 'the database before has the table of the items with its rows', (int) $file->query( 'SELECT COUNT(*) FROM items' )->fetchColumn() === 2 );
 $file = null;
 $kept = Documents::get( $dropped, 1 );
-check( 'migrations 0005 to 0008 on a database of the fourth schema run once: version 8, the table of the items is gone', (int) Db::pdo( $dropped )->query( 'PRAGMA user_version' )->fetchColumn() === 8 && Db::migrated() === 4
+check( 'migrations 0005 to 0009 on a database of the fourth schema run once: version 9, the table of the items is gone', (int) Db::pdo( $dropped )->query( 'PRAGMA user_version' )->fetchColumn() === 9 && Db::migrated() === 5
 	&& Db::rows( $dropped, 'SELECT name FROM sqlite_master WHERE name = \'items\'' ) === [] && Db::rows( $dropped, 'SELECT name FROM sqlite_sequence WHERE name = \'items\'' ) === [] );
 check( '...the document and its line are as they were: the line has the words it copied', is_array( $kept ) && $kept['number'] === 'R-2025-0001' && count( $kept['lines'] ) === 1 && $kept['lines'][0]['title'] === 'Alt' && $kept['lines'][0]['price_net'] === 100 );
 check( '...it is one statement and nothing else, and document_lines is not in it', ( include $root. '/app/Crm/Db/migrations/0005-positionen.php' ) === [ 'DROP TABLE IF EXISTS items' ] && str_contains( implode( ' ', (array) include $root. '/app/Crm/Db/migrations/0005-positionen.php' ), 'document_lines' ) === false );
@@ -1649,7 +1651,7 @@ $file->exec( 'INSERT INTO clients ( id, number, company, created, updated ) VALU
 $file->exec( 'INSERT INTO documents ( category, client_id, number, state, date, vat_mode, template_key, created, updated ) VALUES ( \'invoice\', 1, \'R-2025-0001\', \'paid\', \'2025-05-05\', \'small_business\', \'rechnung\', \'x\', \'x\' )' );
 $file = null;
 $old = Documents::get( $upgraded, 1 );
-check( 'a database of the second schema with a document is migrated once: version 8, the six migrations that were missing', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 8 && Db::migrated() === 6 );
+check( 'a database of the second schema with a document is migrated once: version 9, the seven migrations that were missing', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 9 && Db::migrated() === 7 );
 check( '...the document is as it was, with the new columns at their defaults: no title, not released, no request, no signing day', is_array( $old ) === false ? false : $old['number'] === 'R-2025-0001' && $old['state'] === 'paid' && $old['title'] === '' && $old['released'] === false && $old['released_at'] === null
 	&& $old['sign_id'] === '' && $old['sign_state'] === '' && $old['signed_at'] === null );
 Db::close();
@@ -1689,7 +1691,7 @@ $offerNow = (array) Documents::get( $appData, $offerFinal['id'] );
 $contract = Documents::add( $appData, 'contract', 0, [ 'parent_id' => $offerFinal['id'], 'title' => '  Dienstleistungsvertrag ', 'template_key' => 'dienstleistung', 'inputs' => [ 'zusatz' => 'Laufzeit ein Jahr' ] ] );
 check( 'a contract hangs on an offer and its client is the offer\'s: a draft with the title trimmed, no number, no line, the date today, no due date, validity or period', is_array( $contract ) && $contract['category'] === 'contract' && $contract['state'] === 'draft' && $contract['parent_id'] === $offerFinal['id']
 	&& $contract['client_id'] === $offerFinal['client_id'] && $contract['title'] === 'Dienstleistungsvertrag' && $contract['number'] === '' && $contract['lines'] === [] && $contract['date'] === $today && $contract['due_date'] === null && $contract['valid_until'] === null
-	&& $contract['period_from'] === null && $contract['released'] === false && $contract['sign_state'] === '' && $contract['parent'] === [ 'id' => $offerFinal['id'], 'number' => $offerFinal['number'], 'title' => '', 'category' => 'offer', 'state' => $offerNow['state'] ] );
+	&& $contract['period_from'] === null && $contract['released'] === false && $contract['sign_state'] === '' && $contract['parent'] === [ 'id' => $offerFinal['id'], 'number' => $offerFinal['number'], 'date' => $offerFinal['date'], 'title' => '', 'category' => 'offer', 'state' => $offerNow['state'] ] );
 check( '...the client may be named when it is the offer\'s', is_array( Documents::add( $appData, 'contract', $offerFinal['client_id'], [ 'parent_id' => $offerFinal['id'], 'title' => 'Zwei' ] ) ) );
 Documents::remove( $appData, (int) Db::row( $appData, 'SELECT MAX( id ) AS id FROM documents' )['id'] );
 
@@ -2041,6 +2043,473 @@ check( 'crm-documents/save takes the project of a draft - made with one, changed
 check( 'crm-documents/list filters by the project and takes nothing odd for one; the rows carry the project and its title; crm-documents/get has the projects of the client for the dialog', array_column( $post( 'crm-documents/list', [ 'project' => $albumId ] )[1]['documents'], 'id' ) === array_column( Documents::list( $appData, [ 'project' => $albumId ] ), 'id' ) && $post( 'crm-documents/list', [ 'project' => '../x' ] )[0] === 400
 	&& array_column( $post( 'crm-documents/list', [ 'project' => $albumId ] )[1]['documents'], 'project_title' ) !== [] && array_column( $post( 'crm-documents/get', [ 'id' => (string) $sealed['id'] ] )[1]['projects'], 'id' ) === [ $websiteId, $albumId ] );
 check( 'crm-documents/status names the type of the projects as it names the one of the items', $stateOf( $post( 'crm-documents/status' )[1], 'projekte' ) === 'ok' );
+
+// --- E-Rechnung (XRechnung) --------------------------------------------------------------------------------------------
+
+echo "\nE-Rechnung (XRechnung)\n";
+
+\Nino\Features::activate( $appData, 'pdf' );
+$as( 'admin@example.com' );
+$post( 'pdf/templates/save', [ 'key' => 'erechnung', 'isNew' => true, 'name' => 'E-Rechnung', 'tag' => 'invoice', 'blocks' => [
+	[ 'type' => 'slot', 'name' => 'address' ], [ 'type' => 'input', 'name' => 'einleitung', 'label' => 'Einleitung', 'multiline' => true, 'required' => false ], [ 'type' => 'slot', 'name' => 'lines' ], [ 'type' => 'slot', 'name' => 'totals' ],
+] ] );
+
+foreach( [ 'seller_name' => 'Studio Beispiel', 'seller_street' => 'Weg 1', 'seller_zip' => '10115', 'seller_city' => 'Berlin', 'seller_country' => 'DE', 'seller_contact' => 'Jan Beispiel', 'seller_phone' => '+49 30 123456', 'seller_email' => 'jan@beispiel.example',
+	'tax_id' => '12/345/67890', 'vat_id' => 'DE111222333', 'iban' => 'DE89 3704 0044 0532 0130 00', 'bic' => 'COBADEFFXXX', 'currency' => '€', 'payment_days' => '14', 'vat_mode' => 'small_business' ] as $key => $value )
+	Settings::set( $appData, $key, $value );
+
+$biz = \Crm\Clients::add( $appData, [ 'company' => 'Muster & Söhne <KG>', 'name' => 'Mia Muster', 'street' => 'Hauptstr. 5', 'zip' => '50667', 'city' => 'Köln', 'email' => 'rechnung@muster.example', 'vat_id' => 'DE987654321', 'buyer_reference' => 'PO-4711', 'business' => true ] );
+$private = \Crm\Clients::add( $appData, [ 'name' => 'Paula Privat', 'street' => 'Gasse 2', 'zip' => '80331', 'city' => 'München', 'email' => 'paula@example.org' ] );
+$bare = \Crm\Clients::add( $appData, [ 'company' => 'Ohne Referenz GmbH', 'street' => 'Allee 9', 'zip' => '70173', 'city' => 'Stuttgart', 'email' => 'bar@example.org', 'business' => true ] );
+
+check( 'a client is a business or it is not: the flag is stored, the buyer reference is a text of up to 100 characters, and a flag that is no boolean is refused', $biz['business'] === true && $biz['buyer_reference'] === 'PO-4711' && $private['business'] === false && $private['buyer_reference'] === ''
+	&& \Crm\Clients::change( $appData, $private['id'], [ 'business' => 'yes' ] ) === 'format:business' && \Crm\Clients::change( $appData, $private['id'], [ 'buyer_reference' => str_repeat( 'x', 101 ) ] ) === 'long:buyer_reference'
+	&& \Crm\Clients::get( $appData, $private['id'] )['business'] === false && \Crm\Clients::change( $appData, $biz['id'], [ 'city' => 'Köln' ] )['business'] === true );
+
+$hour = $line( [ 'title' => 'Webdesign <b>&</b> Beratung', 'description' => "Seiten für\n\"Muster\" & Co", 'unit_code' => 'HUR' ] );
+$month = $line( [ 'title' => 'Hosting', 'unit' => 'Monat', 'qty' => '1', 'price' => '12,00', 'unit_code' => 'MON' ] );
+$mk = static function( string $category, int $clientId, array $input ) use ( &$appData ): array {
+	$draft = Documents::add( $appData, $category, $clientId, $input + [ 'template_key' => 'erechnung' ] );
+	$done = is_array( $draft ) === true ? Documents::finalise( $appData, $draft['id'] ) : $draft;
+
+	return is_array( $done ) === true ? $done : [ 'id' => 0, 'error' => $done ];
+};
+$xmlDir = static fn( array $document ): string => \Nino\Filesystem::path( $appData, (string) $document['xml_path'] );
+$dom = static function( array $document ) use ( &$appData ): \DOMXPath {
+	$doc = new \DOMDocument();
+	$doc->load( \Nino\Filesystem::path( $appData, (string) $document['xml_path'] ) );
+	$x = new \DOMXPath( $doc );
+	$x->registerNamespace( 'rsm', 'urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100' );
+	$x->registerNamespace( 'ram', 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100' );
+	$x->registerNamespace( 'udt', 'urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100' );
+	$x->registerNamespace( 'qdt', 'urn:un:unece:uncefact:data:standard:QualifiedDataType:100' );
+
+	return $x;
+};
+$one = static function( \DOMXPath $x, string $query ): ?string {
+	$nodes = $x->query( $query );
+
+	return $nodes === false || $nodes->length === 0 ? null : $nodes->item( 0 )->nodeValue;
+};
+$all = static function( \DOMXPath $x, string $query ): array {
+	$nodes = $x->query( $query );
+	$values = [];
+
+	foreach( $nodes === false ? [] : $nodes as $node )
+		$values[] = (string) $node->nodeValue;
+
+	return $values;
+};
+$cents = static fn( string $amount ): int => (int) round( (float) $amount * 100 );
+$tr = '/rsm:CrossIndustryInvoice/rsm:SupplyChainTradeTransaction';
+$hd = '/rsm:CrossIndustryInvoice/rsm:ExchangedDocument';
+$ag = $tr. '/ram:ApplicableHeaderTradeAgreement';
+$st = $tr. '/ram:ApplicableHeaderTradeSettlement';
+$li = $tr. '/ram:IncludedSupplyChainTradeLineItem';
+$bg23 = $st. '/ram:ApplicableTradeTax';
+$sum = $st. '/ram:SpecifiedTradeSettlementHeaderMonetarySummation';
+$lineTotal = $li. '/ram:SpecifiedLineTradeSettlement/ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount';
+
+// (a) a small business invoice of a business client, with its note and its due day
+$a = $mk( 'invoice', $biz['id'], [ 'date' => '2026-03-10', 'lines' => [ $hour, $month ], 'inputs' => [ 'einleitung' => 'Vielen Dank für den Auftrag.' ] ] );
+check( '(a) a small business invoice of a business client is finalised with a file beside the PDF: <number>.xml in the same directory, its path and SHA-256 stored, nothing missing', $a['state'] === 'open' && $a['xml_path'] === substr( $a['pdf_path'], 0, -4 ). '.xml' && basename( $a['xml_path'] ) === $a['number']. '.xml'
+	&& is_file( $xmlDir( $a ) ) === true && $a['xml_sha256'] === hash_file( 'sha256', $xmlDir( $a ) ) && $a['xml_lacks'] === [] && is_file( \Nino\Filesystem::path( $appData, $a['pdf_path'] ) ) === true );
+$doc = new \DOMDocument();
+check( '...the file is well-formed XML in UTF-8 with the root of the Cross Industry Invoice, indented', $doc->load( $xmlDir( $a ) ) === true && $doc->documentElement->namespaceURI === 'urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100' && $doc->documentElement->localName === 'CrossIndustryInvoice'
+	&& $doc->encoding === 'UTF-8' && str_contains( (string) file_get_contents( $xmlDir( $a ) ), "\n  <rsm:ExchangedDocumentContext>" ) === true );
+$x = $dom( $a );
+$ctx = '/rsm:CrossIndustryInvoice/rsm:ExchangedDocumentContext';
+check( '...the guideline and the business process (BT-24, BT-23) are the two constants - XRechnung 3.0, and nothing else', $one( $x, $ctx. '/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID' ) === 'urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0'
+	&& $one( $x, $ctx. '/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID' ) === ( new \ReflectionClass( XRechnung::class ) )->getConstant( 'GUIDELINE' ) && $one( $x, $ctx. '/ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID' ) === 'urn:fdc:peppol.eu:2017:poacc:billing:01:1.0' && ( new \ReflectionClass( XRechnung::class ) )->getConstant( 'PROCESS' ) === 'urn:fdc:peppol.eu:2017:poacc:billing:01:1.0' );
+check( '...BT-1 the number, BT-2 the date in format 102, BT-3 380 for an invoice, BT-22 the note of the document', $one( $x, $hd. '/ram:ID' ) === $a['number'] && $one( $x, $hd. '/ram:IssueDateTime/udt:DateTimeString' ) === '20260310' && $one( $x, $hd. '/ram:IssueDateTime/udt:DateTimeString/@format' ) === '102'
+	&& $one( $x, $hd. '/ram:TypeCode' ) === '380' && $one( $x, $hd. '/ram:IncludedNote/ram:Content' ) === 'Vielen Dank für den Auftrag.' );
+check( '...BT-10 the buyer reference is the client\'s (BR-DE-15), BT-27 the seller\'s name, BT-35..40 its address with the country', $one( $x, $ag. '/ram:BuyerReference' ) === 'PO-4711' && $one( $x, $ag. '/ram:SellerTradeParty/ram:Name' ) === 'Studio Beispiel'
+	&& $one( $x, $ag. '/ram:SellerTradeParty/ram:PostalTradeAddress/ram:PostcodeCode' ) === '10115' && $one( $x, $ag. '/ram:SellerTradeParty/ram:PostalTradeAddress/ram:LineOne' ) === 'Weg 1'
+	&& $one( $x, $ag. '/ram:SellerTradeParty/ram:PostalTradeAddress/ram:CityName' ) === 'Berlin' && $one( $x, $ag. '/ram:SellerTradeParty/ram:PostalTradeAddress/ram:CountryID' ) === 'DE' );
+check( '...BG-6 the contact (BR-DE-2, -5, -6, -7): name, phone, e-mail; BT-34 the electronic address, scheme EM; BT-31 the VAT id (scheme VA, BR-CO-26) and BT-32 the tax number (scheme FC)', $one( $x, $ag. '/ram:SellerTradeParty/ram:DefinedTradeContact/ram:PersonName' ) === 'Jan Beispiel'
+	&& $one( $x, $ag. '/ram:SellerTradeParty/ram:DefinedTradeContact/ram:TelephoneUniversalCommunication/ram:CompleteNumber' ) === '+49 30 123456' && $one( $x, $ag. '/ram:SellerTradeParty/ram:DefinedTradeContact/ram:EmailURIUniversalCommunication/ram:URIID' ) === 'jan@beispiel.example'
+	&& $one( $x, $ag. '/ram:SellerTradeParty/ram:URIUniversalCommunication/ram:URIID' ) === 'jan@beispiel.example' && $one( $x, $ag. '/ram:SellerTradeParty/ram:URIUniversalCommunication/ram:URIID/@schemeID' ) === 'EM'
+	&& $all( $x, $ag. '/ram:SellerTradeParty/ram:SpecifiedTaxRegistration/ram:ID/@schemeID' ) === [ 'VA', 'FC' ] && $all( $x, $ag. '/ram:SellerTradeParty/ram:SpecifiedTaxRegistration/ram:ID' ) === [ 'DE111222333', '12/345/67890' ] );
+check( '...BG-7 the buyer: the company before the name (escaped), the address, BT-48 the VAT id with the scheme VA, BT-49 the e-mail with the scheme EM', $one( $x, $ag. '/ram:BuyerTradeParty/ram:Name' ) === 'Muster & Söhne <KG>' && str_contains( (string) file_get_contents( $xmlDir( $a ) ), 'Muster &amp; Söhne &lt;KG&gt;' ) === true
+	&& $one( $x, $ag. '/ram:BuyerTradeParty/ram:PostalTradeAddress/ram:PostcodeCode' ) === '50667' && $one( $x, $ag. '/ram:BuyerTradeParty/ram:PostalTradeAddress/ram:CityName' ) === 'Köln' && $one( $x, $ag. '/ram:BuyerTradeParty/ram:PostalTradeAddress/ram:CountryID' ) === 'DE'
+	&& $one( $x, $ag. '/ram:BuyerTradeParty/ram:SpecifiedTaxRegistration/ram:ID' ) === 'DE987654321' && $one( $x, $ag. '/ram:BuyerTradeParty/ram:SpecifiedTaxRegistration/ram:ID/@schemeID' ) === 'VA'
+	&& $one( $x, $ag. '/ram:BuyerTradeParty/ram:URIUniversalCommunication/ram:URIID' ) === 'rechnung@muster.example' && $one( $x, $ag. '/ram:BuyerTradeParty/ram:URIUniversalCommunication/ram:URIID/@schemeID' ) === 'EM' );
+check( '...a document without a period has BT-72 = the date of the document and no BG-14', $one( $x, $tr. '/ram:ApplicableHeaderTradeDelivery/ram:ActualDeliverySupplyChainEvent/ram:OccurrenceDateTime/udt:DateTimeString' ) === '20260310'
+	&& $one( $x, $tr. '/ram:ApplicableHeaderTradeDelivery/ram:ActualDeliverySupplyChainEvent/ram:OccurrenceDateTime/udt:DateTimeString/@format' ) === '102' && $x->query( $st. '/ram:BillingSpecifiedPeriod' )->length === 0 );
+check( '...BT-5 the currency code of the symbol, BG-16 the payment means 58 (BR-DE-1) with the IBAN without blanks, the BIC and the name of the account, BT-83 the number', $one( $x, $st. '/ram:InvoiceCurrencyCode' ) === 'EUR' && $one( $x, $st. '/ram:SpecifiedTradeSettlementPaymentMeans/ram:TypeCode' ) === '58'
+	&& $one( $x, $st. '/ram:SpecifiedTradeSettlementPaymentMeans/ram:PayeePartyCreditorFinancialAccount/ram:IBANID' ) === 'DE89370400440532013000' && $one( $x, $st. '/ram:SpecifiedTradeSettlementPaymentMeans/ram:PayeePartyCreditorFinancialAccount/ram:AccountName' ) === 'Studio Beispiel'
+	&& $one( $x, $st. '/ram:SpecifiedTradeSettlementPaymentMeans/ram:PayeeSpecifiedCreditorFinancialInstitution/ram:BICID' ) === 'COBADEFFXXX' && $one( $x, $st. '/ram:PaymentReference' ) === $a['number'] );
+check( '...BT-9 the due day in format 102 and BT-20 always the sentence of the PDF (BR-CO-25)', $one( $x, $st. '/ram:SpecifiedTradePaymentTerms/ram:DueDateDateTime/udt:DateTimeString' ) === '20260324' && $one( $x, $st. '/ram:SpecifiedTradePaymentTerms/ram:DueDateDateTime/udt:DateTimeString/@format' ) === '102'
+	&& $one( $x, $st. '/ram:SpecifiedTradePaymentTerms/ram:Description' ) === Render::dueSentence( '2026-03-24', $a['number'] ) );
+check( 'BG-25 the lines: the position, the name (escaped), the description, the quantity with up to three decimals and its unit code, the net price and the amount of the line with two decimals', $all( $x, $li. '/ram:AssociatedDocumentLineDocument/ram:LineID' ) === [ '1', '2' ]
+	&& $all( $x, $li. '/ram:SpecifiedTradeProduct/ram:Name' ) === [ 'Webdesign <b>&</b> Beratung', 'Hosting' ] && $all( $x, $li. '/ram:SpecifiedTradeProduct/ram:Description' ) === [ "Seiten für\n\"Muster\" & Co" ]
+	&& $all( $x, $li. '/ram:SpecifiedLineTradeDelivery/ram:BilledQuantity' ) === [ '2.5', '1' ] && $all( $x, $li. '/ram:SpecifiedLineTradeDelivery/ram:BilledQuantity/@unitCode' ) === [ 'HUR', 'MON' ]
+	&& $all( $x, $li. '/ram:SpecifiedLineTradeAgreement/ram:NetPriceProductTradePrice/ram:ChargeAmount' ) === [ '90.00', '12.00' ] && $all( $x, $lineTotal ) === [ '225.00', '12.00' ] );
+check( '...every line of a small business invoice has the category E with the rate 0 (BR-E-05)', $all( $x, $li. '/ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:CategoryCode' ) === [ 'E', 'E' ] && $all( $x, $li. '/ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:RateApplicablePercent' ) === [ '0.00', '0.00' ]
+	&& $all( $x, $li. '/ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:TypeCode' ) === [ 'VAT', 'VAT' ] );
+check( 'BG-23 one breakdown E with the exemption text of the settings (BR-E-10, BT-120), the basis equal to the net, the tax 0.00, the rate 0.00', $x->query( $bg23 )->length === 1 && $one( $x, $bg23. '/ram:CategoryCode' ) === 'E' && $one( $x, $bg23. '/ram:ExemptionReason' ) === Settings::get( $appData, 'vat_exempt_text' )
+	&& $one( $x, $bg23. '/ram:BasisAmount' ) === '237.00' && $one( $x, $bg23. '/ram:CalculatedAmount' ) === '0.00' && $one( $x, $bg23. '/ram:RateApplicablePercent' ) === '0.00' && $a['net'] === 23700 );
+check( 'BG-22 the totals are those of Money::totals(): BT-106 = BT-109 = the net, BT-110 the VAT with the currency, BT-112 = BT-115 the gross, BT-113 0.00', $one( $x, $sum. '/ram:LineTotalAmount' ) === '237.00' && $one( $x, $sum. '/ram:TaxBasisTotalAmount' ) === '237.00' && $one( $x, $sum. '/ram:TaxTotalAmount' ) === '0.00'
+	&& $one( $x, $sum. '/ram:TaxTotalAmount/@currencyID' ) === 'EUR' && $one( $x, $sum. '/ram:GrandTotalAmount' ) === '237.00' && $one( $x, $sum. '/ram:TotalPrepaidAmount' ) === '0.00' && $one( $x, $sum. '/ram:DuePayableAmount' ) === '237.00' );
+
+// The business rules every file is held to, by structure and by value
+$rules = static function( \DOMXPath $x, string $label ) use ( $one, $all, $cents, $st, $ag, $li, $sum, $bg23, $lineTotal ): bool {
+	$count = static fn( string $query ): int => $x->query( $query )->length;
+	$ok = $count( $st. '/ram:SpecifiedTradeSettlementPaymentMeans/ram:PayeePartyCreditorFinancialAccount/ram:IBANID' ) === 1;
+	$ok = $ok && $count( $ag. '/ram:SellerTradeParty/ram:DefinedTradeContact' ) === 1;
+	$ok = $ok && trim( (string) $one( $x, $ag. '/ram:SellerTradeParty/ram:PostalTradeAddress/ram:CityName' ) ) !== '' && trim( (string) $one( $x, $ag. '/ram:SellerTradeParty/ram:PostalTradeAddress/ram:PostcodeCode' ) ) !== '';
+	foreach( [ 'ram:PersonName', 'ram:TelephoneUniversalCommunication/ram:CompleteNumber', 'ram:EmailURIUniversalCommunication/ram:URIID' ] as $part )
+		$ok = $ok && trim( (string) $one( $x, $ag. '/ram:SellerTradeParty/ram:DefinedTradeContact/'. $part ) ) !== '';
+	$ok = $ok && trim( (string) $one( $x, $ag. '/ram:BuyerReference' ) ) !== '';
+	$ok = $ok && $one( $x, '/rsm:CrossIndustryInvoice/rsm:ExchangedDocumentContext/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID' ) === XRechnung::GUIDELINE;
+	$due = $one( $x, $st. '/ram:SpecifiedTradePaymentTerms/ram:DueDateDateTime/udt:DateTimeString' );
+	$ok = $ok && ( $due !== null || trim( (string) $one( $x, $st. '/ram:SpecifiedTradePaymentTerms/ram:Description' ) ) !== '' );
+	$ok = $ok && array_filter( $all( $x, $li. '/ram:SpecifiedLineTradeAgreement/ram:NetPriceProductTradePrice/ram:ChargeAmount' ), static fn( string $price ): bool => $cents( $price ) < 0 ) === [];
+	$ok = $ok && array_filter( $all( $x, $li. '/ram:SpecifiedLineTradeDelivery/ram:BilledQuantity/@unitCode' ), static fn( string $code ): bool => $code === '' ) === [];
+	$lines = array_sum( array_map( $cents, $all( $x, $lineTotal ) ) );
+	$ok = $ok && $cents( (string) $one( $x, $sum. '/ram:LineTotalAmount' ) ) === $lines && $cents( (string) $one( $x, $sum. '/ram:TaxBasisTotalAmount' ) ) === $lines;
+	$bases = array_map( $cents, $all( $x, $bg23. '/ram:BasisAmount' ) );
+	$rates = array_map( $cents, $all( $x, $bg23. '/ram:RateApplicablePercent' ) );
+	$taxes = array_map( $cents, $all( $x, $bg23. '/ram:CalculatedAmount' ) );
+	$total = 0;
+	foreach( $bases as $index => $basis ) {
+		$ok = $ok && $taxes[$index] === Money::vat( $basis, $rates[$index] );
+		$total += $taxes[$index];
+	}
+	$ok = $ok && $total === $cents( (string) $one( $x, $sum. '/ram:TaxTotalAmount' ) ) && array_sum( $bases ) === $lines;
+	$ok = $ok && $cents( (string) $one( $x, $sum. '/ram:GrandTotalAmount' ) ) === $lines + $total && $cents( (string) $one( $x, $sum. '/ram:DuePayableAmount' ) ) === $cents( (string) $one( $x, $sum. '/ram:GrandTotalAmount' ) ) - $cents( (string) $one( $x, $sum. '/ram:TotalPrepaidAmount' ) );
+
+	foreach( $all( $x, $bg23. '/ram:CategoryCode' ) as $index => $category )
+		$ok = $ok && ( $category === 'E' ? trim( (string) $one( $x, '('. $bg23. ')['. ( $index + 1 ). ']/ram:ExemptionReason' ) ) !== '' && $rates[$index] === 0 : ( $category === 'S' && $rates[$index] > 0 ) );
+
+	check( 'the business rules of '. $label. ' hold: BR-DE-1, -2, -3, -4, -5, -6, -7, -15, -21, BR-CO-25, BR-27, BR-CO-10, -13, -14, -15, -17, BR-E-10, BR-S and the unit code of every line', $ok === true );
+
+	return $ok;
+};
+$rules( $x, 'fixture (a)' );
+$sameBytes = XRechnung::build( $appData, Documents::get( $appData, $a['id'] ) );
+check( 'the file is deterministic: made again from the finalised document it is the same bytes, with the same hash', $sameBytes === file_get_contents( $xmlDir( $a ) ) && hash( 'sha256', $sameBytes ) === $a['xml_sha256'] && XRechnung::build( $appData, Documents::get( $appData, $a['id'] ) ) === $sameBytes );
+
+// (b) a regular invoice with 19 % and 7 %, a period, a reference of its own, the VAT id of the seller
+foreach( [ 'vat_mode' => 'regular', 'vat_id' => 'DE111222333' ] as $key => $value )
+	Settings::set( $appData, $key, $value );
+
+$full = $line( [ 'title' => 'Mixing', 'qty' => '3', 'price' => '33,33', 'vat_rate' => 1900, 'unit_code' => 'H87' ] );
+$book = $line( [ 'title' => 'Buch', 'qty' => '2', 'price' => '17,95', 'vat_rate' => 700, 'unit_code' => 'H87' ] );
+$more = $line( [ 'title' => 'Master', 'qty' => '1', 'price' => '100', 'vat_rate' => 1900, 'unit_code' => 'LS' ] );
+$b = $mk( 'invoice', $biz['id'], [ 'date' => '2026-04-02', 'lines' => [ $full, $book, $more ], 'period_from' => '2026-04-01', 'period_to' => '2026-04-30', 'buyer_reference' => 'Bestellung 99' ] );
+$xb = $dom( $b );
+$totalsB = Money::totals( $b['lines'], 'regular', false );
+check( '(b) a regular invoice is finalised with a file as well; BT-10 is the reference of the document, which comes before the client\'s; BT-31 the VAT id and BT-32 the tax number', $b['xml_path'] !== '' && $b['xml_lacks'] === [] && $one( $xb, $ag. '/ram:BuyerReference' ) === 'Bestellung 99'
+	&& $all( $xb, $ag. '/ram:SellerTradeParty/ram:SpecifiedTaxRegistration/ram:ID/@schemeID' ) === [ 'VA', 'FC' ] && $all( $xb, $ag. '/ram:SellerTradeParty/ram:SpecifiedTaxRegistration/ram:ID' ) === [ 'DE111222333', '12/345/67890' ] && $b['buyer_reference'] === 'Bestellung 99' );
+check( '...BG-14 the period in format 102, and then no BT-72', $one( $xb, $st. '/ram:BillingSpecifiedPeriod/ram:StartDateTime/udt:DateTimeString' ) === '20260401' && $one( $xb, $st. '/ram:BillingSpecifiedPeriod/ram:EndDateTime/udt:DateTimeString' ) === '20260430'
+	&& $one( $xb, $st. '/ram:BillingSpecifiedPeriod/ram:EndDateTime/udt:DateTimeString/@format' ) === '102' && $xb->query( $tr. '/ram:ApplicableHeaderTradeDelivery/ram:ActualDeliverySupplyChainEvent' )->length === 0 );
+check( 'BG-23 is grouped by category and rate: S 19.00 and S 7.00, each with the basis and the tax Money::totals() has for the rate, and no exemption text', $all( $xb, $bg23. '/ram:CategoryCode' ) === [ 'S', 'S' ] && $all( $xb, $bg23. '/ram:RateApplicablePercent' ) === [ '19.00', '7.00' ]
+	&& array_map( $cents, $all( $xb, $bg23. '/ram:BasisAmount' ) ) === [ $totalsB['rates'][1900]['net'], $totalsB['rates'][700]['net'] ] && array_map( $cents, $all( $xb, $bg23. '/ram:CalculatedAmount' ) ) === [ $totalsB['rates'][1900]['vat'], $totalsB['rates'][700]['vat'] ]
+	&& $xb->query( $bg23. '/ram:ExemptionReason' )->length === 0 && $all( $xb, $li. '/ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:CategoryCode' ) === [ 'S', 'S', 'S' ]
+	&& $all( $xb, $li. '/ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:RateApplicablePercent' ) === [ '19.00', '7.00', '19.00' ] );
+check( '...the totals are those of Money::totals(): net, VAT, gross', $cents( (string) $one( $xb, $sum. '/ram:LineTotalAmount' ) ) === $totalsB['net'] && $cents( (string) $one( $xb, $sum. '/ram:TaxTotalAmount' ) ) === $totalsB['vat'] && $cents( (string) $one( $xb, $sum. '/ram:GrandTotalAmount' ) ) === $totalsB['gross']
+	&& $totalsB['net'] === $b['net'] && $totalsB['vat'] === $b['vat'] && $totalsB['gross'] === $b['gross'] );
+$rules( $xb, 'fixture (b)' );
+
+// (c) the credit note of (b)
+$draftC = Documents::creditOf( $appData, $b['id'] );
+Documents::change( $appData, $draftC['id'], [ 'template_key' => 'erechnung' ] );
+$c = Documents::finalise( $appData, $draftC['id'] );
+$xc = $dom( $c );
+check( '(c) a credit note (Storno) is finalised with a file: BT-3 is 381, the buyer reference is the invoice\'s, and it names the invoice it takes back (BG-3: BT-25 the number, BT-26 the date in format 102)', is_array( $c ) === true && $c['xml_path'] !== '' && $one( $xc, $hd. '/ram:TypeCode' ) === '381' && $one( $xc, $ag. '/ram:BuyerReference' ) === 'Bestellung 99'
+	&& $one( $xc, $st. '/ram:InvoiceReferencedDocument/ram:IssuerAssignedID' ) === $b['number'] && $one( $xc, $st. '/ram:InvoiceReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString' ) === '20260402' && $one( $xc, $st. '/ram:InvoiceReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString/@format' ) === '102' );
+check( '...its amounts are positive, though the document stores them negated: lines, breakdowns and totals are those of the invoice, the quantities positive', $c['gross'] === -$b['gross'] && $c['net'] === -$b['net']
+	&& str_contains( implode( '', $all( $xc, '//ram:ChargeAmount | //ram:LineTotalAmount | //ram:BasisAmount | //ram:CalculatedAmount | //ram:TaxBasisTotalAmount | //ram:TaxTotalAmount | //ram:GrandTotalAmount | //ram:DuePayableAmount | //ram:BilledQuantity' ) ), '-' ) === false
+	&& $all( $xc, $li. '/ram:SpecifiedLineTradeDelivery/ram:BilledQuantity' ) === [ '3', '2', '1' ] && $all( $xc, $bg23. '/ram:BasisAmount' ) === $all( $xb, $bg23. '/ram:BasisAmount' ) && $all( $xc, $bg23. '/ram:CalculatedAmount' ) === $all( $xb, $bg23. '/ram:CalculatedAmount' )
+	&& $one( $xc, $sum. '/ram:GrandTotalAmount' ) === $one( $xb, $sum. '/ram:GrandTotalAmount' ) && $one( $xc, $sum. '/ram:TaxTotalAmount' ) === $one( $xb, $sum. '/ram:TaxTotalAmount' ) );
+check( '...a credit note has no due day, and BT-20 all the same (BR-CO-25)', $xc->query( $st. '/ram:SpecifiedTradePaymentTerms/ram:DueDateDateTime' )->length === 0 && $one( $xc, $st. '/ram:SpecifiedTradePaymentTerms/ram:Description' ) === Render::dueSentence( '', $c['number'] ) );
+$rules( $xc, 'fixture (c)' );
+
+// (f) a negative price: a discount line
+Settings::set( $appData, 'vat_mode', 'small_business' );
+$f = $mk( 'invoice', $biz['id'], [ 'date' => '2026-05-04', 'lines' => [ $line( [ 'title' => 'Konzept', 'qty' => '1', 'price' => '100', 'unit_code' => 'LS' ] ), $line( [ 'title' => 'Rabatt', 'qty' => '2', 'price' => '-10', 'unit_code' => 'C62' ] ) ] ] );
+$xf = $dom( $f );
+check( '(f) a line with a negative price becomes a negated quantity with a positive price (BR-27), and its amount stays negative: -2 x 10.00 = -20.00', $all( $xf, $li. '/ram:SpecifiedLineTradeDelivery/ram:BilledQuantity' ) === [ '1', '-2' ] && $all( $xf, $li. '/ram:SpecifiedLineTradeAgreement/ram:NetPriceProductTradePrice/ram:ChargeAmount' ) === [ '100.00', '10.00' ]
+	&& $all( $xf, $lineTotal ) === [ '100.00', '-20.00' ] && $one( $xf, $sum. '/ram:LineTotalAmount' ) === '80.00' && $f['net'] === 8000 );
+$rules( $xf, 'fixture (f)' );
+$draftFC = Documents::creditOf( $appData, $f['id'] );
+Documents::change( $appData, $draftFC['id'], [ 'template_key' => 'erechnung' ] );
+$fc = Documents::finalise( $appData, $draftFC['id'] );
+$xfc = $dom( $fc );
+check( '...the credit note of it has the same lines and the totals positive: the signs of the credit note and of the discount cancel each other where the quantity is concerned', $one( $xfc, $hd. '/ram:TypeCode' ) === '381' && $all( $xfc, $li. '/ram:SpecifiedLineTradeDelivery/ram:BilledQuantity' ) === [ '1', '-2' ]
+	&& $all( $xfc, $li. '/ram:SpecifiedLineTradeAgreement/ram:NetPriceProductTradePrice/ram:ChargeAmount' ) === [ '100.00', '10.00' ] && $all( $xfc, $lineTotal ) === [ '100.00', '-20.00' ] && $one( $xfc, $sum. '/ram:GrandTotalAmount' ) === '80.00' && $fc['gross'] === -8000 );
+$rules( $xfc, 'the credit note of fixture (f)' );
+
+// (g) an invoice without a due day: BT-20 alone
+$g = $mk( 'invoice', $biz['id'], [ 'date' => '2026-06-01', 'due_date' => '', 'lines' => [ $hour, $line( [ 'title' => 'Bell', 'description' => "Zeile\x07 mit\x0B Steuerzeichen", 'unit_code' => 'H87' ] ) ] ] );
+$xg = $dom( $g );
+check( '(g) an invoice without a due day has no BT-9, and BT-20 is the sentence "sofort": BR-CO-25 is kept by the terms alone', $g['due_date'] === null && $xg->query( $st. '/ram:SpecifiedTradePaymentTerms/ram:DueDateDateTime' )->length === 0
+	&& $one( $xg, $st. '/ram:SpecifiedTradePaymentTerms/ram:Description' ) === Render::dueSentence( '', $g['number'] ) && str_contains( (string) $one( $xg, $st. '/ram:SpecifiedTradePaymentTerms/ram:Description' ), $g['number'] ) === true );
+check( '...a control character a description may hold is left out of the file, which stays well-formed: XML 1.0 cannot carry it', $xg->document->documentElement !== null && $all( $xg, $li. '/ram:SpecifiedTradeProduct/ram:Description' )[1] === 'Zeile mit Steuerzeichen' );
+$rules( $xg, 'fixture (g)' );
+Settings::set( $appData, 'bic', '' );
+$noBic = new \DOMDocument();
+$noBic->loadXML( XRechnung::build( $appData, (array) Documents::get( $appData, $g['id'] ) ) );
+Settings::set( $appData, 'bic', 'COBADEFFXXX' );
+check( 'the BIC is optional: an invoice made while the setting is empty has the IBAN and no institution at all (no empty BT-86)', $noBic->getElementsByTagName( 'IBANID' )->length === 1 && $noBic->getElementsByTagName( 'BICID' )->length === 0 && $noBic->getElementsByTagName( 'PayeeSpecifiedCreditorFinancialInstitution' )->length === 0 );
+
+// A file of an electronic invoice that is in the way (a database restored without its files): nothing is finalised, and the PDF that was written for it is taken back
+$wayDraft = Documents::add( $appData, 'invoice', $biz['id'], [ 'date' => '2026-06-15', 'lines' => [ $hour ], 'template_key' => 'erechnung' ] );
+$wayNumber = Numbers::upcoming( $appData, 'invoice', 2026, Settings::get( $appData, 'number_invoice' ) );
+$wayPath = Render::DIR. '/2026/'. $wayNumber. '.xml';
+file_put_contents( \Nino\Filesystem::path( $appData, $wayPath ), 'fremd' );
+$sequenceBefore = Db::rows( $appData, 'SELECT category, year, next FROM sequences ORDER BY category, year' );
+check( 'a file of an electronic invoice that is there already stops the finalising: exists:<path> with the .xml path, the PDF written before it is taken back, no number is spent, the draft is as it was - and the foreign file is left alone', Documents::finalise( $appData, $wayDraft['id'] ) === 'exists:'. $wayPath
+	&& is_file( \Nino\Filesystem::path( $appData, Render::DIR. '/2026/'. $wayNumber. '.pdf' ) ) === false && Db::rows( $appData, 'SELECT category, year, next FROM sequences ORDER BY category, year' ) === $sequenceBefore && Documents::get( $appData, $wayDraft['id'] )['state'] === 'draft'
+	&& file_get_contents( \Nino\Filesystem::path( $appData, $wayPath ) ) === 'fremd' );
+[ $status, $body ] = $post( 'crm-documents/finalise', [ 'id' => (string) $wayDraft['id'] ] );
+check( '...the API says it in its own sentence, with the number and the path: 409 crm_documents_exists_xml', $status === 409 && $body['code'] === 'crm_documents_exists_xml' && $body['params'] === [ $wayNumber, ltrim( $wayPath, '/' ) ] );
+unlink( \Nino\Filesystem::path( $appData, $wayPath ) );
+$wayDone = Documents::finalise( $appData, $wayDraft['id'] );
+check( '...and with the file out of the way the same draft is finalised, with the number it would have had', is_array( $wayDone ) === true && $wayDone['number'] === $wayNumber && $wayDone['xml_path'] === $wayPath );
+
+// (d) an invoice of a private client: no file, no list
+$d = $mk( 'invoice', $private['id'], [ 'date' => '2026-03-11', 'lines' => [ $hour ] ] );
+check( '(d) an invoice of a private client is finalised without a file and without a list: nothing is written beside the PDF, nothing is said to be missing', $d['state'] === 'open' && $d['xml_path'] === '' && $d['xml_sha256'] === '' && $d['xml_lacks'] === [] && $d['client_frozen']['business'] === '0'
+	&& glob( dirname( \Nino\Filesystem::path( $appData, $d['pdf_path'] ) ). '/'. $d['number']. '.xml' ) === [] && XRechnung::applies( $d ) === false && XRechnung::lacks( $appData, $d ) === [] );
+
+// (e) a business with no buyer reference and a line without a unit code
+$e = $mk( 'invoice', $bare['id'], [ 'date' => '2026-03-12', 'lines' => [ $hour, $line( [ 'title' => 'Ohne Einheit' ] ) ] ] );
+check( '(e) a business client with no buyer reference and a line without a unit code: the document is finalised all the same - number, PDF - with no file, and the list of what was missing is stored', $e['state'] === 'open' && $e['number'] !== '' && $e['pdf_path'] !== '' && $e['xml_path'] === '' && $e['xml_sha256'] === ''
+	&& $e['xml_lacks'] === [ 'buyer_reference', 'line_unit' ] && glob( dirname( \Nino\Filesystem::path( $appData, $e['pdf_path'] ) ). '/'. $e['number']. '.xml' ) === [] );
+$ignored = ninoWarnings();
+
+// A finalised document never gets a file later
+Db::exec( $appData, 'UPDATE clients SET business = 1, buyer_reference = \'X-1\' WHERE id = :id', [ 'id' => $private['id'] ] );
+Db::exec( $appData, 'UPDATE document_lines SET unit_code = \'HUR\' WHERE document_id = :id', [ 'id' => $e['id'] ] );
+Db::exec( $appData, 'UPDATE clients SET buyer_reference = \'Z-9\' WHERE id = :id', [ 'id' => $bare['id'] ] );
+$eSent = Documents::setState( $appData, $e['id'], 'sent' );
+$eReleased = Documents::release( $appData, $e['id'], false );
+$eNotes = Documents::setNotes( $appData, $e['id'], 'x' );
+check( 'a finalised document never gets a file later: the client became a business, the missing pieces were filled in - the documents keep what they were finalised with, whatever is done with them (sent, released, noted)', Documents::get( $appData, $d['id'] )['xml_path'] === '' && $eSent['xml_path'] === '' && $eReleased['document']['xml_path'] === ''
+	&& $eNotes['xml_path'] === '' && Documents::get( $appData, $e['id'] )['xml_lacks'] === [ 'buyer_reference', 'line_unit' ] && glob( dirname( \Nino\Filesystem::path( $appData, $e['pdf_path'] ) ). '/'. $e['number']. '.xml' ) === [] );
+Db::exec( $appData, 'UPDATE clients SET business = 0, buyer_reference = \'\' WHERE id = :id', [ 'id' => $private['id'] ] );
+Documents::unrelease( $appData, $e['id'] );
+
+// An offer of a business client gets nothing
+$offerX = Documents::add( $appData, 'offer', $biz['id'], [ 'lines' => [ $hour ], 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
+$offerX = Documents::finalise( $appData, $offerX['id'] );
+check( 'an offer of a business client gets no file and no list: it is no invoice, and its buyer reference stays empty', $offerX['xml_path'] === '' && $offerX['xml_lacks'] === [] && $offerX['buyer_reference'] === '' && XRechnung::applies( $offerX ) === false && XRechnung::lacks( $appData, $offerX ) === [] );
+
+// The checklist: each item by itself
+Settings::set( $appData, 'vat_mode', 'small_business' );
+Settings::set( $appData, 'vat_id', 'DE111222333' );
+$probe = Documents::add( $appData, 'invoice', $biz['id'], [ 'date' => '2026-07-01', 'lines' => [ $hour, $month ], 'template_key' => 'erechnung' ] );
+check( 'the checklist of a complete draft is empty - and a draft of a business client is checked the way a finalised one is', XRechnung::lacks( $appData, $probe ) === [] && XRechnung::applies( $probe ) === true && $probe['buyer_reference'] === 'PO-4711' );
+$settingsBefore = Settings::all( $appData );
+$wrong = [];
+
+foreach( [ 'seller_name' => 'seller_name', 'seller_street' => 'seller_street', 'seller_zip' => 'seller_zip', 'seller_city' => 'seller_city', 'seller_country' => 'seller_country', 'seller_contact' => 'seller_contact', 'seller_phone' => 'seller_phone',
+	'seller_email' => 'seller_email', 'iban' => 'iban', 'exempt_text' => 'vat_exempt_text' ] as $key => $setting ) {
+	Settings::set( $appData, $setting, '' );
+	$wrong[$key] = XRechnung::lacks( $appData, $probe ) === [ $key ];
+	Settings::set( $appData, $setting, $settingsBefore[$setting] );
+}
+
+check( 'each setting the file needs is an item of the checklist when it is empty, alone: the name, the street, the postcode, the town, the country, the contact, the phone, the e-mail, the IBAN and the text of the exemption: '. count( $wrong ), array_filter( $wrong, static fn( bool $ok ): bool => $ok === false ) === [] );
+Settings::set( $appData, 'vat_id', '' );
+$noVat = XRechnung::lacks( $appData, $probe );
+Settings::set( $appData, 'vat_id', 'DE111222333' );
+Settings::set( $appData, 'tax_id', '' );
+$noTax = XRechnung::lacks( $appData, $probe );
+Settings::set( $appData, 'tax_id', '12/345/67890' );
+$noTaxXml = XRechnung::build( $appData, (array) Documents::get( $appData, $probe['id'] ) );
+check( 'the VAT id is required (BR-CO-26: the tax number alone is no seller identifier): without it the checklist has seller_vat_id, alone; with it the item is gone - and the tax number is optional', $noVat === [ 'seller_vat_id' ] && $noTax === [] && XRechnung::lacks( $appData, $probe ) === [] && str_contains( XRechnung::text( 'seller_vat_id' ), 'BR-CO-26' ) === true );
+Settings::set( $appData, 'currency', 'kr' );
+$kr = XRechnung::lacks( $appData, $probe );
+$codes = [];
+
+foreach( [ '€' => 'EUR', 'CHF' => 'CHF', '$' => 'USD', '£' => 'GBP' ] as $symbol => $code ) {
+	Settings::set( $appData, 'currency', $symbol );
+	$codes[$symbol] = XRechnung::CURRENCIES[$symbol] === $code && XRechnung::lacks( $appData, $probe ) === [];
+}
+
+Settings::set( $appData, 'currency', '€' );
+check( 'the currency is mapped from its symbol to the code of ISO 4217 - € EUR, CHF CHF, $ USD, £ GBP - and another symbol is an item of the checklist', $kr === [ 'currency' ] && array_filter( $codes, static fn( bool $ok ): bool => $ok === false ) === [] );
+$flip = static function( array $over ) use ( &$appData, $probe, $biz ): array {
+	Db::exec( $appData, 'UPDATE clients SET company = :company, name = :name, street = :street, zip = :zip, city = :city, country = :country, email = :email, buyer_reference = :ref WHERE id = :id', [
+		'company' => $over['company'] ?? 'Muster & Söhne <KG>', 'name' => $over['name'] ?? 'Mia Muster', 'street' => $over['street'] ?? 'Hauptstr. 5', 'zip' => $over['zip'] ?? '50667', 'city' => $over['city'] ?? 'Köln', 'country' => $over['country'] ?? 'DE',
+		'email' => $over['email'] ?? 'rechnung@muster.example', 'ref' => $over['ref'] ?? 'PO-4711', 'id' => $biz['id'] ] );
+	Db::exec( $appData, 'UPDATE documents SET buyer_reference = :ref WHERE id = :id', [ 'ref' => $over['docref'] ?? '', 'id' => $probe['id'] ] );
+
+	return XRechnung::lacks( $appData, (array) Documents::get( $appData, $probe['id'] ) );
+};
+$wrong = [];
+
+foreach( [ 'buyer_name' => [ 'company' => '', 'name' => '' ], 'buyer_street' => [ 'street' => '' ], 'buyer_zip' => [ 'zip' => '' ], 'buyer_city' => [ 'city' => '' ], 'buyer_country' => [ 'country' => '' ], 'buyer_reference' => [ 'ref' => '' ], 'buyer_email' => [ 'email' => '' ] ] as $key => $over )
+	$wrong[$key] = $flip( $over ) === [ $key ];
+
+check( 'each piece of the client the file needs is an item when it is empty, alone: the name (company and name both), the street, the postcode, the town, the country, the e-mail address and the buyer reference: '. count( $wrong ), array_filter( $wrong, static fn( bool $ok ): bool => $ok === false ) === [] );
+check( 'the buyer reference is the document\'s, else the client\'s: either one suffices, and the name is the company or the person', $flip( [ 'ref' => '', 'docref' => 'Nur am Beleg' ] ) === [] && $flip( [ 'ref' => 'Nur am Kunden' ] ) === [] && $flip( [ 'company' => '' ] ) === [] && $flip( [ 'name' => '' ] ) === [] );
+$flip( [] );
+Db::exec( $appData, 'UPDATE documents SET buyer_reference = \'PO-4711\' WHERE id = :id', [ 'id' => $probe['id'] ] );
+$withoutUnit = (array) Documents::change( $appData, $probe['id'], [ 'lines' => [ $hour, $month, $line( [ 'title' => 'Neu' ] ) ] ] );
+check( 'a line without a unit code is an item: line_unit', XRechnung::lacks( $appData, $withoutUnit ) === [ 'line_unit' ] );
+$noLines = (array) Documents::change( $appData, $probe['id'], [ 'lines' => [] ] );
+check( 'a document without lines is an item: lines', XRechnung::lacks( $appData, $noLines ) === [ 'lines' ] );
+Settings::set( $appData, 'vat_mode', 'regular' );
+$regularProbe = (array) Documents::add( $appData, 'invoice', $biz['id'], [ 'date' => '2026-07-02', 'lines' => [ $hour, $line( [ 'title' => 'Null', 'vat_rate' => 0, 'unit_code' => 'H87' ] ) ] ] );
+$withRate = (array) Documents::change( $appData, $regularProbe['id'], [ 'lines' => [ $line( [ 'title' => 'A', 'vat_rate' => 1900, 'unit_code' => 'H87' ] ), $line( [ 'title' => 'B', 'vat_rate' => 700, 'unit_code' => 'H87' ] ) ] ] );
+$withReverse = (array) Documents::change( $appData, $regularProbe['id'], [ 'reverse_charge' => true ] );
+check( 'under regular taxation a line with the rate 0 is an item (line_rate) and a reverse charge is an item (reverse_charge), alone each', XRechnung::lacks( $appData, $regularProbe ) === [ 'line_rate' ] && XRechnung::lacks( $appData, $withRate ) === [] && XRechnung::lacks( $appData, $withReverse ) === [ 'reverse_charge' ] );
+Settings::set( $appData, 'vat_exempt_text', '' );
+check( '...the text of the exemption is asked for under small_business only', XRechnung::lacks( $appData, $withRate ) === [] );
+Settings::set( $appData, 'vat_exempt_text', $settingsBefore['vat_exempt_text'] );
+Settings::set( $appData, 'vat_mode', 'small_business' );
+$smallZero = (array) Documents::add( $appData, 'invoice', $biz['id'], [ 'date' => '2026-07-03', 'lines' => [ $hour ] ] );
+check( 'under small_business the rate 0 is the rule and no item', XRechnung::lacks( $appData, $smallZero ) === [] );
+$private2 = (array) Documents::add( $appData, 'invoice', $private['id'], [ 'date' => '2026-07-04', 'lines' => [ $line() ] ] );
+check( 'a draft of a private client has no checklist, though it has a line without a unit code', XRechnung::lacks( $appData, $private2 ) === [] && XRechnung::applies( $private2 ) === false );
+check( 'every key of the checklist has its sentence, and the sentences are the keys of the text file: '. count( XRechnung::KEYS ), array_map( static fn( array $one ): string => $one['key'], XRechnung::sentences( XRechnung::KEYS ) ) === XRechnung::KEYS
+	&& array_filter( XRechnung::sentences( XRechnung::KEYS ), static fn( array $one ): bool => trim( $one['text'] ) === '' ) === [] && XRechnung::sentences( [ 'unbekannt', 'iban' ] ) === [ [ 'key' => 'iban', 'text' => XRechnung::text( 'iban' ) ] ]
+	&& array_keys( (array) require $root. '/app/Crm/Documents/XRechnung/text/de_DE.php' ) === array_map( static fn( string $key ): string => 'lack.'. $key, XRechnung::KEYS ) );
+
+foreach( [ $probe, $regularProbe, $smallZero, $private2 ] as $over )
+	Documents::remove( $appData, $over['id'] );
+
+// The route /.crm/xml/<id>, with the permission and the checks of the route of the PDF
+echo "\nThe route /.crm/xml/<id>\n";
+
+$xmlUri = '/.crm/xml/'. $a['id'];
+$as( '' );
+check( 'a visitor is told 404, with a plain body and no file', $nothing( docServe( $appData, $xmlUri ) ) === true && str_starts_with( docServe( $appData, $xmlUri )['header']['Content-Type'], 'text/plain' ) );
+$as( 'plain@example.com' );
+check( 'an account without the permission is told the same 404', $nothing( docServe( $appData, $xmlUri ) ) === true );
+$as( 'other@example.com' );
+check( '...and so is one with the permission of another panel', $nothing( docServe( $appData, $xmlUri ) ) === true );
+$as( 'docs@example.com' );
+$answer = docServe( $appData, $xmlUri );
+check( 'an account with the permission of the panel Belege gets the file: 200, application/xml, saved as an attachment under the number', $answer['statusCode'] === 200 && ( $answer['file'] ?? '' ) === $xmlDir( $a ) && $answer['header']['Content-Type'] === 'application/xml'
+	&& $answer['header']['Content-Disposition'] === 'attachment; filename="'. $a['number']. '.xml"' && $answer['header']['Cache-Control'] === 'private, no-store' && $answer['header']['X-Content-Type-Options'] === 'nosniff' );
+check( '...also without a query: it is never shown, always saved', docServe( $appData, $xmlUri. '?download=0' )['header']['Content-Disposition'] === $answer['header']['Content-Disposition'] );
+$as( 'admin@example.com' );
+check( 'the owner with every permission gets it as well', docServe( $appData, $xmlUri )['statusCode'] === 200 && hash_file( 'sha256', (string) docServe( $appData, $xmlUri )['file'] ) === $a['xml_sha256'] );
+$answers = [];
+$draftX = Documents::add( $appData, 'invoice', $biz['id'] )['id'];
+
+foreach( [ 'a document without a file (a private client\'s)' => '/.crm/xml/'. $d['id'], 'a document whose file was not written (a list of what was missing)' => '/.crm/xml/'. $e['id'], 'a draft' => '/.crm/xml/'. $draftX, 'an id nobody has' => '/.crm/xml/99999', 'a word' => '/.crm/xml/abc', 'zero' => '/.crm/xml/0',
+	'a leading zero' => '/.crm/xml/01', 'a path behind the id' => $xmlUri. '/x', 'a traversal' => '/.crm/xml/..%2f..%2fetc%2fpasswd', 'a long number' => '/.crm/xml/12345678901' ] as $kind => $path )
+	$answers[$kind] = $nothing( docServe( $appData, $path ) );
+
+check( 'a document without a file, a draft, an id nobody has and everything that is no id are the same 404, with no line in the log', array_filter( $answers, static fn( bool $ok ): bool => $ok === false ) === [] && ninoWarnings() === [] );
+Documents::remove( $appData, $draftX );
+
+$xmlFile = $xmlDir( $a );
+$xmlBytes = (string) file_get_contents( $xmlFile );
+file_put_contents( $xmlFile, $xmlBytes. ' ' );
+$ignored = ninoWarnings();
+$conflict = docServe( $appData, $xmlUri );
+check( 'a file whose hash is not the stored one is 409, no file is answered, and one log line names the number', $conflict['statusCode'] === 409 && ( $conflict['file'] ?? null ) === null && $conflict['body'] === 'Conflict' && ninoWarnings() === [ 'Crm: the electronic invoice of document '. $a['number']. ' does not match its hash' ] );
+file_put_contents( $xmlFile, $xmlBytes );
+check( '...the file as it was is answered again', docServe( $appData, $xmlUri )['statusCode'] === 200 );
+rename( $xmlFile, $xmlFile. '.away' );
+$missing = docServe( $appData, $xmlUri );
+check( 'a file that is gone is 404 with one log line that names the number', $nothing( $missing ) === true && ninoWarnings() === [ 'Crm: the electronic invoice of document '. $a['number']. ' is gone' ] );
+rename( $xmlFile. '.away', $xmlFile );
+
+foreach( [ '../../../etc/passwd', '/etc/passwd', '/data/crm/pdf/../../../x.xml', '/data/crm/pdf/2026/x.txt', '/data/crm/pdf/2026/'. $a['number']. '.pdf', '/data/crm/pdf/2026/a/b.xml' ] as $path ) {
+	Db::exec( $appData, 'UPDATE documents SET xml_path = :p WHERE id = :id', [ 'p' => $path, 'id' => $a['id'] ] );
+	check( 'a stored path the module did not write is not followed: '. $path, $nothing( docServe( $appData, $xmlUri ) ) === true );
+}
+
+Db::exec( $appData, 'UPDATE documents SET xml_path = :p WHERE id = :id', [ 'p' => $a['xml_path'], 'id' => $a['id'] ] );
+$linkXml = dirname( $xmlFile ). '/link.xml';
+symlink( $xmlFile, $linkXml );
+Db::exec( $appData, 'UPDATE documents SET xml_path = :p WHERE id = :id', [ 'p' => dirname( $a['xml_path'] ). '/link.xml', 'id' => $a['id'] ] );
+check( 'a link inside the directory is not followed either', $nothing( docServe( $appData, $xmlUri ) ) === true );
+unlink( $linkXml );
+Db::exec( $appData, 'UPDATE documents SET xml_path = :p WHERE id = :id', [ 'p' => $a['xml_path'], 'id' => $a['id'] ] );
+$ignored = ninoWarnings();
+check( 'the route and the callback are those the module registered', ( $appData['/nino/http/routes']['GET://.crm/xml/*']['uri'] ?? '' ) === '/.crm/xml/*' && isset( $appData['./nino/callbacks']['/nino/http/response/GET://.crm/xml/*'] ) === true );
+
+// The API of Belege says what the screens draw
+echo "\nThe API: the checklist, the card, the lines\n";
+
+$as( 'admin@example.com' );
+[ $status, $body ] = $post( 'crm-documents/get', [ 'id' => (string) $a['id'] ] );
+check( 'a finalised document with a file: its address is /.crm/xml/<id> and the card says the file is there, nothing missing', $status === 200 && $body['document']['xml_url'] === '/.crm/xml/'. $a['id'] && $body['document']['erechnung'] === [ 'xml' => true, 'lacks' => [] ] );
+$listed = array_column( $post( 'crm-documents/list' )[1]['clients'], null, 'id' );
+check( 'the list of the clients the editor chooses from carries the flag and the buyer reference of each, which the draft takes when another client is chosen', $listed[$biz['id']]['business'] === true && $listed[$biz['id']]['buyer_reference'] === 'PO-4711' && $listed[$private['id']]['business'] === false && $listed[$private['id']]['buyer_reference'] === '' );
+[ $status, $body ] = $post( 'crm-documents/get', [ 'id' => (string) $e['id'] ] );
+check( 'a finalised document that got none: no address, and the card says what was missing - each with its key and its sentence, in the order of the list', $body['document']['xml_url'] === '' && $body['document']['erechnung']['xml'] === false
+	&& array_column( $body['document']['erechnung']['lacks'], 'key' ) === [ 'buyer_reference', 'line_unit' ] && $body['document']['erechnung']['lacks'][0]['text'] === XRechnung::text( 'buyer_reference' ) && $body['document']['xml_lacks'] === [ 'buyer_reference', 'line_unit' ] );
+[ $status, $body ] = $post( 'crm-documents/get', [ 'id' => (string) $d['id'] ] );
+check( 'a document of a private client has no card of it, and neither has an offer: null', $body['document']['erechnung'] === null && $post( 'crm-documents/get', [ 'id' => (string) $offerX['id'] ] )[1]['document']['erechnung'] === null );
+[ $status, $body ] = $post( 'crm-documents/save', [ 'category' => 'invoice', 'client_id' => (string) $biz['id'], 'date' => '2026-08-01', 'template_key' => 'erechnung', 'lines' => [ [ 'title' => 'Stunden', 'description' => '', 'unit' => 'Std.', 'unit_code' => 'HUR', 'qty' => '1', 'price' => '50', 'vat_rate' => 0 ], [ 'title' => 'Ohne', 'description' => '', 'unit' => '', 'qty' => '1', 'price' => '5', 'vat_rate' => 0 ] ] ] );
+check( 'a draft of a business client is saved with the unit code of its lines and the buyer reference of the client; the answer carries the checklist as it stands: the line without a code is missing', $status === 200 && array_column( $body['document']['lines'], 'unit_code' ) === [ 'HUR', '' ] && $body['document']['buyer_reference'] === 'PO-4711'
+	&& $body['document']['erechnung']['xml'] === false && array_column( $body['document']['erechnung']['lacks'], 'key' ) === [ 'line_unit' ] );
+$draftId = $body['document']['id'];
+[ $status, $body ] = $post( 'crm-documents/save', [ 'id' => (string) $draftId, 'buyer_reference' => 'Meine Nummer', 'lines' => [ [ 'title' => 'Stunden', 'description' => '', 'unit' => 'Std.', 'unit_code' => 'HUR', 'qty' => '1', 'price' => '50', 'vat_rate' => 0 ], [ 'title' => 'Ohne', 'description' => '', 'unit' => '', 'unit_code' => 'C62', 'qty' => '1', 'price' => '5', 'vat_rate' => 0 ] ] ] );
+check( '...the buyer reference of the draft is its own and is saved; with the code on every line nothing is missing', $status === 200 && $body['document']['buyer_reference'] === 'Meine Nummer' && $body['document']['erechnung'] === [ 'xml' => false, 'lacks' => [] ] );
+[ $status, $body ] = $post( 'crm-documents/save', [ 'id' => (string) $draftId, 'lines' => [ [ 'title' => 'Stunden', 'description' => '', 'unit' => 'Std.', 'unit_code' => 'XX', 'qty' => '1', 'price' => '50', 'vat_rate' => 0 ] ] ] );
+check( '...a unit code that is none of the list is refused at the line and its field: 400 crm_documents_line_format, lines.0.unit_code', $status === 400 && $body['code'] === 'crm_documents_line_format' && $body['field'] === 'lines.0.unit_code' );
+[ $status, $body ] = $post( 'crm-documents/save', [ 'id' => (string) $draftId, 'buyer_reference' => str_repeat( 'x', 101 ) ] );
+check( '...a buyer reference over 100 characters is refused at its field, with the limit', $status === 400 && $body['code'] === 'crm_documents_long' && $body['field'] === 'buyer_reference' && $body['params'] === [ 100 ] );
+[ $status, $body ] = $post( 'crm-documents/save', [ 'id' => (string) $draftId, 'buyer_reference' => 5 ] );
+check( '...and one that is no text, too: 400 crm_documents_format', $status === 400 && $body['code'] === 'crm_documents_format' );
+[ $status, $body ] = $post( 'crm-documents/save', [ 'category' => 'offer', 'client_id' => (string) $biz['id'], 'buyer_reference' => 'Angebot', 'lines' => [ $line( [ 'unit_code' => 'H87' ] ) ] ] );
+check( 'an offer keeps no buyer reference and has no card of the electronic invoice', $status === 200 && $body['document']['buyer_reference'] === '' && $body['document']['erechnung'] === null );
+Documents::remove( $appData, $body['document']['id'] );
+$other = Documents::add( $appData, 'invoice', $bare['id'] );
+$moved = Documents::change( $appData, $other['id'], [ 'client_id' => $biz['id'] ] );
+$back = Documents::change( $appData, $other['id'], [ 'client_id' => $bare['id'] ] );
+check( 'the buyer reference of a draft follows the client it is changed to - and goes back with it - as long as nobody typed another', $other['buyer_reference'] === 'Z-9' && $moved['buyer_reference'] === 'PO-4711' && $back['buyer_reference'] === 'Z-9' && Documents::change( $appData, $other['id'], [ 'buyer_reference' => 'eigene', 'client_id' => $biz['id'] ] )['buyer_reference'] === 'eigene'
+	&& Documents::change( $appData, $other['id'], [ 'client_id' => $bare['id'] ] )['buyer_reference'] === 'eigene' );
+$copied = Documents::copy( $appData, $a['id'] );
+$fromOffer = Documents::fromOffer( $appData, $offerX['id'] );
+$creditG = Documents::creditOf( $appData, $g['id'] );
+check( 'a copy takes the unit codes and the buyer reference of its source, an invoice made of an offer the reference of the client, a credit note that of its invoice', array_column( $copied['lines'], 'unit_code' ) === [ 'HUR', 'MON' ] && $copied['buyer_reference'] === 'PO-4711' && $fromOffer['buyer_reference'] === 'PO-4711'
+	&& $creditG['buyer_reference'] === 'PO-4711' && array_column( $creditG['lines'], 'unit_code' ) === [ 'HUR', 'H87' ] );
+foreach( [ $draftId, $other['id'], $copied['id'], $fromOffer['id'], $creditG['id'] ] as $drop )
+	Documents::remove( $appData, $drop );
+
+// The settings of the seller
+echo "\nRechnungsaussteller\n";
+
+$bad = [];
+
+foreach( [ 'seller_name' => str_repeat( 'x', 121 ), 'seller_street' => "Weg\n1", 'seller_zip' => '10 115!', 'seller_city' => str_repeat( 'x', 81 ), 'seller_country' => 'DEU', 'seller_contact' => "Jan\x07", 'seller_phone' => 'abc', 'seller_email' => 'kein-mail', 'vat_id' => 'D1', 'vat_exempt_text' => str_repeat( 'x', 201 ) ] as $key => $value )
+	$bad[$key] = Settings::set( $appData, $key, $value ) === 'value:'. $key && Settings::get( $appData, $key ) === $settingsBefore[$key];
+
+check( 'the seller\'s particulars are checked at the setting, each refused with its own code and left as it was: '. count( $bad ), array_filter( $bad, static fn( bool $ok ): bool => $ok === false ) === [] );
+check( '...a country is two capitals (lower case is made upper case), a VAT id is the pattern of the clients\' and is written without blanks in capitals, and all of them may be empty', Settings::set( $appData, 'seller_country', 'at' ) === true && Settings::get( $appData, 'seller_country' ) === 'AT' && Settings::set( $appData, 'vat_id', 'de 123 456 789' ) === true && Settings::get( $appData, 'vat_id' ) === 'DE123456789'
+	&& Settings::set( $appData, 'seller_phone', '0049 (0)30 / 12-34' ) === true && Settings::set( $appData, 'seller_zip', 'A-1010' ) === true && Settings::set( $appData, 'seller_email', '' ) === true && Settings::set( $appData, 'seller_email', $settingsBefore['seller_email'] ) === true );
+
+foreach( [ 'seller_country' => 'DE', 'vat_id' => 'DE111222333', 'seller_phone' => '+49 30 123456', 'seller_zip' => '10115' ] as $key => $value )
+	Settings::set( $appData, $key, $value );
+
+[ $status, $body ] = $post( 'crm-documents/settings-save', [ 'seller_email' => 'kein-mail' ] );
+check( 'the API refuses a seller\'s value at its field with a sentence of its own: 400 crm_documents_particular_seller_email', $status === 400 && $body['code'] === 'crm_documents_particular_seller_email' && $body['field'] === 'seller_email' );
+[ $status, $body ] = $post( 'crm-documents/settings-save', [ 'seller_name' => 'Studio Beispiel', 'vat_exempt_text' => 'Kein Ausweis von Umsatzsteuer gemäß § 19 UStG' ] );
+check( '...and saves the good ones: the answer has them, the exemption text with its preset', $status === 200 && $body['settings']['seller_name'] === 'Studio Beispiel' && $body['settings']['vat_exempt_text'] === 'Kein Ausweis von Umsatzsteuer gemäß § 19 UStG' && $body['settings']['seller_country'] === 'DE' );
+
+// The positions carry the unit code
+echo "\nPositionen: the unit code\n";
+
+$coded = \Nino\Elements::insertElement( $appData, '/positionen/mit-code', [ 'price' => 10, 'vat' => 0, 'sort' => 90, 'title' => 'Mit Code', 'unit' => 'Std.', 'unit_code' => 'HUR' ], 'de_DE' );
+$weird = \Nino\Elements::insertElement( $appData, '/positionen/schief', [ 'price' => 10, 'vat' => 0, 'sort' => 91, 'title' => 'Schief', 'unit_code' => 'Stunde' ], 'de_DE' );
+$items = array_column( Positionen::list( $appData ), null, 'id' );
+check( 'an item has its unit code (one of the list), as the editor reads it; one that is none of the list is none', Positionen::hasUnitCode( $appData ) === true && $items['mit-code']['unit_code'] === 'HUR' && $items['schief']['unit_code'] === '' && $items['hosting']['unit_code'] === '' && array_column( Positionen::all( $appData ), 'unit_code', 'id' )['mit-code'] === 'HUR' );
+$catalogue = array_column( $post( 'crm-documents/list' )[1]['items'], null, 'id' );
+check( '...the catalogue of the editor carries it, and the element type has the field with the nine codes and the empty one', $catalogue['mit-code']['unit_code'] === 'HUR' && $catalogue['hosting']['unit_code'] === '' && ( $model = \Nino\Elements::getElementModel( $appData, '/positionen' ) ) && $model['unit_code']['options'] === array_merge( [ '' ], \Crm\Documents\Lines::UNIT_CODES )
+	&& $model['unit_code']['type'] === 'string' && ( $model['unit_code']['locale'] ?? false ) === false && $post( 'crm-documents/positionen' )[1]['unit_code'] === true );
+check( '...the codes are the nine of the plan: H87 HUR MIN DAY WEE MON LS C62 KMT', implode( ' ', (array) ( new \ReflectionClass( \Crm\Documents\Lines::class ) )->getConstant( 'UNIT_CODES' ) ) === 'H87 HUR MIN DAY WEE MON LS C62 KMT' );
+\Nino\Elements::deleteElement( $appData, '/positionen/mit-code' );
+\Nino\Elements::deleteElement( $appData, '/positionen/schief' );
+
+// The three files a person validates with the official validator on his own machine are left where the environment says (CRM_FIXTURES); the suite runs no validator
+$fixtures = getenv( 'CRM_FIXTURES' );
+
+if( is_string( $fixtures ) === true && is_dir( $fixtures ) === true )
+	foreach( [ 'a-kleinunternehmer-rechnung' => $a, 'b-regelbesteuert-rechnung' => $b, 'c-stornorechnung' => $c ] as $name => $fixture )
+		copy( $xmlDir( $fixture ), $fixtures. '/'. $name. '.xml' );
+
 
 // --- Eight processes finalising at once -------------------------------------------------------------------------------
 

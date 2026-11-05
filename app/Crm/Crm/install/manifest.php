@@ -40,6 +40,7 @@ return [
 		'/_admin/elements/field/positionen/title',
 		'/_admin/elements/field/positionen/description',
 		'/_admin/elements/field/positionen/unit',
+		'/_admin/elements/field/positionen/unit_code',
 		'/_admin/elements/field/positionen/price',
 		'/_admin/elements/field/positionen/vat',
 		'/_admin/elements/field/positionen/hidden',

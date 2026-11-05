@@ -119,6 +119,8 @@ main { padding-block: 16px 48px; padding-left: max(20px, env(safe-area-inset-lef
 .totals { padding: 10px 14px }
 .totals .row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
 .totals .row.sum { border-top: 1px solid var(--line-strong); margin-top: 6px; padding-top: 8px; font-weight: 600; font-size: 15px }
+.totals .erechnung { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px }
+.totals .erechnung li { display: block; padding: 3px 0; border-top: 0; font-size: 12px; color: var(--fg-2) }
 .state-note { font-size: 12px; color: var(--fg-2) }
 .accounts .acc { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); align-items: center }
 .accounts .acc:first-of-type { border-top: 0 }
@@ -217,9 +219,10 @@ a.btn { text-decoration: none }
 .kv dd .state-note { display: block; margin-top: 4px }
 .err, .kv input.err, .kv select.err, .ed input.err, .ed select.err, .ed textarea.err, .field input.err, .field textarea.err { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad) }
 .ed { table-layout: fixed; min-width: 760px }
-.ed th.wide { width: auto } .ed th.qty { width: 90px } .ed th.unit { width: 84px } .ed th.price { width: 116px } .ed th.rate { width: 84px } .ed th.amount-head { width: 116px } .ed th:first-child { width: 36px } .ed th:last-child { width: 36px }
+.ed th.wide { width: auto } .ed th.qty { width: 90px } .ed th.unit { width: 124px } .ed th.price { width: 116px } .ed th.rate { width: 84px } .ed th.amount-head { width: 116px } .ed th:first-child { width: 36px } .ed th:last-child { width: 36px }
 .ed textarea.desc { width: 100%; margin-top: 4px; min-height: 28px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--fg-2); font: inherit; font-size: 12px; padding: 4px 6px; resize: vertical }
 .ed select { width: 100%; height: 28px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: inherit; font: inherit }
+.ed select.unit-code { margin-top: 4px; font-size: 12px }
 .ed .picker { display: flex; gap: 8px; align-items: center }
 .ed .picker input { flex: 1 1 auto }
 .ed .picker .btn { flex: 0 0 auto }

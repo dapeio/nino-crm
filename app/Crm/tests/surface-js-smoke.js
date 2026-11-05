@@ -77,15 +77,15 @@ const texts = words();
 const settings = { vat_mode : 'regular', vat_rates : '1900,700,0', payment_days : '14', offer_days : '30', currency : '€', tax_id : '', bank_name : '', iban : '', bic : '', rates : [ 1900, 700, 0 ] };
 const smallBusiness = Object.assign( {}, settings, { vat_mode : 'small_business' } );
 
-const client = { company : 'Nordlicht Records GmbH', name : 'Lena Brandt', street : 'Hafenstraße 12', zip : '20457', city : 'Hamburg', country : 'DE', number : 'K-0001', vat_id : 'DE123456789', email : 'lena@nordlicht.example' };
+const client = { company : 'Nordlicht Records GmbH', name : 'Lena Brandt', street : 'Hafenstraße 12', zip : '20457', city : 'Hamburg', country : 'DE', number : 'K-0001', vat_id : 'DE123456789', email : 'lena@nordlicht.example', business : false, buyer_reference : '' };
 const clients = [
-	{ id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true },
-	{ id : 2, number : 'K-0002', title : 'Jonas Richter', active : true },
-	{ id : 3, number : 'K-0003', title : 'Alt AG', active : false },
+	{ id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true, business : true, buyer_reference : 'PO-4711' },
+	{ id : 2, number : 'K-0002', title : 'Jonas Richter', active : true, business : true, buyer_reference : 'JR-2' },
+	{ id : 3, number : 'K-0003', title : 'Alt AG', active : false, business : false, buyer_reference : '' },
 ];
 const items = [
-	{ id : 1, title : 'Mixing', description : 'Mischung eines Songs\nbis 48 Spuren', unit : 'Std.', price_net : 9000, vat_rate : 1900, active : true },
-	{ id : 2, title : 'Mastering', description : '', unit : 'Song', price_net : 11000, vat_rate : 700, active : true },
+	{ id : 1, title : 'Mixing', description : 'Mischung eines Songs\nbis 48 Spuren', unit : 'Std.', unit_code : 'HUR', price_net : 9000, vat_rate : 1900, active : true },
+	{ id : 2, title : 'Mastering', description : '', unit : 'Song', unit_code : '', price_net : 11000, vat_rate : 700, active : true },
 ];
 const templates = [
 	{ key : 'rechnung', name : 'Rechnung Standard', inputs : [ { name : 'intro', label : 'Einleitung', multiline : true, required : false } ] },
@@ -116,9 +116,10 @@ function full( over ) {
 	return Object.assign( { id : 11, category : 'invoice', client_id : 1, parent_id : null, number : 'R-2026-0007', state : 'open', date : '2026-10-02', due_date : '2026-10-16', valid_until : null, period_from : '2026-09-14', period_to : '2026-09-30',
 		vat_mode : 'regular', reverse_charge : false, net : 100000, vat : 19000, gross : 119000, template_key : 'rechnung', inputs : {}, notes : 'Rechnungen an die Buchhaltung', pdf_path : '/data/crm/pdf/2026/R-2026-0007.pdf', pdf_sha256 : 'abcdef0123456789abcdef',
 		finalised : '2026-10-02T09:12:00Z', sent_at : null, paid_at : null, created : '2026-10-01T08:00:00Z', updated : '2026-10-02T09:12:00Z', title : '', released : false, released_at : null, sign_id : '', sign_state : '', signed_at : null, expired : false, overdue : false, project : '', project_title : '',
+		buyer_reference : '', xml_path : '', xml_sha256 : '', xml_lacks : [], xml_url : '', erechnung : null,
 		lines : [
-			{ id : 1, document_id : 11, sort : 1, title : 'Recording-Tag', description : 'Studio A', qty : 4000, unit : 'Tag', price_net : 20000, vat_rate : 1900, amount_net : 80000 },
-			{ id : 2, document_id : 11, sort : 2, title : 'Mixing', description : '', qty : 2000, unit : 'Std.', price_net : 10000, vat_rate : 1900, amount_net : 20000 },
+			{ id : 1, document_id : 11, sort : 1, title : 'Recording-Tag', description : 'Studio A', qty : 4000, unit : 'Tag', unit_code : 'DAY', price_net : 20000, vat_rate : 1900, amount_net : 80000 },
+			{ id : 2, document_id : 11, sort : 2, title : 'Mixing', description : '', qty : 2000, unit : 'Std.', unit_code : 'HUR', price_net : 10000, vat_rate : 1900, amount_net : 20000 },
 		],
 		client : client, parent : null, parent_number : '', children : [], pdf_url : '/.crm/pdf/11', sign_shown_url : '', sign_signed_url : '' }, over );
 }
@@ -715,6 +716,19 @@ function press( w, key, target, mods ) {
 		check( 'the menu of '+ label+ ': '+ expected.replace( /\|/g, ', ' ), menuOf( w ).join( '|' ) === expected );
 	}
 
+	// the electronic invoice on the card of a finalised document
+	const withFile = await opened( { state : 'open', xml_path : '/data/crm/pdf/2026/R-2026-0007.xml', xml_url : '/.crm/xml/11', erechnung : { xml : true, lacks : [] } } );
+	const xmlButton = all( withFile.main, '#xml-download' )[0];
+	check( 'the card of a document with a file has the button "XRechnung": a link to /.crm/xml/<id> that is no new window - the server answers a file to save - and the row has the word E-Rechnung', xmlButton !== undefined && xmlButton.tagName === 'A' && xmlButton.getAttribute( 'href' ) === '/.crm/xml/11' && textOf( xmlButton ) === texts['erechnung.button'] && xmlButton.getAttribute( 'target' ) === null
+		&& all( withFile.main, '.cols-3 dt' ).some( function( dt ) { return textOf( dt ) === texts['document.xml'] } ) && all( withFile.main, '#xml-none' ).length === 0 );
+	check( '...and the menu has the download of the file beside the two of the PDF', menuOf( withFile ).join( '|' ) === [ 'PDF ansehen', 'PDF herunterladen', texts['menu.xml'], 'Als versendet markieren', 'Stornieren', 'Als Entwurf kopieren', 'Projekt ändern', 'Notizen' ].join( '|' ) && all( all( withFile.main, '.menu' )[0], '[role="menuitem"]' ).find( function( one ) { return textOf( one ) === texts['menu.xml'] } ).getAttribute( 'href' ) === '/.crm/xml/11' );
+	const withoutFile = await opened( { state : 'open', xml_lacks : [ 'buyer_reference', 'line_unit' ], erechnung : { xml : false, lacks : [ { key : 'buyer_reference', text : 'Es fehlt die Käuferreferenz: Trage sie hier am Beleg oder beim Kunden ein.' }, { key : 'line_unit', text : 'Mindestens eine Position hat keine Einheit: Wähle sie in der Zeile aus.' } ] } } );
+	const xmlNone = all( withoutFile.main, '#xml-none' )[0];
+	check( 'the card of a document that got none says "ohne E-Rechnung" and what was missing then, one line each - and has no button', xmlNone !== undefined && textOf( all( xmlNone, 'span' )[0] ) === texts['erechnung.none'] && all( xmlNone, 'li' ).map( textOf ).join( '|' ) === 'Es fehlt die Käuferreferenz: Trage sie hier am Beleg oder beim Kunden ein.|Mindestens eine Position hat keine Einheit: Wähle sie in der Zeile aus.'
+		&& all( withoutFile.main, '#xml-download' ).length === 0 && menuOf( withoutFile ).indexOf( texts['menu.xml'] ) === -1 );
+	const plainCard = await opened( { state : 'open' } );
+	check( 'a document that gets none - a private client\'s, an offer, one finalised before the flag - has neither the button nor the words', all( plainCard.main, '#xml-download' ).length === 0 && all( plainCard.main, '#xml-none' ).length === 0 && textOf( plainCard.main ).indexOf( texts['document.xml'] ) === -1 );
+
 	// the head and the blocks
 	const invoice = await opened( { state : 'sent', overdue : true, released : true, id : 11 } );
 	const headNode = all( invoice.main, '.head' )[0];
@@ -966,7 +980,8 @@ function press( w, key, target, mods ) {
 
 	// === Entwurf
 	const draftDoc = { id : 16, state : 'draft', number : '', client_id : 1, date : '2026-11-03', due_date : '2026-11-17', period_from : '', period_to : '', template_key : 'rechnung', inputs : { intro : 'Vielen Dank.' }, reverse_charge : false, pdf_path : '', pdf_sha256 : '', finalised : null, updated : '2026-11-03T13:02:00Z',
-		lines : [ { id : 1, document_id : 16, sort : 1, title : 'Editing', description : 'Staffel 3', qty : 10000, unit : 'Std.', price_net : 6000, vat_rate : 1900, amount_net : 60000 }, { id : 2, document_id : 16, sort : 2, title : 'Mastering', description : '', qty : 3000, unit : 'Song', price_net : 11000, vat_rate : 700, amount_net : 33000 } ],
+		lines : [ { id : 1, document_id : 16, sort : 1, title : 'Editing', description : 'Staffel 3', qty : 10000, unit : 'Std.', unit_code : 'HUR', price_net : 6000, vat_rate : 1900, amount_net : 60000 }, { id : 2, document_id : 16, sort : 2, title : 'Mastering', description : '', qty : 3000, unit : 'Song', unit_code : '', price_net : 11000, vat_rate : 700, amount_net : 33000 } ],
+		buyer_reference : 'PO-4711', erechnung : { xml : false, lacks : [ { key : 'line_unit', text : 'Mindestens eine Position hat keine Einheit: Wähle sie in der Zeile aus.' } ] },
 		net : 93000, vat : 14130, gross : 107130 };
 	/**
 	 *	@param		{Object}	[over]					The draft
@@ -1006,7 +1021,7 @@ function press( w, key, target, mods ) {
 	type( field( edit, 'f-due_date' ), '2026-11-17', true );
 	await settle();
 	check( '...and typing it again saves the day', edit.saves[edit.saves.length - 1].due_date === '2026-11-17' );
-	check( '...the regular mode has the rate per line and the reverse charge', field( edit, 'f-reverse_charge' ) !== undefined && all( lineRows( edit )[0], 'select' ).length === 1 && all( lineRows( edit )[0], 'select' )[0].value === '1900' && all( all( lineRows( edit )[0], 'select' )[0], 'option' ).map( textOf ).join() === '19 %,7 %,0 %' );
+	check( '...the regular mode has the rate per line and the reverse charge', field( edit, 'f-reverse_charge' ) !== undefined && all( lineRows( edit )[0], 'select.rate' ).length === 1 && all( lineRows( edit )[0], 'select.rate' )[0].value === '1900' && all( all( lineRows( edit )[0], 'select.rate' )[0], 'option' ).map( textOf ).join() === '19 %,7 %,0 %' );
 	check( 'the block Kunde: the name, the number, the way to the accounts, and the open sum of the client over all years - sent and open invoices, not the paid and not the offers', textOf( field( edit, 'client-box' ) ).indexOf( 'Nordlicht Records GmbH' ) !== -1 && textOf( field( edit, 'client-open' ) ) === '1.582,70'+ NBSP+ '€' && edit.last( 'crm-documents/list' ).data.client === '1' );
 
 	check( '...with the address of the client on two lines and its accounts by name - asked for from the client\'s own action, since no list carries them - and the way to the card', textOf( field( edit, 'client-address' ) ) === 'Hafenstraße 1220457 Hamburg' && textOf( field( edit, 'client-accounts' ) ).indexOf( 'Lena Brandt Zur Kundenkarte' ) === 0
@@ -1030,7 +1045,7 @@ function press( w, key, target, mods ) {
 	check( '...a quantity that is no number counts 0 and the field is marked', textOf( all( lineRows( edit )[0], '.amount' )[0] ) === '0,00'+ NBSP+ '€' && qtyField.classList.contains( 'err' ) === true );
 	type( qtyField, '2', false );
 	check( '...and typing it right takes the mark off', qtyField.classList.contains( 'err' ) === false );
-	const rateSelect = all( lineRows( edit )[0], 'select' )[0];
+	const rateSelect = all( lineRows( edit )[0], 'select.rate' )[0];
 	type( rateSelect, '0' );
 	await settle();
 	check( 'a rate chosen redraws the VAT: 0 % on the first line leaves only the 7 % row', totalsText().indexOf( 'zzgl. 19 %' ) === -1 && totalsText().indexOf( 'zzgl. 0 % USt. auf 20,00'+ NBSP+ '€0,00'+ NBSP+ '€' ) !== -1 );
@@ -1038,7 +1053,7 @@ function press( w, key, target, mods ) {
 	reverse.checked = true;
 	fire( reverse, 'change', { target : reverse } );
 	await settle();
-	check( 'the reverse charge takes the rates off: no VAT row, the gross is the net, the rate selects are off and show 0 %', totalsText().indexOf( 'zzgl.' ) === -1 && all( lineRows( edit )[0], 'select' )[0].disabled === true && all( lineRows( edit )[0], 'select' )[0].value === '0' && totalsText().indexOf( 'Reverse-Charge' ) !== -1 );
+	check( 'the reverse charge takes the rates off: no VAT row, the gross is the net, the rate selects are off and show 0 %', totalsText().indexOf( 'zzgl.' ) === -1 && all( lineRows( edit )[0], 'select.rate' )[0].disabled === true && all( lineRows( edit )[0], 'select.rate' )[0].value === '0' && totalsText().indexOf( 'Reverse-Charge' ) !== -1 );
 	reverse.checked = false;
 	fire( reverse, 'change', { target : reverse } );
 
@@ -1049,12 +1064,12 @@ function press( w, key, target, mods ) {
 	adder.value = 'mixing';
 	fire( adder, 'keydown', { key : 'Enter', target : adder, preventDefault : function() {} } );
 	check( 'Enter on the title of an item (the case does not matter) inserts it as a line: the title, the first line and all of the description, the unit, the price, the rate of the item, a quantity of 1', lineRows( edit ).length === 3 && all( lineRows( edit )[2], 'input' ).map( function( i ) { return i.value } ).join( '|' ) === 'Mixing|1|Std.|90,00' && all( lineRows( edit )[2], 'textarea' )[0].value === 'Mischung eines Songs\nbis 48 Spuren'
-		&& all( lineRows( edit )[2], 'select' )[0].value === '1900' && field( edit, 'additem' ).value === '' && field( edit, 'additem' ).focused === true );
+		&& all( lineRows( edit )[2], 'select.rate' )[0].value === '1900' && field( edit, 'additem' ).value === '' && field( edit, 'additem' ).focused === true );
 	check( '...and the sums have it', totalsText().indexOf( 'Netto1.020,00'+ NBSP+ '€' ) === 0 );
 	adder = field( edit, 'additem' );
 	adder.value = 'Mastering';
 	fire( adder, 'change', { target : adder } );
-	check( 'a choice from the list (a change with the whole title) inserts too, with the rate of that item: 7 %', lineRows( edit ).length === 4 && all( lineRows( edit )[3], 'select' )[0].value === '700' );
+	check( 'a choice from the list (a change with the whole title) inserts too, with the rate of that item: 7 %', lineRows( edit ).length === 4 && all( lineRows( edit )[3], 'select.rate' )[0].value === '700' );
 	adder = field( edit, 'additem' );
 	adder.value = 'Mast';
 	fire( adder, 'change', { target : adder } );
@@ -1063,6 +1078,57 @@ function press( w, key, target, mods ) {
 	check( 'the cross removes the line, and the sums follow', lineRows( edit ).length === 3 && totalsText().indexOf( 'Netto1.020,00'+ NBSP+ '€' ) === 0 === false && edit.app.state.draft.lines.length === 3 );
 	click( edit, field( edit, 'addline' ) );
 	check( 'an empty line is added at the end with a quantity of 1 and the focus in its title', lineRows( edit ).length === 4 && all( lineRows( edit )[3], 'input' )[0].value === '' && all( lineRows( edit )[3], 'input' )[1].value === '1' && all( lineRows( edit )[3], 'input' )[0].focused === true );
+
+	// the electronic invoice in the editor: the unit of each line, the checklist, the buyer reference
+	edit = await editing();
+	const xrUnit = function( w, index ) { return all( lineRows( w )[index], 'select.unit-code' )[0] };
+	check( 'every line has a select of the unit of the electronic invoice, in the cell of the unit: "Einheit wählen" and the nine codes by their words, the code of the line chosen - the empty one for a line that has none', lineRows( edit ).every( function( r ) { return all( r, 'select.unit-code' ).length === 1 && all( all( r, 'td' )[3], 'select.unit-code' ).length === 1 } )
+		&& all( xrUnit( edit, 0 ), 'option' ).map( function( o ) { return o.value+ ':'+ textOf( o ) } ).join( '|' ) === [ '' ].concat( [ 'H87', 'HUR', 'MIN', 'DAY', 'WEE', 'MON', 'LS', 'C62', 'KMT' ] ).map( function( code ) { return code+ ':'+ texts[code === '' ? 'unitcode.none' : 'unitcode.'+ code.toLowerCase()] } ).join( '|' ) && xrUnit( edit, 0 ).value === 'HUR' && xrUnit( edit, 1 ).value === ''
+		&& xrUnit( edit, 0 ).getAttribute( 'aria-label' ) === texts['column.unit-code'] );
+	edit.saves.length = 0;
+	type( xrUnit( edit, 1 ), 'DAY' );
+	await settle();
+	check( '...choosing a code saves the draft with it, and the text of the unit is untouched', edit.saves.length >= 1 && edit.saves[edit.saves.length - 1].lines[1].unit_code === 'DAY' && edit.saves[edit.saves.length - 1].lines[1].unit === 'Song' && edit.app.state.draft.lines[1].unit_code === 'DAY' );
+	let xrAdder = field( edit, 'additem' );
+	xrAdder.value = 'mixing';
+	fire( xrAdder, 'keydown', { key : 'Enter', target : xrAdder, preventDefault : function() {} } );
+	xrAdder = field( edit, 'additem' );
+	xrAdder.value = 'Mastering';
+	fire( xrAdder, 'change', { target : xrAdder } );
+	click( edit, field( edit, 'addline' ) );
+	check( '...a line from an item has the code of the item (Mixing HUR, Mastering none), an empty line none - the person chooses it', xrUnit( edit, 2 ).value === 'HUR' && xrUnit( edit, 3 ).value === '' && xrUnit( edit, 4 ).value === '' );
+	const sumsBox = field( edit, 'totals' );
+	const xrList = all( sumsBox, '#erechnung' )[0];
+	check( 'the sums box has the checklist of the electronic invoice: what is missing, in the sentences of the server, one line each - and the sentence that says the document can be finalised without it', xrList !== undefined && xrList.dataset.state === 'lacks' && all( xrList, 'li' ).map( textOf ).join( '|' ) === 'Mindestens eine Position hat keine Einheit: Wähle sie in der Zeile aus.'
+		&& all( xrList, 'li' )[0].dataset.key === 'line_unit' && textOf( all( xrList, 'p' )[0] ) === texts['erechnung.lacks'] );
+	const xrWhole = await editing( { erechnung : { xml : false, lacks : [] } } );
+	check( '...where nothing is missing it says "E-Rechnung: vollständig"', all( field( xrWhole, 'totals' ), '#erechnung' )[0].dataset.state === 'complete' && textOf( all( field( xrWhole, 'totals' ), '#erechnung' )[0] ) === texts['erechnung.complete'] && all( all( field( xrWhole, 'totals' ), '#erechnung' )[0], 'li' ).length === 0 );
+	const xrPrivate = await editing( { erechnung : null } );
+	check( '...and for a client that gets none there is no checklist at all', all( field( xrPrivate, 'totals' ), '#erechnung' ).length === 0 && textOf( field( xrPrivate, 'totals' ) ).indexOf( texts['erechnung.complete'] ) === -1 && textOf( field( xrPrivate, 'totals' ) ).indexOf( texts['erechnung.lacks'] ) === -1 );
+	const xrAfter = await editing( {}, { 'crm-documents/save' : function( data ) { return [ 200, { document : full( Object.assign( {}, draftDoc, { id : Number( data.id ), updated : '2026-11-03T14:30:00Z', erechnung : { xml : false, lacks : [] } } ) ) } ] } } );
+	type( field( xrAfter, 'f-buyer_reference' ), 'Neu', true );
+	await settle();
+	check( 'the checklist is drawn again from the answer of every save: the line is gone when the server no longer misses it', all( field( xrAfter, 'totals' ), '#erechnung' )[0].dataset.state === 'complete' );
+	const xrRef = await editing();
+	check( 'the block Beleg of an invoice has the buyer reference, with the words of the card and "optional", filled with the draft\'s, 100 characters at most', textOf( all( field( xrRef, 'f-buyer_reference' ).parentNode.parentNode, 'dt' ).find( function( dt ) { return textOf( dt ).indexOf( 'Käuferreferenz' ) === 0 } ) ) === texts['clientfield.buyer_reference']+ ' ('+ texts['form.optional']+ ')' && field( xrRef, 'f-buyer_reference' ).value === 'PO-4711' && field( xrRef, 'f-buyer_reference' ).getAttribute( 'maxlength' ) === '100' );
+	xrRef.saves.length = 0;
+	type( field( xrRef, 'f-buyer_reference' ), 'Bestellung 5', true );
+	await settle();
+	check( '...it is posted with the draft, as typed', xrRef.saves.length >= 1 && xrRef.saves[xrRef.saves.length - 1].buyer_reference === 'Bestellung 5' );
+	xrRef.saves.length = 0;
+	type( field( xrRef, 'f-client_id' ), '2' );
+	await settle();
+	check( '...another client does not take the reference the person typed', field( xrRef, 'f-buyer_reference' ).value === 'Bestellung 5' && xrRef.saves.every( function( save ) { return save.buyer_reference === 'Bestellung 5' } ) );
+	const xrFollow = await editing();
+	type( field( xrFollow, 'f-client_id' ), '2' );
+	await settle();
+	check( '...but takes the reference of the client where the person typed none: the list of the clients has it, and the draft is saved with it, once', field( xrFollow, 'f-buyer_reference' ).value === 'JR-2' && xrFollow.app.state.draft.buyer_reference === 'JR-2' && xrFollow.saves.length === 1 && xrFollow.saves[0].buyer_reference === 'JR-2' );
+	const xrOffer = await editing( { category : 'offer', due_date : null, valid_until : '2026-12-01', erechnung : null } );
+	check( 'an offer has neither the buyer reference nor the checklist, and does not post the reference', field( xrOffer, 'f-buyer_reference' ) === undefined && all( xrOffer.main, '#erechnung' ).length === 0 );
+	xrOffer.saves.length = 0;
+	type( field( xrOffer, 'f-date' ), '2026-11-04', true );
+	await settle();
+	check( '...the offer is saved without it', xrOffer.saves.length >= 1 && 'buyer_reference' in xrOffer.saves[xrOffer.saves.length - 1] === false );
 
 	// what is posted
 	edit = await editing();
@@ -1078,7 +1144,7 @@ function press( w, key, target, mods ) {
 	await settle();
 	check( 'Speichern posts the draft as the panel does: the id as a string, the client as a string, the dates, the template and the inputs of that template, the reverse charge, the lines with the quantity and the price as typed', JSON.stringify( edit.saves[0] ) === JSON.stringify( {
 		date : '2026-11-03', template_key : 'rechnung', inputs : { intro : 'Zeile 1\nZeile 2' }, project : '', id : '16', client_id : '2', period_from : '2026-10-01', period_to : '2026-10-31', reverse_charge : false, due_date : '2026-11-17',
-		lines : [ { title : 'Editing', description : 'Staffel 3', unit : 'Std.', qty : '10', price : '60,00', vat_rate : 1900 }, { title : 'Mastering', description : '', unit : 'Song', qty : '3', price : '110,00', vat_rate : 700 } ] } ) );
+		lines : [ { title : 'Editing', description : 'Staffel 3', unit : 'Std.', unit_code : 'HUR', qty : '10', price : '60,00', vat_rate : 1900 }, { title : 'Mastering', description : '', unit : 'Song', unit_code : '', qty : '3', price : '110,00', vat_rate : 700 } ], buyer_reference : 'JR-2' } ) );
 	check( '...the time of the save is shown, the draft is clean again, and the rail\'s count is read again', textOf( field( edit, 'saved' ) ).indexOf( 'Gespeichert um ' ) === 0 && edit.app.state.draft.dirty === false && edit.all( 'crm-documents/overview' ).length >= 2 && field( edit, 'message' ).children.length === 0 );
 
 	// autosave
@@ -1217,7 +1283,7 @@ function press( w, key, target, mods ) {
 
 	// small business: no rate, no reverse charge
 	const plainVat = await editing( {}, { 'crm-documents/get' : function() { return [ 200, view( Object.assign( {}, draftDoc, { vat_mode : 'small_business' } ), { settings : smallBusiness } ) ] } } );
-	check( 'a draft without VAT has no rate select and no reverse charge, and the totals say why', all( plainVat.main, 'select' ).filter( function( s ) { return s.id === '' } ).length === 0 && field( plainVat, 'f-reverse_charge' ) === undefined && textOf( field( plainVat, 'totals' ) ).indexOf( 'Kleinunternehmer (§ 19 UStG)' ) !== -1 && textOf( field( plainVat, 'totals' ) ).indexOf( 'USt. auf' ) === -1 );
+	check( 'a draft without VAT has no rate select and no reverse charge, and the totals say why', all( plainVat.main, 'select.rate' ).length === 0 && field( plainVat, 'f-reverse_charge' ) === undefined && textOf( field( plainVat, 'totals' ) ).indexOf( 'Kleinunternehmer (§ 19 UStG)' ) !== -1 && textOf( field( plainVat, 'totals' ) ).indexOf( 'USt. auf' ) === -1 );
 
 
 	// === fix round 1: the login of the surface
@@ -1438,7 +1504,7 @@ function press( w, key, target, mods ) {
 	} )() === true );
 
 	const reverseDoc = await editing( { reverse_charge : true } );
-	check( 'the editor of a draft under reverse charge draws the head and the totals without VAT: the gross is the net, 930,00, and no row of VAT', textOf( field( reverseDoc, 'gross' ) ) === '930,00'+ NBSP+ '€' && textOf( field( reverseDoc, 'totals' ) ).indexOf( 'USt. auf' ) === -1 && all( lineRows( reverseDoc )[0], 'select' )[0].value === '0' );
+	check( 'the editor of a draft under reverse charge draws the head and the totals without VAT: the gross is the net, 930,00, and no row of VAT', textOf( field( reverseDoc, 'gross' ) ) === '930,00'+ NBSP+ '€' && textOf( field( reverseDoc, 'totals' ) ).indexOf( 'USt. auf' ) === -1 && all( lineRows( reverseDoc )[0], 'select.rate' )[0].value === '0' );
 	const smallView = world( { hash : '#entwurf-16', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] }, 'crm-documents/get' : function() { return [ 200, view( Object.assign( {}, draftDoc, { vat_mode : 'small_business' } ), { settings : smallBusiness } ) ] }, 'crm-documents/list' : function() { return [ 200, { documents : [], years : [], clients : clients, settings : smallBusiness, items : items, offers : offers } ] }, 'crm-clients/get' : function() { return [ 200, { client : client, accounts : [] } ] } } } );
 	smallView.boot();
 	await settle();
@@ -1513,7 +1579,7 @@ function press( w, key, target, mods ) {
 	const addedFields = all( added[added.length - 1], 'input' );
 	check( 'Enter with a title that no position carries inserts a line with that title, one piece, no unit and no price - the same as an empty line with the title typed -, and the field is empty', added.length === countBefore + 1 && addedFields[0].value === 'Beratung vor Ort' && addedFields[1].value === '1' && addedFields[2].value === '' && addedFields[3].value === '' && field( entering, 'additem' ).value === '' );
 	check( '...the cursor is in the price of the new line', addedFields[3].focused === true && entering.app.state.draft.lines[countBefore].title === 'Beratung vor Ort' && entering.app.state.draft.lines[countBefore].qty === '1' );
-	check( '...it takes the first rate of the setting in the regular mode, as an empty line does', all( added[added.length - 1], 'select' )[0].value === '1900' );
+	check( '...it takes the first rate of the setting in the regular mode, as an empty line does', all( added[added.length - 1], 'select.rate' )[0].value === '1900' );
 	adder2 = field( entering, 'additem' );
 	adder2.value = '   ';
 	enter( adder2 );
@@ -1602,7 +1668,7 @@ function press( w, key, target, mods ) {
 
 	// === C08: the screens Kunden, Kundenkarte, Neuer Kunde, Positionen and Einstellungen, and the panel CRM
 
-	const kclient = { id : 1, number : 'K-0001', company : 'Nordlicht Records GmbH', name : 'Lena Brandt', street : 'Hafenstraße 12', zip : '20457', city : 'Hamburg', country : 'DE', email : 'lena@nordlicht.example', phone : '+49 40 123456', vat_id : 'DE123456789',
+	const kclient = { id : 1, number : 'K-0001', company : 'Nordlicht Records GmbH', name : 'Lena Brandt', street : 'Hafenstraße 12', zip : '20457', city : 'Hamburg', country : 'DE', email : 'lena@nordlicht.example', phone : '+49 40 123456', vat_id : 'DE123456789', business : false, buyer_reference : '',
 		notes : 'Zahlt pünktlich.', active : true, created : '2025-02-11T09:00:00Z', updated : '2026-10-01T09:00:00Z', accounts : 3, active_accounts : 2, group : 'k-0001', documents : { total : 2, released : 1 } };
 	const kaccounts = [
 		{ id : 'aaaaaaaaaaaa', gone : false, state : 'signed', email : 'lena@nordlicht.example', name : 'Lena Brandt', active : true, login : '2026-10-30T10:00:00Z' },
@@ -1612,10 +1678,10 @@ function press( w, key, target, mods ) {
 	];
 	const kclients = [
 		Object.assign( {}, kclient ),
-		{ id : 2, number : 'K-0002', company : '', name : 'Jonas Richter', street : 'Lindenweg 3', zip : '1010', city : 'Wien', country : 'AT', email : 'jonas@example.org', phone : '', vat_id : '', notes : '', active : true, created : '2025-03-01T09:00:00Z', accounts : 1, active_accounts : 1, group : 'k-0002' },
-		{ id : 3, number : 'K-0003', company : 'Ohne Konto AG', name : 'Carla Ohne', street : '', zip : '', city : 'Köln', country : 'DE', email : '', phone : '', vat_id : '', notes : '', active : true, accounts : 0, active_accounts : 0, group : 'k-0003' },
-		{ id : 4, number : 'K-0004', company : 'Alt AG', name : 'Dora Alt', street : '', zip : '', city : 'Dresden', country : 'DE', email : '', phone : '', vat_id : '', notes : '', active : false, accounts : 12, active_accounts : 0, group : 'k-0004' },
-		{ id : 5, number : 'K-0005', company : '<img src=x onerror=alert(1)> GmbH', name : 'Hostile', street : '', zip : '', city : 'Bonn', country : 'DE', email : '', phone : '', vat_id : '', notes : '', active : true, accounts : 12, active_accounts : 11, group : 'k-0005' },
+		{ id : 2, number : 'K-0002', company : '', name : 'Jonas Richter', street : 'Lindenweg 3', zip : '1010', city : 'Wien', country : 'AT', email : 'jonas@example.org', phone : '', vat_id : '', business : false, buyer_reference : '', notes : '', active : true, created : '2025-03-01T09:00:00Z', accounts : 1, active_accounts : 1, group : 'k-0002' },
+		{ id : 3, number : 'K-0003', company : 'Ohne Konto AG', name : 'Carla Ohne', street : '', zip : '', city : 'Köln', country : 'DE', email : '', phone : '', vat_id : '', business : false, buyer_reference : '', notes : '', active : true, accounts : 0, active_accounts : 0, group : 'k-0003' },
+		{ id : 4, number : 'K-0004', company : 'Alt AG', name : 'Dora Alt', street : '', zip : '', city : 'Dresden', country : 'DE', email : '', phone : '', vat_id : '', business : false, buyer_reference : '', notes : '', active : false, accounts : 12, active_accounts : 0, group : 'k-0004' },
+		{ id : 5, number : 'K-0005', company : '<img src=x onerror=alert(1)> GmbH', name : 'Hostile', street : '', zip : '', city : 'Bonn', country : 'DE', email : '', phone : '', vat_id : '', business : false, buyer_reference : '', notes : '', active : true, accounts : 12, active_accounts : 11, group : 'k-0005' },
 	];
 	const kdocs = [
 		row( { id : 11, number : 'R-2026-0007', client_id : 1, client_title : 'Nordlicht Records GmbH', state : 'sent', gross : 119000, released : true } ),
@@ -1749,10 +1815,10 @@ function press( w, key, target, mods ) {
 	check( '...the head says the company, the badge of the state and the number, and the way back to the list', textOf( all( kc.main, 'h1' )[0] ) === 'Nordlicht Records GmbH' && textOf( all( kc.main, '.head .badge' )[0] ) === 'aktiv' && textOf( all( kc.main, '.head .sub' )[0] ) === 'K-0001'
 		&& all( kc.main, '.crumb a' )[0].getAttribute( 'href' ) === '#kunden' && textOf( all( kc.main, '.crumb' )[0] ).indexOf( 'K-0001' ) !== -1 );
 	const masterText = all( all( kc.main, '#master' )[0], 'dd' ).map( textOf );
-	check( '...the Stammdaten are the facts of the client: the company, the name, the mail, the phone, the address on two lines, the VAT id and since when - and nothing that is empty', masterText.join( '|' ) === 'Nordlicht Records GmbH|Lena Brandt|lena@nordlicht.example|+49 40 123456|Hafenstraße 1220457 Hamburg|DE123456789|11.02.2025'
-		&& all( all( kc.main, '#master' )[0], 'dt' ).map( textOf ).join( '|' ) === 'Firma|Name|E-Mail|Telefon|Anschrift|USt-IdNr.|Kunde seit' );
+	check( '...the Stammdaten are the facts of the client: the company, the name, the mail, the phone, the address on two lines, the VAT id and since when - and nothing that is empty', masterText.join( '|' ) === 'Nordlicht Records GmbH|Lena Brandt|lena@nordlicht.example|+49 40 123456|Hafenstraße 1220457 Hamburg|DE123456789|'+ texts['card.business-no']+ '|11.02.2025'
+		&& all( all( kc.main, '#master' )[0], 'dt' ).map( textOf ).join( '|' ) === 'Firma|Name|E-Mail|Telefon|Anschrift|USt-IdNr.|'+ texts['card.business']+ '|Kunde seit' );
 	const kc2 = await kopen( '#kunde-2' );
-	check( '...a client without a company, a phone and a VAT id leaves those rows out, and a country that is not DE is on the third line of the address', all( all( kc2.main, '#master' )[0], 'dt' ).map( textOf ).join( '|' ) === 'Name|E-Mail|Anschrift|Kunde seit' && textOf( all( kc2.main, '#master dd' )[2] ) === 'Lindenweg 31010 WienAT' );
+	check( '...a client without a company, a phone and a VAT id leaves those rows out, and a country that is not DE is on the third line of the address', all( all( kc2.main, '#master' )[0], 'dt' ).map( textOf ).join( '|' ) === 'Name|E-Mail|Anschrift|'+ texts['card.business']+ '|Kunde seit' && textOf( all( kc2.main, '#master dd' )[2] ) === 'Lindenweg 31010 WienAT' );
 	check( '...the tabs are Belege with the count, Portal and Notizen, and the first is open', all( kc.main, '.tabs button' ).map( textOf ).join( '|' ) === 'Belege7|Projekte|Portal|Notizen' && all( kc.main, '.tabs button' )[0].getAttribute( 'aria-selected' ) === 'true' && all( kc.main, '.tabs button' )[0].classList.contains( 'on' ) === true );
 	const docRows = all( all( kc.main, '#tab' )[0], 'tbody tr' );
 	check( '...Belege lists the documents of the client with the number (the title for a document without one, the word for a draft), the kind, the day, the amount - a stroke where there are no lines - and the badges; a click opens the document, a draft its editor',
@@ -2038,8 +2104,8 @@ function press( w, key, target, mods ) {
 	check( 'the menu of the client has Stammdaten bearbeiten, and the form is not there before', all( kmenu( ke, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'Stammdaten bearbeiten|Deaktivieren' && all( ke.main, '#client-save' ).length === 0 );
 	click( ke, kitem( kmenu( ke, '⋯' ), 'Stammdaten bearbeiten' ) );
 	const mform = all( ke.main, '#master' )[0];
-	check( 'Stammdaten bearbeiten draws a form in the place of the facts: the nine fields with their words, filled, the mail a field of mail, the phone asking a phone keyboard, the country two characters long', all( mform, 'input' ).map( function( i ) { return i.id.slice( 2 ) } ).join() === 'company,name,street,zip,city,country,email,phone,vat_id'
-		&& all( mform, 'label' ).map( textOf ).join( '|' ) === 'Firma|Name|Straße und Nummer|PLZ|Ort|Land (Kürzel)|E-Mail|Telefon|USt-IdNr.' && all( mform, 'input' ).map( function( i ) { return i.value } ).join( '|' ) === 'Nordlicht Records GmbH|Lena Brandt|Hafenstraße 12|20457|Hamburg|DE|lena@nordlicht.example|+49 40 123456|DE123456789'
+	check( 'Stammdaten bearbeiten draws a form in the place of the facts: the nine fields with their words, filled, the mail a field of mail, the phone asking a phone keyboard, the country two characters long', all( mform, 'input' ).map( function( i ) { return i.id.slice( 2 ) } ).join() === 'company,name,street,zip,city,country,email,phone,vat_id,buyer_reference,business'
+		&& all( mform, 'label' ).map( textOf ).join( '|' ) === 'Firma|Name|Straße und Nummer|PLZ|Ort|Land (Kürzel)|E-Mail|Telefon|USt-IdNr.|'+ texts['clientfield.buyer_reference']+ '|'+ texts['clientfield.business'] && all( mform, 'input' ).map( function( i ) { return i.value } ).join( '|' ) === 'Nordlicht Records GmbH|Lena Brandt|Hafenstraße 12|20457|Hamburg|DE|lena@nordlicht.example|+49 40 123456|DE123456789||'
 		&& all( mform, '#f-email' )[0].type === 'email' && all( mform, '#f-phone' )[0].getAttribute( 'inputmode' ) === 'tel' && all( mform, '#f-country' )[0].getAttribute( 'maxlength' ) === '2' && ke.app.state.draft.dirty === false );
 	type( all( mform, '#f-city' )[0], 'Bremen', false );
 	check( '...what is typed is unsaved input: the guard of the page knows it', ke.app.state.draft.dirty === true && ke.app.state.draft.form === true );
@@ -2062,8 +2128,23 @@ function press( w, key, target, mods ) {
 	submit( ke, refusedForm );
 	await settle();
 	const lastSave = savedClient[savedClient.length - 1];
-	check( 'a save posts crm-clients/save with the id as a string and every field of the client - the notes among them, which the model would empty if they were left out -, as typed', Object.keys( lastSave ).sort().join() === 'city,company,country,email,id,name,notes,phone,street,vat_id,zip' && lastSave.id === '1' && lastSave.city === 'Bremen' && lastSave.email === 'lena@neu.example' && lastSave.notes === 'Zahlt pünktlich.' && lastSave.company === 'Nordlicht Records GmbH' );
+	check( 'a save posts crm-clients/save with the id as a string and every field of the client - the notes among them, which the model would empty if they were left out -, as typed', Object.keys( lastSave ).sort().join() === 'business,buyer_reference,city,company,country,email,id,name,notes,phone,street,vat_id,zip' && lastSave.id === '1' && lastSave.city === 'Bremen' && lastSave.email === 'lena@neu.example' && lastSave.notes === 'Zahlt pünktlich.' && lastSave.company === 'Nordlicht Records GmbH' );
 	check( '...the card is drawn again from the client the server answers - the facts, no form -, the toast says it, and the guard holds nothing', all( ke.main, '#client-save' ).length === 0 && all( all( ke.main, '#master' )[0], 'dd' ).map( textOf )[2] === 'lena@neu.example' && all( all( ke.main, '#master' )[0], 'dd' ).map( textOf )[4].indexOf( 'Bremen' ) !== -1 && ke.toast.textContent === 'Der Kunde ist gespeichert.' && ke.app.state.draft === null );
+	// the client is a business: a switch, and the reference it quotes
+	click( ke, kitem( kmenu( ke, '⋯' ), 'Stammdaten bearbeiten' ) );
+	const bform = all( ke.main, '#master' )[0];
+	const businessBox = all( bform, '#f-business' )[0];
+	check( 'the form of a client has the switch "Unternehmen – bekommt eine E-Rechnung" - a checkbox, off for a client that is none - and the field of the buyer reference, a hundred characters long', businessBox.type === 'checkbox' && businessBox.checked === false && all( bform, '#f-buyer_reference' )[0].getAttribute( 'maxlength' ) === '100'
+		&& all( bform, 'label' ).map( textOf ).slice( -2 ).join( '|' ) === texts['clientfield.buyer_reference']+ '|'+ texts['clientfield.business'] );
+	businessBox.checked = true;
+	fire( businessBox, 'change', { target : businessBox } );
+	type( all( bform, '#f-buyer_reference' )[0], 'PO-4711', false );
+	check( '...switching it is unsaved input', ke.app.state.draft.dirty === true );
+	submit( ke, bform );
+	await settle();
+	const businessSave = savedClient[savedClient.length - 1];
+	check( '...a save posts the switch as a boolean and the reference as a text; the card then says it is a business and quotes the reference', businessSave.business === true && businessSave.buyer_reference === 'PO-4711' && typeof businessSave.business === 'boolean'
+		&& all( all( ke.main, '#master' )[0], 'dt' ).map( textOf ).join( '|' ).indexOf( texts['card.business']+ '|'+ texts['card.buyer-reference']+ '|' ) !== -1 && all( all( ke.main, '#master' )[0], 'dd' ).map( textOf ).join( '|' ).indexOf( texts['card.business-yes']+ '|PO-4711' ) !== -1 );
 	click( ke, kitem( kmenu( ke, '⋯' ), 'Stammdaten bearbeiten' ) );
 	type( all( all( ke.main, '#master' )[0], '#f-name' )[0], 'Anderer', false );
 	click( ke, all( ke.main, '#client-cancel' )[0] );
@@ -2130,7 +2211,7 @@ function press( w, key, target, mods ) {
 	all( kt.main, '#notes' )[0].value = 'Seit Oktober nur noch per Überweisung.';
 	click( kt, all( kt.main, '#notes-save' )[0] );
 	await settle();
-	check( '...Speichern posts the whole client with the notes as typed - the other fields as they are, for the model empties what is not posted - and says so', Object.keys( notesSaved ).sort().join() === 'city,company,country,email,id,name,notes,phone,street,vat_id,zip' && notesSaved.notes === 'Seit Oktober nur noch per Überweisung.' && notesSaved.company === 'Nordlicht Records GmbH' && notesSaved.id === '1' && kt.toast.textContent === 'Notizen gespeichert.' );
+	check( '...Speichern posts the whole client with the notes as typed - the other fields as they are, for the model empties what is not posted - and says so', Object.keys( notesSaved ).sort().join() === 'business,buyer_reference,city,company,country,email,id,name,notes,phone,street,vat_id,zip' && typeof notesSaved.business === 'boolean' && notesSaved.business === kclient.business && notesSaved.notes === 'Seit Oktober nur noch per Überweisung.' && notesSaved.company === 'Nordlicht Records GmbH' && notesSaved.id === '1' && kt.toast.textContent === 'Notizen gespeichert.' );
 
 	// "einladen": the card of the client, the tab Portal, the form open and its field focused
 	const kinv = await kopen( '#kunde-3-einladen', { 'crm-clients/get' : function() { return [ 200, { client : kclients[2], accounts : [] } ] } } );
@@ -2191,9 +2272,9 @@ function press( w, key, target, mods ) {
 	const nform = all( knewc.main, '#new-client-form' )[0];
 	const nfield = function( name ) { return all( nform, '#f-'+ name )[0] };
 	check( 'Neuer Kunde draws the form without asking for anything: the Stammdaten with their words and the first account, the country DE and a list of countries to choose from, the rail marks Kunden', nform !== undefined && knewc.all( 'crm-clients/save' ).length === 0
-		&& all( nform, 'input' ).map( function( i ) { return i.id.slice( 2 ) } ).join() === 'company,name,street,zip,city,country,email,phone,vat_id,account_email,account_name,account_notify' && nfield( 'account_notify' ).type === 'checkbox' && nfield( 'account_notify' ).checked === true && nfield( 'country' ).value === 'DE' && all( nform, 'option' ).map( function( o ) { return o.value } ).join() === 'DE,AT,CH'
+		&& all( nform, 'input' ).map( function( i ) { return i.id.slice( 2 ) } ).join() === 'company,name,street,zip,city,country,email,phone,vat_id,buyer_reference,business,account_email,account_name,account_notify' && nfield( 'account_notify' ).type === 'checkbox' && nfield( 'account_notify' ).checked === true && nfield( 'country' ).value === 'DE' && all( nform, 'option' ).map( function( o ) { return o.value } ).join() === 'DE,AT,CH'
 		&& nfield( 'account_email' ).type === 'email' && all( nform, 'h3' ).map( textOf ).join( '|' ) === 'Stammdaten|Erstes Portal-Konto' && all( knewc.nav, '[data-r]' ).find( function( a ) { return a.getAttribute( 'data-r' ) === 'kunden' } ).classList.contains( 'on' ) === true );
-	check( '...the fields that may stay empty say so, and the button says Anlegen until an address for the first account is typed, then Anlegen und einladen - and Anlegen again when it is cleared', all( nform, '.state-note' ).map( textOf ).filter( function( t ) { return t === 'optional' } ).length === 3 && textOf( all( nform, '#client-create' )[0] ) === 'Anlegen'
+	check( '...the fields that may stay empty say so, and the button says Anlegen until an address for the first account is typed, then Anlegen und einladen - and Anlegen again when it is cleared', all( nform, '.state-note' ).map( textOf ).filter( function( t ) { return t === 'optional' } ).length === 4 && textOf( all( nform, '#client-create' )[0] ) === 'Anlegen'
 		&& ( type( nfield( 'account_email' ), 'nina@example.org', false ), textOf( all( nform, '#client-create' )[0] ) === 'Anlegen und einladen' ) && ( type( nfield( 'account_email' ), '  ', false ), textOf( all( nform, '#client-create' )[0] ) === 'Anlegen' ) );
 	check( '...what is typed is unsaved input, and a link away asks first', knewc.app.state.draft.dirty === true && click( knewc, all( knewc.main, '#client-abort' )[0] ) === true && knewc.dialogs.length === 1 );
 	no( knewc, 0 );
@@ -2209,7 +2290,7 @@ function press( w, key, target, mods ) {
 	const refreshBefore = knewc.all( 'crm-documents/overview' ).length;
 	submit( knewc, nform );
 	await settle();
-	check( 'without an address the client is made alone: crm-clients/save with every field and the two of the account empty, no id, no notes - and the card of the new client opens, with the sentence that it is made, the guard dropped and the rail counted again', Object.keys( created ).sort().join() === 'account_email,account_name,city,company,country,email,name,notify,phone,street,vat_id,zip' && created.notify === true && created.company === 'Neu GmbH' && created.account_email === '' && created.country === 'DE' && created.city === 'Bonn'
+	check( 'without an address the client is made alone: crm-clients/save with every field and the two of the account empty, no id, no notes - and the card of the new client opens, with the sentence that it is made, the guard dropped and the rail counted again', Object.keys( created ).sort().join() === 'account_email,account_name,business,buyer_reference,city,company,country,email,name,notify,phone,street,vat_id,zip' && created.notify === true && created.company === 'Neu GmbH' && created.account_email === '' && created.country === 'DE' && created.city === 'Bonn'
 		&& knewc.toast.textContent === 'Kunde K-0006 angelegt.' && knewc.location.hash === '#kunde-6' && knewc.app.state.draft === null && knewc.all( 'crm-documents/overview' ).length >= refreshBefore + 1 );
 
 	const nsubmit = async function( fields ) {
@@ -2329,7 +2410,7 @@ function press( w, key, target, mods ) {
 	type( efield( es2, 'payment_days' ), '21', false );
 	submit( es2, all( es2.main, '#settings-form' )[0] );
 	await settle();
-	check( 'a save posts crm-documents/settings-save with the twelve settings as text - the rates as typed, 19,7,0 too: the server reads them, the screen has no conversion - and a refusal is said beside the field it names, the rates', Object.keys( posted[posted.length - 1] ).sort().join() === 'bank_name,bic,currency,iban,number_credit,number_invoice,number_offer,offer_days,payment_days,tax_id,vat_mode,vat_rates_percent'
+	check( 'a save posts crm-documents/settings-save with the twenty-two settings as text - the rates as typed, 19,7,0 too: the server reads them, the screen has no conversion - and a refusal is said beside the field it names, the rates', Object.keys( posted[posted.length - 1] ).sort().join() === 'bank_name,bic,currency,iban,number_credit,number_invoice,number_offer,offer_days,payment_days,seller_city,seller_contact,seller_country,seller_email,seller_name,seller_phone,seller_street,seller_zip,tax_id,vat_exempt_text,vat_id,vat_mode,vat_rates_percent'
 		&& posted[posted.length - 1].vat_rates_percent === '19,7,0' && posted[posted.length - 1].payment_days === '21' && efield( es2, 'vat_rates_percent' ).classList.contains( 'err' ) === true && efield( es2, 'vat_rates_percent' ).focused === true
 		&& textOf( all( all( es2.main, '#settings-form' )[0], '.state-note' ).find( function( n ) { return textOf( n ).indexOf( 'Der Wert der Einstellung ist nicht gültig' ) === 0 } ) ).indexOf( 'Semikolon' ) !== -1 && efield( es2, 'payment_days' ).value === '21' );
 	type( efield( es2, 'vat_rates_percent' ), '19; 7; 5,5; 0', false );
@@ -3094,9 +3175,9 @@ function press( w, key, target, mods ) {
 	check( 'where the feature is off the endpoint says so and the screen shows the sentence with the way to try again', textOf( all( pOff.main, '.note' )[0] ).indexOf( 'Das Feature PDF ist nicht aktiv.' ) !== -1 );
 
 	// --- Einstellungen: the particulars
-	const pset = await eopen( { settings : Object.assign( {}, esettings, { tax_id : '12/345/67890', bank_name : 'Sparkasse', iban : 'DE89 3704 0044 0532 0130 00', bic : 'COBADEFFXXX' } ) } );
-	check( 'the Einstellungen have a block Rechnungsangaben with four fields - Steuernummer, Bank, IBAN, BIC - holding the settings, and say that the footer of the layout shows them', textOf( all( pset.main, '#particulars h3' )[0] ) === 'Rechnungsangaben' && all( pset.main, '#particulars dt' ).map( textOf ).join( '|' ) === 'Steuernummer|Bank|IBAN|BIC'
-		&& [ 'tax_id', 'bank_name', 'iban', 'bic' ].map( function( n ) { return efield( pset, n ).value } ).join( '|' ) === '12/345/67890|Sparkasse|DE89 3704 0044 0532 0130 00|COBADEFFXXX' && textOf( all( pset.main, '#particulars' )[0] ).indexOf( 'Der Fuß des Layouts zeigt Steuernummer und IBAN' ) !== -1 );
+	const pset = await eopen( { settings : Object.assign( {}, esettings, { tax_id : '12/345/67890', vat_id : 'DE123456789', bank_name : 'Sparkasse', iban : 'DE89 3704 0044 0532 0130 00', bic : 'COBADEFFXXX' } ) } );
+	check( 'the Einstellungen have a block Rechnungsangaben with five fields - Steuernummer, USt-IdNr., Bank, IBAN, BIC - holding the settings, and say that the footer of the layout shows them', textOf( all( pset.main, '#particulars h3' )[0] ) === 'Rechnungsangaben' && all( pset.main, '#particulars dt' ).map( textOf ).join( '|' ) === 'Steuernummer|USt-IdNr.|Bank|IBAN|BIC'
+		&& [ 'tax_id', 'vat_id', 'bank_name', 'iban', 'bic' ].map( function( n ) { return efield( pset, n ).value } ).join( '|' ) === '12/345/67890|DE123456789|Sparkasse|DE89 3704 0044 0532 0130 00|COBADEFFXXX' && textOf( all( pset.main, '#particulars' )[0] ).indexOf( 'Der Fuß des Layouts zeigt Steuernummer und IBAN' ) !== -1 );
 	check( '...the field of the BIC is wide enough for eleven characters: it has its own class, and the stylesheet gives that class 150 px - not the 90 px of a short field', efield( pset, 'bic' ).className === 'bic' && /\.kv input\.bic \{ width: 150px \}/.test( source( OWN+ 'assets/crm.css' ) ) === true );
 	type( efield( pset, 'iban' ), 'DE00', false );
 	const pposted = [];
@@ -3107,6 +3188,24 @@ function press( w, key, target, mods ) {
 	await settle();
 	check( 'they are saved with the others, and a wrong IBAN is said beside its field, in its own sentence', pposted[0].iban === 'DE00' && pposted[0].tax_id === 'DE123456789' && efield( pset2, 'iban' ).classList.contains( 'err' ) === true && efield( pset2, 'iban' ).focused === true
 		&& textOf( all( all( pset2.main, '#particulars' )[0], '.state-note.bad' ).find( function( n ) { return textOf( n ) !== '' } ) ).indexOf( 'Das ist keine gültige IBAN' ) === 0 );
+	// the seller of an electronic invoice
+	const sellerSettings = { seller_name : 'Studio Beispiel', seller_street : 'Weg 1', seller_zip : '10115', seller_city : 'Berlin', seller_country : 'DE', seller_contact : 'Jan Beispiel', seller_phone : '+49 30 123456', seller_email : 'jan@beispiel.example', vat_exempt_text : 'Kein Ausweis von Umsatzsteuer gemäß § 19 UStG' };
+	const sposted = [];
+	const sset = await eopen( { settings : Object.assign( {}, esettings, sellerSettings, { vat_mode : 'small_business' } ) }, undefined, { 'crm-documents/settings-save' : function( data ) { sposted.push( data ); return data.seller_email === 'kaputt' ? answerFail( 400, 'crm_documents_particular_seller_email', [], 'seller_email' ) : [ 200, { settings : Object.assign( {}, esettings, data, { vat_rates : '1900,700,550,0' } ) } ] } } );
+	check( 'the Einstellungen have a block Rechnungsaussteller: the name, the street, the postcode, the town, the country, the contact, the phone and the e-mail, holding the settings, and the sentence that says what they are for', textOf( all( sset.main, '#seller h3' )[0] ) === texts['settings.seller']
+		&& all( sset.main, '#seller dt' ).map( textOf ).join( '|' ) === [ 'seller-name', 'seller-street', 'seller-zip', 'seller-city', 'seller-country', 'seller-contact', 'seller-phone', 'seller-email', 'exempt-text' ].map( function( k ) { return texts['settings.'+ k] } ).join( '|' )
+		&& [ 'seller_name', 'seller_street', 'seller_zip', 'seller_city', 'seller_country', 'seller_contact', 'seller_phone', 'seller_email', 'vat_exempt_text' ].map( function( n ) { return efield( sset, n ).value } ).join( '|' ) === 'Studio Beispiel|Weg 1|10115|Berlin|DE|Jan Beispiel|+49 30 123456|jan@beispiel.example|Kein Ausweis von Umsatzsteuer gemäß § 19 UStG'
+		&& efield( sset, 'seller_email' ).type === 'email' && efield( sset, 'seller_country' ).getAttribute( 'maxlength' ) === '2' && efield( sset, 'seller_phone' ).getAttribute( 'inputmode' ) === 'tel' && all( sset.main, '#seller .state-note' ).map( textOf ).indexOf( texts['settings.seller-note'] ) !== -1 );
+	check( '...the note on the tax number says the USt-IdNr. is needed as well, and the USt-IdNr. field is 20 characters at most', efield( sset, 'vat_id' ).getAttribute( 'maxlength' ) === '20' && textOf( all( sset.main, '#particulars' )[0] ).indexOf( texts['settings.tax-id-hint'] ) !== -1 );
+	const holder = all( sset.main, '#exempt-holder' )[0];
+	const regularSet = await eopen( {} );
+	check( 'the text of the exemption is there while the VAT mode is small_business, and goes with the mode: hidden under regular, back under small_business', holder.hidden === false && ( efield( sset, 'vat_mode' ).value = 'regular', fire( efield( sset, 'vat_mode' ), 'change', { target : efield( sset, 'vat_mode' ) } ), holder.hidden === true )
+		&& ( efield( sset, 'vat_mode' ).value = 'small_business', fire( efield( sset, 'vat_mode' ), 'change', { target : efield( sset, 'vat_mode' ) } ), holder.hidden === false ) && all( regularSet.main, '#exempt-holder' )[0].hidden === true );
+	type( efield( sset, 'seller_email' ), 'kaputt', false );
+	submit( sset, all( sset.main, '#settings-form' )[0] );
+	await settle();
+	check( 'a wrong e-mail address of the seller is said beside its field, in its own sentence, and the others went with the post', sposted[0].seller_email === 'kaputt' && sposted[0].seller_name === 'Studio Beispiel' && sposted[0].vat_exempt_text === 'Kein Ausweis von Umsatzsteuer gemäß § 19 UStG' && efield( sset, 'seller_email' ).classList.contains( 'err' ) === true && efield( sset, 'seller_email' ).focused === true
+		&& textOf( all( all( sset.main, '#seller' )[0], '.state-note.bad' ).find( function( n ) { return textOf( n ) !== '' } ) ) === texts['error.crm_documents_particular_seller_email'] );
 	const pcard = await eopen( {}, undefined, {} );
 	check( 'the card of the templates in the Einstellungen leads to the screen of the surface for an account that holds the permission, and to the panel of the workbench for one that does not', all( all( pcard.main, '#templates' )[0], 'a' )[0].getAttribute( 'href' ) === '/_admin/#pdf' );
 	const pcard2 = world( { hash : '#einstellungen', perms : pperms, answers : { 'crm-documents/settings-get' : function() { return [ 200, eview ] }, 'crm/status' : function() { return [ 200, { items : eok } ] } } } );
@@ -3292,6 +3391,35 @@ function press( w, key, target, mods ) {
 	type( xf( xnosort, 'f-title-de_DE' ), 'Mixing Plus', false );
 	await xsave( xnosort );
 	check( '...an item made elsewhere without an order is not given one by a change of its title: only the title goes', eposts.length === 1 && JSON.stringify( eposts[0].fields ) === '{"title":"Mixing Plus"}' );
+	// the unit of the electronic invoice, where the type has the field
+	const withCode = function( over ) { return { 'crm-documents/positionen' : function() { return [ 200, elist( { unit_code : true } ) ] }, 'elements/get' : function() { return [ 200, egot( { global : Object.assign( { unit_code : 'HUR', price : 90.5, vat : 19, hidden : false, sort : 1 }, over || {} ) } ) ] } } };
+	const xcode = await xopen( '#position-mixing', withCode() );
+	check( 'the shared card of an item has the select of the unit of the electronic invoice where the type has the field: "Einheit wählen" and the nine codes by their words, the code of the item chosen, first among the shared fields', xf( xcode, 'f-unit_code' ).tagName === 'SELECT' && xf( xcode, 'f-unit_code' ).value === 'HUR'
+		&& all( xf( xcode, 'f-unit_code' ), 'option' ).map( function( o ) { return o.value+ ':'+ textOf( o ) } ).join( '|' ) === [ '' ].concat( [ 'H87', 'HUR', 'MIN', 'DAY', 'WEE', 'MON', 'LS', 'C62', 'KMT' ] ).map( function( code ) { return code+ ':'+ texts[code === '' ? 'unitcode.none' : 'unitcode.'+ code.toLowerCase()] } ).join( '|' )
+		&& all( xcards( xcode )[2], 'dt' ).map( textOf ).join( '|' ) === [ 'items.f-unit-code', 'items.f-price', 'items.f-vat', 'items.f-active', 'items.f-sort' ].map( function( k ) { return texts[k] } ).join( '|' ) && all( xcode.main, '#position-no-unit-code' ).length === 0 );
+	type( xf( xcode, 'f-unit_code' ), 'DAY', false );
+	await xsave( xcode );
+	check( '...a changed code alone posts the code alone, and an unchanged one posts nothing', eposts.length === 1 && JSON.stringify( eposts[0].fields ) === '{"unit_code":"DAY"}' && eposts[0].isNew === false );
+	const xcode0 = await xopen( '#position-mixing', withCode() );
+	await xsave( xcode0 );
+	check( '...(nothing changed: nothing posted)', eposts.length === 0 );
+	const xnocode = await xopen( '#position-mixing' );
+	check( 'where the type has no such field (a project that had the type before) there is no select and no post of the code - the sentence says where to make the field', xf( xnocode, 'f-unit_code' ) === undefined && textOf( xf( xnocode, 'position-no-unit-code' ) ) === texts['items.no-unit-code'] );
+	type( xf( xnocode, 'f-price' ), '91', false );
+	await xsave( xnocode );
+	check( '...and then a save posts the price alone', JSON.stringify( eposts[0].fields ) === '{"price":91}' );
+	const xnewCode = await xopen( '#positionen-neu', { 'crm-documents/positionen' : function() { return [ 200, elist( { unit_code : true } ) ] } } );
+	type( xf( xnewCode, 'f-title-de_DE' ), 'Neu mit Einheit', false );
+	type( xf( xnewCode, 'f-price' ), '1', false );
+	await xsave( xnewCode );
+	const noCodePosted = Object.keys( eposts[0].fields ).join();
+	const xnewCode2 = await xopen( '#positionen-neu', { 'crm-documents/positionen' : function() { return [ 200, elist( { unit_code : true } ) ] } } );
+	type( xf( xnewCode2, 'f-title-de_DE' ), 'Neu mit Einheit', false );
+	type( xf( xnewCode2, 'f-price' ), '1', false );
+	type( xf( xnewCode2, 'f-unit_code' ), 'MON', false );
+	await xsave( xnewCode2 );
+	check( 'a new item posts the code only where one is chosen: none, none in the post - MON, with the others', noCodePosted === 'title,description,unit,price,vat,hidden,sort' && eposts.length === 1 && eposts[0].fields.unit_code === 'MON' && Object.keys( eposts[0].fields ).join() === 'title,description,unit,price,vat,unit_code,hidden,sort' );
+
 	const xnew0 = await xopen( '#positionen-neu' );
 	type( xf( xnew0, 'f-title-de_DE' ), 'Ganz neu', false );
 	type( xf( xnew0, 'f-price' ), '1', false );

@@ -140,6 +140,17 @@ class Admin {
 			$input[$field] = $data[$field];
 		}
 
+		// Whether the client is a business is a flag, not a text
+		if( array_key_exists( 'business', $data ) === true ) {
+
+			if( is_bool( $data['business'] ) === false ) {
+				\Nino\Http::fail( $request, 400, 'the value is no flag', 'crm_clients_format', [], 'business' );
+				return;
+			}
+
+			$input['business'] = $data['business'];
+		}
+
 		foreach( [ 'account_email', 'account_name' ] as $field )
 			if( array_key_exists( $field, $data ) === true && is_string( $data[$field] ) === false ) {
 				\Nino\Http::fail( $request, 400, 'the value is no text', 'crm_clients_format', [], $field );

@@ -7,7 +7,7 @@ declare(strict_types=1);
  *
  *								A client carries privacy (Records::privacy(): whether the portal asks for a text, whether the client has agreed to it, when and by whom) from get() and list().
  *								A write answers the client as list() has it, or a string: 'empty' (neither company nor name),
- *								'email:email', 'long:<field>' or 'format:<field>' (the field a value was refused for),
+ *								'email:email', 'long:<field>' or 'format:<field>' (the field a value was refused for; format:business for a flag that is none),
  *								'unknown' (no such client). A database failure is a \PDOException the caller answers.
  *
  *								The accounts of a client are rows of client_accounts and accounts of Members. An account belongs
@@ -24,7 +24,7 @@ class Clients {
 	// The fields a client is edited by, with the longest value each takes
 	public const array FIELDS = [
 		'company' => 120, 'name' => 120, 'street' => 120, 'zip' => 12, 'city' => 80, 'country' => 2,
-		'email' => 160, 'phone' => 40, 'vat_id' => 20, 'notes' => 2000,
+		'email' => 160, 'phone' => 40, 'vat_id' => 20, 'buyer_reference' => 100, 'notes' => 2000,
 	];
 
 	// What a field may hold besides its length, as a full-match pattern (an empty value always passes)
@@ -102,7 +102,7 @@ class Clients {
 	 *	Add a client with the next number
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$input				Any of FIELDS
+	 *	@param		array 		$input				Any of FIELDS, and business (a boolean)
 	 *	@param		array|null	$first				The first account of the client: email and name, and notify (false: the invitation is not mailed, its link is in the answer). Without an email the client is made alone
 	 *
 	 *	@return 	array|string							The client; or why not, see the class. With a first account the client has the key first: what invite()
@@ -127,8 +127,8 @@ class Clients {
 			$max = (int) $pdo->query( 'SELECT COALESCE( MAX( CAST( SUBSTR( number, 3 ) AS INTEGER ) ), 0 ) FROM clients' )->fetchColumn();
 			$number = 'K-'. sprintf( '%04d', $max + 1 );
 
-			$statement = $pdo->prepare( 'INSERT INTO clients ( number, company, name, street, zip, city, country, email, phone, vat_id, notes, active, created, updated )
-				VALUES ( :number, :company, :name, :street, :zip, :city, :country, :email, :phone, :vat_id, :notes, 1, :now, :now )' );
+			$statement = $pdo->prepare( 'INSERT INTO clients ( number, company, name, street, zip, city, country, email, phone, vat_id, buyer_reference, business, notes, active, created, updated )
+				VALUES ( :number, :company, :name, :street, :zip, :city, :country, :email, :phone, :vat_id, :buyer_reference, :business, :notes, 1, :now, :now )' );
 			$statement->execute( [ 'number' => $number, 'now' => $now ] + $values );
 			$id = (int) $pdo->lastInsertId();
 
@@ -163,7 +163,7 @@ class Clients {
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		int				$id
-	 *	@param		array 		$input				Any of FIELDS
+	 *	@param		array 		$input				Any of FIELDS, and business (a boolean)
 	 *
 	 *	@return 	array|string
 	 */
@@ -180,7 +180,7 @@ class Clients {
 			return $values;
 
 		Db::exec( $appData, 'UPDATE clients SET company = :company, name = :name, street = :street, zip = :zip, city = :city, country = :country,
-			email = :email, phone = :phone, vat_id = :vat_id, notes = :notes, updated = :now WHERE id = :id', [ 'id' => $id, 'now' => gmdate( self::TIME ) ] + $values );
+			email = :email, phone = :phone, vat_id = :vat_id, buyer_reference = :buyer_reference, business = :business, notes = :notes, updated = :now WHERE id = :id', [ 'id' => $id, 'now' => gmdate( self::TIME ) ] + $values );
 
 		return (array) self::get( $appData, $id );
 	}
@@ -633,6 +633,14 @@ class Clients {
 		if( $values['company'] === '' && $values['name'] === '' )
 			return 'empty';
 
+		// Whether the client is a business, and so gets an electronic invoice: a flag the editor posts as a boolean; a text is none
+		$business = $input['business'] ?? false;
+
+		if( is_bool( $business ) === false && $business !== 0 && $business !== 1 )
+			return 'format:business';
+
+		$values['business'] = $business === true || $business === 1 ? 1 : 0;
+
 		return $values;
 	}
 
@@ -649,6 +657,7 @@ class Clients {
 
 		$row['id'] = (int) $row['id'];
 		$row['active'] = (int) $row['active'] === 1;
+		$row['business'] = (int) $row['business'] === 1;
 		$row['accounts'] = count( $ids );
 		$row['active_accounts'] = count( array_filter( $ids, static fn( string $id ): bool => ( $members[$id]['active'] ?? false ) === true ) );
 		$row['group'] = self::group( (string) $row['number'] );

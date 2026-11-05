@@ -55,7 +55,12 @@ class Admin {
 
 	// What Sign refuses a request with, as the status and the code a person is answered
 	// A setting that is one of the invoice particulars has a sentence of its own for a wrong value
-	private const array PARTICULARS = [ 'tax_id' => 'crm_documents_particular_tax_id', 'bank_name' => 'crm_documents_particular_bank_name', 'iban' => 'crm_documents_particular_iban', 'bic' => 'crm_documents_particular_bic' ];
+	private const array PARTICULARS = [
+		'tax_id' => 'crm_documents_particular_tax_id', 'bank_name' => 'crm_documents_particular_bank_name', 'iban' => 'crm_documents_particular_iban', 'bic' => 'crm_documents_particular_bic',
+		'seller_name' => 'crm_documents_particular_seller_name', 'seller_street' => 'crm_documents_particular_seller_street', 'seller_zip' => 'crm_documents_particular_seller_zip', 'seller_city' => 'crm_documents_particular_seller_city',
+		'seller_country' => 'crm_documents_particular_seller_country', 'seller_contact' => 'crm_documents_particular_seller_contact', 'seller_phone' => 'crm_documents_particular_seller_phone', 'seller_email' => 'crm_documents_particular_seller_email',
+		'vat_id' => 'crm_documents_particular_vat_id', 'vat_exempt_text' => 'crm_documents_particular_vat_exempt_text',
+	];
 
 	private const array SIGN_REFUSALS = [
 		'template' => [ 409, 'crm_documents_sign_template' ],
@@ -65,7 +70,7 @@ class Admin {
 	];
 
 	// The fields of a draft a post may carry
-	private const array FIELDS = [ 'date', 'due_date', 'valid_until', 'period_from', 'period_to', 'template_key', 'inputs', 'reverse_charge', 'lines', 'title', 'project' ];
+	private const array FIELDS = [ 'date', 'due_date', 'valid_until', 'period_from', 'period_to', 'template_key', 'inputs', 'reverse_charge', 'lines', 'title', 'project', 'buyer_reference' ];
 
 	// What an action made or touched, by action: written by the action, read by log() in the same request
 	private static array $_made = [];
@@ -709,6 +714,7 @@ class Admin {
 
 			\Nino\Http::ok( $request, [
 				'missing'  => \Crm\Positionen::missing( $appData ),
+				'unit_code' => \Crm\Positionen::hasUnitCode( $appData ),
 				'locales'  => array_values( \Nino\Locales::getAvailableLocales( $appData ) ),
 				'native'   => \Nino\Locales::getNativeLocale( $appData ),
 				'items'    => \Crm\Positionen::all( $appData ),
@@ -840,10 +846,33 @@ class Admin {
 		unset( $document['client_frozen'] );
 		$dir = \Nino\Filesystem::getDir( $appData );
 		$document['pdf_url'] = $document['pdf_path'] === '' ? '' : $dir. '/.crm/pdf/'. $document['id'];
+		$document['xml_url'] = $document['xml_path'] === '' ? '' : $dir. '/.crm/xml/'. $document['id'];
+		$document['erechnung'] = self::_electronic( $appData, $document );
 		$document['sign_shown_url'] = $document['sign_id'] === '' ? '' : $dir. '/.sign/pdf?r='. $document['sign_id']. '&kind=shown';
 		$document['sign_signed_url'] = $document['sign_state'] === 'signed' ? $dir. '/.sign/pdf?r='. $document['sign_id']. '&kind=signed' : '';
 
 		return $document;
+	}
+
+	/**
+	 *	What the screens say of the electronic invoice of a document: null for a document that gets none (an offer, a document without lines, a document of a private
+	 *	client, one finalised before the client had the flag); otherwise whether the file is there (xml) and what is missing, each with its key and its sentence.
+	 *	A draft is read as it stands now; a finalised document says what was missing when it was finalised
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			As get() has it
+	 *
+	 *	@return 	array|null								xml (bool) and lacks ( [ key, text ] )
+	 */
+	private static function _electronic( array &$appData, array $document ): ?array {
+
+		if( $document['state'] === 'draft' )
+			return XRechnung::applies( $document ) === false ? null : [ 'xml' => false, 'lacks' => XRechnung::sentences( XRechnung::lacks( $appData, $document ) ) ];
+
+		if( $document['xml_path'] !== '' )
+			return [ 'xml' => true, 'lacks' => [] ];
+
+		return $document['xml_lacks'] === [] ? null : [ 'xml' => false, 'lacks' => XRechnung::sentences( $document['xml_lacks'] ) ];
 	}
 
 	/**
@@ -877,7 +906,7 @@ class Admin {
 	 *
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	array											id, title, description, unit, price_net, vat_rate, active and sort of each
+	 *	@return 	array											id, title, description, unit, unit_code, price_net, vat_rate, active and sort of each
 	 */
 	private static function _catalogue( array &$appData ): array {
 
@@ -888,6 +917,7 @@ class Admin {
 			'title'       => $item['title'],
 			'description' => $item['description'],
 			'unit'        => $item['unit'],
+			'unit_code'   => $item['unit_code'],
 			'price_net'   => $item['price'],
 			'vat_rate'    => $small === true ? 0 : $item['vat'],
 			'active'      => $item['active'],
@@ -974,11 +1004,11 @@ class Admin {
 	/**
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	array											id, number, title and active of every client, by number
+	 *	@return 	array											id, number, title, active, business and buyer_reference of every client, by number
 	 */
 	private static function _clients( array &$appData ): array {
 
-		return array_map( static fn( array $client ): array => [ 'id' => $client['id'], 'number' => $client['number'], 'title' => $client['company'] !== '' ? $client['company'] : $client['name'], 'active' => $client['active'] ], \Crm\Clients::list( $appData ) );
+		return array_map( static fn( array $client ): array => [ 'id' => $client['id'], 'number' => $client['number'], 'title' => $client['company'] !== '' ? $client['company'] : $client['name'], 'active' => $client['active'], 'business' => $client['business'], 'buyer_reference' => $client['buyer_reference'] ], \Crm\Clients::list( $appData ) );
 	}
 
 	/**
@@ -1067,11 +1097,13 @@ class Admin {
 
 		match( $kind ) {
 			'date'   => \Nino\Http::fail( $request, 400, 'the date is none', 'crm_documents_date', [], $rest ),
-			'long'   => \Nino\Http::fail( $request, 400, 'the value is too long', 'crm_documents_long', [ $rest === 'title' ? \Crm\Documents::MAX_TITLE : \Crm\Documents::MAX_NOTES ], $rest ),
+			'long'   => \Nino\Http::fail( $request, 400, 'the value is too long', 'crm_documents_long', [ match( $rest ) { 'title' => \Crm\Documents::MAX_TITLE, 'buyer_reference' => \Crm\Documents::MAX_REFERENCE, default => \Crm\Documents::MAX_NOTES } ], $rest ),
 			'format' => str_starts_with( $rest, 'number_' ) === true
 				? \Nino\Http::fail( $request, 400, 'the number format is none', 'crm_documents_numberformat', [], $rest )
 				: \Nino\Http::fail( $request, 400, 'the value has a wrong format', 'crm_documents_format', [], $rest ),
-			'exists' => \Nino\Http::fail( $request, 409, 'the PDF file is there already', 'crm_documents_exists', [ basename( $rest, '.pdf' ), ltrim( $rest, '/' ) ] ),
+			'exists' => str_ends_with( $rest, '.xml' ) === true
+				? \Nino\Http::fail( $request, 409, 'the file of the electronic invoice is there already', 'crm_documents_exists_xml', [ basename( $rest, '.xml' ), ltrim( $rest, '/' ) ] )
+				: \Nino\Http::fail( $request, 409, 'the PDF file is there already', 'crm_documents_exists', [ basename( $rest, '.pdf' ), ltrim( $rest, '/' ) ] ),
 			'inputs' => \Nino\Http::fail( $request, 409, 'a required input is missing', 'crm_documents_inputs', [], 'inputs.'. $rest ),
 			'line'   => self::_refusedLine( $request, $rest ),
 			'value'  => \Nino\Http::fail( $request, 400, 'the setting has a wrong value', self::PARTICULARS[$rest] ?? 'crm_documents_setting', [], $rest ),

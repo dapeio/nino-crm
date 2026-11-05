@@ -486,7 +486,7 @@ class Render {
 	 *
 	 *	@return 	void
 	 */
-	private static function answer( array &$request, int $status, string $body ): void {
+	public static function answer( array &$request, int $status, string $body ): void {
 
 		$request['/nino/http/response']['statusCode'] = $status;
 		$request['/nino/http/response']['body'] = $body;

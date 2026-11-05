@@ -20,6 +20,7 @@ return [
 	'[[/project/crm-documents/state/signed]]' => 'unterschrieben',
 	'[[/project/crm-documents/state/expired]]' => 'abgelaufen',
 	'[[/project/crm-documents/list/download]]' => 'Herunterladen',
+	'[[/project/crm-documents/list/xml]]' => 'E-Rechnung (XML)',
 	'[[/project/crm-documents/list/sign]]' => 'Jetzt unterschreiben',
 	'[[/project/crm-documents/list/signed]]' => 'Unterschriebene Datei',
 	'[[/project/crm-documents/list/empty]]' => 'Für Dich liegen noch keine Dokumente bereit.',

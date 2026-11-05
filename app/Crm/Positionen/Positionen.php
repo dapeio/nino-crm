@@ -36,13 +36,25 @@ class Positionen {
 	}
 
 	/**
+	 *	Whether the type has the field unit_code: a project that had the type before the field came keeps the type as it was (the install unit is add-only)
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	bool
+	 */
+	public static function hasUnitCode( array &$appData ): bool {
+
+		return self::missing( $appData ) === false && isset( \Nino\Elements::getElementModel( $appData, self::TYPE )['unit_code'] ) === true;
+	}
+
+	/**
 	 *	The items in the order of their field sort, in the native language
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		string		$search				Part of the title (case does not matter, no wildcards)
 	 *	@param		bool			$activeOnly		Leave out the items whose field hidden is on (the row's active is its opposite)
 	 *
-	 *	@return 	array											id, title, description, unit, price (cents), vat (hundredths), active, sort of each
+	 *	@return 	array											id, title, description, unit, unit_code, price (cents), vat (hundredths), active, sort of each
 	 */
 	public static function list( array &$appData, string $search = '', bool $activeOnly = true ): array {
 
@@ -77,7 +89,7 @@ class Positionen {
 	 *
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	array											id, sort (null for an item that has none), price (cents), vat (hundredths), active and words ( locale => title, description, unit ) of each
+	 *	@return 	array											id, sort (null for an item that has none), unit_code, price (cents), vat (hundredths), active and words ( locale => title, description, unit ) of each
 	 */
 	public static function all( array &$appData ): array {
 
@@ -106,7 +118,7 @@ class Positionen {
 				$words[$locale] = array_intersect_key( $words[$locale], [ 'title' => 1, 'description' => 1, 'unit' => 1 ] );
 			}
 
-			$items[] = [ 'id' => $item['id'], 'sort' => is_int( $first['sort'] ?? null ) === true ? $item['sort'] : null, 'price' => $item['price'], 'vat' => $item['vat'], 'active' => $item['active'], 'words' => $words ];
+			$items[] = [ 'id' => $item['id'], 'sort' => is_int( $first['sort'] ?? null ) === true ? $item['sort'] : null, 'unit_code' => $item['unit_code'], 'price' => $item['price'], 'vat' => $item['vat'], 'active' => $item['active'], 'words' => $words ];
 		}
 
 		return $items;
@@ -144,6 +156,7 @@ class Positionen {
 			'title'       => $text( $element['title'] ?? '' ),
 			'description' => $text( $element['description'] ?? '' ),
 			'unit'        => $text( $element['unit'] ?? '' ),
+			'unit_code'   => in_array( $element['unit_code'] ?? null, \Crm\Documents\Lines::UNIT_CODES, true ) === true ? $element['unit_code'] : '',
 			'price'       => self::hundredths( $element['price'] ?? 0 ),
 			'vat'         => self::hundredths( $element['vat'] ?? 0 ),
 			'active'      => ( $element['hidden'] ?? false ) !== true,

@@ -225,7 +225,7 @@ class Portal {
 			);
 
 		return str_replace(
-			[ '[[category]]', '[[state]]', '[[id]]', '[[title]]', '[[project]]', '[[iso]]', '[[date]]', '[[dir]]', '[[sign]]', '[[order]]' ],
+			[ '[[category]]', '[[state]]', '[[id]]', '[[title]]', '[[project]]', '[[iso]]', '[[date]]', '[[dir]]', '[[xml]]', '[[sign]]', '[[order]]' ],
 			[
 				$document['category'],
 				$state,
@@ -235,6 +235,7 @@ class Portal {
 				\Nino\Modules\Components::escape( $document['date'] ),
 				\Nino\Modules\Components::escape( Documents\Render::day( $document['date'] ) ),
 				$dir,
+				$document['xml'] === true ? str_replace( [ '[[dir]]', '[[id]]' ], [ $dir, (string) $document['id'] ], self::template( 'document-xml' ) ) : '',
 				$sign === '' ? '' : str_replace( [ '[[dir]]', '[[request]]' ], [ $dir, $request ], self::template( $sign ) ),
 				$order,
 			],

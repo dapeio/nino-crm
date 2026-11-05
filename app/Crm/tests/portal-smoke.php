@@ -746,7 +746,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 105 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 106 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'sent', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -1866,6 +1866,80 @@ check( 'Termine der nächsten 30 Tage: the dates of the member\'s group and for 
 check( 'where Events is off there is no card of dates', in_array( 'dates', $cards( portalPage( $appData, '/portal' )[1] ), true ) === false );
 \Nino\Features::activate( $appData, 'events' );
 portalSignIn( $appData, $accounts['anna'] );
+
+// --- The electronic invoice for a member ---------------------------------------------------------------------------------------------
+
+echo "\nThe electronic invoice: the download of the portal\n";
+
+$asAdmin();
+$notFound = static fn( array $response ): bool => $response['statusCode'] === 404 && ( $response['file'] ?? null ) === null && $response['body'] === 'Not Found';
+$seller = [ 'seller_name' => 'Studio Beispiel', 'seller_street' => 'Weg 1', 'seller_zip' => '10115', 'seller_city' => 'Berlin', 'seller_contact' => 'Jan Beispiel', 'seller_phone' => '+49 30 123456', 'seller_email' => 'jan@beispiel.example', 'tax_id' => '12/345/67890', 'vat_id' => 'DE111222333', 'iban' => 'DE89 3704 0044 0532 0130 00' ];
+
+foreach( $seller as $key => $value )
+	\Crm\Settings::set( $appData, $key, $value );
+
+\Crm\Clients::change( $appData, $a['id'], [ 'business' => true, 'email' => 'buchhaltung@nord.example', 'buyer_reference' => 'N-100' ] );
+\Crm\Clients::change( $appData, $b['id'], [ 'business' => false ] );
+$coded = static fn( string $title ): array => $line( $title ) + [ 'unit_code' => 'HUR' ];
+$xmlA = $final( 'invoice', $a['id'], [ 'date' => '2026-10-25', 'project' => $p1, 'template_key' => 'rechnung', 'lines' => [ $coded( 'Mit Datei' ) ] ] );
+$xmlA2 = $final( 'invoice', $a['id'], [ 'date' => '2026-10-26', 'template_key' => 'rechnung', 'lines' => [ $coded( 'Nicht freigegeben' ) ] ] );
+$noXml = $final( 'invoice', $a['id'], [ 'date' => '2026-10-27', 'template_key' => 'rechnung', 'lines' => [ $line( 'Ohne Einheit' ) ] ] );
+$xmlB = $final( 'invoice', $b['id'], [ 'date' => '2026-10-28', 'template_key' => 'rechnung', 'lines' => [ $coded( 'Privat' ) ] ] );
+check( 'a business client\'s invoice has a file, one with a line without a unit code has none, a private client\'s has none', $xmlA['xml_path'] !== '' && $xmlA2['xml_path'] !== '' && $noXml['xml_path'] === '' && $noXml['xml_lacks'] === [ 'line_unit' ] && $xmlB['xml_path'] === '' && $xmlB['xml_lacks'] === [] );
+
+foreach( [ $xmlA, $noXml, $xmlB ] as $document )
+	Documents::release( $appData, $document['id'], false );
+
+$xmlRow = static function( int $id ) use ( &$appData ): string {
+	foreach( preg_split( '/(?=<li class="crm-documents__row")/', \Nino\Html::renderHtml( $appData, '[crm-documents]' ) ) ?: [] as $row )
+		if( str_contains( $row, 'data-document="'. $id. '"' ) === true )
+			return $row;
+
+	return '';
+};
+$linksOf = static fn( string $row ): array => array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( '<ul>'. $row. '</ul>', '//span[@class="crm-documents__links"]/a' ) );
+
+check( 'the member of the client is served the file of a released invoice: 200, application/xml, an attachment under the number, kept out of every cache', portalSignIn( $appData, $accounts['anna'] ) === true && ( $served = portalServe( $appData, '/.crm/xml/'. $xmlA['id'] ) )['statusCode'] === 200
+	&& ( $served['file'] ?? '' ) === \Nino\Filesystem::path( $appData, $xmlA['xml_path'] ) && $served['header']['Content-Type'] === 'application/xml' && $served['header']['Content-Disposition'] === 'attachment; filename="'. $xmlA['number']. '.xml"' && $served['header']['Cache-Control'] === 'private, no-store' );
+$ignored = ninoWarnings();
+
+foreach( [ 'a document of the client that is not released' => $xmlA2['id'], 'a released document that has no file (a line without a unit code)' => $noXml['id'], 'a document of another client' => $xmlB['id'], 'a document nobody has' => 99999 ] as $why => $id )
+	check( 'the same 404 for '. $why, $notFound( portalServe( $appData, '/.crm/xml/'. $id ) ) === true && ninoWarnings() === [] );
+
+check( '...for an id that is no number, or a path past it', $notFound( portalServe( $appData, '/.crm/xml/abc' ) ) === true && $notFound( portalServe( $appData, '/.crm/xml/'. $xmlA['id']. '/x' ) ) === true && $notFound( portalServe( $appData, '/.crm/xml/01' ) ) === true );
+check( 'a member of another client is served nothing of it, and a member of no client nothing', portalSignIn( $appData, $accounts['ben'] ) === true && $notFound( portalServe( $appData, '/.crm/xml/'. $xmlA['id'] ) ) === true && portalSignIn( $appData, $stray ) === true
+	&& $notFound( portalServe( $appData, '/.crm/xml/'. $xmlA['id'] ) ) === true );
+$asVisitor();
+check( '...a visitor too', $notFound( portalServe( $appData, '/.crm/xml/'. $xmlA['id'] ) ) === true );
+portalSignIn( $appData, $accounts['anna'] );
+Documents::release( $appData, $xmlA2['id'], false );
+check( 'releasing makes it reachable at once', portalServe( $appData, '/.crm/xml/'. $xmlA2['id'] )['statusCode'] === 200 );
+$asAdmin();
+Documents::unrelease( $appData, $xmlA2['id'] );
+portalSignIn( $appData, $accounts['anna'] );
+check( '...and taking it back makes it a 404 again', $notFound( portalServe( $appData, '/.crm/xml/'. $xmlA2['id'] ) ) === true );
+$xmlFile = \Nino\Filesystem::path( $appData, $xmlA['xml_path'] );
+$xmlBytes = (string) file_get_contents( $xmlFile );
+file_put_contents( $xmlFile, $xmlBytes. ' ' );
+check( 'a file that is not the one that was written is a 409 for a member, and the log names the number', portalServe( $appData, '/.crm/xml/'. $xmlA['id'] )['statusCode'] === 409 && str_contains( implode( ' ', ninoWarnings() ), $xmlA['number'] ) === true );
+file_put_contents( $xmlFile, $xmlBytes );
+$asAdmin();
+check( 'the workbench keeps the route: any document with a file, released or not - and none of a document without one', portalServe( $appData, '/.crm/xml/'. $xmlA2['id'] )['statusCode'] === 200 && $notFound( portalServe( $appData, '/.crm/xml/'. $noXml['id'] ) ) === true );
+
+portalSignIn( $appData, $accounts['anna'] );
+$withFile = $xmlRow( $xmlA['id'] );
+check( 'the row of a document with a file has a second download in its links, next to the PDF: "E-Rechnung (XML)", the address of the route, no query', $linksOf( $withFile ) === [ '/.crm/pdf/'. $xmlA['id']. '?download=1', '/.crm/xml/'. $xmlA['id'] ]
+	&& portalText( '<ul>'. $withFile. '</ul>', '//a[contains(@class, "crm-documents__xml")]' ) === $wordsDe['[[/project/crm-documents/list/xml]]'] && portalFind( '<ul>'. $withFile. '</ul>', '//a[@class="crm-documents__download crm-documents__xml"]' ) !== [] );
+check( '...a row of a document without a file has the PDF alone, and so has a row of the private client\'s', $linksOf( $xmlRow( $noXml['id'] ) ) === [ '/.crm/pdf/'. $noXml['id']. '?download=1' ] && str_contains( $xmlRow( $noXml['id'] ), 'crm-documents__xml' ) === false && str_contains( $xmlRow( $invoiceA['id'] ), '/.crm/xml/' ) === false );
+$projectHtml = portalPage( $appData, '/portal/projekte?projekt='. $p1. '&tab=belege' )[1];
+check( '...the Belege tab of a project shows it in the same row', array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( $projectHtml, '//section[contains(@class, "crm-project__section--documents")]//li[@data-document="'. $xmlA['id']. '"]//a' ) ) === [ '/.crm/pdf/'. $xmlA['id']. '?download=1', '/.crm/xml/'. $xmlA['id'] ] );
+check( 'on a site in a directory the address of the file has the directory in front of it', str_contains( (string) ( function() use ( &$appData ): string {
+	$appData['/nino/dir'] = '/club';
+	$row = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
+	$appData['/nino/dir'] = '';
+
+	return $row;
+} )(), 'href="/club/.crm/xml/'. $xmlA['id']. '"' ) === true );
 
 // The rest of the suite runs as it did before: Review and Events off
 foreach( [ 'events', 'review' ] as $key )

@@ -1388,7 +1388,7 @@ check( '...and 403 for the permission of the Elements panel alone: the endpoint 
 
 $asItems();
 [ $status, $list ] = surfaceApi( $appData, 'elements/list', [ 'type' => 'positionen' ] );
-check( '...200 with both: the list is the panel\'s, to the byte of its JSON', $status === 200 && $list === [ 'columns' => [ 'title', 'description', 'unit', 'price', 'vat', 'hidden', 'sort' ], 'elements' => [] ]
+check( '...200 with both: the list is the panel\'s, to the byte of its JSON', $status === 200 && $list === [ 'columns' => [ 'title', 'description', 'unit', 'unit_code', 'price', 'vat', 'hidden', 'sort' ], 'elements' => [] ]
 	&& json_encode( $list ) === json_encode( ninoCall( $appData, [ \Nino\Modules\Elements\Admin::class, 'apiList' ], [ 'type' => 'positionen' ], 'elements/list' )[1] ) );
 
 // The type restriction: a post that names another type, or none, is refused before the panel is asked
@@ -1419,7 +1419,7 @@ $linesBefore = count( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ) );
 [ $statusEn, ] = surfaceApi( $appData, 'elements/save', [ 'type' => 'positionen', 'uri' => 'mixing', 'locale' => 'en_US', 'isNew' => false, 'fields' => [ 'title' => 'Mixing', 'description' => 'Mixing of one song', 'unit' => 'h' ] ] );
 $item = Positionen::get( $appData, 'mixing' );
 check( 'a save through the endpoint makes the element the panel makes: 200 and the element in the answer, the second language an update; Positionen::list() answers it in cents and hundredths, and the words of the other language are there', $status === 200 && $made['element']['.uri'] === '/positionen/mixing' && $statusEn === 200
-	&& $item === [ 'id' => 'mixing', 'title' => 'Mixing', 'description' => "Mischung eines Songs\nbis 48 Spuren", 'unit' => 'Std.', 'price' => 9050, 'vat' => 1900, 'active' => true, 'sort' => 5 ] && Positionen::all( $appData )[0]['words']['en_US'] === [ 'title' => 'Mixing', 'description' => 'Mixing of one song', 'unit' => 'h' ] );
+	&& $item === [ 'id' => 'mixing', 'title' => 'Mixing', 'description' => "Mischung eines Songs\nbis 48 Spuren", 'unit' => 'Std.', 'unit_code' => '', 'price' => 9050, 'vat' => 1900, 'active' => true, 'sort' => 5 ] && Positionen::all( $appData )[0]['words']['en_US'] === [ 'title' => 'Mixing', 'description' => 'Mixing of one song', 'unit' => 'h' ] );
 $loop = static fn(): array => array_map( static fn( array $one ): string => (string) $one['.uri'], \Nino\Modules\Elements::queryLoop( $appData, [ '/positionen', 'sort' => 'sort', 'query' => 'hidden=0' ], true ) );
 check( '...and the loop of the Builder, [elements /positionen sort="sort" query="hidden=0"], reads it: the same element, in the order of its sort', $loop() === [ '/positionen/mixing' ] );
 [ , $second ] = [ surfaceApi( $appData, 'elements/save', [ 'type' => 'positionen', 'uri' => 'beratung', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Beratung', 'unit' => 'Tag', 'price' => 120, 'vat' => 7.5, 'hidden' => false, 'sort' => 2 ] ] ), 0 ];
@@ -1468,7 +1468,7 @@ check( 'the activity log has the panel\'s lines for the saves: Add Element once 
 
 // Reading one item: the panel's answer, the numbers once and the words of each language
 [ $status, $got ] = surfaceApi( $appData, 'elements/get', [ 'type' => 'positionen', 'uri' => 'mixing' ] );
-check( 'elements/get answers the numbers once and the words of each language of the site, as the panel does; an item that is none is 404', $status === 200 && $got['global'] === [ 'price' => 90.5, 'vat' => 19.0, 'hidden' => false, 'sort' => 5 ] && array_keys( $got['locales'] ) === [ 'de_DE', 'en_US' ] && $got['locales']['en_US']['unit'] === 'h'
+check( 'elements/get answers the numbers once and the words of each language of the site, as the panel does; an item that is none is 404', $status === 200 && $got['global'] === [ 'unit_code' => null, 'price' => 90.5, 'vat' => 19.0, 'hidden' => false, 'sort' => 5 ] && array_keys( $got['locales'] ) === [ 'de_DE', 'en_US' ] && $got['locales']['en_US']['unit'] === 'h'
 	&& surfaceApi( $appData, 'elements/get', [ 'type' => 'positionen', 'uri' => 'gibt-es-nicht' ] )[0] === 404 );
 
 // An item made elsewhere with no order: all() says none (null), list() has 0 for the order of the lines and the editor of documents

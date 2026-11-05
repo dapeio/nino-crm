@@ -122,7 +122,7 @@ $thirdFile->exec( 'INSERT INTO client_accounts ( client_id, member_id ) VALUES (
 $thirdFile = null;
 $migrated = \Crm\Db::pdo( $third );
 $rows = \Crm\Db::rows( $third, 'SELECT client_id, member_id FROM client_accounts ORDER BY rowid' );
-check( 'migrations 0004 to 0008 on a database of the third schema run once: version 8, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 5 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 8
+check( 'migrations 0004 to 0009 on a database of the third schema run once: version 9, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 6 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 9
 	&& array_map( 'json_encode', $rows ) === [ '{"client_id":2,"member_id":"aaaaaaaaaaaa"}', '{"client_id":1,"member_id":"bbbbbbbbbbbb"}' ] );
 check( '...migration 0006 gave the documents the column project, empty for every row there is, and the index on it', in_array( 'project', array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( documents )' ), 'name' ), true ) === true
 	&& (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'documents_project\' AND tbl_name = \'documents\'' )['n'] === 1 && \Crm\Db::rows( $third, 'SELECT id FROM documents WHERE project <> \'\'' ) === [] );
@@ -398,6 +398,11 @@ check( 'a bad address is 400 crm_clients_email on email', ( $r = ninoCall( $appD
 check( 'a zip with a symbol is 400 crm_clients_format on zip', ( $r = ninoCall( $appData, $panel, [ 'name' => 'A', 'zip' => '<' ], 'crm-clients/save' ) )[0] === 400 && $r[1]['code'] === 'crm_clients_format' && $r[1]['field'] === 'zip' );
 check( 'a long name is 400 crm_clients_long with its limit', ( $r = ninoCall( $appData, $panel, [ 'name' => str_repeat( 'x', 121 ) ], 'crm-clients/save' ) )[0] === 400 && $r[1]['code'] === 'crm_clients_long' && $r[1]['params'] === [ 120 ] );
 check( 'a value that is no text is 400 crm_clients_format', ( $r = ninoCall( $appData, $panel, [ 'name' => [ 'x' ] ], 'crm-clients/save' ) )[0] === 400 && $r[1]['code'] === 'crm_clients_format' );
+check( 'a client is no business until it is said: the flag is false, the buyer reference empty - and the flag is posted as a boolean, with the reference as a text', $five['business'] === false && $five['buyer_reference'] === ''
+	&& ( $r = ninoCall( $appData, $panel, [ 'id' => (string) $five['id'], 'business' => true, 'buyer_reference' => '04011000-12345-34' ], 'crm-clients/save' ) )[0] === 200 && $r[1]['client']['business'] === true && $r[1]['client']['buyer_reference'] === '04011000-12345-34'
+	&& ( $r = ninoCall( $appData, $panel, [ 'id' => (string) $five['id'], 'city' => 'Potsdam' ], 'crm-clients/save' ) )[1]['client']['business'] === true && ( $r = ninoCall( $appData, $panel, [ 'id' => (string) $five['id'], 'business' => false ], 'crm-clients/save' ) )[1]['client']['business'] === false );
+check( '...a flag that is a text or a number is 400 crm_clients_format on business; a buyer reference over 100 characters is 400 crm_clients_long with its limit, on buyer_reference', ( $r = ninoCall( $appData, $panel, [ 'id' => (string) $five['id'], 'business' => 'true' ], 'crm-clients/save' ) )[0] === 400 && $r[1]['code'] === 'crm_clients_format' && $r[1]['field'] === 'business'
+	&& ( $r = ninoCall( $appData, $panel, [ 'id' => (string) $five['id'], 'buyer_reference' => str_repeat( 'x', 101 ) ], 'crm-clients/save' ) )[0] === 400 && $r[1]['code'] === 'crm_clients_long' && $r[1]['field'] === 'buyer_reference' && $r[1]['params'] === [ 100 ] );
 check( 'a refused save wrote nothing', count( \Crm\Clients::list( $appData ) ) === 5 );
 check( 'save of an id nobody has is 404', ninoCall( $appData, $panel, [ 'id' => '999', 'city' => 'X' ], 'crm-clients/save' )[0] === 404 );
 
