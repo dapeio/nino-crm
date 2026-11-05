@@ -31,11 +31,11 @@ return [
 	// The details of the start page, the door (its Element-URI is '/', as the wizard writes it for a start page): the head reads them
 	'[[/_nino/webpage//name]]' => 'Customer portal',
 	'[[/_nino/webpage//title]]' => 'Customer portal',
-	'[[/_nino/webpage//description]]' => 'Your access comes from us by e-mail – sign in with the link we send you.',
+	'[[/_nino/webpage//description]]' => 'Your access comes from us by e-mail – sign in with the code we send you.',
 
 	// The portal's door - the site's start page, page-door.tpl
 	'[[/template/page-door/intro/title]]'               => 'Customer portal',
-	'[[/template/page-door/intro/text]]'                => 'Your access comes from us by e-mail. If you have none, write to us. Enter the e-mail address of your account – we send you a link that signs you in, no password needed.',
+	'[[/template/page-door/intro/lead]]'                => 'Your access comes from us by e-mail. If you have none, write to us. Enter the e-mail address of your account – we send you a code that signs you in, no password needed.',
 
 	// The Elements panel's own words for the type Positionen - the workbench's, not the site's (listed in the unit's blacklist)
 	'[[/_admin/elements/field/positionen/title]]' => 'Title',

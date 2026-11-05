@@ -15,18 +15,25 @@ namespace Nino\Modules {
 	 *	Nino							A compact filesystembased php framework
 	 *	Members						Member accounts for the website, without passwords. An
 	 *										account is an email address, a name and a group, kept in
-	 *										/data/members.php. A member signs in with a link: POST
-	 *										/.members/login mails one to an address that belongs to an
-	 *										active account (and answers every address alike), and
-	 *										GET /.members/login?t=<token> opens a page that names the
+	 *										/data/members.php. A member signs in with a code: POST
+	 *										/.members/login keeps the address and a random nonce in the
+	 *										session of the browser that asked, mails six digits to an
+	 *										address that belongs to an active account (and answers every
+	 *										address alike), and the form then asks for the code, which
+	 *										POST /.members/code takes. The code is kept only as
+	 *										sha256( nonce | code ) in /data/members-tokens.php, so it is
+	 *										worth nothing outside the session that asked for it, and it is
+	 *										good for one sign-in, for as long as the setting linkMinutes
+	 *										allows and for five tries. An invitation, and the link the
+	 *										owner sends from the panel, are links: GET
+	 *										/.members/login?t=<token> opens a page that names the
 	 *										account and asks for a button to be pressed, which POSTs to
 	 *										/.members/confirm and spends the token: a GET changes
 	 *										nothing, so a mail scanner or a prefetch that follows the link
-	 *										uses nobody's link up. The token is 32 random bytes, mailed
-	 *										once and kept only as its sha256 in /data/members-tokens.php,
-	 *										so it is good for one confirmation and for as long as the
-	 *										setting linkMinutes (inviteDays for an invitation) allows. The
-	 *										sign-in is a value of the kernel's
+	 *										uses nobody's link up. That token is 32 random bytes, mailed
+	 *										once and kept only as its sha256 in the same file, good for one
+	 *										confirmation and for as long as linkMinutes (inviteDays for an
+	 *										invitation) allows. The sign-in is a value of the kernel's
 	 *										session, stamped with the session epoch of
 	 *										/data/members-session.php (see _openEpoch()): signOutAll() -
 	 *										the panel's button - writes a new one, and every session
@@ -41,7 +48,7 @@ namespace Nino\Modules {
 	 *										see callbackGate(), priority 1 on '/nino/http/response' -
 	 *										before Modules\Cache's 9, so a page for a member is never
 	 *										the one that gets cached). The page asked for is kept in
-	 *										the session, and the link requested from that page takes
+	 *										the session, and the code requested from that page takes
 	 *										the member back to it.
 	 *
 	 *										Three components put the form, a link to sign out and
@@ -50,7 +57,9 @@ namespace Nino\Modules {
 	 *										componentMembersName(); the manifest declares them), a
 	 *										fourth - componentMembersConfirm() - is the button of the page
 	 *										a link opens, and the panel in Admin/Admin.php manages the
-	 *										accounts.
+	 *										accounts. The form of the first draws the field for the
+	 *										address, and - once a code is out, in the session of the
+	 *										visitor - the field for the code.
 	 *
 	 *										Other features build on it through current(), account(),
 	 *										accounts() and groups(), and by the callbacks
@@ -71,7 +80,7 @@ namespace Nino\Modules {
 		// The accounts: [ 'accounts' => [ <id> => [ email, name, group, active, created, login ] ] ]
 		public const string ACCOUNTS = '/data/members.php';
 
-		// The links that are out: [ <sha256 of the token> => [ account, kind, expires, target ] ]
+		// The links and the codes that are out: [ <sha256 of the token, or of nonce|code> => [ account, kind, expires, target ] ]
 		public const string TOKENS = '/data/members-tokens.php';
 
 		// The session epoch - what 'sign everybody out' rewrites: [ 'epoch' => <32 hex> ]
@@ -79,11 +88,13 @@ namespace Nino\Modules {
 
 		private const string FEATURE_KEY = 'members';
 
-		// A runtime session value - who is signed in, and under which epoch - and
-		// the path a protected page was asked for until a link is requested. The
-		// kernel's session carries both: the feature has no cookie of its own
+		// A runtime session value - who is signed in, and under which epoch -, the
+		// path a protected page was asked for until a code is requested, and the code
+		// that is out: [ email, nonce, tries, until ]. The kernel's session carries
+		// all three: the feature has no cookie of its own
 		private const string SESSION_ACCOUNT = './members/account';
 		private const string SESSION_TARGET = './members/target';
+		private const string SESSION_PENDING = './members/pending';
 
 		// Request-lifecycle keys: the state a callback of this request set for the
 		// form to say, how many forms this request has drawn, and the link a page
@@ -103,14 +114,19 @@ namespace Nino\Modules {
 		private const int ADDRESS_LIMIT = 3;
 		private const int DEFAULT_ATTEMPTS = 5;
 		private const int NAME_LENGTH = 120;
+		private const int CODE_TRIES = 5;
 		private const string TIME = 'Y-m-d\TH:i:s\Z';
 
-		// What the form may say besides nothing, and what a token may be for
-		private const array STATES = [ 'sent', 'limit', 'invalid', 'out', 'expired' ];
-		private const array KINDS = [ 'login', 'invite' ];
+		// What the form may say besides nothing, the key of its words where that is
+		// not the state's own name, what a token may be for, and what of it a link
+		// may be: the entry of a code is made by a request for one and never by link()
+		private const array STATES = [ 'sent', 'limit', 'invalid', 'out', 'expired', 'wrong', 'gone' ];
+		private const array STATE_KEYS = [ 'sent' => 'code' ];
+		private const array KINDS = [ 'login', 'invite', 'code' ];
+		private const array LINKS = [ 'login', 'invite' ];
 
 		/**
-		 *	Register the four routes this feature owns with their handlers,
+		 *	Register the five routes this feature owns with their handlers,
 		 *	the gate and the exclusion for the Seo feature, and keep the full-page
 		 *	cache away from the protected paths
 		 *
@@ -121,6 +137,7 @@ namespace Nino\Modules {
 		public static function init( array &$appData ): void {
 
 			$appData['/nino/http/routes']['POST://.members/login']	= [ 'uri' => '/.members/login' ];
+			$appData['/nino/http/routes']['POST://.members/code']		= [ 'uri' => '/.members/code' ];
 			$appData['/nino/http/routes']['GET://.members/login']		= [ 'uri' => '/.members/login' ];
 			$appData['/nino/http/routes']['GET://.members/logout']	= [ 'uri' => '/.members/logout' ];
 			$appData['/nino/http/routes']['POST://.members/confirm']	= [ 'uri' => '/.members/confirm' ];
@@ -131,6 +148,7 @@ namespace Nino\Modules {
 			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response', [ self::class, 'callbackGate' ], 1 );
 
 			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.members/login', [ self::class, 'callbackLoginRequest' ] );
+			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.members/code', [ self::class, 'callbackCode' ] );
 			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.members/login', [ self::class, 'callbackLoginLink' ] );
 			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.members/confirm', [ self::class, 'callbackConfirm' ] );
 			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.members/logout', [ self::class, 'callbackLogout' ] );
@@ -440,7 +458,7 @@ namespace Nino\Modules {
 		 */
 		public static function link( array &$appData, array $account, string $kind, string $target = '', bool $native = false, bool $notify = true ): bool|string {
 
-			if( in_array( $kind, self::KINDS, true ) === false || is_string( $account['id'] ?? null ) === false || is_string( $account['email'] ?? null ) === false )
+			if( in_array( $kind, self::LINKS, true ) === false || is_string( $account['id'] ?? null ) === false || is_string( $account['email'] ?? null ) === false )
 				return false;
 
 			// A site without an address has no link to put in the mail, and a mail
@@ -502,7 +520,7 @@ namespace Nino\Modules {
 		 *	(see _behindTheGate()) - by somebody who is not signed in, with the login
 		 *	page. A plain 401 - never a 200, so nothing caches it, and honest about the
 		 *	fact that nothing was actually served. The path is kept in the session, for
-		 *	the link that is requested from this page to lead back to it. The workbench
+		 *	the code that is requested from this page to lead back to it. The workbench
 		 *	and the endpoints of this feature are never protected (see prefixes()), and
 		 *	a signed-in workbench user is no exception: the sign-in is the only way in.
 		 *
@@ -555,15 +573,20 @@ namespace Nino\Modules {
 		}
 
 		/**
-		 *	POST /.members/login: ask for a link. The visitor is counted (the setting
+		 *	POST /.members/login: ask for a code. The visitor is counted (the setting
 		 *	attempts, per hour) and so is the address (3 per hour), by the kernel's
 		 *	counter and before anything else, whoever the address belongs to; over
 		 *	either the answer is a redirect with ?members=limit and nothing else
-		 *	happens. Otherwise an address that belongs to an active account is
-		 *	mailed a link and any other is not - and the answer is the same
-		 *	redirect to the page the form was on, ?members=sent, for both, with the
-		 *	time the request took the one difference: nothing may tell whether an
-		 *	address is a member's. A mail that could not be sent is a warning for
+		 *	happens. Otherwise, for an address that is one, the session keeps the
+		 *	request - the address, a random nonce, no tries yet and the time the code
+		 *	is good until - whoever the address belongs to, and an address that belongs
+		 *	to an active account is mailed six digits, kept as the sha256 of the nonce
+		 *	and the code: the code is worth nothing outside this session. Any other
+		 *	address is mailed nothing - and the answer is the same redirect to the page
+		 *	the form was on, ?members=sent, for all of them, with the time the request
+		 *	took the one difference: nothing may tell whether an address is a member's.
+		 *	A text that is no address ends the request that was out, and leaves the form
+		 *	to say that there is none. A mail that could not be sent is a warning for
 		 *	the log and the same answer. A post the csrf guard refused - a session that
 		 *	ran out under a form that stayed open - is answered with a redirect to the
 		 *	same page and ?members=expired, in place of the 403 and the empty body the
@@ -599,18 +622,101 @@ namespace Nino\Modules {
 				return;
 			}
 
-			$account = $email === '' ? null : self::_byEmail( $appData, $email );
+			if( $email === '' )
+				\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_PENDING );
+			else {
 
-			if( $account !== null && $account['active'] === true ) {
+				// An address that is a member's and one that is not are kept alike: the
+				// form asks for a code for both
+				$nonce = bin2hex( random_bytes( 16 ) );
+				$until = time() + self::_minutes( $appData ) * 60;
 
-				$target = \Nino\Runtime::getSessionValue( $appData, self::SESSION_TARGET );
-				$target = is_string( $target ) === true && self::_isPath( $target ) === true ? $target : '';
+				\Nino\Runtime::setSessionValue( $appData, self::SESSION_PENDING, [ 'email' => $email, 'nonce' => $nonce, 'tries' => 0, 'until' => $until ] );
 
-				if( self::link( $appData, $account, 'login', $target ) === true )
-					\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_TARGET );
+				$account = self::_byEmail( $appData, $email );
+
+				if( $account !== null && $account['active'] === true ) {
+
+					$target = \Nino\Runtime::getSessionValue( $appData, self::SESSION_TARGET );
+					$target = is_string( $target ) === true && self::_isPath( $target ) === true ? $target : '';
+
+					if( self::_sendCode( $appData, $account, $nonce, $until, $target ) === true )
+						\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_TARGET );
+				}
 			}
 
 			self::_redirect( $appData, $request, $return, 'sent' );
+		}
+
+		/**
+		 *	POST /.members/code: the code of the mail. The request of this session is
+		 *	the one in the session - without one, or after its time, the answer is a
+		 *	redirect to the page the form was on with ?members=gone and the request is
+		 *	over. A post the csrf guard refused is answered with ?members=expired and
+		 *	leaves the request as it is, with no try used. Otherwise the try is counted
+		 *	first, and the code - six digits, spaces left out; anything else is a code
+		 *	that is wrong - is looked up as sha256( nonce | code ) and spent. A code
+		 *	that is good ends the request, signs the member in (_signIn()), tells the
+		 *	features that build on it and redirects, 303, to the path the record of the
+		 *	code carries, else to the start page, as callbackConfirm() does; one that is
+		 *	good for an account that is gone or switched off ends the request with
+		 *	?members=gone. One that is not found is ?members=wrong - and, the fifth time,
+		 *	the end of the request and ?members=gone: a new code has to be asked for
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		&$request			(reference) Current server request
+		 *
+		 *	@return 	void
+		 */
+		public static function callbackCode( array &$appData, array &$request ): void {
+
+			$return = self::_returnPath( $appData, self::_posted( 'return' ) );
+
+			if( \Nino\Form::blocked( $request ) === true ) {
+				self::_redirect( $appData, $request, $return, 'expired' );
+				return;
+			}
+
+			$pending = self::_pending( $appData );
+
+			if( $pending === null ) {
+				\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_PENDING );
+				self::_redirect( $appData, $request, $return, 'gone' );
+				return;
+			}
+
+			$pending['tries']++;
+			\Nino\Runtime::setSessionValue( $appData, self::SESSION_PENDING, $pending );
+
+			$code = preg_replace( '/\s+/', '', self::_posted( 'code' ) ) ?? '';
+			$spent = preg_match( '/^[0-9]{6}$/D', $code ) === 1 ? self::_spendHash( $appData, hash( 'sha256', $pending['nonce']. '|'. $code ) ) : null;
+
+			if( $spent === null ) {
+
+				if( $pending['tries'] >= self::CODE_TRIES )
+					\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_PENDING );
+
+				self::_redirect( $appData, $request, $return, $pending['tries'] >= self::CODE_TRIES ? 'gone' : 'wrong' );
+				return;
+			}
+
+			\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_PENDING );
+
+			$account = self::account( $appData, $spent['account'] );
+
+			if( $account === null || $account['active'] === false ) {
+				self::_redirect( $appData, $request, $return, 'gone' );
+				return;
+			}
+
+			if( self::_signIn( $appData, $account ) === false ) {
+				self::_refuse( $appData, $request, 500 );
+				return;
+			}
+
+			\Nino\Callbacks::doCallbacks( $appData, '/members/login', $account );
+
+			\Nino\Http::redirect( $appData, $request, self::_isPath( $spent['target'] ) === true ? $spent['target'] : self::_start( $appData ), 303 );
 		}
 
 		/**
@@ -746,16 +852,22 @@ namespace Nino\Modules {
 		}
 
 		/**
-		 *	[members-login] - the form that asks for a link, for a visitor; for a
-		 *	member the line that names them, with the link to sign out. The form is
-		 *	the one POST /.members/login takes: a label and the field for the
-		 *	address, the page it stands on as 'return' (where the answer goes
-		 *	back to), [csrf] and the button. It says the state, if there is one,
-		 *	above the button: what a callback of this request set, else what the query
-		 *	'members' names, of STATES and nothing else. inline puts the field
-		 *	and the button on one line, where the label is read by screen readers only.
-		 *	The words are the Text panel's /feature/members/ keys, left in the template for
-		 *	the kernel to resolve
+		 *	[members-login] - the form that asks for a code, for a visitor; for a member
+		 *	the line that names them, with the link to sign out. The form is in two
+		 *	steps. The first is the one POST /.members/login takes: a label and the
+		 *	field for the address, the page it stands on as 'return' (where the answer
+		 *	goes back to), [csrf] and the button. The second is the one POST
+		 *	/.members/code takes (template members-code): the address the code went to,
+		 *	the field for the code, the same 'return' and [csrf], the button and a link
+		 *	back to the page, to ask for a new code. The second step is drawn while
+		 *	the session holds a request that is live (_pending()) and the state is
+		 *	'sent' or 'wrong'; a state of the two without such a request is said as
+		 *	'gone', in the first step. Both say the state, if there is one, above the
+		 *	button: what a callback of this request set, else what the query 'members'
+		 *	names, of STATES and nothing else. inline puts the field and the button of
+		 *	the first step on one line, where the label is read by screen readers only;
+		 *	the second step is never inline. The words are the Text panel's
+		 *	/feature/members/ keys, left in the template for the kernel to resolve
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array			$args					The resolved arguments (see \Nino\Modules\Components::dispatch())
@@ -776,19 +888,38 @@ namespace Nino\Modules {
 			$state = self::_state( $appData );
 			$inline = ( $args['inline'] ?? '0' ) === '1';
 			$request = \Nino\Http::getRequest( $appData );
+			$return = \Nino\Modules\Components::escape( $request === false ? '' : (string) ( $request['/nino/http/request']['uri'] ?? '' ) );
+			$pending = in_array( $state, [ 'sent', 'wrong' ], true ) === true ? self::_pending( $appData ) : null;
+
+			// A request that is over - or that no session knows - is gone, and the form starts again
+			if( $pending === null && in_array( $state, [ 'sent', 'wrong' ], true ) === true )
+				$state = 'gone';
 
 			// Every value escaped, and the markup that was built last: the message is a
 			// template of its own - left out where there is none to say - and a token
 			// after it would be looked for in it as well
+			if( $pending !== null )
+				return str_replace(
+					[ '[[id]]', '[[return]]', '[[email]]', '[[classes]]', '[[state]]' ],
+					[
+						'members-code-'. ( $appData[self::FORMS] = (int) ( $appData[self::FORMS] ?? 0 ) + 1 ),
+						$return,
+						\Nino\Modules\Components::escape( $pending['email'] ),
+						\Nino\Feature::classes( $args ),
+						self::_say( $appData, $state ),
+					],
+					\Nino\Feature::template( $appData, self::TEMPLATES, 'members-code' )
+				);
+
 			return str_replace(
 				[ '[[inline]]', '[[hidden]]', '[[id]]', '[[return]]', '[[classes]]', '[[state]]' ],
 				[
 					$inline === true ? ' nino-form--inline' : '',
 					$inline === true ? ' nino-sr-only' : '',
 					'members-login-'. ( $appData[self::FORMS] = (int) ( $appData[self::FORMS] ?? 0 ) + 1 ),
-					\Nino\Modules\Components::escape( $request === false ? '' : (string) ( $request['/nino/http/request']['uri'] ?? '' ) ),
+					$return,
 					\Nino\Feature::classes( $args ),
-					$state === '' ? '' : str_replace( '[[name]]', $state, \Nino\Feature::template( $appData, self::TEMPLATES, 'members-state' ) ),
+					self::_say( $appData, $state ),
 				],
 				\Nino\Feature::template( $appData, self::TEMPLATES, 'members-login' )
 			);
@@ -864,7 +995,7 @@ namespace Nino\Modules {
 					\Nino\Modules\Components::escape( (string) ( $pending['label'] ?? '' ) ),
 					\Nino\Modules\Components::escape( (string) ( $pending['token'] ?? '' ) ),
 					\Nino\Feature::classes( $args ),
-					$state === '' ? '' : str_replace( '[[name]]', $state, \Nino\Feature::template( $appData, self::TEMPLATES, 'members-state' ) ),
+					self::_say( $appData, $state ),
 				],
 				\Nino\Feature::template( $appData, self::TEMPLATES, 'members-confirm' )
 			);
@@ -924,8 +1055,7 @@ namespace Nino\Modules {
 
 		/**
 		 *	Make a token for an account and keep its hash: 32 random bytes, base64url,
-		 *	which is mailed once and never stored. The entries that have run out go in
-		 *	the same write
+		 *	which is mailed once and never stored
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$id						The account
@@ -938,18 +1068,88 @@ namespace Nino\Modules {
 		private static function _issue( array &$appData, string $id, string $kind, int $seconds, string $target ): ?string {
 
 			$token = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
-			$hash = hash( 'sha256', $token );
+
+			return self::_keep( $appData, hash( 'sha256', $token ), $id, $kind, time() + $seconds, $target ) === true ? $token : null;
+		}
+
+		/**
+		 *	Keep the record of a token or of a code under its hash. The entries that
+		 *	have run out go in the same write
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$hash					The sha256 of the token, or of the nonce, a bar and the code
+		 *	@param		string		$id						The account
+		 *	@param		string		$kind					One of KINDS
+		 *	@param		int				$expires			The time it is good until
+		 *	@param		string		$target				The path the member asked for, '' for none
+		 *
+		 *	@return 	bool											Whether it was written
+		 */
+		private static function _keep( array &$appData, string $hash, string $id, string $kind, int $expires, string $target ): bool {
+
 			$now = time();
 
-			$written = \Nino\Filesystem::mutate( $appData, self::TOKENS, static function( mixed $state ) use ( $hash, $id, $kind, $seconds, $target, $now ): array {
+			return \Nino\Filesystem::mutate( $appData, self::TOKENS, static function( mixed $state ) use ( $hash, $id, $kind, $expires, $target, $now ): array {
 
 				$tokens = self::_liveTokens( $state, $now );
-				$tokens[$hash] = [ 'account' => $id, 'kind' => $kind, 'expires' => $now + $seconds, 'target' => $target ];
+				$tokens[$hash] = [ 'account' => $id, 'kind' => $kind, 'expires' => $expires, 'target' => $target ];
 
 				return $tokens;
 			}, [] );
+		}
 
-			return $written === true ? $token : null;
+		/**
+		 *	Make a code for an account, keep it under the hash of the session's nonce
+		 *	and the code - nothing else of it is stored - and mail it. Six digits, filled
+		 *	up with zeros, from random_int(). Nothing is mailed where the record could
+		 *	not be written, and a mail that no transport takes is false
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		$account			As account() has it
+		 *	@param		string		$nonce				32 hex characters of the request the session holds
+		 *	@param		int				$until				The time the code is good until
+		 *	@param		string		$target				The path the member asked for, '' for none - where the sign-in leads
+		 *
+		 *	@return 	bool											Whether the mail was delivered - false, with a warning that names no address, where the code could not be stored or the mail was not taken
+		 */
+		private static function _sendCode( array &$appData, array $account, string $nonce, int $until, string $target ): bool {
+
+			$code = sprintf( '%06d', random_int( 0, 999999 ) );
+
+			if( self::_keep( $appData, hash( 'sha256', $nonce. '|'. $code ), $account['id'], 'code', $until, $target ) === false ) {
+				trigger_error( 'Members: a code could not be stored', E_USER_WARNING );
+				return false;
+			}
+
+			if( self::_mail( $appData, $account['email'], 'code', $code, false ) === false ) {
+				trigger_error( 'Members: a code could not be mailed', E_USER_WARNING );
+				return false;
+			}
+
+			return true;
+		}
+
+		/**
+		 *	The request for a code the session holds, as long as it is live: well formed
+		 *	- an address, a nonce of 32 hex characters, the tries used and the time it
+		 *	is good until - not run out and with a try left
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *
+		 *	@return 	array|null								email, nonce, tries and until - null for none, or one that is over
+		 */
+		private static function _pending( array &$appData ): ?array {
+
+			$pending = \Nino\Runtime::getSessionValue( $appData, self::SESSION_PENDING );
+
+			if( is_array( $pending ) === false || is_string( $pending['email'] ?? null ) === false || is_string( $pending['nonce'] ?? null ) === false
+				|| preg_match( '/^[0-9a-f]{32}$/D', $pending['nonce'] ) !== 1 || is_int( $pending['tries'] ?? null ) === false || is_int( $pending['until'] ?? null ) === false )
+				return null;
+
+			if( $pending['until'] <= time() || $pending['tries'] >= self::CODE_TRIES )
+				return null;
+
+			return [ 'email' => $pending['email'], 'nonce' => $pending['nonce'], 'tries' => $pending['tries'], 'until' => $pending['until'] ];
 		}
 
 		/**
@@ -974,8 +1174,7 @@ namespace Nino\Modules {
 		/**
 		 *	Spend a token: delete it, and answer what it was for. An unknown, expired
 		 *	or malformed one is nothing, and so is one whose deletion could not be
-		 *	written - a link that is not spent is a link that can be used twice. The
-		 *	entries that have run out go in the same write
+		 *	written - a link that is not spent is a link that can be used twice
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$token
@@ -987,7 +1186,21 @@ namespace Nino\Modules {
 			if( preg_match( '/^[A-Za-z0-9_-]{43}$/D', $token ) !== 1 )
 				return null;
 
-			$hash = hash( 'sha256', $token );
+			return self::_spendHash( $appData, hash( 'sha256', $token ) );
+		}
+
+		/**
+		 *	Spend a record by its hash: delete it, and answer what it was for. An
+		 *	unknown or expired one is nothing, and so is one whose deletion could not
+		 *	be written. The entries that have run out go in the same write
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$hash					The sha256 of a token, or of a nonce, a bar and a code
+		 *
+		 *	@return 	array|null								account (the id), kind, expires and target - null for no record
+		 */
+		private static function _spendHash( array &$appData, string $hash ): ?array {
+
 			$now = time();
 			$found = null;
 
@@ -1030,23 +1243,25 @@ namespace Nino\Modules {
 		}
 
 		/**
-		 *	Mail a link. The template is rendered first - its words are the keys of
-		 *	the unit - and the link and the validity are put in afterwards, in the
-		 *	result, so that nothing in them is ever read as a fill or a shortcode (the
-		 *	order \Nino\Form::render() keeps). The reply goes to the project's contact
-		 *	address where it has one
+		 *	Mail a link or a code. The template is rendered first - its words are the
+		 *	keys of the unit - and the link or the code and the validity are put in
+		 *	afterwards, in the result, so that nothing in them is ever read as a fill or
+		 *	a shortcode (the order \Nino\Form::render() keeps). A code is set as two
+		 *	groups of three digits. The reply goes to the project's contact address
+		 *	where it has one
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$to
-		 *	@param		string		$kind					'login' or 'invite'
-		 *	@param		string		$token
+		 *	@param		string		$kind					'login', 'invite' or 'code'
+		 *	@param		string		$token				The token of a link, the six digits of a code
 		 *	@param		bool			$native				Write in the site's native language
 		 *
 		 *	@return 	bool										Whether the mail was delivered
 		 */
 		private static function _mail( array &$appData, string $to, string $kind, string $token, bool $native ): bool {
 
-			$url = \Nino\Html::absoluteUrl( $appData, '/.members/login?t='. rawurlencode( $token ) );
+			$url = $kind === 'code' ? '' : \Nino\Html::absoluteUrl( $appData, '/.members/login?t='. rawurlencode( $token ) );
+			$code = $kind === 'code' ? substr( $token, 0, 3 ). ' '. substr( $token, 3 ) : '';
 			$locale = \Nino\Locales::getCurrentLocale( $appData );
 
 			if( $native === true )
@@ -1054,7 +1269,7 @@ namespace Nino\Modules {
 
 			try {
 				$body = \Nino\Html::renderHtml( $appData, \Nino\Feature::template( $appData, self::TEMPLATES, 'mail-'. $kind ) );
-				$subject = \Nino\Html::renderHtml( $appData, $kind === 'invite' ? '[[/feature/members/mail/invite-subject]]' : '[[/feature/members/mail/login-subject]]' );
+				$subject = \Nino\Html::renderHtml( $appData, '[[/feature/members/mail/'. $kind. '-subject]]' );
 				$replyTo = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ) );
 			}
 			finally {
@@ -1063,8 +1278,8 @@ namespace Nino\Modules {
 			}
 
 			$body = str_replace(
-				[ '[[link]]', '[[minutes]]', '[[days]]' ],
-				[ \Nino\Modules\Components::escape( $url ), (string) self::_minutes( $appData ), (string) self::_days( $appData ) ],
+				[ '[[link]]', '[[code]]', '[[minutes]]', '[[days]]' ],
+				[ \Nino\Modules\Components::escape( $url ), \Nino\Modules\Components::escape( $code ), (string) self::_minutes( $appData ), (string) self::_days( $appData ) ],
 				$body
 			);
 
@@ -1377,9 +1592,24 @@ namespace Nino\Modules {
 		}
 
 		/**
+		 *	The paragraph a form says its state in, the template members-state with the
+		 *	key of the state's words in it - the state's own name where STATE_KEYS has
+		 *	none
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$state				'' for none, else one of STATES
+		 *
+		 *	@return 	string										'' for no state
+		 */
+		private static function _say( array &$appData, string $state ): string {
+
+			return $state === '' ? '' : str_replace( '[[name]]', self::STATE_KEYS[$state] ?? $state, \Nino\Feature::template( $appData, self::TEMPLATES, 'members-state' ) );
+		}
+
+		/**
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *
-		 *	@return 	int												How many minutes a login link is good for
+		 *	@return 	int												How many minutes a login code, and the link of a login, is good for
 		 */
 		private static function _minutes( array &$appData ): int {
 

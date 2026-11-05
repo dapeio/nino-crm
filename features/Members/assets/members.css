@@ -1,7 +1,8 @@
 /**
  *	Nino - Members
  *	members.css		What the components need on the site itself: the login
- *								form, the form of the page a link opens, the line of a
+ *								form and its second step, the one for the code, the form
+ *								of the page a link opens, the line of a
  *								signed-in member, the link that signs out and the name.
  *								Bundled into the project's own /.cache/style.css
  *								by the manifest's assets (docs/features.md, "Assets") -
@@ -33,6 +34,7 @@
 	that follow a ground are pointed at it, so that the field, its label, the ring of
 	the focus and the button in it are right on whichever ground is chosen	*/
 .members-login,
+.members-code,
 .members-confirm,
 .members-signed {
 	--color-ground: var(--members-ground);
@@ -66,9 +68,48 @@
 	margin-bottom: var(--space-1);
 }
 
+/*	The second step of the form: the address the code went to, the field for the six digits - large, centred, with digits of one width - and the way
+	back to ask for a new one	*/
+.members-code__intro {
+	margin: 0 0 var(--space-1);
+	overflow-wrap: anywhere;
+}
+
+.members-code__email {
+	font-weight: 600;
+}
+
+.members-code__label {
+	display: block;
+	margin-bottom: var(--space-1);
+}
+
+.members-code__input {
+	font-size: 1.5rem;
+	letter-spacing: .15em;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+.members-code__again {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 2.75rem;
+	text-decoration: underline;
+}
+
 /*	The message above the button: what happened to the request, in words	*/
 .members-login__state {
 	margin: 0 0 var(--space-1);
+}
+
+/*	A touch target is at least 2.75rem high: the fields and the buttons of both steps	*/
+.members-login .nino-form-input,
+.members-login .nino-btn,
+.members-code .nino-form-input,
+.members-code .nino-btn {
+	min-height: 2.75rem;
 }
 
 /*	One line: the field and the button side by side, the message over both	*/

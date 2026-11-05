@@ -6,9 +6,11 @@ declare(strict_types=1);
  *	members-smoke.php	Contract test for the Members feature (Modules\Members): the
  *										manifest and the activation through \Nino\Features, the
  *										components, the panel and its permission with the codes
- *										of its refusals, the request for a link and what it
+ *										of its refusals, the request for a code and what it
  *										answers (the same for every address, a cap for the visitor
- *										and one for the address), the link that opens a page which
+ *										and one for the address), the code that signs in - bound to
+ *										the session that asked, five tries, once, in time - the link
+ *										of an invitation or of the owner that opens a page which
  *										asks and the button of that page that signs in and spends
  *										it, the gate in front of the protected paths - at every
  *										address a route gives them -, the
@@ -232,6 +234,68 @@ function membersTokenOf( array $mail ): string {
 }
 
 /**
+ *	The code a mail carries, as it is set: two groups of three digits
+ *
+ *	@param		array 		$mail
+ *
+ *	@return 	string										'' for a mail without one
+ */
+function membersCodeOf( array $mail ): string {
+
+	return preg_match( '~>\s*([0-9]{3} [0-9]{3})\s*</p>~', (string) ( $mail['body'] ?? '' ), $found ) === 1 ? $found[1] : '';
+}
+
+/**
+ *	The request for a code the session of the visitor holds
+ *
+ *	@param		array 		&$appData
+ *
+ *	@return 	array|null								email, nonce, tries and until - null for none
+ */
+function membersPending( array &$appData ): ?array {
+
+	$pending = \Nino\Runtime::getSessionValue( $appData, './members/pending' );
+
+	return is_array( $pending ) === true ? $pending : null;
+}
+
+/**
+ *	Ask for a code the way a visitor does: the form is posted, every cap starts afresh, and the digits are read
+ *	out of the mail
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$email
+ *	@param		string		$return				The page the form is on
+ *
+ *	@return 	string										The six digits; '' where no mail went out
+ */
+function membersAskCode( array &$appData, string $email, string $return = '/join' ): string {
+
+	global $mails;
+
+	membersFresh( $appData );
+	$count = count( $mails );
+	membersServe( $appData, '/.members/login', 'POST', [ 'email' => $email, 'return' => $return ] );
+
+	return count( $mails ) === $count + 1 ? str_replace( ' ', '', membersCodeOf( $mails[$count] ) ) : '';
+}
+
+/**
+ *	Post a code the way the second step of the form does
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$code					As typed
+ *	@param		string		$return				The page the form is on
+ *	@param		bool			$csrf					Whether the post carries the token
+ *
+ *	@return 	array										The answer, as membersAnswer() has it
+ */
+function membersCodeServe( array &$appData, string $code, string $return = '/join', bool $csrf = true ): array {
+
+	return membersAnswer( membersServe( $appData, '/.members/code', 'POST', [ 'code' => $code, 'return' => $return ], $csrf ) );
+}
+
+/**
  *	The elements of a rendered piece of html by xpath, as a document reads them
  *
  *	@param		string		$html
@@ -297,7 +361,7 @@ check( 'it says all six sections of its manual in both languages, and its sectio
 		foreach( (array) ( $manifest['manual'][$section] ?? [] ) as $line )
 			if( is_array( $line ) === false || trim( (string) ( $line['en_US'] ?? '' ) ) === '' || trim( (string) ( $line['de_DE'] ?? '' ) ) === '' )
 				return false;
-	return isset( $manifest['manual']['install']['elements/privacy.php'] ) === true && count( $manifest['manual']['shortcodes'] ) >= 3 && count( $manifest['manual']['routes'] ) === 4 && count( $manifest['manual']['callbacks'] ) >= 4;
+	return isset( $manifest['manual']['install']['elements/privacy.php'] ) === true && count( $manifest['manual']['shortcodes'] ) >= 3 && array_keys( $manifest['manual']['routes'] ) === [ 'POST /.members/login', 'POST /.members/code', '/.members/login?t=<token>', 'POST /.members/confirm', '/.members/logout' ] && count( $manifest['manual']['callbacks'] ) >= 4;
 } )() );
 
 // The catalogue's preview reads every manifest through the kernel, and is a script of the
@@ -329,7 +393,37 @@ check( 'activation succeeds', \Nino\Features::activate( $appData, 'members' ) ==
 check( 'the class is listed in /nino/modules, and the version is recorded', in_array( '\\Nino\\Modules\\Members', \Nino\Filesystem::getFileContent( $appData, '/config.php', [] )['/nino/modules'], true ) === true
 	&& \Nino\Features::get( $appData, 'members' )['installed'] === '1.0.0' );
 check( 'the unit copied the login page and the confirm page, and merged its words into both languages', is_file( \Nino\Filesystem::path( $appData, '/templates/page-members-login.tpl' ) ) === true && is_file( \Nino\Filesystem::path( $appData, '/templates/page-members-confirm.tpl' ) ) === true
-	&& array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => trim( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/feature/members/login/button]]'] ?? '' ) ) === '' ) === [] );
+	&& array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => trim( (string) ( \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] )['[[/feature/members/login/request]]'] ?? '' ) ) === '' ) === [] );
+
+// The words of the unit: the same keys in both languages, none empty, and no more and no fewer than the templates and the class read - the
+// states by the key STATE_KEYS names for them, the subject of each mail by its kind
+$unitWords = [ 'de_DE' => (array) include $dir. '/install/text/de_DE.php', 'en_US' => (array) include $dir. '/install/text/en_US.php' ];
+$read = [];
+
+foreach( array_merge( glob( $dir. '/templates/*.tpl' ) ?: [], glob( $dir. '/install/templates/*.tpl' ) ?: [] ) as $template ) {
+	if( basename( $template ) === 'panel.tpl' )
+		continue;
+
+	preg_match_all( '~\[\[(/(?:feature|template)/[a-z0-9-]+/[a-z0-9-]+/[a-z0-9-]+)\]\]|\[(?:title|text) (/template/[a-z0-9/-]+)~', (string) file_get_contents( $template ), $keys, PREG_SET_ORDER );
+
+	foreach( $keys as $key )
+		$read[] = '[['. ( $key[1] !== '' ? $key[1] : $key[2] ). ']]';
+}
+
+$stateKeys = ( new ReflectionClassConstant( \Nino\Modules\Members::class, 'STATE_KEYS' ) )->getValue();
+
+foreach( ( new ReflectionClassConstant( \Nino\Modules\Members::class, 'STATES' ) )->getValue() as $state )
+	$read[] = '[[/feature/members/state/'. ( $stateKeys[$state] ?? $state ). ']]';
+
+foreach( [ 'login', 'invite', 'code' ] as $kind )
+	$read[] = '[[/feature/members/mail/'. $kind. '-subject]]';
+
+$read = array_values( array_unique( array_filter( $read, static fn( string $key ): bool => str_contains( $key, 'state/[[' ) === false && str_contains( $key, '/state/name' ) === false ) ) );
+sort( $read );
+$delivered = array_keys( $unitWords['de_DE'] );
+sort( $delivered );
+check( 'the words of the unit are the same keys in German and English, none of them empty, and the keys the templates and the class read - every one delivered and none left over',
+	array_keys( $unitWords['de_DE'] ) === array_keys( $unitWords['en_US'] ) && array_filter( $unitWords['de_DE'] + $unitWords['en_US'], static fn( mixed $text ): bool => trim( (string) $text ) === '' ) === [] && $read === $delivered );
 
 // Add-only: a copy the project changed stays when the feature is activated again
 $pageFile = \Nino\Filesystem::path( $appData, '/templates/page-members-login.tpl' );
@@ -343,6 +437,10 @@ if( class_exists( '\\Nino\\Modules\\Legal' ) === false )
 else {
 	$privacy = \Nino\Filesystem::getFileContent( $appData, '/elements/privacy.php', [] );
 	check( 'the section of the privacy policy is there in both languages, at its position', isset( $privacy['de_DE']['members']['title'], $privacy['en_US']['members']['text'] ) === true && ( $privacy['*']['members']['order'] ?? null ) === 830 );
+	$named = static fn( string $text, int $number ): bool => preg_match( '/(?<![0-9])'. $number. '(?![0-9])/', $text ) === 1;
+	check( '...it names the minutes a code is valid, the tries it has and the days of an invitation the settings and the class give by default - and carries no ampersand, no entity and no bracket', array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => preg_match( '/[&\[]/', (string) $privacy[$locale]['members']['text'] ) === 1
+		|| $named( (string) $privacy[$locale]['members']['text'], $manifest['settings']['linkMinutes']['default'] ) === false || $named( (string) $privacy[$locale]['members']['text'], $manifest['settings']['inviteDays']['default'] ) === false
+		|| $named( (string) $privacy[$locale]['members']['text'], ( new ReflectionClassConstant( \Nino\Modules\Members::class, 'CODE_TRIES' ) )->getValue() ) === false ) === [] );
 
 	$privacy['en_US']['members']['text'] = '<p>The editor changed this.</p>';
 	\Nino\Filesystem::putFileContent( $appData, '/elements/privacy.php', $privacy );
@@ -398,17 +496,27 @@ $states = [];
 $english = [];
 $language = \Nino\Locales::getCurrentLocale( $appData );
 
-foreach( [ 'sent', 'limit', 'invalid', 'out', 'expired' ] as $state ) {
+// The two states of the second step are drawn where the session holds a request for a code, the others where it holds none
+$messages = '//form/p[contains(concat(" ", normalize-space(@class), " "), " members-login__state ")]';
+
+foreach( [ 'sent', 'wrong', 'limit', 'invalid', 'out', 'expired', 'gone' ] as $state ) {
+	\Nino\Runtime::unsetSessionValue( $appData, './members/pending' );
+
+	if( in_array( $state, [ 'sent', 'wrong' ], true ) === true )
+		\Nino\Runtime::setSessionValue( $appData, './members/pending', [ 'email' => 'ada@example.org', 'nonce' => str_repeat( 'a', 32 ), 'tries' => 0, 'until' => time() + 600 ] );
+
 	ninoVisit( $appData, '/join?members='. $state );
-	$states[$state] = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' );
+	$states[$state] = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), $messages );
 	\Nino\Locales::useLocale( $appData, 'en_US' );
-	$english[$state] = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' );
+	$english[$state] = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), $messages );
 	\Nino\Locales::useLocale( $appData, $language );
 }
 
+\Nino\Runtime::unsetSessionValue( $appData, './members/pending' );
+
 // The language of the page is the one the words come in: a text a language has not got is shown in another, which the same words in two of them give away
-check( '...each of the five states has a message of its own, in the language of the page', array_filter( $states, static fn( array $found ): bool => count( $found ) !== 1 || trim( $found[0]->textContent ) === '' ) === []
-	&& count( array_unique( array_map( static fn( array $found ): string => trim( $found[0]->textContent ), $states ) ) ) === 5 && $language !== 'en_US'
+check( '...each of the seven states has a message of its own, in the language of the page', array_filter( $states, static fn( array $found ): bool => count( $found ) !== 1 || trim( $found[0]->textContent ) === '' ) === []
+	&& count( array_unique( array_map( static fn( array $found ): string => trim( $found[0]->textContent ), $states ) ) ) === 7 && $language !== 'en_US'
 	&& array_filter( $states, static fn( array $found, string $state ): bool => count( $english[$state] ) !== 1 || trim( $english[$state][0]->textContent ) === trim( $found[0]->textContent ), ARRAY_FILTER_USE_BOTH ) === [] );
 
 $none = [];
@@ -420,6 +528,58 @@ foreach( [ '', '?members=', '?members=SENT', '?members=other', '?members[]=sent'
 
 check( '...and anything else in the query, an array and a made-up word among it, is no state: there is no paragraph', array_filter( $none ) === [] );
 
+// The second step: where the session holds a request for a code the form asks for it - the address is the one that was typed, escaped, and never a fill or a shortcode
+$typed = '"<b>[members-name]"@example.org';
+\Nino\Runtime::setSessionValue( $appData, './members/pending', [ 'email' => $typed, 'nonce' => str_repeat( 'b', 32 ), 'tries' => 0, 'until' => time() + 600 ] );
+ninoVisit( $appData, '/join?members=sent&x=1' );
+$step = \Nino\Html::renderHtml( $appData, '[members-login class="wide"]' );
+$stepForms = membersFind( $step, '//form' );
+$stepFields = [];
+
+foreach( membersFind( $step, '//form//input' ) as $field )
+	$stepFields[ $field->getAttribute( 'name' ) ] = $field;
+
+$stepCode = $stepFields['code'] ?? null;
+$again = membersFind( $step, '//form/a[contains(concat(" ", normalize-space(@class), " "), " members-code__again ")]' );
+check( 'where a code is out [members-login] is the second step: one form that posts to /.members/code, with a field for the code and no field for an address, the page it is on and the csrf token of the session, a button and a link back to the page - and no .nino-form',
+	count( $stepForms ) === 1 && strtolower( $stepForms[0]->getAttribute( 'method' ) ) === 'post' && $stepForms[0]->getAttribute( 'action' ) === '/.members/code' && membersClasses( $stepForms[0] ) === [ 'members-code', 'wide' ]
+	&& array_keys( $stepFields ) === [ 'return', '_csrf', 'code' ] && $stepFields['return']->getAttribute( 'value' ) === '/join' && $stepFields['_csrf']->getAttribute( 'value' ) === \Nino\Csrf::getToken( $appData )
+	&& count( membersFind( $step, '//form//button[@type="submit"]' ) ) === 1 && count( $again ) === 1 && $again[0]->getAttribute( 'href' ) === '/join' );
+check( '...its field takes six digits the way a phone offers them: text with a numeric keypad, the one-time-code hint, a pattern and a length that let a space through, focused, required - and its label belongs to it',
+	$stepCode !== null && $stepCode->getAttribute( 'type' ) === 'text' && $stepCode->getAttribute( 'inputmode' ) === 'numeric' && $stepCode->getAttribute( 'autocomplete' ) === 'one-time-code' && $stepCode->getAttribute( 'pattern' ) === '[0-9 ]*'
+	&& $stepCode->getAttribute( 'maxlength' ) === '7' && $stepCode->hasAttribute( 'autofocus' ) === true && $stepCode->hasAttribute( 'required' ) === true && in_array( 'members-code__input', membersClasses( $stepCode ), true ) === true
+	&& $stepCode->getAttribute( 'id' ) !== '' && membersFind( $step, '//form//label' )[0]->getAttribute( 'for' ) === $stepCode->getAttribute( 'id' ) );
+check( '...the address it names is text: markup in it is no element, a shortcode in it is neither run nor filled, and the message above the button is the one of the state',
+	membersText( $step, '//form/p[contains(@class, "members-code__intro")]/strong' ) === $typed && count( membersFind( $step, '//b' ) ) === 0 && str_contains( $step, '&lt;b&gt;&#91;members-name]' ) === true && str_contains( $step, '[[' ) === false
+	&& count( membersFind( $step, $messages ) ) === 1 && trim( membersFind( $step, $messages )[0]->textContent ) === trim( $states['sent'][0]->textContent ) );
+
+ninoVisit( $appData, '/join?members=wrong' );
+$wrongStep = \Nino\Html::renderHtml( $appData, '[members-login]' );
+ninoVisit( $appData, '/join?members=expired' );
+$expiredStep = \Nino\Html::renderHtml( $appData, '[members-login]' );
+check( '...a wrong code draws it again, with its own message - and the state expired draws the first step, the request stays where it is', count( membersFind( $wrongStep, '//form[contains(@class, "members-code")]' ) ) === 1
+	&& trim( membersFind( $wrongStep, $messages )[0]->textContent ) === trim( $states['wrong'][0]->textContent ) && count( membersFind( $expiredStep, '//form[contains(@class, "members-login")]' ) ) === 1 && count( membersFind( $expiredStep, '//form[contains(@class, "members-code")]' ) ) === 0
+	&& ( membersPending( $appData )['email'] ?? '' ) === $typed );
+
+$noRequest = [];
+
+foreach( [ 'no request' => null, 'run out' => [ 'until' => time() - 1 ], 'no try left' => [ 'tries' => 5 ], 'no nonce' => [ 'nonce' => 'xyz' ], 'tries that are no number' => [ 'tries' => '0' ], 'no address' => [ 'email' => 7 ] ] as $kind => $change ) {
+	\Nino\Runtime::unsetSessionValue( $appData, './members/pending' );
+
+	if( $change !== null )
+		\Nino\Runtime::setSessionValue( $appData, './members/pending', $change + [ 'email' => 'ada@example.org', 'nonce' => str_repeat( 'b', 32 ), 'tries' => 0, 'until' => time() + 600 ] );
+
+	foreach( [ 'sent', 'wrong' ] as $state ) {
+		ninoVisit( $appData, '/join?members='. $state );
+		$asked = \Nino\Html::renderHtml( $appData, '[members-login]' );
+		$noRequest[$kind. ', '. $state] = count( membersFind( $asked, '//form[contains(@class, "members-login")]' ) ) === 1 && count( membersFind( $asked, '//input[@name="email"]' ) ) === 1 && count( membersFind( $asked, '//form[contains(@class, "members-code")]' ) ) === 0
+			&& count( membersFind( $asked, $messages ) ) === 1 && trim( membersFind( $asked, $messages )[0]->textContent ) === trim( $states['gone'][0]->textContent );
+	}
+}
+
+\Nino\Runtime::unsetSessionValue( $appData, './members/pending' );
+check( '...and where there is no request to ask a code for - none, one that has run out, one with no try left, one that is none - sent and wrong are said as gone, over the field for an address', array_filter( $noRequest, static fn( bool $same ): bool => $same === false ) === [] && count( $noRequest ) === 12 );
+
 ninoVisit( $appData, '/join?members=sent' );
 $appData['./members/state'] = 'invalid';
 $set = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' );
@@ -430,7 +590,7 @@ $appData['./members/state'] = 'not a state';
 $setWrong = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' );
 unset( $appData['./members/state'] );
 
-check( 'a state a callback set wins over the query, and is a state without it - when it is one of the five', count( $set ) === 1 && count( $setOnly ) === 1 && $set[0]->textContent === $setOnly[0]->textContent
+check( 'a state a callback set wins over the query, and is a state without it - when it is one of the seven', count( $set ) === 1 && count( $setOnly ) === 1 && $set[0]->textContent === $setOnly[0]->textContent
 	&& $set[0]->textContent !== $states['sent'][0]->textContent && $set[0]->textContent === $states['invalid'][0]->textContent && count( $setWrong ) === 0 );
 
 ninoVisit( $appData, '/join' );
@@ -829,9 +989,9 @@ check( 'signout writes a new epoch of 32 hex characters each time it is pressed'
 echo "\n";
 
 
-// --- The request for a link ----------------------------------------------------
+// --- The request for a code ----------------------------------------------------
 
-echo "Modules\\Members - the request for a link: the same answer for every address, and the caps\n";
+echo "Modules\\Members - the request for a code: the same answer for every address, and the caps\n";
 
 // The accounts of the rest of the test: one that signs in, one that is switched off, one of no name
 unset( $appData['./nino/auth/current'] );
@@ -850,20 +1010,30 @@ $before = time();
 $unknown = membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'nobody@example.org', 'return' => '/join' ] );
 $mailsUnknown = count( $mails );
 $tokensUnknown = membersFile( $appData, 'tokens' );
+$pendingUnknown = membersPending( $appData ) ?? [];
 $known = membersServe( $appData, '/.members/login', 'POST', [ 'email' => ' ADA@Example.org ', 'return' => '/join' ] );
 $tokens = membersFile( $appData, 'tokens' );
-$token = membersTokenOf( $mails[0] ?? [] );
-$entry = $tokens[ hash( 'sha256', $token ) ] ?? [];
+$pending = membersPending( $appData ) ?? [];
+$shown = membersCodeOf( $mails[0] ?? [] );
+$digits = str_replace( ' ', '', $shown );
+$entry = $tokens[ hash( 'sha256', ( $pending['nonce'] ?? '' ). '|'. $digits ) ] ?? [];
 
 check( 'a request for an address nobody has and one for a member\'s answer the same: a redirect (303), back to the page the form was on with ?members=sent, stored by no one',
 	membersAnswer( $unknown ) === [ 303, '/join?members=sent', 'no-store', '' ] && membersAnswer( $known ) === membersAnswer( $unknown ) );
-check( '...and only the member\'s leaves a mail and a token: nothing for the address nobody has', $mailsUnknown === 0 && $tokensUnknown === [] && count( $mails ) === 1 && count( $tokens ) === 1 );
-check( '...a token of the kind login for that account, run out after the minutes of the setting, with no page to lead to; mailed to the address, which is the one of the account and no other',
-	array_keys( $entry ) === [ 'account', 'kind', 'expires', 'target' ] && $entry['account'] === $ada['id'] && $entry['kind'] === 'login' && $entry['target'] === '' && $entry['expires'] >= $before + 900 - 2 && $entry['expires'] <= time() + 900 + 2
-	&& $mails[0]['to'] === 'ada@example.org' && strlen( $token ) === 43 && str_contains( (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/members-tokens.php' ) ), $token ) === false );
+check( '...and only the member\'s leaves a mail and a record of a code: nothing for the address nobody has', $mailsUnknown === 0 && $tokensUnknown === [] && count( $mails ) === 1 && count( $tokens ) === 1 );
+check( '...but the session keeps a request for both - the address as the form made it, a nonce of 32 hex characters, no try used, the time of the setting\'s minutes - and the second replaces the first',
+	array_keys( $pendingUnknown ) === [ 'email', 'nonce', 'tries', 'until' ] && $pendingUnknown['email'] === 'nobody@example.org' && array_keys( $pending ) === [ 'email', 'nonce', 'tries', 'until' ] && $pending['email'] === 'ada@example.org'
+	&& preg_match( '/^[0-9a-f]{32}$/D', $pending['nonce'] ) === 1 && preg_match( '/^[0-9a-f]{32}$/D', $pendingUnknown['nonce'] ) === 1 && $pending['nonce'] !== $pendingUnknown['nonce'] && $pending['tries'] === 0
+	&& $pending['until'] >= $before + 900 - 2 && $pending['until'] <= time() + 900 + 2 );
+check( '...the mail is to the address of the account and holds six digits, set as two groups of three, and no link; the record of the code is under the hash of the nonce and the digits - of the kind code, for that account, good until the request is, with no page to lead to - and nothing of the nonce or of the digits alone is in the file',
+	$mails[0]['to'] === 'ada@example.org' && preg_match( '/^[0-9]{3} [0-9]{3}$/D', $shown ) === 1 && str_contains( (string) $mails[0]['body'], '.members/login' ) === false && str_contains( (string) $mails[0]['body'], 'href=' ) === false
+	&& array_keys( $entry ) === [ 'account', 'kind', 'expires', 'target' ] && $entry['account'] === $ada['id'] && $entry['kind'] === 'code' && $entry['target'] === '' && $entry['expires'] === $pending['until']
+	&& isset( $tokens[ hash( 'sha256', $digits ) ] ) === false && str_contains( (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/members-tokens.php' ) ), $pending['nonce'] ) === false );
+check( '...the subject is the one of the code mail, rendered', trim( (string) $mails[0]['subject'] ) !== '' && str_contains( (string) $mails[0]['subject'], '[[' ) === false && str_contains( (string) $mails[0]['body'], '[[' ) === false );
 
 $off1 = membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'off@example.org', 'return' => '/join' ] );
-check( 'a member who is switched off is answered like the others - and gets nothing', membersAnswer( $off1 ) === membersAnswer( $unknown ) && count( $mails ) === 1 && count( membersFile( $appData, 'tokens' ) ) === 1 );
+check( 'a member who is switched off is answered like the others - and gets nothing, and the session keeps the request all the same', membersAnswer( $off1 ) === membersAnswer( $unknown ) && count( $mails ) === 1 && count( membersFile( $appData, 'tokens' ) ) === 1
+	&& ( membersPending( $appData )['email'] ?? '' ) === 'off@example.org' );
 
 // What a post can hold that is no address, and no string: the same answer, no warning, nothing sent
 membersFresh( $appData );
@@ -875,8 +1045,8 @@ foreach( [ 'nothing' => [], 'a list' => [ 'email' => [ 'ada@example.org' ] ], 'a
 	$odd[$kind] = membersAnswer( $request );
 }
 
-check( 'a post without an address, with a list for the address or the return, or with a text that is none is answered the same, without a warning and without a mail', array_values( array_unique( array_map( 'json_encode', $odd ) ) ) === [ '[303,"\\/?members=sent","no-store",""]' ]
-	&& ninoWarnings() === [] && count( $mails ) === 1 );
+check( 'a post without an address, with a list for the address or the return, or with a text that is none is answered the same, without a warning and without a mail - and it ends the request that was out: the session holds none', array_values( array_unique( array_map( 'json_encode', $odd ) ) ) === [ '[303,"\\/?members=sent","no-store",""]' ]
+	&& ninoWarnings() === [] && count( $mails ) === 1 && membersPending( $appData ) === null );
 
 // Where the answer goes back to: a path of this site and nothing else
 membersFresh( $appData );
@@ -889,6 +1059,17 @@ foreach( [ '/club/page?x=1#f' => '/club/page?members=sent', '//evil.example/x' =
 }
 
 check( 'the answer goes back to the page the form was on without its query - and to the start page for anything that is not a path of this site, an endpoint among it', array_filter( $goes, static fn( bool $same ): bool => $same === false ) === [] );
+
+$codeGoes = [];
+
+foreach( [ '//evil.example/x', 'https://evil.example', '/\\evil.example', "/a\r\nSet-Cookie: x=1", '/.members/login', '', '/club/page?x=1#f' ] as $return ) {
+	membersVisitor();
+	$digits = membersAskCode( $appData, 'ada@example.org' );
+	$codeGoes[$return] = membersAnswer( membersServe( $appData, '/.members/code', 'POST', [ 'code' => sprintf( '%06d', ( (int) $digits + 1 ) % 1000000 ), 'return' => $return ] ) )[1];
+}
+
+check( 'the answer to a code goes back to a path of this site and nothing else: another host, a scheme, a backslash, a header break and an endpoint are the start page', $codeGoes === [ '//evil.example/x' => '/?members=wrong', 'https://evil.example' => '/?members=wrong', '/\\evil.example' => '/?members=wrong',
+	"/a\r\nSet-Cookie: x=1" => '/?members=wrong', '/.members/login' => '/?members=wrong', '' => '/?members=wrong', '/club/page?x=1#f' => '/club/page?members=wrong' ] );
 
 check( 'the start page is a setting that is a path of this site: a path is taken, an address of another host, a protocol-relative one and a text with a space are refused',
 	\Nino\Features::saveSettings( $appData, 'members', [ 'start' => '/club' ] ) === [] && array_filter( [ 'https://evil.example', '//evil.example', '/\\evil.example', '/a b', 'club', '/javascript:x', "/a\nb", '/a?b' ],
@@ -909,7 +1090,7 @@ foreach( [ '', '/.members/logout' ] as $value ) {
 check( '...and the start page is where an answer goes that has no page of its own to go back to - the front page where the setting is empty or none', $start[1] === '/club?members=sent'
 	&& $elsewhere === [ '' => '/?members=sent', '/.members/logout' => '/?members=sent' ] );
 
-// The page that asked for the login: kept by the gate, taken into the link, and gone from the session
+// The page that asked for the login: kept by the gate, taken into the record of the code, and gone from the session
 \Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [ '/club' ] ] );
 membersFresh( $appData );
 membersVisitor();
@@ -917,23 +1098,27 @@ $mails = [];
 membersFresh( $appData );
 membersServe( $appData, '/club/news' );
 membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/club/news' ] );
-$withTarget = membersFile( $appData, 'tokens' )[ hash( 'sha256', membersTokenOf( $mails[0] ?? [] ) ) ] ?? [];
+$withTarget = membersFile( $appData, 'tokens' )[ hash( 'sha256', ( membersPending( $appData )['nonce'] ?? '' ). '|'. str_replace( ' ', '', membersCodeOf( $mails[0] ?? [] ) ) ) ] ?? [];
 $kept = \Nino\Runtime::getSessionValue( $appData, './members/target' );
 membersFresh( $appData );
 membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/news' ] );
-$without = membersFile( $appData, 'tokens' )[ hash( 'sha256', membersTokenOf( $mails[1] ?? [] ) ) ] ?? [];
-check( 'the path a protected page was asked for is the target of the next link, and is gone from the session once a link carries it - the link after that has none', ( $withTarget['target'] ?? null ) === '/club/news' && $kept === null && ( $without['target'] ?? null ) === '' );
+$without = membersFile( $appData, 'tokens' )[ hash( 'sha256', ( membersPending( $appData )['nonce'] ?? '' ). '|'. str_replace( ' ', '', membersCodeOf( $mails[1] ?? [] ) ) ) ] ?? [];
+check( 'the path a protected page was asked for is the target of the next code, and is gone from the session once a code carries it - the code after that has none', ( $withTarget['target'] ?? null ) === '/club/news' && $kept === null && ( $without['target'] ?? null ) === '' );
 \Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [] ] );
 
 // The csrf guard: no token, no request
 membersFresh( $appData );
 membersVisitor();
 $mails = [];
+membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'nobody@example.org', 'return' => '/join' ] );
+$pendingBefore = membersPending( $appData );
+membersFresh( $appData );
+$mails = [];
 $tokensBefore = membersFile( $appData, 'tokens' );
 $none = membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/join' ], false );
 $wrong = membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/join', '_csrf' => 'not-the-token' ], false );
-check( 'a request without the csrf token - or with another - is answered with a redirect (303) to the page the form was on and ?members=expired, in place of the kernel\'s bare 403, sends no mail, makes no token and is not counted', membersAnswer( $none ) === [ 303, '/join?members=expired', 'no-store', '' ] && membersAnswer( $wrong ) === membersAnswer( $none ) && $mails === []
-	&& membersFile( $appData, 'tokens' ) === $tokensBefore && membersFile( $appData, 'tries' ) === [] );
+check( 'a request without the csrf token - or with another - is answered with a redirect (303) to the page the form was on and ?members=expired, in place of the kernel\'s bare 403, sends no mail, makes no record of a code, leaves the request of the session as it is and is not counted', membersAnswer( $none ) === [ 303, '/join?members=expired', 'no-store', '' ] && membersAnswer( $wrong ) === membersAnswer( $none ) && $mails === []
+	&& membersFile( $appData, 'tokens' ) === $tokensBefore && membersFile( $appData, 'tries' ) === [] && $pendingBefore !== null && membersPending( $appData ) === $pendingBefore );
 
 // The cap of the visitor: attempts an hour, then ?members=limit and nothing else
 membersFresh( $appData );
@@ -945,7 +1130,7 @@ for( $try = 1; $try <= 6; $try++ ) {
 	$limits[$try] = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => $try === 6 ? 'ada@example.org' : 'nobody'. $try. '@example.org', 'return' => '/join' ] ) )[1];
 }
 
-check( 'the sixth request of one visitor in an hour - the setting attempts says five - is answered ?members=limit, and leaves no token and no mail, a member\'s address or not',
+check( 'the sixth request of one visitor in an hour - the setting attempts says five - is answered ?members=limit, and leaves no record of a code and no mail, a member\'s address or not',
 	array_values( array_slice( $limits, 0, 5 ) ) === array_fill( 0, 5, '/join?members=sent' ) && $limits[6] === '/join?members=limit' && $mails === [] && membersFile( $appData, 'tokens' ) === $tokensBefore );
 check( '...the counter has a file of its own, hashed - the accounts are what they were, and neither the address of the visitor nor an email address is written anywhere in it',
 	count( membersFile( $appData, 'accounts' )['accounts'] ) === 3 && count( membersFile( $appData, 'tries' ) ) === 6 && str_contains( (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/members-tries.php' ) ), '127.0.0.1' ) === false
@@ -975,11 +1160,12 @@ $out = [ count( $mails ), array_values( array_unique( array_column( $mails, 'to'
 $_SERVER['REMOTE_ADDR'] = '10.0.0.5';
 $other = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'bare@example.org', 'return' => '/join' ] ) )[1];
 $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
-check( 'the fourth request for one address in an hour is answered ?members=limit, whoever asks and from wherever - three links are out, and another address still gets its own',
+check( 'the fourth request for one address in an hour is answered ?members=limit, whoever asks and from wherever - three codes are out, and another address still gets its own',
 	$asked === [ '/join?members=sent', '/join?members=sent', '/join?members=sent', '/join?members=limit' ] && $out === [ 3, [ 'ada@example.org' ] ] && $other === '/join?members=sent' && count( $mails ) === 4 );
 \Nino\Features::saveSettings( $appData, 'members', [ 'attempts' => 5 ] );
 
-// A mail that is not taken, and a site without an address: the same answer, and a warning for the log
+// A mail that is not taken: the same answer, and a warning for the log. A site without an address mails its code all the same - there is
+// no link to build - and cannot make a link
 membersFresh( $appData );
 membersVisitor();
 $mails = [];
@@ -996,10 +1182,233 @@ membersFresh( $appData );
 $mails = [];
 $noAddress = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'ada@example.org', 'return' => '/join' ] ) );
 $warnedNoAddress = ninoWarnings();
+$codeNoAddress = membersCodeOf( $mails[0] ?? [] );
+membersFresh( $appData );
+$linkNoAddress = \Nino\Modules\Members::link( $appData, $ada, 'login' );
+$warnedLink = ninoWarnings();
 \Nino\Html::addFills( $appData, [ '[[/project/website/general/url]]' => 'example.org/club' ], '*' );
 check( 'a mail that no transport takes is swallowed into the same answer, with a warning for the log that names no address', $refused === [ 303, '/join?members=sent', 'no-store', '' ] && count( $warned ) >= 1
 	&& array_filter( $warned, static fn( string $warning ): bool => str_contains( $warning, 'ada@example.org' ) === true ) === [] );
-check( '...so is a site that has no address to build the link on: nothing is sent, the same answer, a warning', $noAddress === [ 303, '/join?members=sent', 'no-store', '' ] && $mails === [] && count( $warnedNoAddress ) === 1 );
+check( '...a site that has no address mails the code all the same, with no warning - and has no address to build a link on: nothing is sent for one, a warning', $noAddress === [ 303, '/join?members=sent', 'no-store', '' ] && count( $mails ) === 1 && preg_match( '/^[0-9]{3} [0-9]{3}$/D', $codeNoAddress ) === 1
+	&& $warnedNoAddress === [] && $linkNoAddress === false && count( $warnedLink ) === 1 );
+
+echo "\n";
+
+
+// --- The code that signs in ----------------------------------------------------
+
+echo "Modules\\Members - the code that signs in: bound to the session that asked, once, five tries, in time\n";
+
+$uid = $appData['./nino/uid'];
+\Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [ '/club' ] ] );
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', [] );
+
+// The way in: a code asked for from a protected page leads back to it, and the space the mail sets in the middle is no part of it
+membersVisitor();
+$mails = [];
+$told = [];
+membersServe( $appData, '/club/news' );
+$digits = membersAskCode( $appData, 'ada@example.org', '/club/news' );
+$nonce = (string) ( membersPending( $appData )['nonce'] ?? '' );
+$csrfBefore = \Nino\Csrf::getToken( $appData );
+$stamp = time();
+$through = membersCodeServe( $appData, substr( $digits, 0, 3 ). ' '. substr( $digits, 3 ), '/club/news' );
+$member = \Nino\Modules\Members::current( $appData );
+$record = membersFile( $appData, 'accounts' )['accounts'][ $ada['id'] ] ?? [];
+check( 'the code, typed with its space, signs the member in and sends them on (303) to the page that asked for the login, stored by no one', $through === [ 303, '/club/news', 'no-store', '' ] && ( $member['id'] ?? '' ) === $ada['id'] && strlen( $digits ) === 6 );
+check( '...the record of the code is spent, the request is gone from the session, which holds the account and the epoch and has a csrf token of its own now, and the time of the sign-in is stamped on the account',
+	isset( membersFile( $appData, 'tokens' )[ hash( 'sha256', $nonce. '|'. $digits ) ] ) === false && membersPending( $appData ) === null
+	&& \Nino\Runtime::getSessionValue( $appData, './members/account' ) === [ 'id' => $ada['id'], 'epoch' => membersFile( $appData, 'session' )['epoch'] ?? '' ] && \Nino\Csrf::getToken( $appData ) !== $csrfBefore
+	&& abs( strtotime( (string) ( $record['login'] ?? '' ) ) - $stamp ) < 10 && ( $member['login'] ?? null ) === ( $record['login'] ?? '' ) );
+check( '...and the features that build on it are told, once, with the account', count( $told ) === 1 && $told[0][0] === 'login' && $told[0][1] === $member );
+
+// Without a page to lead to the way is the start page. Six digits, set as the mail sets them, always: a code that starts with a zero is no shorter, and is taken as it is shown or without its space
+$formats = [];
+$zero = '';
+$nonZero = '';
+
+// The range of the code is the six digits: some code does not start with a zero
+for( $round = 0; $round < 100 && $nonZero === ''; $round++ ) {
+	membersVisitor();
+	$candidate = membersAskCode( $appData, 'ada@example.org' );
+	$formats[] = membersCodeOf( end( $mails ) ?: [] );
+
+	if( $candidate !== '' && str_starts_with( $candidate, '0' ) === false )
+		$nonZero = $candidate;
+}
+
+for( $round = 0; $round < 300 && $zero === ''; $round++ ) {
+	membersVisitor();
+	$candidate = membersAskCode( $appData, 'ada@example.org' );
+	$formats[] = membersCodeOf( end( $mails ) ?: [] );
+
+	if( str_starts_with( $candidate, '0' ) === true )
+		$zero = $candidate;
+}
+
+$started = membersCodeServe( $appData, ' '. $zero, '/join' );
+check( 'the code is six digits whatever they are, set as two groups of three - and one that starts with a zero signs in, typed without its space', $zero !== '' && $nonZero !== '' && array_filter( $formats, static fn( string $shown ): bool => preg_match( '/^[0-9]{3} [0-9]{3}$/D', $shown ) !== 1 ) === []
+	&& $started === [ 303, '/', 'no-store', '' ] && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $ada['id'] );
+
+// Once: the same code again is gone, and a code of an earlier request is no code of this one
+membersVisitor();
+$digits = membersAskCode( $appData, 'ada@example.org' );
+$first = membersCodeServe( $appData, $digits );
+$again = membersCodeServe( $appData, $digits );
+membersVisitor();
+membersAskCode( $appData, 'ada@example.org' );
+$replayed = membersCodeServe( $appData, $digits );
+check( 'a code works once: sent again from the session it signed in, it is gone; in a session with a request of its own, it is wrong - and nobody is signed in by it', $first[1] === '/' && $again === [ 303, '/join?members=gone', 'no-store', '' ] && $replayed === [ 303, '/join?members=wrong', 'no-store', '' ]
+	&& \Nino\Modules\Members::current( $appData ) === null );
+
+// Five tries: four wrong ones are told, and the fifth try may still be the right one
+membersVisitor();
+$digits = membersAskCode( $appData, 'ada@example.org' );
+$bad = sprintf( '%06d', ( (int) $digits + 1 ) % 1000000 );
+$wrongs = [];
+$counted = [];
+$triesBefore = membersFile( $appData, 'tries' );
+
+for( $try = 1; $try <= 4; $try++ ) {
+	$wrongs[] = membersCodeServe( $appData, $bad );
+	$counted[] = membersPending( $appData )['tries'] ?? null;
+}
+
+$fifth = membersCodeServe( $appData, $digits );
+check( 'a wrong code is told ?members=wrong and counted in the session - the fifth try, if it is the right code, signs in; and none of it is counted by the counter of the requests',
+	array_values( array_unique( array_map( 'json_encode', $wrongs ) ) ) === [ '[303,"\\/join?members=wrong","no-store",""]' ] && count( $wrongs ) === 4 && $counted === [ 1, 2, 3, 4 ] && $fifth[1] === '/'
+	&& ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $ada['id'] && membersFile( $appData, 'tries' ) === $triesBefore );
+
+// ...and the fifth wrong one ends the request: the right code goes nowhere after it, and a new one has to be asked for
+membersVisitor();
+$digits = membersAskCode( $appData, 'ada@example.org' );
+$bad = sprintf( '%06d', ( (int) $digits + 1 ) % 1000000 );
+$answers = [];
+
+for( $try = 1; $try <= 5; $try++ )
+	$answers[] = membersCodeServe( $appData, $bad )[1];
+
+$sixth = membersCodeServe( $appData, $digits );
+check( 'the fifth wrong code ends the request (?members=gone, none in the session) and the right code is gone as well, nobody is signed in', $answers === [ '/join?members=wrong', '/join?members=wrong', '/join?members=wrong', '/join?members=wrong', '/join?members=gone' ]
+	&& membersPending( $appData ) === null && $sixth === [ 303, '/join?members=gone', 'no-store', '' ] && \Nino\Modules\Members::current( $appData ) === null );
+ninoVisit( $appData, '/join?members=gone' );
+check( '...and the form on the page is the first step again, with the message that the code is gone', count( membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form[contains(@class, "members-login")]//input[@name="email"]' ) ) === 1
+	&& trim( membersText( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' ) ?? '' ) === trim( $states['gone'][0]->textContent ) );
+
+// What is no code: seven digits, letters, a null byte, a list, nothing - each is a wrong try, nothing is spent, no warning
+membersVisitor();
+$digits = membersAskCode( $appData, 'ada@example.org' );
+$nonce = (string) ( membersPending( $appData )['nonce'] ?? '' );
+ninoWarnings();
+$malformed = [];
+$malformedTries = [];
+
+foreach( [ 'seven digits' => $digits. '0', 'letters' => 'abcdef', 'a null byte' => substr( $digits, 0, 3 ). "\x00". substr( $digits, 3 ), 'a list' => [ $digits ] ] as $kind => $typed ) {
+	$malformed[$kind] = membersAnswer( membersServe( $appData, '/.members/code', 'POST', [ 'code' => $typed, 'return' => '/join' ] ) );
+	$malformedTries[] = membersPending( $appData )['tries'] ?? null;
+}
+
+check( 'a code of seven digits, one with letters, one with a null byte in it and a list for the code are told wrong and each counts a try - without a warning, and the record of the code is still there', array_values( array_unique( array_map( 'json_encode', $malformed ) ) ) === [ '[303,"\\/join?members=wrong","no-store",""]' ]
+	&& count( $malformed ) === 4 && $malformedTries === [ 1, 2, 3, 4 ] && ninoWarnings() === [] && isset( membersFile( $appData, 'tokens' )[ hash( 'sha256', $nonce. '|'. $digits ) ] ) === true && \Nino\Modules\Members::current( $appData ) === null );
+check( '...and the code itself, five tries in, is still taken', membersCodeServe( $appData, $digits )[1] === '/' && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $ada['id'] );
+
+// Bound to the session: a code from another session is nothing - with no request there it is gone, with a request of its own it is wrong - and the session that asked still has it
+membersVisitor();
+$digitsA = membersAskCode( $appData, 'ada@example.org' );
+$sessionA = $_SESSION;
+membersVisitor();
+$elsewhere = membersCodeServe( $appData, $digitsA );
+$digitsB = $digitsA;
+
+for( $round = 0; $round < 20 && $digitsB === $digitsA; $round++ )
+	$digitsB = membersAskCode( $appData, 'ada@example.org' );
+
+check( 'the session that asked second holds a code of its own, other than the first\'s', $digitsB !== $digitsA && $digitsB !== '' );
+
+$elsewhereAsked = membersCodeServe( $appData, $digitsA );
+$signedElsewhere = \Nino\Modules\Members::current( $appData );
+$_SESSION = $sessionA;
+$home = membersCodeServe( $appData, $digitsA );
+check( 'a code from another session signs nobody in: in a session with no request it is gone, in one that asked for a code of its own it is wrong', $elsewhere === [ 303, '/join?members=gone', 'no-store', '' ] && $elsewhereAsked === [ 303, '/join?members=wrong', 'no-store', '' ] && $signedElsewhere === null );
+check( '...and in the session that asked it still signs in', $home[1] === '/' && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $ada['id'] );
+
+// In time: a request that has run out is gone, and so is a code whose record has
+membersVisitor();
+$digits = membersAskCode( $appData, 'ada@example.org' );
+$_SESSION[$uid]['./members/pending']['until'] = time() - 1;
+$late = membersCodeServe( $appData, $digits );
+$pendingLate = membersPending( $appData );
+membersVisitor();
+$digits = membersAskCode( $appData, 'ada@example.org' );
+$ran = membersFile( $appData, 'tokens' );
+
+foreach( $ran as $key => $each )
+	$ran[$key]['expires'] = time() - 1;
+
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $ran );
+$lateRecord = membersCodeServe( $appData, $digits );
+check( 'a code asked for longer ago than the setting says is gone, even the right one - and so is one whose record has run out, which no code is found for', $late === [ 303, '/join?members=gone', 'no-store', '' ] && $pendingLate === null
+	&& $lateRecord === [ 303, '/join?members=wrong', 'no-store', '' ] && \Nino\Modules\Members::current( $appData ) === null );
+
+// The csrf guard: a code posted without the token uses nothing up, and the request stays
+membersVisitor();
+$digits = membersAskCode( $appData, 'ada@example.org' );
+$pendingBefore = membersPending( $appData );
+$tokensBefore = membersFile( $appData, 'tokens' );
+$blocked = membersCodeServe( $appData, $digits, '/join', false );
+check( 'a code posted without the csrf token is answered ?members=expired and uses nothing up: the request and the record of the code are as they were, nobody is signed in - and the code is taken with the token', $blocked === [ 303, '/join?members=expired', 'no-store', '' ]
+	&& membersPending( $appData ) === $pendingBefore && membersFile( $appData, 'tokens' ) === $tokensBefore && \Nino\Modules\Members::current( $appData ) === null && membersCodeServe( $appData, $digits )[1] === '/' );
+
+// With no request at all
+membersVisitor();
+$unasked = membersCodeServe( $appData, '123456' );
+check( 'a code posted from a session that asked for none is gone, and nothing is signed in', $unasked === [ 303, '/join?members=gone', 'no-store', '' ] && \Nino\Modules\Members::current( $appData ) === null );
+
+// The account is looked at when the code is spent: one that was switched off, or deleted, since the mail went out gets nowhere - the code is spent all the same
+$told = [];
+membersVisitor();
+$digits = membersAskCode( $appData, 'ada@example.org' );
+$nonce = (string) ( membersPending( $appData )['nonce'] ?? '' );
+\Nino\Modules\Members::change( $appData, $ada['id'], [ 'active' => false ] );
+$switchedOff = membersCodeServe( $appData, $digits );
+$offSpent = isset( membersFile( $appData, 'tokens' )[ hash( 'sha256', $nonce. '|'. $digits ) ] ) === false;
+\Nino\Modules\Members::change( $appData, $ada['id'], [ 'active' => true ] );
+$temporary = \Nino\Modules\Members::add( $appData, 'temporary@example.org', 'Temporary', '' );
+membersVisitor();
+$digits = membersAskCode( $appData, 'temporary@example.org' );
+\Nino\Modules\Members::remove( $appData, $temporary['id'] );
+$deleted = membersCodeServe( $appData, $digits );
+check( 'a code for an account that was switched off, or deleted, after the mail is answered ?members=gone, signs nobody in, tells nobody, and is spent', $switchedOff === [ 303, '/join?members=gone', 'no-store', '' ] && $deleted === $switchedOff && $offSpent === true
+	&& \Nino\Modules\Members::current( $appData ) === null && $told === [] && membersPending( $appData ) === null );
+
+// A code is no link and a link is no code: the record of a code cannot be reached with ?t=, and the links stay links
+membersVisitor();
+$mails = [];
+membersFresh( $appData );
+$digits = membersAskCode( $appData, 'ada@example.org' );
+$recordHash = hash( 'sha256', (string) ( membersPending( $appData )['nonce'] ?? '' ). '|'. $digits );
+$tokensBefore = membersFile( $appData, 'tokens' );
+$reached = [];
+
+foreach( [ 'the digits' => $digits, 'the hash' => $recordHash, 'a token long enough' => substr( $recordHash, 0, 43 ) ] as $kind => $typed ) {
+	$reached[$kind. ', asked'] = membersAnswer( membersServe( $appData, '/.members/login?t='. $typed ) )[0];
+	$reached[$kind. ', pressed'] = membersAnswer( membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $typed ] ) )[0];
+}
+
+$linkAsked = \Nino\Modules\Members::link( $appData, $ada, 'code' );
+check( 'the record of a code is out of reach of the link: its digits, its hash and a part of it asked for as ?t= or pressed are 400, nothing is spent and nobody is signed in - and link() makes no code', array_values( array_unique( $reached ) ) === [ 400 ] && count( $reached ) === 6
+	&& membersFile( $appData, 'tokens' ) === $tokensBefore && \Nino\Modules\Members::current( $appData ) === null && $linkAsked === false );
+
+membersFresh( $appData );
+$count = count( $mails );
+$loginLink = \Nino\Modules\Members::link( $appData, $ada, 'login' );
+$inviteLink = \Nino\Modules\Members::link( $appData, $ada, 'invite' );
+check( 'the link of an invitation and the login link the owner sends stay links - a mail with the address of the page that asks, and no code in it',
+	$loginLink === true && $inviteLink === true && count( $mails ) === $count + 2 && membersTokenOf( $mails[$count] ) !== '' && membersTokenOf( $mails[$count + 1] ) !== '' && membersCodeOf( $mails[$count] ) === '' && membersCodeOf( $mails[$count + 1] ) === '' );
+
+\Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [] ] );
+membersVisitor();
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', [] );
 
 echo "\n";
 

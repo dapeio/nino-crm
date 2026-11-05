@@ -654,6 +654,30 @@ check( 'the start page is the door: the route GET:// is written by the setup, a 
 	&& ( \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://'] ?? null ) === [ 'uri' => '/', 'body' => '[template /templates/page-door]' ] );
 $doorHtml = \Nino\Html::renderHtml( $appData, crmServe( $appData, '/' )[2] );
 check( '...and the door carries the login form of Members', str_contains( $doorHtml, '[members-login]' ) === false && str_contains( $doorHtml, '<form class="members-login' ) === true && str_contains( $doorHtml, 'type="email"' ) === true && str_contains( $doorHtml, 'class="crm-door"' ) === true );
+// The door asks for the address and then for the code, in the card of the portal; the code signs the customer in and leads on to the portal
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+$_SESSION = [];
+$doorWords = [ 'de_DE' => require $root. '/app/Crm/Crm/install/text/de_DE.php', 'en_US' => require $root. '/app/Crm/Crm/install/text/en_US.php' ];
+preg_match_all( '~\[(?:title|text) (/template/page-door/[a-z0-9/-]+)~', (string) file_get_contents( $root. '/app/Crm/Crm/install/templates/page-door.tpl' ), $doorKeys );
+check( 'the door reads its title and its sentence from keys of the unit that both languages deliver', count( $doorKeys[1] ) === 2 && array_filter( $doorKeys[1], static fn( string $key ): bool => trim( (string) ( $doorWords['de_DE']['[['. $key. ']]'] ?? '' ) ) === '' || trim( (string) ( $doorWords['en_US']['[['. $key. ']]'] ?? '' ) ) === '' ) === [] );
+$mailsAtDoor = count( $mails );
+$asked = crmServe( $appData, '/.members/login', 'POST', [ 'email' => 'anna@example.org', 'return' => '/' ] );
+$codeMail = count( $mails ) === $mailsAtDoor + 1 ? crmMail( $mails, $mailsAtDoor ) : [];
+preg_match( '~>\s*([0-9]{3}) ([0-9]{3})\s*</p>~', (string) ( $codeMail['body'] ?? '' ), $shown );
+$stepTwo = crmPage( $appData, '/?members=sent' );
+$doorDocument = new \DOMDocument();
+libxml_use_internal_errors( true );
+$doorDocument->loadHTML( '<?xml encoding="UTF-8">'. $stepTwo );
+libxml_clear_errors();
+$doorCard = new \DOMXPath( $doorDocument );
+check( 'the door asks for a code: the request is answered with the redirect to the door, a mail holds six digits and no link, and the card of the door then holds the form for the code - the field for it and none for an address',
+	$asked === [ 303, '/?members=sent', '' ] && ( $codeMail['to'] ?? '' ) === 'anna@example.org' && count( $shown ) === 3 && str_contains( (string) $codeMail['body'], '.members/login' ) === false
+	&& $doorCard->query( '//div[contains(@class, "crm-door__card")]//form[contains(@class, "members-code")]//input[@name="code"]' )->length === 1 && $doorCard->query( '//form//input[@name="email"]' )->length === 0 && str_contains( $doorDocument->saveHTML( $doorCard->query( '//div[contains(@class, "crm-door__card")]' )->item( 0 ) ), '[[' ) === false );
+$signed = crmServe( $appData, '/.members/code', 'POST', [ 'code' => ( $shown[1] ?? '' ). ' '. ( $shown[2] ?? '' ), 'return' => '/' ] );
+check( 'the code signs the customer in and leads on to the start page of the portal, and the door then sends them on', $signed === [ 303, '/portal', '' ] && ( \Nino\Modules\Members::current( $appData )['email'] ?? '' ) === 'anna@example.org' && crmServe( $appData, '/' )[1] === '/portal' );
+$_SESSION = [];
+
 check( '/login is no route any more: 404, like any path nobody knows', crmServe( $appData, '/login' )[0] === 404 && isset( \Nino\AppData::stored( $appData, '/nino/http/routes', [] )['GET://login'] ) === false && is_file( $root. '/app/Crm/Crm/install/templates/page-login.tpl' ) === false );
 // The head of the door reads the details of the page at the Element-URI '/' - the keys the wizard writes for a start page - and the unit brings them
 $doorPage = crmPage( $appData, '/' );

@@ -2111,7 +2111,8 @@ a.crm-documents__project:hover {
 	width: 100%;
 }
 
-.crm-door .members-login {
+.crm-door .members-login,
+.crm-door .members-code {
 	--color-ground: var(--crm-surface);
 	--color-ink: var(--crm-ink);
 	--color-accent: var(--crm-link);
@@ -2128,14 +2129,16 @@ a.crm-documents__project:hover {
 	text-align: left;
 }
 
-.crm-door .members-login__label {
+.crm-door .members-login__label,
+.crm-door .members-code__label {
 	margin: 0;
 	color: var(--crm-ink-2);
 	font-size: var(--crm-text-s);
 	font-weight: 600;
 }
 
-.crm-door .members-login .nino-form-input {
+.crm-door .members-login .nino-form-input,
+.crm-door .members-code .nino-form-input {
 	width: 100%;
 	min-height: var(--crm-touch);
 	margin: 0;
@@ -2147,7 +2150,8 @@ a.crm-documents__project:hover {
 	font-size: var(--crm-text-m);
 }
 
-.crm-door .members-login .nino-form-input:focus {
+.crm-door .members-login .nino-form-input:focus,
+.crm-door .members-code .nino-form-input:focus {
 	border-color: var(--crm-link);
 	box-shadow: 0 0 0 1px var(--crm-link);
 }
@@ -2162,7 +2166,8 @@ a.crm-documents__project:hover {
 	line-height: 1.5;
 }
 
-.crm-door .members-login .nino-btn {
+.crm-door .members-login .nino-btn,
+.crm-door .members-code .nino-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -2174,6 +2179,41 @@ a.crm-documents__project:hover {
 	font-size: var(--crm-text-m);
 	font-weight: 600;
 	text-transform: none;
+}
+
+/*	The second step: the address the code went to, the six digits large and centred with digits of one width, and the way back to ask for a new code	*/
+.crm-door .members-code__intro {
+	margin: 0;
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	overflow-wrap: anywhere;
+}
+
+.crm-door .members-code__email {
+	color: var(--crm-ink);
+}
+
+.crm-door .members-code .members-code__input {
+	font-size: var(--crm-text-xl);
+	font-weight: 600;
+	letter-spacing: .15em;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+.crm-door .members-code__again {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: var(--crm-touch);
+	border-radius: var(--crm-radius-s);
+	color: var(--crm-link);
+	font-size: var(--crm-text-s);
+	font-weight: 600;
+}
+
+.crm-door .members-code__again:hover {
+	background-color: color-mix(in srgb, var(--crm-link) 10%, transparent);
 }
 
 /*	12 Empty states	*/

@@ -7,18 +7,18 @@ return [
 	'key'					=> 'members',
 	'name'				=> [ 'en_US' => 'Members', 'de_DE' => 'Mitglieder' ],
 	'description'	=> [
-		'en_US' => 'Member accounts for the website without passwords: a member signs in with a link sent by mail, pages can be put behind the sign-in, and a panel manages the accounts.',
-		'de_DE' => 'Mitgliederkonten für die Website ohne Passwörter: Wer Mitglied ist, meldet sich mit einem Link an, der per E-Mail kommt; Seiten lassen sich hinter die Anmeldung legen, und ein Panel verwaltet die Konten.',
+		'en_US' => 'Member accounts for the website without passwords: a member signs in with a code sent by mail, pages can be put behind the sign-in, and a panel manages the accounts.',
+		'de_DE' => 'Mitgliederkonten für die Website ohne Passwörter: Wer Mitglied ist, meldet sich mit einem Code an, der per E-Mail kommt; Seiten lassen sich hinter die Anmeldung legen, und ein Panel verwaltet die Konten.',
 	],
 	'manual'			=> [
 		'shortcodes' => [
 			'[members-login]' => [
-				'en_US' => 'The login form: a field for the email address and a button that mails a link to it - there is no password. A member who is signed in sees their name and a link to sign out in its place. It is also the component Member login of the Builder, in a section, a card and a hero; the Builder and the shortcode are one renderer. The words are the project\'s, in the Text panel: /feature/members/login/label, /feature/members/login/button and the five texts under /feature/members/state/.',
-				'de_DE' => 'Das Anmeldeformular: ein Feld für die E-Mail-Adresse und ein Knopf, der einen Link dorthin schickt – ein Passwort gibt es nicht. Wer angemeldet ist, sieht an seiner Stelle den eigenen Namen und einen Link zum Abmelden. Es ist auch die Komponente Mitglieder-Anmeldung des Builders, in einer Sektion, einer Karte und einem Hero; Builder und Shortcode sind ein Renderer. Die Worte gehören dem Projekt, im Panel Texte: /feature/members/login/label, /feature/members/login/button und die fünf Texte unter /feature/members/state/.',
+				'en_US' => 'The login form, in two steps - there is no password. The first is a field for the email address and a button that mails a code to it. The second, which the form shows in the same place once a code is out in the visitor\'s session, names the address and holds a field for the six digits (a space in the middle is fine), a button, and a link to ask for a new code. A member who is signed in sees their name and a link to sign out in its place. It is also the component Member login of the Builder, in a section, a card and a hero; the Builder and the shortcode are one renderer. The words are the project\'s, in the Text panel: /feature/members/login/label, /feature/members/login/request, the four texts under /feature/members/code/ and the seven texts under /feature/members/state/.',
+				'de_DE' => 'Das Anmeldeformular in zwei Schritten – ein Passwort gibt es nicht. Der erste ist ein Feld für die E-Mail-Adresse und ein Knopf, der einen Code dorthin schickt. Der zweite, den das Formular an derselben Stelle zeigt, sobald in der Sitzung des Besuchers ein Code unterwegs ist, nennt die Adresse und hat ein Feld für die sechs Ziffern (ein Leerzeichen in der Mitte schadet nicht), einen Knopf und einen Link, um einen neuen Code anzufordern. Wer angemeldet ist, sieht an seiner Stelle den eigenen Namen und einen Link zum Abmelden. Es ist auch die Komponente Mitglieder-Anmeldung des Builders, in einer Sektion, einer Karte und einem Hero; Builder und Shortcode sind ein Renderer. Die Worte gehören dem Projekt, im Panel Texte: /feature/members/login/label, /feature/members/login/request, die vier Texte unter /feature/members/code/ und die sieben Texte unter /feature/members/state/.',
 			],
 			'[members-login inline="1"]' => [
-				'en_US' => 'The field and the button on one line (the kernel\'s nino-form--inline); the label is then read by screen readers only (nino-sr-only).',
-				'de_DE' => 'Feld und Knopf in einer Zeile (nino-form--inline des Kernels); die Beschriftung lesen dann nur noch Screenreader (nino-sr-only).',
+				'en_US' => 'The field and the button of the first step on one line (the kernel\'s nino-form--inline); the label is then read by screen readers only (nino-sr-only). The second step is never in one line.',
+				'de_DE' => 'Feld und Knopf des ersten Schritts in einer Zeile (nino-form--inline des Kernels); die Beschriftung lesen dann nur noch Screenreader (nino-sr-only). Der zweite Schritt steht nie in einer Zeile.',
 			],
 			'[members-logout]' => [
 				'en_US' => 'A link that signs the member out. Shows nothing to a visitor, so a frame can carry it for everybody.',
@@ -39,22 +39,26 @@ return [
 		],
 		'markup' => [
 			'Custom properties' => [
-				'en_US' => 'members.css declares the properties the form and the line of a signed-in member are drawn from - --members-ground with its parts (-on, -link, -border, -focus), --members-space and --members-corners - with the page\'s own roles as their defaults, in :where(), so that a look of the Design feature or a rule of the project moves them.',
-				'de_DE' => 'members.css deklariert die Properties, aus denen das Formular und die Zeile eines angemeldeten Mitglieds gezeichnet werden – --members-ground mit seinen Teilen (-on, -link, -border, -focus), --members-space und --members-corners –, mit den Rollen der Seite als Standard, in :where(), damit ein Look des Features Design oder eine Regel des Projekts sie verschiebt.',
+				'en_US' => 'members.css declares the properties the forms and the line of a signed-in member are drawn from - --members-ground with its parts (-on, -link, -border, -focus), --members-space and --members-corners - with the page\'s own roles as their defaults, in :where(), so that a look of the Design feature or a rule of the project moves them.',
+				'de_DE' => 'members.css deklariert die Properties, aus denen die Formulare und die Zeile eines angemeldeten Mitglieds gezeichnet werden – --members-ground mit seinen Teilen (-on, -link, -border, -focus), --members-space und --members-corners –, mit den Rollen der Seite als Standard, in :where(), damit ein Look des Features Design oder eine Regel des Projekts sie verschiebt.',
 			],
-			'.members-login, .members-confirm, .members-signed, .members-logout, .members-name' => [
-				'en_US' => 'The classes of the markup: the form with its message (.members-login__state), the form of the page a link opens (.members-confirm), the line of a signed-in member, the link that signs out and the name. The forms are no .nino-form on purpose: the kernel\'s script posts such a form by XHR, and these are answered by a redirect. The field of the login form is a .nino-form-input and the buttons are .nino-btn.',
-				'de_DE' => 'Die Klassen des Markups: das Formular mit seiner Meldung (.members-login__state), das Formular der Seite, die ein Link öffnet (.members-confirm), die Zeile eines angemeldeten Mitglieds, der Link zum Abmelden und der Name. Die Formulare sind absichtlich kein .nino-form: Das Skript des Kernels sendet ein solches Formular per XHR ab, diese werden mit einer Umleitung beantwortet. Das Feld des Anmeldeformulars ist ein .nino-form-input, die Buttons sind .nino-btn.',
+			'.members-login, .members-code, .members-confirm, .members-signed, .members-logout, .members-name' => [
+				'en_US' => 'The classes of the markup: the form with its message (.members-login__state), its second step with the field for the code (.members-code, .members-code__input) and the link that asks for a new code (.members-code__again), the form of the page a link opens (.members-confirm), the line of a signed-in member, the link that signs out and the name. The forms are no .nino-form on purpose: the kernel\'s script posts such a form by XHR, and these are answered by a redirect. The fields of the login forms are .nino-form-input and the buttons are .nino-btn.',
+				'de_DE' => 'Die Klassen des Markups: das Formular mit seiner Meldung (.members-login__state), sein zweiter Schritt mit dem Feld für den Code (.members-code, .members-code__input) und dem Link, der einen neuen Code anfordert (.members-code__again), das Formular der Seite, die ein Link öffnet (.members-confirm), die Zeile eines angemeldeten Mitglieds, der Link zum Abmelden und der Name. Die Formulare sind absichtlich kein .nino-form: Das Skript des Kernels sendet ein solches Formular per XHR ab, diese werden mit einer Umleitung beantwortet. Die Felder der Anmeldeformulare sind .nino-form-input, die Buttons sind .nino-btn.',
 			],
 		],
 		'routes' => [
 			'POST /.members/login' => [
-				'en_US' => 'The request for a link: email and return, with [csrf] in the form. It counts the visitor (the setting attempts per hour) and the address (3 per hour) and, over either, redirects (303) to the page the form was on with ?members=limit. Otherwise it mails a link to an address that belongs to an active member and nothing to any other - and answers both alike: the redirect (303) to that page with ?members=sent, so that nothing tells whether an address is a member\'s. A post without the csrf token is answered with a redirect (303) to that page with ?members=expired, and counts for nothing.',
-				'de_DE' => 'Die Anforderung eines Links: email und return, mit [csrf] im Formular. Sie zählt den Besucher (die Einstellung Versuche je Stunde) und die Adresse (3 je Stunde) und leitet darüber (303) auf die Seite des Formulars mit ?members=limit um. Sonst schickt sie einer Adresse, die zu einem aktiven Mitglied gehört, einen Link und jeder anderen nichts – und antwortet beiden gleich: mit der Umleitung (303) auf diese Seite mit ?members=sent, damit nichts verrät, ob eine Adresse zu einem Mitglied gehört. Ein Post ohne den csrf-Token wird mit einer Umleitung (303) auf diese Seite mit ?members=expired beantwortet und zählt nicht.',
+				'en_US' => 'The request for a code: email and return, with [csrf] in the form. It counts the visitor (the setting attempts per hour) and the address (3 per hour) and, over either, redirects (303) to the page the form was on with ?members=limit. Otherwise it keeps the address, a random value and the time the code is good until in the visitor\'s session - for every address that is one, a member\'s or not - and mails six digits to an address that belongs to an active member, nothing to any other: the code is kept only as a hash of that random value and the code, so it is worth nothing outside the session that asked. It answers all alike: the redirect (303) to that page with ?members=sent, so that nothing tells whether an address is a member\'s. A post without the csrf token is answered with a redirect (303) to that page with ?members=expired, and counts for nothing.',
+				'de_DE' => 'Die Anforderung eines Codes: email und return, mit [csrf] im Formular. Sie zählt den Besucher (die Einstellung Versuche je Stunde) und die Adresse (3 je Stunde) und leitet darüber (303) auf die Seite des Formulars mit ?members=limit um. Sonst hält sie die Adresse, einen Zufallswert und die Zeit, bis zu der der Code gilt, in der Sitzung des Besuchers fest – für jede Adresse, die eine ist, gleich ob ein Mitglied sie hat – und schickt einer Adresse, die zu einem aktiven Mitglied gehört, sechs Ziffern, jeder anderen nichts: Der Code wird nur als Hashwert aus diesem Zufallswert und dem Code gespeichert, ist also außerhalb der Sitzung, die ihn angefordert hat, nichts wert. Sie antwortet allen gleich: mit der Umleitung (303) auf diese Seite mit ?members=sent, damit nichts verrät, ob eine Adresse zu einem Mitglied gehört. Ein Post ohne den csrf-Token wird mit einer Umleitung (303) auf diese Seite mit ?members=expired beantwortet und zählt nicht.',
+			],
+			'POST /.members/code' => [
+				'en_US' => 'The code of the mail: code and return, with [csrf]. Without a request in the session, or after its time, the answer is the redirect (303) to the page of the form with ?members=gone; a post without the csrf token is ?members=expired and uses nothing up. Otherwise a try is counted and the code - six digits, spaces left out - is looked up and spent. A good one signs the member in and sends them on (303) to the page that asked for the login, else to the start page. A wrong one - or one that is not six digits - is ?members=wrong, and the fifth is ?members=gone: the request is over and a new code has to be asked for.',
+				'de_DE' => 'Der Code der Mail: code und return, mit [csrf]. Ohne eine Anforderung in der Sitzung oder nach ihrer Zeit ist die Antwort die Umleitung (303) auf die Seite des Formulars mit ?members=gone; ein Post ohne den csrf-Token ist ?members=expired und verbraucht nichts. Sonst wird ein Versuch gezählt und der Code – sechs Ziffern, Leerzeichen bleiben außen vor – gesucht und verbraucht. Ein guter meldet das Mitglied an und leitet (303) auf die Seite weiter, die die Anmeldung verlangt hat, sonst auf die Startseite. Ein falscher – oder einer, der keine sechs Ziffern hat – ist ?members=wrong, und der fünfte ist ?members=gone: Die Anforderung ist zu Ende, ein neuer Code muss angefordert werden.',
 			],
 			'/.members/login?t=<token>' => [
-				'en_US' => 'The link of the mail. It changes nothing: for a valid token it answers (200) a page that names the account and holds one button, for an unknown, expired or spent token the login page in place, with the status 400 and the message that the link is not valid. A mail scanner or a prefetch that opens the link uses nobody\'s link up.',
-				'de_DE' => 'Der Link der Mail. Er ändert nichts: Für einen gültigen Token antwortet er (200) mit einer Seite, die das Konto nennt und einen Button hat, für einen unbekannten, abgelaufenen oder verbrauchten Token mit der Anmeldeseite an Ort und Stelle, mit dem Status 400 und der Meldung, dass der Link nicht gültig ist. Ein Mail-Scanner oder ein Vorabruf, der den Link öffnet, verbraucht niemandes Link.',
+				'en_US' => 'The link of an invitation, and of the login link the owner sends from the panel. It changes nothing: for a valid token it answers (200) a page that names the account and holds one button, for an unknown, expired or spent token the login page in place, with the status 400 and the message that the link is not valid. A mail scanner or a prefetch that opens the link uses nobody\'s link up.',
+				'de_DE' => 'Der Link einer Einladung und des Anmeldelinks, den der Inhaber im Panel schickt. Er ändert nichts: Für einen gültigen Token antwortet er (200) mit einer Seite, die das Konto nennt und einen Button hat, für einen unbekannten, abgelaufenen oder verbrauchten Token mit der Anmeldeseite an Ort und Stelle, mit dem Status 400 und der Meldung, dass der Link nicht gültig ist. Ein Mail-Scanner oder ein Vorabruf, der den Link öffnet, verbraucht niemandes Link.',
 			],
 			'POST /.members/confirm' => [
 				'en_US' => 'The button of that page: the token and [csrf]. The token is spent on the spot, the member is signed in and sent on (303) to the page that asked for the login, else to the start page - where to is kept with the token on the server and never in the form. A post without the csrf token answers the page again with the message that the session has run out and uses nothing up; a token that is spent, has run out or belongs to an account that is gone answers the login page in place, with the status 400.',
@@ -95,20 +99,20 @@ return [
 		],
 		'install' => [
 			'templates/page-members-login.tpl' => [
-				'en_US' => 'The login page: the site\'s frames, a title, a short text and [members-login]. The gate renders it in place of a protected page and the link renders it for a token that is not valid; a project that wants an address of its own for it gives it a route in the Routes panel.',
-				'de_DE' => 'Die Anmeldeseite: die Rahmen der Website, ein Titel, ein kurzer Text und [members-login]. Das Tor rendert sie an Stelle einer geschützten Seite, und der Link rendert sie für einen Token, der nicht gültig ist; ein Projekt, das eine eigene Adresse dafür will, gibt ihr im Panel Routen eine Route.',
+				'en_US' => 'The login page: the site\'s frames, a title, a short text and [members-login]. The gate renders it in place of a protected page and a link renders it for a token that is not valid; a project that wants an address of its own for it gives it a route in the Routes panel.',
+				'de_DE' => 'Die Anmeldeseite: die Rahmen der Website, ein Titel, ein kurzer Text und [members-login]. Das Tor rendert sie an Stelle einer geschützten Seite, und ein Link rendert sie für einen Token, der nicht gültig ist; ein Projekt, das eine eigene Adresse dafür will, gibt ihr im Panel Routen eine Route.',
 			],
 			'templates/page-members-confirm.tpl' => [
 				'en_US' => 'The page a link of the mail opens: the site\'s frames, a title, a short text and [members-confirm], the button that signs the member in. Nothing is used up until the button is pressed, which is what keeps a mail scanner from using a link up. The link renders it; a project that wants an address of its own for it gives it a route in the Routes panel.',
 				'de_DE' => 'Die Seite, die ein Link der Mail öffnet: die Rahmen der Website, ein Titel, ein kurzer Text und [members-confirm], der Button, der das Mitglied anmeldet. Verbraucht wird erst, wenn der Button gedrückt ist – so verbraucht kein Mail-Scanner einen Link. Der Link rendert sie; ein Projekt, das eine eigene Adresse dafür will, gibt ihr im Panel Routen eine Route.',
 			],
 			'text/<locale>.php' => [
-				'en_US' => 'Its words, into the Text panel - those of the two pages, the forms, their messages and the two mails.',
-				'de_DE' => 'Seine Worte, ins Panel Texte – die der beiden Seiten, der Formulare, ihrer Meldungen und der beiden Mails.',
+				'en_US' => 'Its words, into the Text panel - those of the two pages, the forms, their messages and the three mails.',
+				'de_DE' => 'Seine Worte, ins Panel Texte – die der beiden Seiten, der Formulare, ihrer Meldungen und der drei Mails.',
 			],
 			'elements/privacy.php' => [
-				'en_US' => 'Its section of the privacy policy, added to the Legal module\'s type - never replacing a section. Where there is no such module, nothing happens. A starting point, no legal advice. It names fifteen minutes and seven days, the defaults of the settings linkMinutes and inviteDays: whoever changes a setting changes the section in the Elements panel too.',
-				'de_DE' => 'Sein Abschnitt der Datenschutzerklärung, dem Typ des Moduls Legal hinzugefügt – ohne einen Abschnitt zu ersetzen. Wo es das Modul nicht gibt, passiert nichts. Ein Ausgangspunkt, keine Rechtsberatung. Er nennt fünfzehn Minuten und sieben Tage, die Standards der Einstellungen linkMinutes und inviteDays: Wer eine Einstellung ändert, passt den Abschnitt im Panel Elemente mit an.',
+				'en_US' => 'Its section of the privacy policy, added to the Legal module\'s type - never replacing a section. Where there is no such module, nothing happens. A starting point, no legal advice. It names fifteen minutes, five tries and seven days, the defaults of the settings linkMinutes and inviteDays and of the tries of a code: whoever changes a setting changes the section in the Elements panel too.',
+				'de_DE' => 'Sein Abschnitt der Datenschutzerklärung, dem Typ des Moduls Legal hinzugefügt – ohne einen Abschnitt zu ersetzen. Wo es das Modul nicht gibt, passiert nichts. Ein Ausgangspunkt, keine Rechtsberatung. Er nennt fünfzehn Minuten, fünf Versuche und sieben Tage, die Standards der Einstellungen linkMinutes und inviteDays und der Versuche eines Codes: Wer eine Einstellung ändert, passt den Abschnitt im Panel Elemente mit an.',
 			],
 		],
 	],
@@ -146,10 +150,10 @@ return [
 		],
 		'linkMinutes' => [
 			'type'		=> 'int',
-			'label'		=> [ 'en_US' => 'Login link valid for', 'de_DE' => 'Login-Link gültig für' ],
+			'label'		=> [ 'en_US' => 'Login code valid for', 'de_DE' => 'Login-Code gültig für' ],
 			'hint'		=> [
-				'en_US' => 'How long the link a member asks for can be used, once. The section of the privacy policy names fifteen minutes - change it with this.',
-				'de_DE' => 'Wie lange der Link, den ein Mitglied anfordert, benutzt werden kann, einmal. Der Abschnitt der Datenschutzerklärung nennt fünfzehn Minuten – ändere ihn mit.',
+				'en_US' => 'How long the code a member asks for can be used, once. The login link the owner sends from the panel is valid just as long. The section of the privacy policy names fifteen minutes - change it with this.',
+				'de_DE' => 'Wie lange der Code, den ein Mitglied anfordert, benutzt werden kann, einmal. Der Anmeldelink, den der Inhaber im Panel schickt, gilt ebenso lange. Der Abschnitt der Datenschutzerklärung nennt fünfzehn Minuten – ändere ihn mit.',
 			],
 			'min'			=> 5,
 			'max'			=> 1440,
@@ -172,8 +176,8 @@ return [
 			'type'		=> 'int',
 			'label'		=> [ 'en_US' => 'Requests', 'de_DE' => 'Anforderungen' ],
 			'hint'		=> [
-				'en_US' => 'Links one visitor may ask for per hour before the form refuses for the rest of that hour. Beside it, one address gets at most 3 links per hour, whoever asks.',
-				'de_DE' => 'Links, die ein Besucher pro Stunde anfordern darf, bevor das Formular für den Rest der Stunde verweigert. Daneben bekommt eine Adresse höchstens 3 Links pro Stunde, wer auch fragt.',
+				'en_US' => 'Codes one visitor may ask for per hour before the form refuses for the rest of that hour. Beside it, one address gets at most 3 codes per hour, whoever asks.',
+				'de_DE' => 'Codes, die ein Besucher pro Stunde anfordern darf, bevor das Formular für den Rest der Stunde verweigert. Daneben bekommt eine Adresse höchstens 3 Codes pro Stunde, wer auch fragt.',
 			],
 			'min'			=> 1,
 			'max'			=> 50,

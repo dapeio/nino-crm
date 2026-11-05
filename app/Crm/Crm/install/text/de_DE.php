@@ -31,11 +31,11 @@ return [
 	// Die Angaben der Startseite, des Tors (der Element-URI ist '/', wie ihn der Assistent für die Startseite schreibt): der Kopf liest sie
 	'[[/_nino/webpage//name]]' => 'Kundenportal',
 	'[[/_nino/webpage//title]]' => 'Kundenportal',
-	'[[/_nino/webpage//description]]' => 'Dein Zugang kommt von uns per E-Mail – melde Dich mit dem Link an, den wir Dir schicken.',
+	'[[/_nino/webpage//description]]' => 'Dein Zugang kommt von uns per E-Mail – melde Dich mit dem Code an, den wir Dir schicken.',
 
 	// Das Tor des Portals - die Startseite der Website, page-door.tpl
 	'[[/template/page-door/intro/title]]'               => 'Kundenportal',
-	'[[/template/page-door/intro/text]]'                => 'Dein Zugang kommt von uns per E-Mail. Hast Du keinen, schreib uns. Gib hier die E-Mail-Adresse Deines Kontos ein – wir schicken Dir einen Link, mit dem Du Dich ohne Passwort anmeldest.',
+	'[[/template/page-door/intro/lead]]'                => 'Dein Zugang kommt von uns per E-Mail. Hast Du keinen, schreib uns. Gib hier die E-Mail-Adresse Deines Kontos ein – wir schicken Dir einen Code, mit dem Du Dich ohne Passwort anmeldest.',
 
 	// Die Worte des Elemente-Panels für den Typ Positionen - die der Workbench, nicht der Website (in der Blacklist der Einheit)
 	'[[/_admin/elements/field/positionen/title]]' => 'Titel',

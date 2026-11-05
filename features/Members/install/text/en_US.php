@@ -9,33 +9,45 @@ return [
 
 	// The login page, page-members-login.tpl
 	'[[/template/page-members-login/intro/title]]'	=> 'Sign in',
-	'[[/template/page-members-login/intro/text]]'	=> 'Enter the email address of your account. We send you a link by email - with it you sign in, without a password.',
+	'[[/template/page-members-login/intro/lead]]'	=> 'Enter the email address of your account. We send you a code by email - with it you sign in, without a password.',
 
 	// The page a link opens, page-members-confirm.tpl
 	'[[/template/page-members-confirm/intro/title]]'	=> 'Confirm your sign-in',
 	'[[/template/page-members-confirm/intro/text]]'	=> 'Press the button to finish signing in. Nothing has happened yet - the link you followed only brought you here.',
 
-	// The form, [members-login]
+	// The form, [members-login]: the first step asks for the address, the second for the code
 	'[[/feature/members/login/label]]'	=> 'Email address',
-	'[[/feature/members/login/button]]'	=> 'Send login link',
+	'[[/feature/members/login/request]]'	=> 'Send code',
+	'[[/feature/members/code/intro]]'	=> 'We sent a code to',
+	'[[/feature/members/code/label]]'	=> 'Your code',
+	'[[/feature/members/code/button]]'	=> 'Sign in',
+	'[[/feature/members/code/again]]'	=> 'Request a new code',
 
 	// The button of that page, [members-confirm]
 	'[[/feature/members/confirm/intro]]'	=> 'You are signing in as',
 	'[[/feature/members/confirm/button]]'	=> 'Sign in now',
 
 	// What the forms say above their button: the states of ?members=
-	'[[/feature/members/state/sent]]'		=> 'If this address belongs to a member, a link to sign in is on its way. Look in your spam folder as well.',
+	'[[/feature/members/state/code]]'		=> 'If this address belongs to an account, a code is on its way. Look in your spam folder as well.',
 	'[[/feature/members/state/limit]]'		=> 'Too many requests. Please try again in an hour.',
 	'[[/feature/members/state/invalid]]'	=> 'This link does not work any more. Ask for a new one below.',
 	'[[/feature/members/state/out]]'		=> 'You are signed out.',
 	'[[/feature/members/state/expired]]'	=> 'Your session has run out. Please try again.',
+	'[[/feature/members/state/wrong]]'		=> 'The code is not right. Try again.',
+	'[[/feature/members/state/gone]]'		=> 'This code is no longer valid. Request a new one.',
 
 	// A signed-in member: the line of [members-login], and the link of [members-logout]
 	'[[/feature/members/signed/label]]'	=> 'Signed in as',
 	'[[/feature/members/logout/label]]'	=> 'Sign out',
 
-	// The mail with a link to sign in, and the invitation. The number of minutes
-	// and of days stands between two of these words
+	// The mail with a code to sign in, the one with the link to sign in that the owner sends, and the
+	// invitation. The number of minutes and of days stands between two of these words
+	'[[/feature/members/mail/code-subject]]'	=> 'Your login code',
+	'[[/feature/members/mail/code-title]]'		=> 'Sign in',
+	'[[/feature/members/mail/code-intro]]'		=> 'You asked for a code to sign in. Enter it on the page where you asked for it - you need no password.',
+	'[[/feature/members/mail/code-valid]]'		=> 'The code works once and is valid for',
+	'[[/feature/members/mail/code-minutes]]'	=> 'minutes.',
+	'[[/feature/members/mail/code-notice]]'		=> 'If you did not ask for it, ignore this email: without the code nobody can sign in with your address.',
 	'[[/feature/members/mail/login-subject]]'	=> 'Your login link',
 	'[[/feature/members/mail/login-title]]'		=> 'Sign in',
 	'[[/feature/members/mail/login-intro]]'		=> 'You asked for a link to sign in. The button opens a page where you confirm your sign-in with one more click - you need no password.',
