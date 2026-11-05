@@ -45,6 +45,15 @@ class Crm {
 						'de_DE' => 'Das Abo des Kalenders des Features Termine unter den Aktionen des Kopfes (die Seite Termine).',
 					],
 				],
+				'nav' => [
+					'type'    => 'bool',
+					'default' => true,
+					'label'   => [ 'en_US' => 'Navigation', 'de_DE' => 'Navigation' ],
+					'hint'    => [
+						'en_US' => 'The navigation of the portal before the head. Off for a template that sets [crm-portal-nav] itself.',
+						'de_DE' => 'Die Navigation des Portals vor dem Kopf. Aus für eine Vorlage, die [crm-portal-nav] selbst setzt.',
+					],
+				],
 			],
 			'preview'    => 'block',
 			'draws'      => 'div .crm-head',

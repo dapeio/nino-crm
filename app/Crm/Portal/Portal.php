@@ -2,11 +2,11 @@
 declare(strict_types=1);
 /**
  *	Crm\Portal		What the portal pages read of the CRM: the client of the member who is signed in, the head of every portal page
- *								([crm-portal-head]: the breadcrumb where there is a parent, the title of the page or of the project, its lead, the member and
- *								the company, Abmelden and the actions of the page), the component [crm-client] that says the company, the component
+ *								([crm-portal-head]: the navigation of the portal, then the breadcrumb where there is a parent, the title of the page or of the
+ *								project, its lead, the account of the member on a narrow window and the actions of the page), the component [crm-client] that says the company, the component
  *								[crm-documents] that lists the documents released to that client (all of them, or those of one project) with their number, the amount, the
  *								day an invoice is due, the state in the customer's words and - for an open invoice - how to pay it, the navigation
- *								[crm-portal-nav] of the areas of the portal and the door [crm-portal-door] of the site's start page. The Datenschutz
+ *								[crm-portal-nav] of the portal (its areas, the account of the member and Abmelden) and the door [crm-portal-door] of the site's start page. The Datenschutz
  *								([crm-privacy], Portal\Privacy), the order under an offer (Portal\Order), the offer itself (Portal\Offer), the start page
  *								(Portal\Start, [crm-portal-start]) and the dates (Portal\Dates, [crm-portal-dates]) are classes of their own. The areas
  *								themselves are the components of Portal\Projects ([crm-projects]), Portal\Files ([crm-uploads]) and Portal\Data
@@ -36,10 +36,10 @@ class Portal {
 	public const string SCRIPT = '/app/Crm/Portal/assets/portal.js';
 	private const string NAME = '/^[a-z]{1,20}$/D';
 
-	// The areas of the portal, in the order of the navigation: the last part of the address, which is also the key of the page's name
-	public const array AREAS = [ 'meine-daten', 'projekte', 'upload', 'belege', 'termine' ];
+	// The entries of the navigation, in its order: the last part of the address below /portal ('' is the start page), which is also the key of the page's name, and the icon of the entry
+	public const array NAV = [ '' => 'house', 'projekte' => 'folder', 'belege' => 'file-text', 'termine' => 'calendar', 'upload' => 'upload', 'meine-daten' => 'user' ];
 
-	// The sixth area, which the navigation has only while the client has not agreed to the Datenschutz it is asked for (it is reachable from Meine Daten all the time)
+	// The entry after them, which the navigation has only while the client has not agreed to the Datenschutz it is asked for (it is reachable from Meine Daten all the time)
 	public const string PRIVACY = 'datenschutz';
 
 	// The tone of a pill by the state a customer reads: open (and a project that runs) is the brand's ink, overdue the danger, what is done the success, what is over muted
@@ -121,14 +121,15 @@ class Portal {
 	}
 
 	/**
-	 *	[crm-portal-head] - the head of a portal page: the title and the lead of the page (its name and description, as the head of the site reads
-	 *	them), the member who is signed in with the company of the client, and Abmelden. On the page of a project (?projekt=<id>, or ?review=<file> of a
+	 *	[crm-portal-head] - the head of a portal page: the navigation of the portal (see componentCrmPortalNav(); nav="0" leaves it out, for a template that
+	 *	sets it itself), then the title and the lead of the page (its name and description, as the head of the site reads them) and, on a window narrower
+	 *	than the side bar, the account of the member (the chip and Abmelden). On the page of a project (?projekt=<id>, or ?review=<file> of a
 	 *	file of one of the client's projects) the breadcrumb Projekte › the project, the project's title as the title with its state and its start,
 	 *	and its description as the lead. With calendar="1" the subscription of the calendar stands among the actions (where Events is on). Nothing
 	 *	for a visitor
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$args					calendar ('1': the subscription of the calendar of Events among the actions)
+	 *	@param		array 		$args					calendar ('1': the subscription of the calendar of Events among the actions), nav ('0': no navigation)
 	 *
 	 *	@return 	string
 	 */
@@ -146,8 +147,7 @@ class Portal {
 
 		$client = self::client( $appData );
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
-		$name = (string) $member['name'] !== '' ? (string) $member['name'] : (string) $member['email'];
-		$company = $client !== null && $client['company'] !== '' && $client['company'] !== $name ? self::render( 'head-company', [ '[[company]]' => \Nino\Modules\Components::escape( $client['company'] ) ] ) : '';
+		$name = self::nameOf( $member );
 		$project = $client === null ? null : Portal\Projects::current( $appData, $client );
 
 		if( $project !== null ) {
@@ -170,16 +170,16 @@ class Portal {
 			$lead = self::render( 'head-lead', [ '[[text]]' => '[[/_nino/webpage[[/nino/http/response/uri]]/description]]' ] );
 		}
 
-		return self::render( 'head', [
+		$navigation = ( $args['nav'] ?? '1' ) === '0' ? '' : self::componentCrmPortalNav( $appData, [] );
+
+		return $navigation. self::render( 'head', [
 			'[[classes]]' => \Nino\Feature::classes( $args ),
 			'[[crumbs]]'  => $crumbs,
 			'[[title]]'   => $title,
 			'[[badge]]'   => $badge,
 			'[[lead]]'    => $lead,
+			'[[account]]' => self::render( 'head-account', [ '[[current]]' => rtrim( (string) ( \Nino\Http::getRequest( $appData )['/nino/http/request']['uri'] ?? '' ), '/' ) === '/portal/meine-daten' ? ' aria-current="page"' : '', '[[dir]]' => $dir, '[[initials]]' => \Nino\Modules\Components::escape( self::initials( $name ) ), '[[name]]' => \Nino\Modules\Components::escape( $name ) ] ),
 			'[[actions]]' => ( $args['calendar'] ?? '0' ) === '1' && Crm::featureOn( $appData, 'events' ) === true ? self::template( 'head-calendar' ) : '',
-			'[[dir]]'     => $dir,
-			'[[member]]'  => \Nino\Modules\Components::escape( $name ),
-			'[[company]]' => $company,
 		] );
 	}
 
@@ -206,9 +206,11 @@ class Portal {
 	}
 
 	/**
-	 *	[crm-portal-nav] - the areas of the portal as links, the one the request is in marked with aria-current. The names are the words
-	 *	of the pages (/_nino/webpage/portal/<area>/name). A sixth link, to the Datenschutz, stands there while the client has not agreed to the text it is asked
-	 *	for. Nothing for a visitor
+	 *	[crm-portal-nav] - the navigation of the portal: the account of the member as a chip (the initials, the name, the company of the client; a link to
+	 *	Meine Daten), the areas as links - Portal, Projekte, Belege, Termine, Upload, Meine Daten - the one the request is in marked with aria-current,
+	 *	and Abmelden. The names are the words of the pages (/_nino/webpage/portal/<area>/name). A link to the Datenschutz stands after the areas, with a dot,
+	 *	while the client has not agreed to the text it is asked for. It is the same markup on every window: the style sheet draws it as a side bar, a row of
+	 *	pills or a bar of tabs. Nothing for a visitor
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$args
@@ -217,7 +219,12 @@ class Portal {
 	 */
 	public static function componentCrmPortalNav( array &$appData, array $args ): string {
 
-		if( Crm::featureOn( $appData, 'members' ) === false || \Nino\Modules\Members::current( $appData ) === null )
+		if( Crm::featureOn( $appData, 'members' ) === false )
+			return '';
+
+		$member = \Nino\Modules\Members::current( $appData );
+
+		if( $member === null )
 			return '';
 
 		self::words( $appData );
@@ -225,30 +232,76 @@ class Portal {
 		$request = \Nino\Http::getRequest( $appData );
 		$path = $request === false ? '' : rtrim( (string) ( $request['/nino/http/request']['uri'] ?? '' ), '/' );
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
-		$items = '';
-
-		$areas = self::AREAS;
+		$name = self::nameOf( $member );
 		$client = self::client( $appData );
+		$areas = self::NAV;
 
 		if( $client !== null ) {
 			$standing = Records::privacy( $appData, $client['id'] );
 
 			if( $standing['asked'] === true && $standing['agreed'] === false )
-				$areas[] = self::PRIVACY;
+				$areas[self::PRIVACY] = 'shield-check';
 		}
 
-		foreach( $areas as $area ) {
+		$items = '';
 
-			$here = $path === '/portal/'. $area || str_starts_with( $path, '/portal/'. $area. '/' ) === true;
+		foreach( $areas as $area => $icon ) {
 
-			$items .= str_replace(
-				[ '[[dir]]', '[[area]]', '[[current]]' ],
-				[ $dir, $area, $here === true ? ' aria-current="page"' : '' ],
-				self::template( 'nav-item' )
-			);
+			$here = $area === '' ? $path === '/portal' : ( $path === '/portal/'. $area || str_starts_with( $path, '/portal/'. $area. '/' ) === true );
+
+			$items .= self::render( 'nav-item', [
+				'[[area]]'    => $area === '' ? 'start' : $area,
+				'[[path]]'    => $area === '' ? '' : '/'. $area,
+				'[[icon]]'    => $icon,
+				'[[dir]]'     => $dir,
+				'[[current]]' => $here === true ? ' aria-current="page"' : '',
+				'[[dot]]'     => $area === self::PRIVACY ? self::template( 'nav-dot' ) : '',
+			] );
 		}
 
-		return str_replace( [ '[[classes]]', '[[items]]' ], [ \Nino\Feature::classes( $args ), $items ], self::template( 'nav' ) );
+		$company = $client !== null && $client['company'] !== '' && $client['company'] !== $name ? self::render( 'nav-company', [ '[[company]]' => \Nino\Modules\Components::escape( str_replace( "\0", '', $client['company'] ) ) ] ) : '';
+
+		return self::render( 'nav', [
+			'[[classes]]' => \Nino\Feature::classes( $args ),
+			'[[account]]' => self::render( 'nav-account', [ '[[dir]]' => $dir, '[[initials]]' => \Nino\Modules\Components::escape( self::initials( $name ) ), '[[name]]' => \Nino\Modules\Components::escape( $name ), '[[company]]' => $company ] ),
+			'[[items]]'   => $items,
+			'[[logout]]'  => self::render( 'nav-logout', [ '[[dir]]' => $dir ] ),
+		] );
+	}
+
+	/**
+	 *	The name a member is shown with: the name of the account, the address where there is none; a null byte is left out
+	 *
+	 *	@param		array 		$member				As Members::current() has it
+	 *
+	 *	@return 	string
+	 */
+	public static function nameOf( array $member ): string {
+
+		return str_replace( "\0", '', (string) $member['name'] !== '' ? (string) $member['name'] : (string) $member['email'] );
+	}
+
+	/**
+	 *	The initials a chip shows for a name: the first letter (with its marks) or digit of the first and of the last word, in capitals where that stays one character; for one word its first letter,
+	 *	and for an address its first letter. Not escaped
+	 *
+	 *	@param		string		$name
+	 *
+	 *	@return 	string										'?' for a name with no letter in it
+	 */
+	public static function initials( string $name ): string {
+
+		$words = [];
+
+		// mb_scrub() takes a byte that is no UTF-8 out without a word about it - a character cut off at the end as well
+		foreach( preg_split( '/\s+/u', trim( mb_scrub( $name, 'UTF-8' ) ) ) ?: [] as $word )
+			if( preg_match( '/\p{L}\p{M}*|\p{N}/u', $word, $found ) === 1 )
+				$words[] = $found[0];
+
+		if( $words === [] )
+			return '?';
+
+		return implode( '', array_map( static fn( string $letter ): string => mb_strlen( mb_strtoupper( $letter ) ) === mb_strlen( $letter ) ? mb_strtoupper( $letter ) : $letter, count( $words ) === 1 ? $words : [ $words[0], $words[count( $words ) - 1] ] ) );
 	}
 
 	/**

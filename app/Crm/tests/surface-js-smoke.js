@@ -2432,7 +2432,7 @@ function press( w, key, target, mods ) {
 	let statusItems = pitemsStatus;
 	const est = await eopen( {}, undefined, {
 		'crm/status' : function() { return [ 200, { items : statusItems } ] },
-		'crm/setup' : function() { setups++; return [ 200, { added : { routes : [ 'a', 'b', 'c' ], navs : [ 'e' ], templates : [ 'x' ], types : [ 'positionen.php' ], texts : 12, paths : false, start : false }, existed : { routes : [ 'd' ], templates : [ 'y', 'z' ], types : [], paths : true, start : true } } ] },
+		'crm/setup' : function() { setups++; return [ 200, { added : { routes : [ 'a', 'b', 'c' ], templates : [ 'x' ], types : [ 'positionen.php' ], texts : 12, paths : false, start : false }, existed : { routes : [ 'd' ], templates : [ 'y', 'z' ], types : [], paths : true, start : true } } ] },
 	} );
 	check( 'a module that misses something says it line by line, in the words of the state - a portal that is partly there names what it lacks, in the words of the parts - and the button Portal einrichten is there', all( all( est.main, '#status-missing' )[0], 'li' ).map( textOf ).join( '|' ) === [
 		'Das Verzeichnis data/ ist nicht beschreibbar, die Datenbank kann nicht angelegt werden.', texts['status.sign-off'], 'Das Feature PDF ist nicht installiert.',
@@ -2442,8 +2442,8 @@ function press( w, key, target, mods ) {
 	click( est, all( est.main, '#portal-setup' )[0] );
 	check( 'the button posts crm/setup with nothing, and is off while the request is out', est.last( 'crm/setup' ) !== undefined && JSON.stringify( est.last( 'crm/setup' ).data ) === '{}' && all( est.main, '#portal-setup' )[0].disabled === true );
 	await settle();
-	check( '...the status is asked for again and drawn: all is well, the button is gone, and what the setup did stands in one sentence with a place for each of the eight numbers - what a person typed in the form above stays where it is', setups === 1 && est.all( 'crm/status' ).length === 2 && all( est.main, '#status-ok' ).length === 1 && all( est.main, '#portal-setup' )[0].hidden === true
-		&& textOf( all( est.main, '#setup-said' )[0] ) === 'Eingerichtet. Neu: Features 0, Routen 3, Menüeinträge 1, Vorlagen 1, Elementtypen 1, Worte 12, PDF-Vorlagen 0. Schon da: 3.' && efield( est, 'currency' ).value === 'CHF' );
+	check( '...the status is asked for again and drawn: all is well, the button is gone, and what the setup did stands in one sentence with a place for each of the seven numbers - what a person typed in the form above stays where it is', setups === 1 && est.all( 'crm/status' ).length === 2 && all( est.main, '#status-ok' ).length === 1 && all( est.main, '#portal-setup' )[0].hidden === true
+		&& textOf( all( est.main, '#setup-said' )[0] ) === 'Eingerichtet. Neu: Features 0, Routen 3, Vorlagen 1, Elementtypen 1, Worte 12, PDF-Vorlagen 0. Schon da: 3.' && efield( est, 'currency' ).value === 'CHF' );
 	const ehome = await eopen( {}, eok.concat( [ { key : 'pdf-templates', state : 'none', lacks : [ 'rechnung' ] }, { key : 'home', state : 'other' } ] ) );
 	check( 'the card of the portal offers the button while anything of the product is missing, the portal itself being in order: the PDF templates and the start page are lines of the status as well', all( ehome.main, '#portal-setup' )[0].hidden === false && all( all( ehome.main, '#status-missing' )[0], 'li' ).map( textOf ).join( '|' ) === texts['status.pdf-templates-none']+ '|'+ texts['status.home-other'] );
 	const eown = await eopen( {}, eok.concat( [ { key : 'pdf-templates', state : 'ok' }, { key : 'home', state : 'own' } ] ) );
@@ -2498,7 +2498,7 @@ function press( w, key, target, mods ) {
 	await settle();
 	check( '...the status is asked for again and drawn: every row done, the button gone, Fertig. with the way on to the Übersicht, and what the run did in a sentence - and the start page said once', iran === 1 && first.all( 'crm/status' ).length === 2 && Array.from( irows( first ) ).every( function( li ) { return li.getAttribute( 'data-state' ) === 'ok' } )
 		&& all( first.main, '#einrichtung-run' )[0].hidden === true && textOf( all( first.main, '#einrichtung-done' )[0] ).indexOf( 'Fertig.' ) === 0 && all( all( first.main, '#einrichtung-done' )[0], 'a' )[0].getAttribute( 'href' ) === '#uebersicht' && textOf( all( first.main, '#einrichtung-after' )[0] ) === texts['einrichtung.after']
-		&& textOf( all( first.main, '#einrichtung-said' )[0] ) === 'Eingerichtet. Neu: Features 2, Routen 0, Menüeinträge 0, Vorlagen 0, Elementtypen 0, Worte 3, PDF-Vorlagen 6. Schon da: 2. '+ texts['setup.cap'].replace( '%s', '100' )+ ' '+ texts['setup.home-starter'] && texts['setup.cap'].split( '%s' ).length === 2 );
+		&& textOf( all( first.main, '#einrichtung-said' )[0] ) === 'Eingerichtet. Neu: Features 2, Routen 0, Vorlagen 0, Elementtypen 0, Worte 3, PDF-Vorlagen 6. Schon da: 2. '+ texts['setup.cap'].replace( '%s', '100' )+ ' '+ texts['setup.home-starter'] && texts['setup.cap'].split( '%s' ).length === 2 );
 
 	// The start page of the owner's own: no lack, kept - the row says what it is, the answer says that it stays
 	let ownRun = false;
@@ -2735,10 +2735,10 @@ function press( w, key, target, mods ) {
 	const pmButton = pm.find( function( node ) { return node.id === 'crm-setup' } );
 	pmButton.click();
 	check( 'the button posts crm/setup with nothing, and is off while the request is out', pm.last().action === 'crm/setup' && JSON.stringify( pm.last().payload ) === '{}' && pmButton.disabled === true );
-	pm.answer( 200, { added : { routes : [ 'a', 'b', 'c' ], navs : [ 'e' ], templates : [ 'x' ], types : [ 'positionen.php' ], texts : 12, paths : false, start : false }, existed : { routes : [ 'd' ], templates : [ 'y', 'z' ], types : [], paths : true, start : true } } );
+	pm.answer( 200, { added : { routes : [ 'a', 'b', 'c' ], templates : [ 'x' ], types : [ 'positionen.php' ], texts : 12, paths : false, start : false }, existed : { routes : [ 'd' ], templates : [ 'y', 'z' ], types : [], paths : true, start : true } } );
 	check( '...the status is asked for again after it', pm.last().action === 'crm/status' && pm.requests.length === 3 );
 	pm.answer( 200, { items : eok } );
-	check( '...and what the setup did stays on the screen after the box is drawn again: one sentence with a place for each of the eight numbers', pm.texts().indexOf( 'Eingerichtet. Neu: Features 0, Routen 3, Menüeinträge 1, Vorlagen 1, Elementtypen 1, Worte 12, PDF-Vorlagen 0. Schon da: 3.' ) !== -1 && pm.words['/_admin/crm/setup/done'].split( '%s' ).length === 9
+	check( '...and what the setup did stays on the screen after the box is drawn again: one sentence with a place for each of the seven numbers', pm.texts().indexOf( 'Eingerichtet. Neu: Features 0, Routen 3, Vorlagen 1, Elementtypen 1, Worte 12, PDF-Vorlagen 0. Schon da: 3.' ) !== -1 && pm.words['/_admin/crm/setup/done'].split( '%s' ).length === 8
 		&& pm.find( function( node ) { return node.id === 'crm-setup' } ).hidden === true );
 	const pr = panelWorld( 'de_DE' );
 	pr.panel.showCurrent();

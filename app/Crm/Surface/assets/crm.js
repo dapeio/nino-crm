@@ -5728,11 +5728,11 @@
 	 */
 	const setupSentence = function( answer ) {
 
-		const none = { features : [], routes : [], navs : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false, cap : false };
+		const none = { features : [], routes : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false, cap : false };
 		const added = Object.assign( {}, none, answer.added );
 		const existed = Object.assign( {}, none, answer.existed );
 		const there = existed.features.length+ existed.routes.length+ existed.templates.length+ existed.types.length+ existed.pdf.templates.length;
-		const done = t( 'setup.done', added.features.length, added.routes.length, added.navs.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
+		const done = t( 'setup.done', added.features.length, added.routes.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
 		const sentence = typeof added.cap === 'number' ? done+ ' '+ t( 'setup.cap', added.cap ) : done;
 
 		// What became of the start page, said in the answer: made the door where there was none or the wizard's page, or kept where it is the owner's

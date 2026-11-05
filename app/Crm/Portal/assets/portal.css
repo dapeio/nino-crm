@@ -11,12 +11,13 @@
  *
  *	1 Tokens		Every value is a property of :where(:root) (no specificity: a rule of the project that moves one wins by order), and every one
  *							of them is made of a role of the theme.
- *							Type scale, six steps and only those: --crm-text-xs .8125rem, -s .875rem, -m 1rem (the page's text), -l 1.125rem, -xl 1.25rem,
- *							-xxl 1.5rem. Meta is xs, secondary words and buttons s, card titles and section titles l, the page title xxl.
+ *							Type scale, seven steps and only those: --crm-text-xxs .6875rem, -xs .8125rem, -s .875rem, -m 1rem (the page's text), -l 1.125rem,
+ *							-xl 1.25rem, -xxl 1.5rem. The words under the icons of the tab bar are xxs, meta is xs, secondary words and buttons s, card
+ *							titles and section titles l, the page title xxl.
  *							Spacing, seven steps and only those: --crm-1 .25rem, -2 .5rem, -3 .75rem, -4 1rem, -5 1.5rem, -6 2rem, -7 3rem (4/8/12/16/24/32/48px).
  *							The measure of the portal is its own: the site lifts its rem by 112.5% from 768px (--base-size), a page that is read, and
  *							the portal does not follow - it is used. From 768px the steps and the spacing are divided by --crm-step (1.125, that factor),
- *							so that they are 13/14/16/18/20/24px and 4/8/12/16/24/32/48px on the phone and on the desktop alike; --crm-touch stays 44px.
+ *							so that they are 11/13/14/16/18/20/24px and 4/8/12/16/24/32/48px on the phone and on the desktop alike; --crm-touch stays 44px.
  *							Surfaces, three levels: --crm-page (the ground of a portal page), --crm-surface (a card, one step above it), --crm-surface-2
  *							(a block inside a card, the second level). A step above is lighter, in both modes: light-dark() picks the mix per the
  *							colour scheme in use, which the theme declares on :root (color-scheme: light dark) and a forced mode sets (:root
@@ -45,7 +46,8 @@
  *							main menu gets a touch-sized hit area; everything else of the frame is the theme's.
  *	3 Head			.crm-head: the breadcrumb (.crm-crumbs) where there is a parent, the title as the largest text (xxl, 24px) with its state -
  *							a pill and the start - beside it as a line of its own where the page has one, the lead (s, ink 3, at most 60 characters),
- *							the actions at the right (Abmelden, the calendar) and the meta line (member · company). A head with a lead is 54px high.
+ *							the account of the member at the right (the chip with the initials and Abmelden as an icon; only where the window has no
+ *							side bar, which carries them) and the actions (the calendar). A head with a lead is 54px high.
  *							Section titles .crm-section__title (l) with .crm-section__head for a title and an action in one line.
  *	4 Surfaces	.crm-card (surface, line, soft shadow), --link (elevation on hover and focus), --nested (the second level, no line),
  *							--warning (an edge in the warning tone). .crm-fold: a details whose summary is a ghost button and whose body is a nested block.
@@ -73,7 +75,10 @@
  *							the order, how to pay, the files, the dates, the data form, the Datenschutz, the uploads and the door - each in its own
  *							chapter, each made of 1 to 10.
  *	12 Empty		.crm-empty: an icon, the sentence that says what happens next, and the way to the studio.
- *	13 Print		A page of the portal on paper: the frame, the actions and the forms are left out, the folds are opened, the head is not fixed.
+ *	13 Shell		The navigation of the portal, one markup in three shapes and no script: from 1024px a side bar beside the page (11rem, sticky
+ *							under the head of the site, the chip of the account at its top, Abmelden below the entries), from 768px a row of pills over the
+ *							head, below 768px a bar of tabs at the foot of the window (56px, five entries, the account in the head of the page).
+ *	14 Print		A page of the portal on paper: the frame, the navigation, the actions and the forms are left out, the folds are opened, the head is not fixed.
  *
  *	The forms of the portal carry no .nino-form on purpose: the kernel's script would post one by XHR, and these are plain posts answered by
  *	the server. The fields are the kernel's (.nino-form-input, .nino-form-select) with the look of the portal over them.
@@ -82,6 +87,7 @@
 /*	1 Tokens	*/
 
 :where(:root) {
+	--crm-text-xxs: .6875rem;
 	--crm-text-xs: .8125rem;
 	--crm-text-s: .875rem;
 	--crm-text-m: 1rem;
@@ -132,6 +138,7 @@
 
 	:where(:root) {
 		--crm-step: 1.125;
+		--crm-text-xxs: calc( .6875rem / var(--crm-step) );
 		--crm-text-xs: calc( .8125rem / var(--crm-step) );
 		--crm-text-s: calc( .875rem / var(--crm-step) );
 		--crm-text-m: calc( 1rem / var(--crm-step) );
@@ -257,7 +264,7 @@ a.crm-crumbs__link:hover {
 }
 
 .crm-head__main {
-	flex: 1 1 24rem;
+	flex: 1 1 12rem;
 	min-width: 0;
 }
 
@@ -302,11 +309,6 @@ a.crm-crumbs__link:hover {
 	gap: var(--crm-2);
 }
 
-/*	A quiet button in the head has no inner padding at the side: its text starts where the title and the button above it start	*/
-.crm-head__actions .crm-btn--ghost {
-	padding-inline: 0;
-}
-
 .crm-head__meta {
 	display: flex;
 	flex-wrap: wrap;
@@ -315,21 +317,6 @@ a.crm-crumbs__link:hover {
 	margin: var(--crm-3) 0 0;
 	color: var(--crm-ink-2);
 	font-size: var(--crm-text-xs);
-}
-
-.crm-head__meta .crm-icon {
-	color: var(--crm-ink-3);
-}
-
-.crm-head__member {
-	font-weight: 600;
-	color: var(--crm-ink);
-}
-
-.crm-head__company::before {
-	content: "·";
-	margin-right: var(--crm-2);
-	color: var(--crm-ink-3);
 }
 
 .crm-section__title {
@@ -2498,7 +2485,302 @@ a.crm-files__name:hover {
 	margin: 0;
 }
 
-/*	13 Print - a page of the portal on paper: what is for the screen is left out, the head of the site is no longer fixed over the text, the
+/*	13 Shell - the navigation of the portal. [crm-portal-head] draws it before the head, as the first of the two children of the page's column; the
+	markup is one and is the same on every window. Where the window has no side bar, the head of the page carries the account (the chip, Abmelden),
+	and the navigation does not (display: none), so that a screen reader finds one link to Meine Daten and one to Abmelden on every width.	*/
+
+.crm-nav__list {
+	display: grid;
+	gap: 2px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+a.crm-nav__link,
+a.crm-nav__logout {
+	display: flex;
+	align-items: center;
+	gap: var(--crm-3);
+	min-height: var(--crm-touch);
+	padding: var(--crm-1) var(--crm-3);
+	border-radius: var(--crm-radius-s);
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	font-weight: 600;
+	line-height: 1.25;
+	text-decoration: none;
+	transition: background-color .15s, color .15s;
+}
+
+a.crm-nav__link .crm-icon,
+a.crm-nav__logout .crm-icon {
+	width: 20px;
+	height: 20px;
+	color: var(--crm-ink-3);
+}
+
+a.crm-nav__link:hover,
+a.crm-nav__logout:hover {
+	background-color: color-mix(in srgb, var(--crm-ink) 6%, transparent);
+	color: var(--crm-ink);
+}
+
+a.crm-nav__link[aria-current="page"] {
+	background-color: color-mix(in srgb, var(--crm-info) 12%, var(--crm-surface));
+	color: color-mix(in srgb, var(--crm-link) 70%, var(--crm-ink));
+}
+
+a.crm-nav__link[aria-current="page"] .crm-icon {
+	color: inherit;
+}
+
+.crm-nav__text {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+/*	The Datenschutz asks for the client's agreement: a dot in the warning tone, and a word for a screen reader	*/
+.crm-nav__dot {
+	flex: 0 0 auto;
+	width: 8px;
+	height: 8px;
+	margin-left: auto;
+	border-radius: var(--crm-pill);
+	background-color: var(--crm-warning);
+}
+
+/*	The account: the chip of the initials on the accent at 16%, the name and, a line under it, the company of the client. In the head of the page (.crm-account--head) the initials alone	*/
+a.crm-account {
+	display: flex;
+	align-items: center;
+	gap: var(--crm-3);
+	min-height: var(--crm-touch);
+	padding: var(--crm-2) var(--crm-3);
+	border-radius: var(--crm-radius-s);
+	color: var(--crm-ink);
+	text-decoration: none;
+	transition: background-color .15s;
+}
+
+a.crm-account:hover {
+	background-color: color-mix(in srgb, var(--crm-ink) 6%, transparent);
+}
+
+.crm-account__avatar {
+	display: grid;
+	flex: 0 0 auto;
+	place-items: center;
+	width: 28px;
+	height: 28px;
+	border-radius: var(--crm-pill);
+	background-color: color-mix(in srgb, var(--crm-info) 16%, var(--crm-surface));
+	color: color-mix(in srgb, var(--crm-link) 70%, var(--crm-ink));
+	font-size: var(--crm-text-xs);
+	font-weight: 700;
+	letter-spacing: .02em;
+	line-height: 1;
+}
+
+.crm-account__text {
+	display: grid;
+	min-width: 0;
+}
+
+.crm-account__name {
+	font-size: var(--crm-text-s);
+	font-weight: 600;
+	line-height: 1.25;
+	overflow-wrap: anywhere;
+}
+
+.crm-account__company {
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+	line-height: 1.25;
+	overflow-wrap: anywhere;
+}
+
+/*	The account in the head of the page: where the side bar is, it carries the chip and Abmelden and the head does not	*/
+.crm-head__account {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	margin-left: auto;
+}
+
+a.crm-account--head {
+	justify-content: center;
+	min-width: var(--crm-touch);
+	padding: 0;
+	border-radius: var(--crm-pill);
+}
+
+a.crm-account__logout {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--crm-touch);
+	height: var(--crm-touch);
+	border-radius: var(--crm-radius-s);
+	color: var(--crm-ink-3);
+	transition: background-color .15s, color .15s;
+}
+
+a.crm-account__logout:hover {
+	background-color: color-mix(in srgb, var(--crm-ink) 6%, transparent);
+	color: var(--crm-ink);
+}
+
+a.crm-account__logout .crm-icon {
+	width: 20px;
+	height: 20px;
+}
+
+/*	Below 1024px the navigation has neither the chip nor Abmelden (the head has them), and no Meine Daten in the pills (the account of the head is that link)	*/
+.crm-nav > a.crm-account,
+.crm-nav > a.crm-nav__logout,
+.crm-nav__item--meine-daten {
+	display: none;
+}
+
+/*	From 768px up to the side bar: a row of pills over the head, which scrolls sideways where it is too wide, with no bar to see	*/
+@media screen and (min-width: 768px) and (max-width: 1023.98px) {
+
+	.crm-nav {
+		margin: 0 0 var(--crm-4);
+	}
+
+	.crm-nav__list {
+		display: flex;
+		gap: var(--crm-2);
+		margin: calc( -1 * var(--crm-1) );
+		padding: var(--crm-1);
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+
+	.crm-nav__list::-webkit-scrollbar {
+		display: none;
+	}
+
+	a.crm-nav__link {
+		min-height: var(--crm-touch);
+		padding-inline: var(--crm-4);
+		border-radius: var(--crm-pill);
+		background-color: var(--crm-surface);
+		box-shadow: inset 0 0 0 1px var(--crm-line);
+		white-space: nowrap;
+	}
+
+	a.crm-nav__link[aria-current="page"] {
+		box-shadow: none;
+	}
+}
+
+/*	From 1024px a side bar beside the page: the column of the page is a grid of the bar and the rest. The bar spans the rows (the last of them flexible, so
+	that its height asks nothing of the others) and stays under the head of the site while the page scrolls: where the kernel has set the height of the head
+	(--header-height), the bar stands that far down, else at the top	*/
+@media screen and (min-width: 1024px) {
+
+	.crm-page__inner:has(> .crm-nav) {
+		display: grid;
+		grid-template-columns: 11rem minmax(0, 1fr);
+		grid-template-rows: repeat( 98, auto ) 1fr;
+		column-gap: var(--crm-6);
+		align-items: start;
+	}
+
+	.crm-page__inner:has(> .crm-nav) > * {
+		grid-column: 2;
+	}
+
+	.crm-page__inner > .crm-nav {
+		--crm-nav-top: calc( var(--header-height, 0px) + var(--nino-header-grow, 0px) + var(--crm-5) );
+		grid-column: 1;
+		grid-row: 1 / span 99;
+		position: sticky;
+		top: var(--crm-nav-top);
+		display: flex;
+		flex-direction: column;
+		gap: var(--crm-4);
+		max-height: calc( 100dvh - var(--crm-nav-top) - var(--crm-5) );
+		overflow-y: auto;
+		scrollbar-width: none;
+	}
+
+	.crm-nav > a.crm-account {
+		display: flex;
+		padding-inline: var(--crm-3);
+	}
+
+	.crm-nav > a.crm-nav__logout {
+		display: flex;
+	}
+
+	.crm-nav__item--meine-daten {
+		display: list-item;
+	}
+
+	.crm-head__account {
+		display: none;
+	}
+}
+
+/*	Below 768px a bar of tabs at the foot of the window: five entries, an icon over a word, 56px and the room under it the device keeps for itself.
+	Meine Daten and Abmelden are in the head of the page, the Datenschutz is the card of the start page. The bar covers the foot of the window, so the
+	body has the room: the links of the foot of the site stay where a finger reaches them	*/
+@media screen and (max-width: 767.98px) {
+
+	body:has(.crm-nav) {
+		padding-bottom: calc( 56px + env(safe-area-inset-bottom) );
+	}
+
+	.crm-nav {
+		position: fixed;
+		inset: auto 0 0;
+		z-index: 90;
+		height: calc( 56px + env(safe-area-inset-bottom) );
+		padding-bottom: env(safe-area-inset-bottom);
+		border-top: 1px solid var(--crm-line);
+		background-color: var(--crm-surface);
+	}
+
+	.crm-nav__list {
+		grid-auto-flow: column;
+		grid-auto-columns: 1fr;
+		gap: 0;
+		height: 100%;
+	}
+
+	.crm-nav__item--datenschutz {
+		display: none;
+	}
+
+	a.crm-nav__link {
+		flex-direction: column;
+		justify-content: center;
+		gap: 2px;
+		height: 100%;
+		min-height: 0;
+		padding: var(--crm-1) 0;
+		border-radius: 0;
+		font-size: var(--crm-text-xxs);
+		text-align: center;
+	}
+
+	a.crm-nav__link .crm-icon {
+		width: 22px;
+		height: 22px;
+	}
+
+	a.crm-nav__link[aria-current="page"] {
+		background-color: transparent;
+		color: var(--crm-link);
+	}
+}
+
+/*	14 Print - a page of the portal on paper: what is for the screen is left out, the head of the site is no longer fixed over the text, the
 	cards and rows are not cut across a page, the colours of the tones are printed. A fold is opened where the engine draws a details by its
 	content box (::details-content), so that the bank details and the lines of an offer are on the paper; the list itself may break across pages.	*/
 
@@ -2507,6 +2789,8 @@ a.crm-files__name:hover {
 	body:has(.crm-portal) header,
 	body:has(.crm-portal) footer,
 	body:has(.crm-portal) .nino-nav-burger,
+	.crm-nav,
+	.crm-head__account,
 	.crm-head__actions,
 	.crm-table__toggle,
 	.crm-documents__links,
@@ -2531,6 +2815,10 @@ a.crm-files__name:hover {
 	.crm-page.nino-section {
 		padding: 0;
 		background: none;
+	}
+
+	.crm-page__inner:has(> .crm-nav) {
+		display: block;
 	}
 
 	.crm-card:not(.crm-table),

@@ -31,8 +31,8 @@ return [
 	'[[/project/crm-documents/list/empty]]' => 'Für Dich liegen noch keine Belege bereit. Sobald wir ein Angebot oder eine Rechnung für Dich freigeben, findest Du sie hier.',
 
 	'[[/project/crm-portal/nav/label]]' => 'Bereiche des Portals',
+	'[[/project/crm-portal/nav/pending]]' => 'ausstehend',
 	'[[/project/crm-portal/head/path]]' => 'Du bist hier',
-	'[[/project/crm-portal/head/account]]' => 'Angemeldet als',
 	'[[/project/crm-portal/door/enter]]' => 'Weiter zum Portal',
 	'[[/project/crm-portal/empty/contact]]' => 'Bei Fragen erreichst Du uns per E-Mail und Telefon:',
 	'[[/project/crm-portal/column/document]]' => 'Beleg',

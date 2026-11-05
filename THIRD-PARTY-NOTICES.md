@@ -195,7 +195,7 @@ there and travel with these copies as well.
 
 The customer portal of the CRM module, which lives in this repository as well,
 draws its icons the same way: `app/Crm/Portal/Icons/Icons.php` holds the
-geometry of the thirty-two inline SVG icons its pages use - the shapes of the
+geometry of the thirty-three inline SVG icons its pages use - the shapes of the
 files of [Lucide](https://lucide.dev), release 0.577.0, unchanged - and the
 portal's templates ask for them by name (`[[icon:<name>]]`). They are covered by
 the [Lucide](#lucide) section above in the same way: the ISC License and, for

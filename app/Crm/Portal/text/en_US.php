@@ -30,8 +30,8 @@ return [
 	'[[/project/crm-documents/list/empty]]' => 'There are no documents for you yet. As soon as we release an offer or an invoice to you, you will find it here.',
 
 	'[[/project/crm-portal/nav/label]]' => 'Areas of the portal',
+	'[[/project/crm-portal/nav/pending]]' => 'pending',
 	'[[/project/crm-portal/head/path]]' => 'You are here',
-	'[[/project/crm-portal/head/account]]' => 'Signed in as',
 	'[[/project/crm-portal/door/enter]]' => 'Go to the portal',
 	'[[/project/crm-portal/empty/contact]]' => 'If you have a question, reach us by e-mail and phone:',
 	'[[/project/crm-portal/column/document]]' => 'Document',

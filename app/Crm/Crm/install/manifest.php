@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 // The install unit of the CRM module, found by the kernel's setup wizard (\Nino\Install\Setup::units() scans app/ for
 // install/manifest.php; tests/install-smoke.php of the kernel holds it to that): the wizard offers it pre-checked, lists the
-// module class in /nino/modules and applies the unit with overwrite on - the pages of the customer portal, each an entry of the site's main menu (navs main 5, like the pages of the wizard; the page Datenschutz is none) (the start and the areas Meine Daten, Projekte, Upload, Belege and Termine, and the page Datenschutz, which the navigation links while the client has not agreed), their words, the
+// module class in /nino/modules and applies the unit with overwrite on - the pages of the customer portal (the start and the areas Meine Daten, Projekte, Upload, Belege and Termine, and the page Datenschutz, which the navigation of the portal links while the client has not agreed; none is an entry of the site's menu, the portal brings its own navigation), their words, the
 // element type of the items. The door of the portal (the start page of the site) is no part of it: the screen Einrichtung of the
 // surface writes the route GET:// when the owner presses Einrichten, and the same step applies this unit again, add-only (the
 // panel CRM and the settings of the surface keep the button Portal einrichten, through \Nino\Features::applyUnit(): a route,
@@ -17,12 +17,12 @@ return [
 	'preset'          => true,
 	'moduleClass'     => '\\Crm\\Crm',
 	'routes'          => [
-		'GET://portal'               => [ 'uri' => '/portal', 'body' => '[template /templates/page-portal]', 'navs' => [ 'main' => 5 ] ],
-		'GET://portal/meine-daten'   => [ 'uri' => '/portal/meine-daten', 'body' => '[template /templates/page-portal-meine-daten]', 'navs' => [ 'main' => 5 ] ],
-		'GET://portal/projekte'      => [ 'uri' => '/portal/projekte', 'body' => '[template /templates/page-portal-projekte]', 'navs' => [ 'main' => 5 ] ],
-		'GET://portal/upload'        => [ 'uri' => '/portal/upload', 'body' => '[template /templates/page-portal-upload]', 'navs' => [ 'main' => 5 ] ],
-		'GET://portal/belege'        => [ 'uri' => '/portal/belege', 'body' => '[template /templates/page-portal-belege]', 'navs' => [ 'main' => 5 ] ],
-		'GET://portal/termine'       => [ 'uri' => '/portal/termine', 'body' => '[template /templates/page-portal-termine]', 'navs' => [ 'main' => 5 ] ],
+		'GET://portal'               => [ 'uri' => '/portal', 'body' => '[template /templates/page-portal]' ],
+		'GET://portal/meine-daten'   => [ 'uri' => '/portal/meine-daten', 'body' => '[template /templates/page-portal-meine-daten]' ],
+		'GET://portal/projekte'      => [ 'uri' => '/portal/projekte', 'body' => '[template /templates/page-portal-projekte]' ],
+		'GET://portal/upload'        => [ 'uri' => '/portal/upload', 'body' => '[template /templates/page-portal-upload]' ],
+		'GET://portal/belege'        => [ 'uri' => '/portal/belege', 'body' => '[template /templates/page-portal-belege]' ],
+		'GET://portal/termine'       => [ 'uri' => '/portal/termine', 'body' => '[template /templates/page-portal-termine]' ],
 		'GET://portal/datenschutz'   => [ 'uri' => '/portal/datenschutz', 'body' => '[template /templates/page-portal-privacy]' ],
 	],
 	'templates'       => [

@@ -761,8 +761,8 @@ check( 'no word is left as a key and the list carries a class of its own where t
 
 // the page, in both languages
 $page = portalPage( $appData, '/portal/belege' );
-check( 'the page /portal/belege is served to the member with the list in it under the head of the page, and no navigation: the main menu is the way to the areas', $page[0] === 200 && str_contains( $page[1], '[crm-documents]' ) === false && str_contains( $page[1], 'class="crm-documents"' ) === true && portalFind( $page[1], '//div[contains(@class, "crm-head")]/div/div/h2[contains(@class, "crm-head__title")]' ) !== []
-	&& str_contains( $page[1], 'crm-nav' ) === false && strpos( $page[1], 'crm-head__title' ) < strpos( $page[1], 'class="crm-documents"' ) );
+check( 'the page /portal/belege is served to the member with the list in it under the head of the page, and the navigation of the portal before the head', $page[0] === 200 && str_contains( $page[1], '[crm-documents]' ) === false && str_contains( $page[1], 'class="crm-documents"' ) === true && portalFind( $page[1], '//div[contains(@class, "crm-head")]/div/div/h2[contains(@class, "crm-head__title")]' ) !== []
+	&& count( portalFind( $page[1], '//nav[contains(@class, "crm-nav")]' ) ) === 1 && strpos( $page[1], 'class="crm-nav' ) < strpos( $page[1], 'crm-head__title' ) && strpos( $page[1], 'crm-head__title' ) < strpos( $page[1], 'class="crm-documents"' ) );
 $listed = portalFind( $page[1], '//li[contains(@class, "crm-documents__row")]' );
 check( 'the number of documents stands over the list, as a number and the word for it - the count of the rows, once, before the table', preg_match( '/^(\d+) (\S+)$/u', portalText( $page[1], '//p[contains(@class, "crm-documents__count")]' ), $counted ) === 1 && (int) $counted[1] === count( $listed ) && count( $listed ) > 1 && $counted[2] === $wordsDe['[[/project/crm-portal/projects/document-many]]']
 	&& count( portalFind( $page[1], '//p[contains(@class, "crm-documents__count")]' ) ) === 1 && strpos( $page[1], 'crm-documents__count' ) < strpos( $page[1], 'crm-documents__list' ) );
@@ -981,22 +981,61 @@ check( 'the fixtures: four projects (two open, one done, one of another client),
 
 echo "\n[crm-portal-nav]\n";
 
+$unitDe = (array) require $root. '/app/Crm/Crm/install/text/de_DE.php';
+$navLinks = '//nav[contains(@class, "crm-nav")]/ul[@class="crm-nav__list"]/li/a[@class="crm-nav__link"]';
+$navAreas = [ '/portal', '/portal/projekte', '/portal/belege', '/portal/termine', '/portal/upload', '/portal/meine-daten' ];
+$navHrefsOf = static fn( string $html ): array => array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( $html, $navLinks ) );
 $asVisitor();
-check( 'a visitor gets nothing of the navigation', trim( \Nino\Html::renderHtml( $appData, '[crm-portal-nav]' ) ) === '' );
+check( 'a visitor gets nothing of the navigation, and the head gives him nothing either', trim( \Nino\Html::renderHtml( $appData, '[crm-portal-nav]' ) ) === '' && trim( \Nino\Html::renderHtml( $appData, '[crm-portal-head]' ) ) === '' );
 portalSignIn( $appData, $accounts['anna'] );
 $nav = portalNavAt( $appData, '/portal/projekte' );
-$links = portalFind( $nav, '//nav[contains(@class, "crm-nav")]//a[@class="crm-nav__link"]' );
-check( 'a member gets the five areas as links, in the order Meine Daten, Projekte, Upload, Belege, Termine, each with the name of its page', count( $links ) === 5
-	&& array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), $links ) === [ '/portal/meine-daten', '/portal/projekte', '/portal/upload', '/portal/belege', '/portal/termine' ]
-	&& array_filter( $links, static fn( \DOMElement $link ): bool => trim( $link->textContent ) === '' || str_contains( $link->textContent, '[[' ) ) === [] );
+$links = portalFind( $nav, $navLinks );
+check( 'a member gets the six areas as links, in the order Portal, Projekte, Belege, Termine, Upload, Meine Daten, each with an icon and the name of its page', count( $links ) === 6 && $navHrefsOf( $nav ) === $navAreas
+	&& array_filter( $links, static fn( \DOMElement $link ): bool => trim( $link->textContent ) === '' || str_contains( $link->textContent, '[[' ) ) === []
+	&& array_map( static fn( \DOMElement $link ): string => $link->getElementsByTagName( 'svg' )->item( 0 )?->getAttribute( 'class' ) ?? '', $links ) === [ 'crm-icon crm-icon--house', 'crm-icon crm-icon--folder', 'crm-icon crm-icon--file-text', 'crm-icon crm-icon--calendar', 'crm-icon crm-icon--upload', 'crm-icon crm-icon--user' ]
+	&& count( portalFind( $nav, $navLinks. '/svg[@aria-hidden="true"]' ) ) === 6 );
+check( '...the names are the names of the pages, the first the name of the page /portal', array_map( static fn( \DOMElement $link ): string => trim( $link->textContent ), $links ) === [ $unitDe['[[/_nino/webpage/portal/name]]'], $unitDe['[[/_nino/webpage/portal/projekte/name]]'], $unitDe['[[/_nino/webpage/portal/belege/name]]'], $unitDe['[[/_nino/webpage/portal/termine/name]]'], $unitDe['[[/_nino/webpage/portal/upload/name]]'], $unitDe['[[/_nino/webpage/portal/meine-daten/name]]'] ] );
 check( '...the nav is a nav with a label, and the area the request is in is marked: aria-current="page" on that link and on no other', portalFind( $nav, '//nav[@aria-label]' ) !== [] && count( portalFind( $nav, '//a[@aria-current]' ) ) === 1
 	&& portalFind( $nav, '//a[@aria-current]' )[0]->getAttribute( 'href' ) === '/portal/projekte' && portalFind( $nav, '//a[@aria-current]' )[0]->getAttribute( 'aria-current' ) === 'page' );
 $marked = static fn( string $uri ): array => array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( portalNavAt( $appData, $uri ), '//nav//a[@aria-current="page"]' ) );
-check( '...a prefix does it for the page of a project and for every query; the start has none marked; each area marks itself', $marked( '/portal/projekte?projekt='. $p1 ) === [ '/portal/projekte' ] && $marked( '/portal/projekte?review='. $song['id'] ) === [ '/portal/projekte' ] && $marked( '/portal' ) === []
+check( '...a prefix does it for the page of a project and for every query; the start marks itself on /portal alone; each area marks itself', $marked( '/portal/projekte?projekt='. $p1 ) === [ '/portal/projekte' ] && $marked( '/portal/projekte?review='. $song['id'] ) === [ '/portal/projekte' ] && $marked( '/portal' ) === [ '/portal' ]
 	&& $marked( '/portal/meine-daten?state=saved' ) === [ '/portal/meine-daten' ] && $marked( '/portal/upload' ) === [ '/portal/upload' ] && $marked( '/portal/belege' ) === [ '/portal/belege' ] && $marked( '/portal/termine' ) === [ '/portal/termine' ] );
 ninoVisit( $appData, '/portal/projekte/unterseite' );
 check( '...a path below an area marks the area too, whatever the page is', array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( \Nino\Html::renderHtml( $appData, '[crm-portal-nav]' ), '//a[@aria-current="page"]' ) ) === [ '/portal/projekte' ] );
 check( '...a class of the shortcode is added to the nav', count( portalFind( \Nino\Html::renderHtml( $appData, '[crm-portal-nav class="wide"]' ), '//nav[@class="crm-nav wide"]' ) ) === 1 );
+$account = portalFind( portalNavAt( $appData, '/portal' ), '//nav[contains(@class, "crm-nav")]/a[contains(@class, "crm-account")]' );
+check( 'the account is the first thing of the nav, a chip that links to Meine Daten: the initials of the name (Anna Nord is AN), the name and, as a second line, the company of the client', count( $account ) === 1 && $account[0]->getAttribute( 'href' ) === '/portal/meine-daten'
+	&& portalFind( portalNavAt( $appData, '/portal' ), '//nav[contains(@class, "crm-nav")]/*[1][contains(@class, "crm-account")]' ) !== [] && portalText( portalNavAt( $appData, '/portal' ), '//a[contains(@class, "crm-account")]/span[@class="crm-account__avatar"][@aria-hidden="true"]' ) === 'AN'
+	&& portalText( portalNavAt( $appData, '/portal' ), '//a[contains(@class, "crm-account")]//span[@class="crm-account__name"]' ) === 'Anna Nord' && portalText( portalNavAt( $appData, '/portal' ), '//a[contains(@class, "crm-account")]//span[@class="crm-account__company"]' ) === \Crm\Clients::get( $appData, $a['id'] )['company'] );
+$logout = portalFind( portalNavAt( $appData, '/portal' ), '//nav[contains(@class, "crm-nav")]/*[last()][self::a][contains(@class, "crm-nav__logout")][@href="/.members/logout"]/svg[@aria-hidden="true"]' );
+check( '...and Abmelden is the last, a link to /.members/logout with its icon', count( $logout ) === 1 );
+check( '...there is no Datenschutz in it while nothing is asked, and no dot', in_array( '/portal/datenschutz', $navHrefsOf( portalNavAt( $appData, '/portal' ) ), true ) === false && portalFind( portalNavAt( $appData, '/portal' ), '//span[contains(@class, "crm-nav__dot")]' ) === [] );
+check( 'initials: the first letter of the first and of the last word, in capitals; one word has one; an address has its first letter; what is no letter is not one; nothing is "?"', array_map( [ \Crm\Portal::class, 'initials' ], [ 'Anna Berger', 'anna@example.org', '  mia   de la cruz ', 'Éva', '<b>Zed</b> [x]', '[]', '', "e\u{301}mile Zöe", 'ßa Ünal', "Ab\xFFc Dd", "Anna B\xC3", "Anna Berger\xE2\x82" ] ) === [ 'AB', 'A', 'MC', 'É', 'BX', '?', '?', "E\u{301}Z", 'ßÜ', 'AD', 'AB', 'AB' ]
+	&& \Crm\Portal::nameOf( [ 'name' => 'Anna Berger', 'email' => 'a@example.org' ] ) === 'Anna Berger' && \Crm\Portal::nameOf( [ 'name' => '', 'email' => 'a@example.org' ] ) === 'a@example.org' );
+$brokenName = "<b>Zed</b>\0 [members-name]";
+\Nino\Modules\Members::change( $appData, $accounts['anna']['id'], [ 'name' => $brokenName ] );
+$escaped = portalNavAt( $appData, '/portal' );
+check( 'the name of the account enters the nav as text - markup, a shortcode and a null byte in it are shown as typed (the byte not at all) - in the chip and in the head', str_contains( $escaped, '<b>' ) === false && str_contains( $escaped, '[members-name]' ) === false && str_contains( $escaped, "\0" ) === false && str_contains( $escaped, '&lt;b&gt;Zed&lt;/b&gt; &#91;members-name]' ) === true
+	&& portalText( $escaped, '//span[@class="crm-account__avatar"]' ) === 'BM' && str_contains( portalPage( $appData, '/portal' )[1], '<b>Zed' ) === false );
+\Nino\Modules\Members::change( $appData, $accounts['anna']['id'], [ 'name' => '' ] );
+$bare = portalNavAt( $appData, '/portal' );
+check( 'a member with no name is shown by the address: its first letter as the initials, the address as the name', portalText( $bare, '//span[@class="crm-account__avatar"]' ) === 'A' && portalText( $bare, '//span[@class="crm-account__name"]' ) === $accounts['anna']['email'] );
+\Nino\Modules\Members::change( $appData, $accounts['anna']['id'], [ 'name' => 'Anna Nord' ] );
+$companyWas = (string) \Crm\Clients::get( $appData, $a['id'] )['company'];
+$changedCompany = \Crm\Clients::change( $appData, $a['id'], [ 'company' => "Licht\0spiel <b>" ] );
+\Crm\Portal::forget( $appData );
+$withNull = portalNavAt( $appData, '/portal' );
+check( 'the company of the client enters the nav as text with a null byte left out: the byte is in the stored company, not in the page, and the markup in it is shown as typed', is_array( $changedCompany ) === true && str_contains( (string) \Crm\Clients::get( $appData, $a['id'] )['company'], "\0" ) === true && str_contains( $withNull, "\0" ) === false
+	&& portalText( $withNull, '//span[@class="crm-account__company"]' ) === 'Lichtspiel <b>' && str_contains( $withNull, 'Lichtspiel &lt;b&gt;' ) === true );
+\Crm\Clients::change( $appData, $a['id'], [ 'company' => $companyWas ] );
+\Crm\Portal::forget( $appData );
+$dataHead = portalPage( $appData, '/portal/meine-daten' )[1];
+check( 'where the head carries the account, the chip is the link to the page Meine Daten and is marked as the current one on that page - and on no other', count( portalFind( $dataHead, '//div[@class="crm-head__account"]/a[contains(@class, "crm-account")][@href="/portal/meine-daten"][@aria-current="page"]' ) ) === 1
+	&& portalFind( portalPage( $appData, '/portal' )[1], '//div[@class="crm-head__account"]//a[@aria-current]' ) === [] && portalFind( portalPage( $appData, '/portal/projekte' )[1], '//div[@class="crm-head__account"]//a[@aria-current]' ) === [] );
+$head = \Nino\Html::renderHtml( $appData, '[crm-portal-head]' );
+check( 'the head draws the navigation before it - the same as the component on its own - and nav="0" leaves it out, for a template that sets it itself', str_starts_with( $head, \Nino\Html::renderHtml( $appData, '[crm-portal-nav]' ) ) === true && count( portalFind( $head, '//nav[contains(@class, "crm-nav")]/following-sibling::div[@class="crm-head"]' ) ) === 1
+	&& portalFind( \Nino\Html::renderHtml( $appData, '[crm-portal-head nav="0"]' ), '//nav' ) === [] && count( portalFind( \Nino\Html::renderHtml( $appData, '[crm-portal-head nav="0"]' ), '//div[@class="crm-head"]' ) ) === 1 );
+check( '...the door has none, and no script makes it: the nav is in the markup the server sends and portal.js has no word of it', str_contains( \Nino\Html::renderHtml( $appData, '[crm-portal-door]' ), 'crm-nav' ) === false && str_contains( (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.js' ), 'crm-nav' ) === false && str_contains( (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.js' ), 'crm-account' ) === false );
 
 // --- The projects --------------------------------------------------------------------------------------------------------------
 
@@ -1265,10 +1304,22 @@ $sheet = (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' 
 check( 'portal.css holds no colour of its own - no hex, no rgb(), hsl() or the like, no named colour on a property - and builds its tokens from the roles of the kernel: --color-ink, -ground, -border, -accent, -success, -warning, -error, -primary, -focus and --radius-surface-alt', preg_match( '/#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/', $sheet ) === 0
 	&& preg_match( '/^\s*(?:color|background(?:-color)?|border(?:-[a-z]+)*|outline(?:-color)?|box-shadow|fill|stroke):[^;]*\b(?:white|black|red|green|blue|gray|grey|orange|yellow|purple|silver)\b/m', $sheet ) === 0
 	&& array_diff( [ '--color-ink', '--color-ground', '--color-border', '--color-accent', '--color-success', '--color-warning', '--color-error', '--color-primary', '--color-focus', '--radius-surface-alt', '--radius' ], array_map( static fn( string $name ): string => $name, array_unique( (array) ( preg_match_all( '/var\(\s*(--(?:color|radius)[a-z-]*)/', $sheet, $roles ) > 0 ? $roles[1] : [] ) ) ) ) === [] );
-$scale = preg_match_all( '/^\s*(--crm-text-(?:xs|s|m|l|xl|xxl)):\s*([.0-9]+rem);/m', $sheet, $steps ) === 6 && $steps[2] === [ '.8125rem', '.875rem', '1rem', '1.125rem', '1.25rem', '1.5rem' ];
+$scale = preg_match_all( '/^\s*(--crm-text-(?:xxs|xs|s|m|l|xl|xxl)):\s*([.0-9]+rem);/m', $sheet, $steps ) === 7 && $steps[2] === [ '.6875rem', '.8125rem', '.875rem', '1rem', '1.125rem', '1.25rem', '1.5rem' ];
 $spacing = preg_match_all( '/^\s*(--crm-[1-7]):\s*([.0-9]+rem);/m', $sheet, $gaps ) === 7 && $gaps[2] === [ '.25rem', '.5rem', '.75rem', '1rem', '1.5rem', '2rem', '3rem' ];
-check( '...it has the type scale of six steps and the spacing of seven, and uses the scale of type: every font-size of the sheet is one of the six steps', $scale === true && $spacing === true
-	&& preg_match_all( '/font-size:\s*([^;]+);/', $sheet, $sizes ) > 50 && array_filter( $sizes[1], static fn( string $size ): bool => preg_match( '/^var\(--crm-text-(?:xs|s|m|l|xl|xxl)\)$/', $size ) !== 1 ) === [] );
+check( '...it has the type scale of seven steps and the spacing of seven, and uses the scale of type: every font-size of the sheet is one of the seven steps', $scale === true && $spacing === true
+	&& preg_match_all( '/font-size:\s*([^;]+);/', $sheet, $sizes ) > 50 && array_filter( $sizes[1], static fn( string $size ): bool => preg_match( '/^var\(--crm-text-(?:xxs|xs|s|m|l|xl|xxl)\)$/', $size ) !== 1 ) === [] );
+$shell = (string) substr( $sheet, (int) strpos( $sheet, '/*	13 Shell' ), (int) strpos( $sheet, '/*	14 Print' ) - (int) strpos( $sheet, '/*	13 Shell' ) );
+$shellRules = (string) preg_replace( '~/\*.*?\*/~s', '', $shell );
+check( 'the navigation has its chapter, the Shell, and it has the three shapes: a side bar from 1024px (a grid of 11rem and the rest, the bar sticky under the head of the site by the height the kernel gives it), pills from 768px that scroll with no bar, tabs below 768px (fixed, 56px and the room of the device, the words in the smallest step)', $shell !== ''
+	&& preg_match( '/@media screen and \(min-width: 1024px\) \{.*?\.crm-page__inner:has\(> \.crm-nav\) \{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*11rem minmax\(0, 1fr\);.*?\.crm-page__inner > \.crm-nav \{[^}]*--crm-nav-top:[^;]*var\(--header-height, 0px\)[^;]*;[^}]*grid-row:\s*1 \/ span 99;[^}]*position:\s*sticky;[^}]*top:\s*var\(--crm-nav-top\);[^}]*max-height:\s*calc\( 100dvh - var\(--crm-nav-top\) - var\(--crm-5\) \);/s', $shell ) === 1 && preg_match( '/(?<!max-)height:\s*calc\( 100dvh/', $shellRules ) === 0 && preg_match( '/margin-top:\s*auto/', $shellRules ) === 0
+	&& preg_match( '/@media screen and \(min-width: 768px\) and \(max-width: 1023\.98px\) \{.*?overflow-x:\s*auto;[^}]*scrollbar-width:\s*none;.*?::-webkit-scrollbar \{\s*display:\s*none;/s', $shell ) === 1
+	&& preg_match( '/@media screen and \(max-width: 767\.98px\) \{.*?body:has\(\.crm-nav\) \{[^}]*padding-bottom:\s*calc\( 56px \+ env\(safe-area-inset-bottom\) \);.*?\.crm-nav \{[^}]*position:\s*fixed;[^}]*height:\s*calc\( 56px \+ env\(safe-area-inset-bottom\) \);.*?font-size:\s*var\(--crm-text-xxs\);/s', $shell ) === 1 );
+check( '...the account is in the head where there is no side bar and in the side bar alone where there is one: the nav hides its chip and Abmelden (and the pill of Meine Daten) below 1024px, the head hides its account from 1024px', preg_match( '/\.crm-nav > a\.crm-account,\s*\.crm-nav > a\.crm-nav__logout,\s*\.crm-nav__item--meine-daten \{\s*display:\s*none;/', $shell ) === 1
+	&& preg_match( '/@media screen and \(min-width: 1024px\) \{.*?\.crm-head__account \{\s*display:\s*none;/s', $shell ) === 1 && preg_match( '/\.crm-nav__item--datenschutz \{\s*display:\s*none;/', $shell ) === 1 );
+check( '...nothing of it reaches into the frame of the site: no rule of the Shell names a header, a footer, a main or the menu of the kernel - the head of the site is the theme\'s, the Design feature sets its height', preg_match( '/(?<![\w-])(?:header|footer|main)(?![\w-])|\.nino-nav|\.nino-frame|\.nino-logo/', $shellRules ) === 0 && preg_match( '/body:has\(\.crm-portal\) (?:header|footer|main)\b[^,{]*\{/', (string) substr( $sheet, 0, (int) strpos( $sheet, '/*	14 Print' ) ) ) === 0 );
+check( '...every entry and Abmelden is at least the touch size high, the links of the tab bar fill the bar without a minimum of their own (the bar is 56px with its line), and on paper the navigation and the account are left out and the column of the page is no grid', preg_match( '/a\.crm-nav__link,\s*a\.crm-nav__logout \{[^}]*min-height:\s*var\(--crm-touch\);/', $shell ) === 1 && preg_match( '/\.crm-nav__link \{[^}]*height:\s*100%;\s*min-height:\s*0;/s', $shell ) === 1
+	&& preg_match( '/@media print \{[^@]*?\.crm-nav,\s*\.crm-head__account,/s', $sheet ) === 1 && preg_match( '/@media print \{.*?\.crm-page__inner:has\(> \.crm-nav\) \{\s*display:\s*block;/s', $sheet ) === 1 && substr_count( $shell, '@media screen and' ) === 3 && substr_count( $shell, '@media (' ) === 0 );
+check( '...the icon of the start is in Icons, and every icon the navigation asks for', array_diff( [ 'house', 'folder', 'file-text', 'calendar', 'upload', 'user', 'shield-check', 'log-out' ], array_keys( \Crm\Portal\Icons::ICONS ) ) === [] && str_contains( \Crm\Portal\Icons::svg( 'house' ), '<path' ) === true );
 check( '...it has no @font-face, no @import, no url(), and !important only twice, both inside the block of reduced motion', preg_match( '/@font-face|@import|url\(/', $sheet ) === 0 && substr_count( $sheet, '!important' ) === 2
 	&& preg_match( '/@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*transition: none !important;[^@]*animation: none !important;[^@]*\}\s*\}/s', $sheet ) === 1 );
 check( '...it styles the kernel\'s own tabs: a panel that is not the open one is hidden from the first paint and every panel stands open where there is no script (scripting: none), a hidden one is not shown, the active tab takes the link colour', preg_match( '/\.crm-project__section\.nino-tabs-panel\s*\{[^}]*display:\s*none/s', $sheet ) === 1 && preg_match( '/\.crm-project__section\.nino-tabs-panel\.nino-is-active\s*\{[^}]*display:\s*block/s', $sheet ) === 1
@@ -1319,8 +1370,8 @@ check( '...the accent marks what is done: the title of a project, of a file and 
 check( '...on paper a card is not cut across a page, but the list that is a card may break: the rule of break-inside names the cards that are no table', preg_match( '/@media print\s*\{.*\.crm-card:not\(\.crm-table\),\s*\.crm-table__row,[^{]*\{\s*break-inside:\s*avoid;/s', $sheet ) === 1 );
 check( '...a page on paper: the frame, the menu, the actions of the head, the folds\' buttons and the forms are left out, the fixed head of the site is static, a row is not cut across a page, and what stands folded is opened where the engine can', preg_match( '/@media print\s*\{[^@]*body:has\(\.crm-portal\) header,[^{]*\.crm-head__actions,[^{]*\{\s*display:\s*none;/s', $sheet ) === 1 && preg_match( '/@media print\s*\{.*body:has\(\.crm-portal\) \.nino-frame-header \{\s*position:\s*static;/s', $sheet ) === 1
 	&& preg_match( '/@media print\s*\{.*\.crm-table__row,[^{]*\{\s*break-inside:\s*avoid;/s', $sheet ) === 1 && preg_match( '/@media print\s*\{.*details::details-content \{\s*content-visibility:\s*visible;/s', $sheet ) === 1 );
-check( '...the small things: the box of a check is a line of the touch size with its box in the middle, the quiet button of the head has no padding at the side (its text starts where the title does), the door speaks as the head does - at the left, in the ink, at the size of a page title - and a note can be muted', preg_match( '/\n\.crm-check \{[^}]*align-items:\s*center;[^}]*min-height:\s*var\(--crm-touch\)/s', $sheet ) === 1
-	&& preg_match( '/\.crm-head__actions \.crm-btn--ghost \{\s*padding-inline:\s*0;/', $sheet ) === 1 && preg_match( '/\.crm-page--door \.nino-section-title \{[^}]*color:\s*var\(--crm-ink\);[^}]*font-size:\s*var\(--crm-text-xxl\);[^}]*text-align:\s*left;/s', $sheet ) === 1 && preg_match( '/\.crm-note--muted \{\s*--crm-tone:/', $sheet ) === 1 );
+check( '...the small things: the box of a check is a line of the touch size with its box in the middle, the door speaks as the head does - at the left, in the ink, at the size of a page title - and a note can be muted', preg_match( '/\n\.crm-check \{[^}]*align-items:\s*center;[^}]*min-height:\s*var\(--crm-touch\)/s', $sheet ) === 1
+	&& preg_match( '/\.crm-page--door \.nino-section-title \{[^}]*color:\s*var\(--crm-ink\);[^}]*font-size:\s*var\(--crm-text-xxl\);[^}]*text-align:\s*left;/s', $sheet ) === 1 && preg_match( '/\.crm-note--muted \{\s*--crm-tone:/', $sheet ) === 1 );
 check( '...a pill says its state in lower case, in German and in English - the project that runs and the one that is done as the offer that is open - and an invoice that is overdue says only that', array_filter( [ $wordsDe, $wordsEn ], static fn( array $words ): bool => array_filter( [ 'projects/state-open', 'projects/state-done', 'files/new', 'files/playing' ], static fn( string $name ): bool => preg_match( '/^\p{Ll}/u', $words['[[/project/crm-portal/'. $name. ']]'] ) !== 1 ) !== [] || array_filter( [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ], static fn( string $name ): bool => preg_match( '/^\p{Ll}+$/u', $words['[[/project/crm-documents/state/'. $name. ']]'] ) !== 1 ) !== [] ) === [] );
 check( 'the way to the Datenschutz under an offer is a small button beside its sentence, of the touch size, and no link in the middle of it - in the list and on the page of a project', ( static function() use ( $token ): bool {
 
@@ -1373,7 +1424,7 @@ check( 'a group with an upload folder: its files the member may see, the member\
 check( '...the list says that uploads are temporary (a note, in its block)', portalText( $uploads, '//p[contains(@class, "crm-uploads__note")]' ) !== '' && portalText( $uploads, '//h3[contains(@class, "crm-uploads__heading")]' ) !== '' );
 $uploadPage = portalPage( $appData, '/portal/upload' )[1];
 check( 'the page Upload has the form of Files for the folder of the group - posting to /.files/upload with the folder - and the list under it', count( portalFind( $uploadPage, '//form[contains(@class, "files-upload")][contains(@class, "crm-upload")]' ) ) === 1 && portalFind( $uploadPage, '//form[contains(@class, "files-upload")]/@action' )[0]->nodeValue === '/.files/upload'
-	&& portalFind( $uploadPage, '//form[contains(@class, "files-upload")]/input[@name="folder"]/@value' )[0]->nodeValue === $folderUp['id'] && count( portalFind( $uploadPage, '//form[contains(@class, "files-upload")]/following-sibling::section[contains(@class, "crm-uploads")]' ) ) === 1 && str_contains( $uploadPage, 'crm-nav' ) === false );
+	&& portalFind( $uploadPage, '//form[contains(@class, "files-upload")]/input[@name="folder"]/@value' )[0]->nodeValue === $folderUp['id'] && count( portalFind( $uploadPage, '//form[contains(@class, "files-upload")]/following-sibling::section[contains(@class, "crm-uploads")]' ) ) === 1 && count( portalFind( $uploadPage, '//nav[contains(@class, "crm-nav")]' ) ) === 1 );
 $noEmpty = $put( $folderUp, 'Zusatz.txt', 'txt', 'text/plain', true, $owner, $ago( 10 ) );
 check( 'a file put there later is in the list at once, on top', trim( portalFind( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ), '//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' )[0]->getElementsByTagName( 'a' )->item( 0 )->textContent ) === 'Zusatz.txt' );
 portalSignIn( $appData, $accounts['ben'] );
@@ -1406,8 +1457,8 @@ check( 'the page lists the coming dates of the client\'s group and the dates for
 	&& count( portalFind( $dates, '//li[contains(@class, "crm-dates__row")]/time[contains(@class, "crm-dates__when")]/@datetime' ) ) === 2 && portalText( $dates, '//li[@id="termin-aufnahme-a"]//span[contains(@class, "crm-dates__title")]' ) === 'Aufnahme Gruppe A' && portalText( $dates, '//li[@id="termin-aufnahme-a"]//span[contains(@class, "crm-dates__place")]' ) === 'Studio 1'
 	&& str_ends_with( portalText( $dates, '//li[@id="termin-aufnahme-a"]//span[contains(@class, "crm-dates__time")]' ), '10:00–12:00' ) === true && str_ends_with( portalText( $dates, '//li[@id="termin-offen"]//span[contains(@class, "crm-dates__time")]' ), '10:00' ) === true
 	&& array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( $dates, '//li[contains(@class, "crm-dates__row")]//span[contains(@class, "crm-dates__ics")]/a[contains(@class, "events-ics")]' ) ) === [ '/.events/aufnahme-a.ics', '/.events/offen.ics' ] );
-check( '...with the link to the feed of the member (the token of the account is in it) as a button in the page head, and no navigation on the page', count( portalFind( $dates, '//a[contains(@class, "events-feed")]' ) ) === 1 && count( portalFind( $dates, '//div[contains(@class, "crm-head__actions")]//span[contains(@class, "crm-btn--holds")]/a[contains(@class, "events-feed")]' ) ) === 1
-	&& preg_match( '~\?k=[A-Za-z0-9_-]+$~', portalFind( $dates, '//a[contains(@class, "events-feed")]/@href' )[0]->nodeValue ) === 1 && str_contains( $dates, 'crm-nav' ) === false && portalLeft( $dates ) === false );
+check( '...with the link to the feed of the member (the token of the account is in it) as a button in the page head, and the navigation of the portal once before it', count( portalFind( $dates, '//a[contains(@class, "events-feed")]' ) ) === 1 && count( portalFind( $dates, '//div[contains(@class, "crm-head__actions")]//span[contains(@class, "crm-btn--holds")]/a[contains(@class, "events-feed")]' ) ) === 1
+	&& preg_match( '~\?k=[A-Za-z0-9_-]+$~', portalFind( $dates, '//a[contains(@class, "events-feed")]/@href' )[0]->nodeValue ) === 1 && count( portalFind( $dates, '//nav[contains(@class, "crm-nav")]' ) ) === 1 && portalLeft( $dates ) === false );
 portalSignIn( $appData, $accounts['ben'] );
 $benDates = portalPage( $appData, '/portal/termine' )[1];
 check( 'another client sees the dates of its own group and the open ones: not those of Studio Nord', str_contains( $benDates, 'Aufnahme Gruppe B' ) === true && str_contains( $benDates, 'Offener Termin' ) === true && str_contains( $benDates, 'Aufnahme Gruppe A' ) === false );
@@ -1580,19 +1631,25 @@ $menu = static function() use ( &$appData ): array {
 // a page of the site that is open to everybody and in the menu, to see that the callback takes out the protected pages and nothing else
 $appData['/nino/http/routes']['GET://kontakt'] = [ 'uri' => '/kontakt', 'body' => 'x', 'navs' => [ 'main' => 9 ] ];
 \Nino\Html::addFills( $appData, [ '[[/_nino/webpage/kontakt/name]]' => 'Kontakt' ], '*' );
+$portalLines = [ '/portal:Portal', '/portal/meine-daten:Meine Daten', '/portal/projekte:Projekte', '/portal/upload:Upload', '/portal/belege:Belege', '/portal/termine:Termine' ];
+$unitRoutes = (array) ( ( (array) require $root. '/app/Crm/Crm/install/manifest.php' )['routes'] ?? [] );
+portalSignIn( $appData, $accounts['anna'] );
+check( 'the pages of the portal are no entries of the main menu: no route of the unit has a menu, and the menu of a member lists the pages of the site alone', array_filter( $unitRoutes, static fn( array $route ): bool => isset( $route['navs'] ) === true ) === [] && array_intersect( $menu(), $portalLines ) === [] && in_array( '/kontakt:Kontakt', $menu(), true ) === true );
+// a project that keeps one of them in its menu: the page Belege, after the others
+$appData['/nino/http/routes']['GET://portal/belege']['navs'] = [ 'main' => 10 ];
 $asVisitor();
 $visitorMenu = $menu();
 $visitorMenuHtml = \Nino\Modules\Navigation::doShortcode( $appData, [ 'nav' => 'main' ] );
 portalSignIn( $appData, $accounts['anna'] );
 $memberMenu = $menu();
 $memberMenuHtml = \Nino\Modules\Navigation::doShortcode( $appData, [ 'nav' => 'main' ] );
-$portalLines = [ '/portal:Portal', '/portal/meine-daten:Meine Daten', '/portal/projekte:Projekte', '/portal/upload:Upload', '/portal/belege:Belege', '/portal/termine:Termine' ];
-check( 'the main menu of a member lists the six pages of the portal, each with the name of its page, in the order of the unit, beside the pages of the site - and not the page Datenschutz', array_values( array_intersect( $memberMenu, $portalLines ) ) === $portalLines && in_array( '/kontakt:Kontakt', $memberMenu, true ) === true
-	&& array_filter( $memberMenu, static fn( string $line ): bool => str_contains( $line, 'datenschutz' ) === true ) === [] );
-check( '...drawn by the kernel\'s navigation, each page is a link with its name', array_filter( [ 'Portal' => '/portal', 'Meine Daten' => '/portal/meine-daten', 'Projekte' => '/portal/projekte', 'Upload' => '/portal/upload', 'Belege' => '/portal/belege', 'Termine' => '/portal/termine', 'Kontakt' => '/kontakt' ], static fn( string $href, string $name ): bool => count( portalFind( $memberMenuHtml, '//a[@href="'. $href. '"][normalize-space(.)="'. $name. '"]' ) ) !== 1, ARRAY_FILTER_USE_BOTH ) === [] );
+check( 'a page the project keeps in its menu is there for a member, with the name of its page, after the pages of the site - and the page Datenschutz is in no menu', array_values( array_intersect( $memberMenu, $portalLines ) ) === [ '/portal/belege:Belege' ] && in_array( '/kontakt:Kontakt', $memberMenu, true ) === true
+	&& array_search( '/portal/belege:Belege', $memberMenu, true ) > array_search( '/kontakt:Kontakt', $memberMenu, true ) && array_filter( $memberMenu, static fn( string $line ): bool => str_contains( $line, 'datenschutz' ) === true ) === [] );
+check( '...drawn by the kernel\'s navigation, each page is a link with its name', array_filter( [ 'Belege' => '/portal/belege', 'Kontakt' => '/kontakt' ], static fn( string $href, string $name ): bool => count( portalFind( $memberMenuHtml, '//a[@href="'. $href. '"][normalize-space(.)="'. $name. '"]' ) ) !== 1, ARRAY_FILTER_USE_BOTH ) === [] );
 check( 'the main menu of a visitor has no line of the portal - the callback of the project takes out every line whose path Members protects - and keeps the others, in their order', array_intersect( $visitorMenu, $portalLines ) === [] && $visitorMenu === array_values( array_diff( $memberMenu, $portalLines ) ) && in_array( '/kontakt:Kontakt', $visitorMenu, true ) === true
 	&& portalFind( $visitorMenuHtml, '//a[starts-with(@href, "/portal")]' ) === [] && count( portalFind( $visitorMenuHtml, '//a[@href="/kontakt"]' ) ) === 1 );
 check( '...the callback is registered once, for the callback of the kernel that fires it', count( \Nino\Callbacks::registered( $appData, '/nino/navigation/lines' ) ) === 1 );
+unset( $appData['/nino/http/routes']['GET://portal/belege']['navs'] );
 unset( $appData['/nino/http/routes']['GET://kontakt'] );
 portalSignIn( $appData, $accounts['anna'] );
 
@@ -1602,17 +1659,17 @@ echo "\n[crm-privacy] and POST /.crm/datenschutz\n";
 
 $privacyText = "Wir speichern Deine Daten <b>nur</b> für das Projekt.\r\nKontakt: [members-name] & Co\n\nStand 2026";
 $navHrefs = static function( string $uri ) use ( &$appData ): array {
-	return array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( portalNavAt( $appData, $uri ), '//nav//a[@class="crm-nav__link"]' ) );
+	return array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( portalNavAt( $appData, $uri ), '//nav//ul[@class="crm-nav__list"]/li/a[@class="crm-nav__link"]' ) );
 };
 $recordsOf = static function( int $clientId, ?string $kind = null ) use ( &$appData ): array {
 	return \Crm\Records::of( $appData, $clientId, $kind );
 };
 
 $asVisitor();
-check( 'while the owner keeps no text the portal asks for nothing: the client has not "agreed", the nav has five links, and the page says there is nothing to agree to', \Crm\Settings::get( $appData, 'privacy_text' ) === '' && \Crm\Records::privacy( $appData, $a['id'] ) === [ 'asked' => false, 'agreed' => false, 'at' => '', 'member_name' => '' ] );
+check( 'while the owner keeps no text the portal asks for nothing: the client has not "agreed", the nav has six links, and the page says there is nothing to agree to', \Crm\Settings::get( $appData, 'privacy_text' ) === '' && \Crm\Records::privacy( $appData, $a['id'] ) === [ 'asked' => false, 'agreed' => false, 'at' => '', 'member_name' => '' ] );
 portalSignIn( $appData, $accounts['anna'] );
 check( '...Meine Daten has no line about it', portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//section[contains(@class, "crm-data__privacy")]' ) === [] );
-check( '...the nav has the five areas and no link to the Datenschutz; the page shows the sentence and no form', count( $navHrefs( '/portal' ) ) === 5 && in_array( '/portal/datenschutz', $navHrefs( '/portal' ), true ) === false
+check( '...the nav has the six areas and no link to the Datenschutz; the page shows the sentence and no form', count( $navHrefs( '/portal' ) ) === 6 && in_array( '/portal/datenschutz', $navHrefs( '/portal' ), true ) === false
 	&& portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//div[contains(@class, "crm-privacy--empty")]/div[contains(@class, "crm-empty")]/p[contains(@class, "crm-empty__text")]' ) !== [] && portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//form[contains(@class, "crm-privacy__form")]' ) === [] );
 $emptyPost = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1' ] );
 check( '...a post with no text to agree to is ?state=invalid and keeps nothing', $emptyPost['statusCode'] === 303 && ( $emptyPost['header']['Location'] ?? '' ) === '/portal/datenschutz?state=invalid' && $recordsOf( $a['id'] ) === [] );
@@ -1625,7 +1682,7 @@ $asVisitor();
 check( 'a visitor gets nothing of the component', trim( \Nino\Html::renderHtml( $appData, '[crm-privacy]' ) ) === '' );
 portalSignIn( $appData, $stray );
 $strayPage = portalPage( $appData, '/portal/datenschutz' )[1];
-check( 'a member of no client reads the sentence: no text, no form, and no link in the nav', portalFind( $strayPage, '//div[contains(@class, "crm-privacy--empty")]/div[contains(@class, "crm-privacy__empty")]/p[contains(@class, "crm-empty__text")]' ) !== [] && portalFind( $strayPage, '//form' ) === [] && count( $navHrefs( '/portal' ) ) === 5 );
+check( 'a member of no client reads the sentence: no text, no form, and no link in the nav', portalFind( $strayPage, '//div[contains(@class, "crm-privacy--empty")]/div[contains(@class, "crm-privacy__empty")]/p[contains(@class, "crm-empty__text")]' ) !== [] && portalFind( $strayPage, '//form' ) === [] && count( $navHrefs( '/portal' ) ) === 6 );
 portalSignIn( $appData, $accounts['anna'] );
 [ $status, $page ] = portalPage( $appData, '/portal/datenschutz' );
 check( 'a client that has not agreed reads the text with its line breaks as <br>, every character escaped (markup and a shortcode in it are text), and the sentence that it has not agreed', $status === 200 && str_contains( $page, 'Wir speichern Deine Daten &lt;b&gt;nur&lt;/b&gt; für das Projekt.<br>Kontakt: &#91;members-name] &amp; Co<br><br>Stand 2026' ) === true
@@ -1635,11 +1692,12 @@ check( '...and the form: it posts to /.crm/datenschutz, with the csrf token, a b
 	&& portalFind( $page, '//form//input[@name="_csrf"]/@value' )[0]->nodeValue === \Nino\Csrf::getToken( $appData ) && portalFind( $page, '//form//input[@type="checkbox"][@name="agree"][@required][@value="1"]' ) !== [] && portalFind( $page, '//form//button[@type="submit"]' ) !== []
 	&& portalText( $page, '//form//label' ) !== '' && portalFind( $page, '//form//label/@for' )[0]->nodeValue === portalFind( $page, '//form//input[@type="checkbox"]/@id' )[0]->nodeValue );
 check( '...the form is a plain form with the button of the portal, and the text above it is a .crm-card', count( portalFind( $page, '//form[contains(concat(" ", normalize-space(@class), " "), " crm-privacy__form ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-form "))]//button[@type="submit"][contains(concat(" ", normalize-space(@class), " "), " crm-btn ")][contains(concat(" ", normalize-space(@class), " "), " crm-btn--primary ")]' ) ) === 1 && count( portalFind( $page, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-privacy__text ")][contains(concat(" ", normalize-space(@class), " "), " crm-card ")]' ) ) === 1 );
-$sixth = $navHrefs( '/portal' );
-check( 'the nav has a sixth link, to the page, as long as the client has not agreed: after the five, marked on the page itself and on no other', count( $sixth ) === 6 && $sixth[5] === '/portal/datenschutz' && array_slice( $sixth, 0, 5 ) === [ '/portal/meine-daten', '/portal/projekte', '/portal/upload', '/portal/belege', '/portal/termine' ]
-	&& array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( portalNavAt( $appData, '/portal/datenschutz' ), '//nav//a[@aria-current="page"]' ) ) === [ '/portal/datenschutz' ] && portalFind( portalNavAt( $appData, '/portal' ), '//nav//a[@aria-current]' ) === [] );
-$unitDe = (array) require $root. '/app/Crm/Crm/install/text/de_DE.php';
-check( '...the link has the name of its page, in the words of the pages', portalText( portalNavAt( $appData, '/portal' ), '//nav//a[@href="/portal/datenschutz"]' ) === $unitDe['[[/_nino/webpage/portal/datenschutz/name]]'] );
+$seventh = $navHrefs( '/portal' );
+check( 'the nav has a seventh link, to the page, as long as the client has not agreed: after the six, marked on the page itself and on no other', count( $seventh ) === 7 && $seventh[6] === '/portal/datenschutz' && array_slice( $seventh, 0, 6 ) === [ '/portal', '/portal/projekte', '/portal/belege', '/portal/termine', '/portal/upload', '/portal/meine-daten' ]
+	&& array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( portalNavAt( $appData, '/portal/datenschutz' ), '//nav//a[@aria-current="page"]' ) ) === [ '/portal/datenschutz' ] && array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( portalNavAt( $appData, '/portal' ), '//nav//a[@aria-current]' ) ) === [ '/portal' ] );
+check( '...the link has the name of its page, in the words of the pages, and the dot that says it waits for the client: a mark in the markup and the word for a screen reader', portalText( portalNavAt( $appData, '/portal' ), '//nav//a[@href="/portal/datenschutz"]/span[@class="crm-nav__text"]' ) === $unitDe['[[/_nino/webpage/portal/datenschutz/name]]']
+	&& count( portalFind( portalNavAt( $appData, '/portal' ), '//nav//a[@href="/portal/datenschutz"]/span[@class="crm-nav__dot"][@aria-hidden="true"]' ) ) === 1 && portalText( portalNavAt( $appData, '/portal' ), '//nav//a[@href="/portal/datenschutz"]/span[contains(@class, "nino-sr-only")]' ) === $wordsDe['[[/project/crm-portal/nav/pending]]']
+	&& portalFind( portalNavAt( $appData, '/portal' ), '//nav//a[not(@href="/portal/datenschutz")]//span[contains(@class, "crm-nav__dot")]' ) === [] && $wordsEn['[[/project/crm-portal/nav/pending]]'] !== '' );
 $data = portalPage( $appData, '/portal/meine-daten' )[1];
 check( 'Meine Daten has a line with the state and the link to the page, while the owner asks for a text', portalFind( $data, '//section[contains(@class, "crm-data__privacy")][@data-agreed="0"]' ) !== [] && portalFind( $data, '//section[contains(@class, "crm-data__privacy")]//a[contains(@class, "crm-data__link")]/@href' )[0]->nodeValue === '/portal/datenschutz'
 	&& str_contains( portalFind( $data, '//section[contains(@class, "crm-data__privacy")]//span[contains(@class, "crm-pill")]' )[0]->getAttribute( 'class' ), 'crm-pill--warning' ) === true );
@@ -1671,15 +1729,15 @@ check( '...no mail goes out for it', count( $mails ) === $mailsBeforeAgree );
 $againPost = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1' ] );
 check( 'a second post of the same text makes no second record: it is agreed to once', $location( $againPost ) === '/portal/datenschutz?state=agreed' && count( $recordsOf( $a['id'] ) ) === 1 );
 $agreedPage = portalPage( $appData, '/portal/datenschutz' )[1];
-check( 'the page now says when and by whom, with the day as a time element, and has no form; the nav is back to five links', portalFind( $agreedPage, '//form[contains(@class, "crm-privacy__form")]' ) === [] && portalFind( $agreedPage, '//p[contains(@class, "crm-privacy__standing--agreed")]//time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' )
-	&& portalText( $agreedPage, '//p[contains(@class, "crm-privacy__standing--agreed")]//time' ) === \Crm\Documents\Render::day( gmdate( 'Y-m-d' ) ) && portalText( $agreedPage, '//span[@class="crm-privacy__who"]' ) === 'Anna Nord' && count( $navHrefs( '/portal' ) ) === 5 );
+check( 'the page now says when and by whom, with the day as a time element, and has no form; the nav is back to six links', portalFind( $agreedPage, '//form[contains(@class, "crm-privacy__form")]' ) === [] && portalFind( $agreedPage, '//p[contains(@class, "crm-privacy__standing--agreed")]//time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' )
+	&& portalText( $agreedPage, '//p[contains(@class, "crm-privacy__standing--agreed")]//time' ) === \Crm\Documents\Render::day( gmdate( 'Y-m-d' ) ) && portalText( $agreedPage, '//span[@class="crm-privacy__who"]' ) === 'Anna Nord' && count( $navHrefs( '/portal' ) ) === 6 );
 $privacyOfA = (array) \Crm\Clients::get( $appData, $a['id'] )['privacy'];
 check( 'the client has agreed, not the account: Carl of the same client sees it as agreed; the standing is on the client as Clients::get() and list() have it; another client has not agreed', $privacyOfA === [ 'asked' => true, 'agreed' => true, 'at' => $kept[0]['at'], 'member_name' => 'Anna Nord' ]
 	&& array_column( \Crm\Clients::list( $appData ), 'privacy', 'id' )[$a['id']] === $privacyOfA && array_column( \Crm\Clients::list( $appData ), 'privacy', 'id' )[$b['id']]['agreed'] === false && \Crm\Records::privacy( $appData, $b['id'] )['asked'] === true );
 portalSignIn( $appData, $accounts['carl'] );
-check( '...Carl sees the same page: agreed, by Anna, and the data page says it with the link', count( $navHrefs( '/portal' ) ) === 5 && portalText( portalPage( $appData, '/portal/datenschutz' )[1], '//span[@class="crm-privacy__who"]' ) === 'Anna Nord' && portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//section[contains(@class, "crm-data__privacy")][@data-agreed="1"]' ) !== [] );
+check( '...Carl sees the same page: agreed, by Anna, and the data page says it with the link', count( $navHrefs( '/portal' ) ) === 6 && portalText( portalPage( $appData, '/portal/datenschutz' )[1], '//span[@class="crm-privacy__who"]' ) === 'Anna Nord' && portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//section[contains(@class, "crm-data__privacy")][@data-agreed="1"]' ) !== [] );
 portalSignIn( $appData, $accounts['ben'] );
-check( 'Ben\'s client has not agreed: it is asked, whatever Studio Nord did', count( $navHrefs( '/portal' ) ) === 6 && portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//form[contains(@class, "crm-privacy__form")]' ) !== [] );
+check( 'Ben\'s client has not agreed: it is asked, whatever Studio Nord did', count( $navHrefs( '/portal' ) ) === 7 && portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//form[contains(@class, "crm-privacy__form")]' ) !== [] );
 check( '...and no sentence says that the text changed: that is said only to a client that agreed to an earlier text', portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//p[contains(@class, "crm-privacy__standing--open")]//time' ) === [] && \Crm\Settings::get( $appData, 'privacy_changed' ) !== '' );
 $staleText = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1', 'shown' => hash( 'sha256', 'Eine frühere Fassung' ) ] );
 $staleCheck = $recordsOf( $b['id'] ) === [] && \Crm\Records::privacy( $appData, $b['id'] )['agreed'] === false;
@@ -1697,7 +1755,7 @@ $beforeChange = $recordsOf( $a['id'] );
 Db::exec( $appData, 'UPDATE settings SET value = \'2026-11-01\' WHERE key = \'privacy_changed\'' );
 portalSignIn( $appData, $accounts['anna'] );
 $changedPage = portalPage( $appData, '/portal/datenschutz' )[1];
-check( 'a text that is changed asks again: the client has not agreed to it, the nav has its sixth link, the page has the form and says when the text changed - the old records stay', \Crm\Records::privacy( $appData, $a['id'] )['agreed'] === false && count( $navHrefs( '/portal' ) ) === 6 && portalFind( $changedPage, '//form[contains(@class, "crm-privacy__form")]' ) !== []
+check( 'a text that is changed asks again: the client has not agreed to it, the nav has its seventh link, the page has the form and says when the text changed - the old records stay', \Crm\Records::privacy( $appData, $a['id'] )['agreed'] === false && count( $navHrefs( '/portal' ) ) === 7 && portalFind( $changedPage, '//form[contains(@class, "crm-privacy__form")]' ) !== []
 	&& portalFind( $changedPage, '//p[contains(@class, "crm-privacy__standing--open")]//time/@datetime' )[0]->nodeValue === '2026-11-01' && $recordsOf( $a['id'] ) === $beforeChange && \Crm\Records::latestPrivacy( $appData, $a['id'] )['sha256'] === hash( 'sha256', $text ) );
 portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1' ] );
 $twoKept = $recordsOf( $a['id'], 'privacy' );
@@ -2029,8 +2087,8 @@ Db::exec( $appData, 'UPDATE documents SET valid_until = :v WHERE id = :id', [ 'v
 Db::exec( $appData, 'UPDATE documents SET title = :t WHERE id = :id', [ 't' => '<b>Neu</b> [members-name]', 'id' => $orderOpenPlain['id'] ] );
 $markupStart = portalPage( $appData, '/portal' )[1];
 check( 'the title of an offer in the card is text: markup and a shortcode in it are shown as typed', str_contains( $markupStart, '&lt;b&gt;Neu&lt;/b&gt; &#91;members-name]' ) === true && str_contains( $markupStart, '<b>Neu</b>' ) === false && portalFind( $markupStart, '//article[@data-card="offers"]//b' ) === [] );
-check( 'the start page names the member once, in the page head, and after it the company of the client; the greeting is no block of the page template', count( portalFind( $markupStart, '//div[contains(@class, "crm-head")]//span[contains(@class, "crm-head__member")]' ) ) === 1 && portalText( $markupStart, '//span[contains(@class, "crm-head__member")]' ) === 'Anna Nord'
-	&& portalText( $markupStart, '//span[contains(@class, "crm-head__member")]/following-sibling::span[contains(@class, "crm-head__company")]' ) === \Crm\Clients::get( $appData, $a['id'] )['company'] && portalFind( $markupStart, '//a[contains(@class, "crm-head__logout")]' ) !== [] && portalFind( $markupStart, '//section[@id="portal"]//*[contains(@class, "members-name") or contains(@class, "crm-client")]' ) === [] );
+check( 'the start page names the member and the company of the client once, in the account of the navigation: the head has no line for them, and the greeting is no block of the page template', count( portalFind( $markupStart, '//nav[contains(@class, "crm-nav")]/a[contains(@class, "crm-account")]//span[contains(@class, "crm-account__name")]' ) ) === 1 && portalText( $markupStart, '//span[contains(@class, "crm-account__name")]' ) === 'Anna Nord'
+	&& portalText( $markupStart, '//span[contains(@class, "crm-account__name")]/following-sibling::span[contains(@class, "crm-account__company")]' ) === \Crm\Clients::get( $appData, $a['id'] )['company'] && portalFind( $markupStart, '//div[@class="crm-head"]//*[contains(@class, "crm-head__member") or contains(@class, "crm-head__company") or contains(@class, "crm-head__logout")]' ) === [] && portalFind( $markupStart, '//section[@id="portal"]//*[contains(@class, "members-name") or contains(@class, "crm-client")]' ) === [] );
 $documentRows = $rowsOf( $start, 'documents' );
 check( 'Neue Dokumente der letzten 14 Tage: what was released lately, at most five, each with its title and amount, its number and the day it was released as meta, and the anchor of its row - a document released twenty days ago is not there', count( $documentRows ) === 5 && str_contains( portalText( $start, '//article[@data-card="documents"]' ), $invoiceA['number'] ) === false
 	&& array_filter( $documentRows, static fn( \DOMElement $row ) => preg_match( '~^(/portal/belege|/portal/projekte\?projekt=\d{5}&tab=belege)#beleg-\d+$~D', $hrefOf( $row ) ) !== 1 || str_ends_with( $partOf( $row, 'meta' ), \Crm\Documents\Render::day( gmdate( 'Y-m-d' ) ) ) === false ) === [] );
@@ -2258,15 +2316,16 @@ foreach( $pagesOf as $uri => $name ) {
 	$one = portalPage( $appData, $uri )[1];
 	$headOk = count( portalFind( $one, '//div[@class="crm-head"]' ) ) === 1 && count( portalFind( $one, '//div[@class="crm-head"]//h2[contains(@class, "crm-head__title")]/span[@class="crm-head__name"]' ) ) === 1
 		&& portalText( $one, '//span[@class="crm-head__name"]' ) === $unitDe['[[/_nino/webpage/portal'. ( $name === 'portal' ? '' : '/'. $name ). '/title]]'] && count( portalFind( $one, '//p[@class="crm-head__lead"]' ) ) === 1
-		&& portalText( $one, '//p[@class="crm-head__meta"]/span[@class="crm-head__member"]' ) === 'Anna Nord' && portalText( $one, '//p[@class="crm-head__meta"]/span[@class="crm-head__company"]' ) !== ''
-		&& portalFind( $one, '//div[@class="crm-head"]//div[contains(@class, "crm-head__actions")]/a[contains(@class, "crm-head__logout")][@href="/.members/logout"][contains(@class, "crm-btn")]/svg[@aria-hidden="true"]' ) !== []
+		&& portalFind( $one, '//div[@class="crm-head"]//p[@class="crm-head__meta"]' ) === [] && count( portalFind( $one, '//nav[contains(@class, "crm-nav")]/following-sibling::div[@class="crm-head"]' ) ) === 1
+		&& portalText( $one, '//div[@class="crm-head"]//div[@class="crm-head__account"]/a[contains(@class, "crm-account")][@href="/portal/meine-daten"]/span[@class="crm-account__avatar"][@aria-hidden="true"]' ) === 'AN' && portalText( $one, '//div[@class="crm-head"]//div[@class="crm-head__account"]/a[@href="/portal/meine-daten"]/span[contains(@class, "nino-sr-only")]' ) === 'Anna Nord'
+		&& portalFind( $one, '//div[@class="crm-head"]//div[@class="crm-head__account"]/a[contains(@class, "crm-account__logout")][@href="/.members/logout"]/svg[@aria-hidden="true"]' ) !== []
 		&& portalFind( $one, '//div[@class="crm-head"]//header' ) === [] && strpos( $one, 'crm-head__title' ) < strpos( $one, 'class="crm-' . ( [ 'portal' => 'start', 'meine-daten' => 'data', 'projekte' => 'projects', 'upload' => 'upload', 'belege' => 'documents', 'termine' => 'dates', 'datenschutz' => 'privacy' ][$name] ). '' );
 
 	if( $headOk === false )
 		$headIssues[] = $uri;
 }
 
-check( 'every page of the portal opens with the page head: a div (never a header), the page title as the h2, the lead, the member and the company in the meta line and the button Abmelden with its icon - and it is the first thing in the page, before the content', $headIssues === [] );
+check( 'every page of the portal opens with the navigation and then the page head: a div (never a header), the page title as the h2, the lead, and the account of the member (the initials as a link to Meine Daten, Abmelden as an icon link) - and it is the first thing in the page, before the content', $headIssues === [] );
 check( '...the calendar is in the head of Termine only, the breadcrumb in the head of a project only', array_filter( array_keys( $pagesOf ), static fn( string $uri ): bool => ( portalFind( portalPage( $appData, $uri )[1], '//div[@class="crm-head"]//a[contains(@class, "events-feed")]' ) !== [] ) !== ( $uri === '/portal/termine' ) ) === []
 	&& array_filter( array_keys( $pagesOf ), static fn( string $uri ): bool => portalFind( portalPage( $appData, $uri )[1], '//div[@class="crm-head"]//nav[contains(@class, "crm-crumbs")]' ) !== [] ) === [] && portalFind( $projectDocs, '//div[@class="crm-head"]//nav[contains(@class, "crm-crumbs")]' ) !== [] );
 
