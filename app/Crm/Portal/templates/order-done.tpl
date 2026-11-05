@@ -1,1 +1,1 @@
-<p class="crm-order crm-order--done" data-document="[[id]]">[[/project/crm-portal/order/done]] <time datetime="[[iso]]">[[date]]</time> [[/project/crm-portal/order/by]] <span class="crm-order__who">[[name]]</span>.</p>
+<p class="crm-order crm-order--done crm-note crm-note--success" data-document="[[id]]">[[icon:circle-check]]<span class="crm-note__text">[[/project/crm-portal/order/done]] <time datetime="[[iso]]">[[date]]</time> [[/project/crm-portal/order/by]] <span class="crm-order__who">[[name]]</span>.</span></p>

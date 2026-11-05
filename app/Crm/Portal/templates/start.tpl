@@ -1,4 +1,6 @@
-<div class="crm-start[[classes]]">
-	<h3 class="crm-start__heading">[[/project/crm-portal/start/heading]]</h3>
-	[[cards]]
-</div>
+<section class="crm-start[[classes]]" aria-labelledby="crm-start-heading">
+	<h3 class="crm-section__title" id="crm-start-heading">[[/project/crm-portal/start/heading]]</h3>
+	<div class="crm-start__grid">
+		[[cards]]
+	</div>
+</section>

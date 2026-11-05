@@ -1,15 +1,26 @@
 <?php
 declare(strict_types=1);
 /**
- *	Crm\Portal		What the portal pages read of the CRM: the client of the member who is signed in, the component
- *								[crm-client] that says its company, the component [crm-documents] that lists the documents released
- *								to that client (all of them, or those of one project) and the navigation [crm-portal-nav] of the areas of
- *								the portal. The Datenschutz ([crm-privacy], Portal\Privacy), the order under an offer (Portal\Order) and the start page (Portal\Start, [crm-portal-start]) are classes of their own. The areas themselves are the components of Portal\Projects ([crm-projects]), Portal\Files
- *								([crm-uploads]) and Portal\Data ([crm-client-data] and the route that saves it). A visitor has no
- *								client, and a page view of a visitor never opens the database. The lookup is kept for the request and
- *								dropped when a member signs in or out.
+ *	Crm\Portal		What the portal pages read of the CRM: the client of the member who is signed in, the head of every portal page
+ *								([crm-portal-head]: the breadcrumb where there is a parent, the title of the page or of the project, its lead, the member and
+ *								the company, Abmelden and the actions of the page), the component [crm-client] that says the company, the component
+ *								[crm-documents] that lists the documents released to that client (all of them, or those of one project) with the amount, the
+ *								day an invoice is due, the state in the customer's words and - for an open invoice - how to pay it, the navigation
+ *								[crm-portal-nav] of the areas of the portal and the door [crm-portal-door] of the site's start page. The Datenschutz
+ *								([crm-privacy], Portal\Privacy), the order under an offer (Portal\Order), the offer itself (Portal\Offer), the start page
+ *								(Portal\Start, [crm-portal-start]) and the dates (Portal\Dates, [crm-portal-dates]) are classes of their own. The areas
+ *								themselves are the components of Portal\Projects ([crm-projects]), Portal\Files ([crm-uploads]) and Portal\Data
+ *								([crm-client-data] and the route that saves it). A visitor has no client, and a page view of a visitor never opens the
+ *								database. The lookup is kept for the request and dropped when a member signs in or out.
+ *
+ *								The look of all of it is the portal's own design, portal.css (its head comment says the system); the markup of every
+ *								part is a template of templates/, read through template() and filled through render(), which also puts the icons in
+ *								(Portal\Icons: a template asks for one with [[icon:<name>]]). The states a customer reads are the customer's words
+ *								(customerState()): an invoice that is sent is open to the customer, one past its day is overdue since that day.
  */
 namespace Crm;
+
+use Crm\Portal\Icons;
 
 class Portal {
 
@@ -20,8 +31,9 @@ class Portal {
 
 	private const string CACHE = './crm/portal/client';
 
-	// The style sheet of the list, as the bundle of the site names it, and where the markup and the words of the list are
+	// The style sheet and the script of the portal, as the bundles of the site name them, and where the markup and the words of the portal are
 	public const string STYLE = '/app/Crm/Portal/assets/portal.css';
+	public const string SCRIPT = '/app/Crm/Portal/assets/portal.js';
 	private const string NAME = '/^[a-z]{1,20}$/D';
 
 	// The areas of the portal, in the order of the navigation: the last part of the address, which is also the key of the page's name
@@ -29,6 +41,15 @@ class Portal {
 
 	// The sixth area, which the navigation has only while the client has not agreed to the Datenschutz it is asked for (it is reachable from Meine Daten all the time)
 	public const string PRIVACY = 'datenschutz';
+
+	// The tone of a pill by the state a customer reads: open (and a project that runs) is the brand's ink, overdue the danger, what is done the success, what is over muted
+	public const array TONES = [
+		'open' => 'info', 'overdue' => 'danger', 'paid' => 'success', 'accepted' => 'success', 'signed' => 'success', 'agreed' => 'success',
+		'expired' => 'muted', 'declined' => 'muted', 'cancelled' => 'muted', 'done' => 'muted', 'new' => 'success', 'pending' => 'warning',
+	];
+
+	// The icon of a document, by its kind
+	private const array ICONS = [ 'offer' => 'receipt', 'invoice' => 'file-text', 'credit' => 'file-text', 'contract' => 'pen-line', 'privacy' => 'shield-check', 'information' => 'info' ];
 
 	/**
 	 *	The client of the signed-in member
@@ -94,6 +115,91 @@ class Portal {
 	}
 
 	/**
+	 *	[crm-portal-head] - the head of a portal page: the title and the lead of the page (its name and description, as the head of the site reads
+	 *	them), the member who is signed in with the company of the client, and Abmelden. On the page of a project (?projekt=<id>, or ?review=<file> of a
+	 *	file of one of the client's projects) the breadcrumb Projekte › the project, the project's title as the title with its state and its start,
+	 *	and its description as the lead. With calendar="1" the subscription of the calendar stands among the actions (where Events is on). Nothing
+	 *	for a visitor
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$args					calendar ('1': the subscription of the calendar of Events among the actions)
+	 *
+	 *	@return 	string
+	 */
+	public static function componentCrmPortalHead( array &$appData, array $args ): string {
+
+		if( Crm::featureOn( $appData, 'members' ) === false )
+			return '';
+
+		$member = \Nino\Modules\Members::current( $appData );
+
+		if( $member === null )
+			return '';
+
+		self::words( $appData );
+
+		$client = self::client( $appData );
+		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
+		$name = (string) $member['name'] !== '' ? (string) $member['name'] : (string) $member['email'];
+		$company = $client !== null && $client['company'] !== '' && $client['company'] !== $name ? self::render( 'head-company', [ '[[company]]' => \Nino\Modules\Components::escape( $client['company'] ) ] ) : '';
+		$project = $client === null ? null : Portal\Projects::current( $appData, $client );
+
+		if( $project !== null ) {
+
+			$day = Documents\Render::day( $project['started'] );
+			$state = $project['done'] === true ? 'done' : 'open';
+			$crumbs = self::render( 'head-crumbs', [ '[[href]]' => $dir. '/portal/projekte', '[[parent]]' => '[[/_nino/webpage/portal/projekte/name]]', '[[here]]' => \Nino\Modules\Components::escape( $project['title'] ) ] );
+			$title = \Nino\Modules\Components::escape( $project['title'] );
+			$badge = self::render( 'head-badge', [
+				'[[tone]]'  => self::tone( $state ),
+				'[[state]]' => '[[/project/crm-portal/projects/state-'. $state. ']]',
+				'[[since]]' => $day === '' ? '' : self::render( 'head-since', [ '[[iso]]' => \Nino\Modules\Components::escape( $project['started'] ), '[[date]]' => \Nino\Modules\Components::escape( $day ) ] ),
+			] );
+			$lead = $project['description'] === '' ? '' : self::render( 'head-lead', [ '[[text]]' => str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $project['description'] ) ) ] );
+		}
+		else {
+			$crumbs = '';
+			$title = '[[/_nino/webpage[[/nino/http/response/uri]]/title]]';
+			$badge = '';
+			$lead = self::render( 'head-lead', [ '[[text]]' => '[[/_nino/webpage[[/nino/http/response/uri]]/description]]' ] );
+		}
+
+		return self::render( 'head', [
+			'[[classes]]' => \Nino\Feature::classes( $args ),
+			'[[crumbs]]'  => $crumbs,
+			'[[title]]'   => $title,
+			'[[badge]]'   => $badge,
+			'[[lead]]'    => $lead,
+			'[[actions]]' => ( $args['calendar'] ?? '0' ) === '1' && Crm::featureOn( $appData, 'events' ) === true ? self::template( 'head-calendar' ) : '',
+			'[[dir]]'     => $dir,
+			'[[member]]'  => \Nino\Modules\Components::escape( $name ),
+			'[[company]]' => $company,
+		] );
+	}
+
+	/**
+	 *	[crm-portal-door] - the door of the portal on the start page of the site: the login form of Members for a visitor, and for a member who
+	 *	is signed in the way into the portal. Nothing while Members is off
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$args
+	 *
+	 *	@return 	string
+	 */
+	public static function componentCrmPortalDoor( array &$appData, array $args ): string {
+
+		if( Crm::featureOn( $appData, 'members' ) === false )
+			return '';
+
+		self::words( $appData );
+
+		// The form is the feature's own: what stands here is its shortcode, which the rendering that follows draws
+		$inner = \Nino\Modules\Members::current( $appData ) === null ? '[members-login]' : self::render( 'door-enter', [ '[[dir]]' => \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) ) ] );
+
+		return self::render( 'door', [ '[[classes]]' => \Nino\Feature::classes( $args ), '[[inner]]' => $inner ] );
+	}
+
+	/**
 	 *	[crm-portal-nav] - the areas of the portal as links, the one the request is in marked with aria-current. The names are the words
 	 *	of the pages (/_nino/webpage/portal/<area>/name). A sixth link, to the Datenschutz, stands there while the client has not agreed to the text it is asked
 	 *	for. Nothing for a visitor
@@ -140,10 +246,33 @@ class Portal {
 	}
 
 	/**
+	 *	'/nino/navigation/lines': a visitor sees no page of the portal in a menu of the site - every line whose path Members protects is taken out
+	 *	while nobody is signed in; a member who is signed in sees them all. The kernel hands the key of the navigation and the lines by reference
+	 *	(see \Nino\Modules\Navigation::routeLines(), which needs the kernel that fires the callback)
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$payload			nav, lines
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackNavigationLines( array &$appData, array &$payload ): void {
+
+		if( Crm::featureOn( $appData, 'members' ) === false || \Nino\Modules\Members::current( $appData ) !== null || is_array( $payload['lines'] ?? null ) === false )
+			return;
+
+		$payload['lines'] = array_values( array_filter( $payload['lines'], static function( mixed $line ) use ( &$appData ): bool {
+
+			return is_string( $line ) === false || \Nino\Modules\Members::protects( $appData, explode( ':', $line, 2 )[0] ) === false;
+		} ) );
+	}
+
+	/**
 	 *	[crm-documents] - the documents released to the client of the member, the newest first: the kind, the title (the number where there
-	 *	is none), the project (its title, a link to the project page; empty where the document has none), the day, the state, the download and -
-	 *	where a signature is asked for - the way to it, or - once it is signed - the way to the signed file. With project="<id>" only the documents of that
-	 *	project, and no column for the project. A member of no client and a visitor are told there is none. Every value enters the markup escaped
+	 *	is none), the project (its title, a link to the project page; empty where the document has none), the day, the gross amount, the day an
+	 *	invoice is due, the state in the customer's words, the download and - where a signature is asked for - the way to it, or - once it is
+	 *	signed - the way to the signed file. An offer unfolds to its card with the lines, the sums and - while it can be ordered - the form of the
+	 *	order; an open invoice unfolds to how it is paid. With project="<id>" only the documents of that project, and no column for the project.
+	 *	A member of no client and a visitor are told there is none. Every value enters the markup escaped
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$args					project (the id of a project of the client, '' for all)
@@ -161,17 +290,20 @@ class Portal {
 		if( $client !== null && ( $project === '' || preg_match( Projekte::ID, $project ) === 1 ) )
 			$documents = Documents::released( $appData, $client['id'], $project );
 
-		return ( $client === null ? '' : Portal\Order::state( $appData ) ). self::documentList( $appData, $documents, \Nino\Feature::classes( $args ), $project === '', $client );
+		return self::documentList( $appData, $documents, \Nino\Feature::classes( $args ), $project === '', $client );
 	}
 
 	/**
-	 *	The list of documents as the portal draws it: [crm-documents] and the project page both
+	 *	The list of documents as the portal draws it: [crm-documents] and the project page both. With a client the offers in it unfold to their
+	 *	card and the form of the order (the list of /portal/belege, where an offer without a project is ordered); without one an offer links the
+	 *	section Angebot of its project page (the section Belege of that page). The message of an order is said once at the top where it names no
+	 *	document, and in the card of the document it names
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$documents		As Documents::released() has them
 	 *	@param		string		$classes			The class attribute's tail, see \Nino\Feature::classes()
 	 *	@param		bool			$withProject	Whether each row names its project
-	 *	@param		array|null	$client				The client, where an offer in the list may be ordered from it (the project page has its form under the offer itself); null for no form
+	 *	@param		array|null	$client				The client, where an offer in the list may be ordered from it; null for no form
 	 *
 	 *	@return 	string										The list, or the sentence that there is none
 	 */
@@ -179,68 +311,287 @@ class Portal {
 
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 		$rows = '';
+		$orderable = false;
 
-		foreach( $documents as $document )
-			$rows .= self::documentRow( $document, $dir, $withProject, $client === null ? '' : Portal\Order::block( $appData, $client, $document, 'belege', $dir ) );
+		foreach( $documents as $document ) {
+
+			$orderable = $orderable === true || Documents::orderable( $document ) === true;
+			$rows .= self::documentRow( $appData, $document, $dir, $withProject, $client );
+		}
 
 		if( $rows === '' )
-			return str_replace( '[[classes]]', $classes, self::template( 'documents-empty' ) );
+			return self::render( 'documents-empty', [ '[[classes]]' => $classes, '[[empty]]' => self::emptyState( $appData, 'receipt', '[[/project/crm-documents/list/empty]]', 'crm-documents__empty' ) ] );
 
-		return str_replace( [ '[[classes]]', '[[rows]]' ], [ $classes, $rows ], self::template( 'documents' ) );
+		return self::render( 'documents', [
+			'[[classes]]' => $classes,
+			'[[privacy]]' => $client !== null && $orderable === true && Portal\Order::privacyFirst( $appData, $client ) === true ? Portal\Order::privacyHint( $dir ) : '',
+			'[[state]]'   => $client === null ? '' : Portal\Order::state( $appData ),
+			'[[mode]]'    => $withProject === true ? '' : ' crm-table--project',
+			'[[column]]'  => $withProject === true ? self::template( 'documents-column' ) : '',
+			'[[rows]]'    => $rows,
+		] );
 	}
 
 	/**
 	 *	One row of the list of documents
 	 *
+	 *	@param		array 		&$appData
 	 *	@param		array 		$document			As Documents::released() has it
 	 *	@param		string		$dir					The directory the project is served from, escaped
 	 *	@param		bool			$withProject	Whether the row names its project
-	 *	@param		string		$order				The form of the order under an offer, or the line that it was ordered ('' for none)
+	 *	@param		array|null	$client				The client, where an offer unfolds to its card and its form
 	 *
 	 *	@return 	string										'' for a document whose names the words do not know
 	 */
-	private static function documentRow( array $document, string $dir, bool $withProject, string $order = '' ): string {
+	private static function documentRow( array &$appData, array $document, string $dir, bool $withProject, ?array $client ): string {
 
-		$state = $document['expired'] === true ? 'expired' : $document['state'];
+		$state = self::customerState( $document );
 
 		// The names the module writes are lower case letters; they are the end of the key of a word
 		if( preg_match( self::NAME, $document['category'] ) !== 1 || preg_match( self::NAME, $state ) !== 1 )
 			return '';
 
+		$escape = static fn( string $value ): string => \Nino\Modules\Components::escape( $value );
 		$request = preg_match( '/^[a-f0-9]{12}$/D', $document['sign_id'] ) === 1 ? $document['sign_id'] : '';
-		$sign = '';
+		$number = $escape( $document['number'] !== '' ? $document['number'] : $document['title'] );
+		$links = self::render( 'document-download', [ '[[dir]]' => $dir, '[[id]]' => (string) $document['id'], '[[number]]' => $number ] );
+
+		// The electronic invoice of a document that has one, next to the PDF
+		if( $document['xml'] === true )
+			$links .= self::render( 'document-xml', [ '[[dir]]' => $dir, '[[id]]' => (string) $document['id'], '[[number]]' => $number ] );
 
 		if( $request !== '' && in_array( $document['sign_state'], Documents::PENDING, true ) === true )
-			$sign = 'document-sign';
+			$links .= self::render( 'document-sign', [ '[[dir]]' => $dir, '[[request]]' => $request, '[[number]]' => $number ] );
 		elseif( $request !== '' && $document['state'] === 'signed' && $document['sign_state'] === 'signed' )
-			$sign = 'document-signed';
+			$links .= self::render( 'document-signed', [ '[[dir]]' => $dir, '[[request]]' => $request, '[[number]]' => $number ] );
+
+		// What the row unfolds to: the card of an offer where it may be ordered here, how an open invoice is paid; a word in the row says so
+		$body = '';
+		$word = '';
+
+		if( $document['category'] === 'offer' && $client !== null ) {
+			$body = Portal\Offer::card( $appData, $client, $document, $dir, 'belege', true, true );
+			$word = 'order/fold';
+		}
+		elseif( $document['category'] === 'offer' && preg_match( Projekte::ID, $document['project'] ) === 1 )
+			$links .= self::render( 'document-offer-link', [ '[[dir]]' => $dir, '[[project]]' => $escape( $document['project'] ), '[[id]]' => (string) $document['id'], '[[number]]' => $number ] );
+		elseif( $document['category'] === 'invoice' && in_array( $state, [ 'open', 'overdue' ], true ) === true ) {
+			$body = self::payBlock( $appData, $document );
+			$word = 'pay/fold';
+		}
 
 		$project = '';
 
 		if( $withProject === true )
-			$project = str_replace(
-				[ '[[dir]]', '[[id]]', '[[title]]' ],
-				[ $dir, \Nino\Modules\Components::escape( $document['project'] ), \Nino\Modules\Components::escape( $document['project_title'] ) ],
-				self::template( $document['project_title'] === '' ? 'document-project-none' : ( preg_match( Projekte::ID, $document['project'] ) === 1 ? 'document-project' : 'document-project-text' ) )
+			$project = self::render(
+				$document['project_title'] === '' ? 'document-project-none' : ( preg_match( Projekte::ID, $document['project'] ) === 1 ? 'document-project' : 'document-project-text' ),
+				[ '[[dir]]' => $dir, '[[id]]' => $escape( $document['project'] ), '[[title]]' => $escape( $document['project_title'] ) ]
 			);
 
-		return str_replace(
-			[ '[[category]]', '[[state]]', '[[id]]', '[[title]]', '[[project]]', '[[iso]]', '[[date]]', '[[dir]]', '[[xml]]', '[[sign]]', '[[order]]' ],
-			[
-				$document['category'],
-				$state,
-				(string) $document['id'],
-				\Nino\Modules\Components::escape( $document['title'] !== '' ? $document['title'] : $document['number'] ),
-				$project,
-				\Nino\Modules\Components::escape( $document['date'] ),
-				\Nino\Modules\Components::escape( Documents\Render::day( $document['date'] ) ),
-				$dir,
-				$document['xml'] === true ? str_replace( [ '[[dir]]', '[[id]]' ], [ $dir, (string) $document['id'] ], self::template( 'document-xml' ) ) : '',
-				$sign === '' ? '' : str_replace( [ '[[dir]]', '[[request]]' ], [ $dir, $request ], self::template( $sign ) ),
-				$order,
-			],
-			self::template( 'document' )
-		);
+		$line = self::render( 'document-line', [
+			'[[icon]]'    => self::ICONS[$document['category']] ?? 'file',
+			'[[title]]'   => self::documentTitle( $document ),
+			'[[kind]]'    => self::kindLine( $document ),
+			'[[project]]' => $project,
+			'[[iso]]'     => $escape( $document['date'] ),
+			'[[date]]'    => $escape( Documents\Render::day( $document['date'] ) ),
+			'[[amount]]'  => self::amount( $appData, $document ),
+			'[[due]]'     => self::dueCell( $document, $state ),
+			'[[tone]]'    => self::tone( $state ),
+			'[[word]]'    => self::stateWord( $document, $state ),
+			'[[links]]'   => $links,
+			'[[toggle]]'  => $body === '' ? '' : self::render( 'document-toggle', [ '[[word]]' => $word, '[[number]]' => $number ] ),
+		] );
+
+		return self::render( 'document', [
+			'[[id]]'       => (string) $document['id'],
+			'[[category]]' => $document['category'],
+			'[[state]]'    => $state,
+			'[[inner]]'    => $body === '' ? self::render( 'document-plain', [ '[[line]]' => $line ] ) : self::render( 'document-fold', [ '[[open]]' => Portal\Order::named( $appData ) === $document['id'] ? ' open' : '', '[[line]]' => $line, '[[body]]' => $body ] ),
+		] );
+	}
+
+	/**
+	 *	What a document is called: its title where it has one (a contract, the Datenschutz, an information), else its kind and the project it
+	 *	belongs to - "Angebot Album 2027" -, and its kind alone where it has no project
+	 *
+	 *	@param		array 		$document			category, title, project_title
+	 *
+	 *	@return 	string										Markup: the words as fills, the rest escaped
+	 */
+	public static function documentTitle( array $document ): string {
+
+		if( $document['title'] !== '' )
+			return \Nino\Modules\Components::escape( $document['title'] );
+
+		return '[[/project/crm-documents/category/'. $document['category']. ']]'. ( (string) ( $document['project_title'] ?? '' ) === '' ? '' : ' '. \Nino\Modules\Components::escape( $document['project_title'] ) );
+	}
+
+	/**
+	 *	The state of a document in the customer's words: an invoice that was sent is open to the customer and one past its day is overdue, an
+	 *	offer past its day has run out; a draft is never released, so it never comes here
+	 *
+	 *	@param		array 		$document			category, state, expired - and due_date, overdue where Documents::released() has them
+	 *
+	 *	@return 	string										open, overdue, paid, cancelled, accepted, declined, signed or expired; the state as it is for one the words do not know
+	 */
+	public static function customerState( array $document ): string {
+
+		if( ( $document['expired'] ?? false ) === true )
+			return 'expired';
+
+		if( ( $document['overdue'] ?? false ) === true || ( $document['category'] === 'invoice' && Documents::overdue( $document ) === true ) )
+			return 'overdue';
+
+		return $document['state'] === 'sent' ? 'open' : (string) $document['state'];
+	}
+
+	/**
+	 *	The tone of a pill for a state (TONES), info for one the table does not name
+	 *
+	 *	@param		string		$state
+	 *
+	 *	@return 	string
+	 */
+	public static function tone( string $state ): string {
+
+		return self::TONES[$state] ?? 'info';
+	}
+
+	/**
+	 *	The word of a state as the pill says it: the word of the state, and for an invoice that is overdue the day since when
+	 *
+	 *	@param		array 		$document			As Documents::released() has it
+	 *	@param		string		$state				As customerState() has it
+	 *
+	 *	@return 	string										Markup
+	 */
+	public static function stateWord( array $document, string $state ): string {
+
+		$due = (string) ( $document['due_date'] ?? '' );
+
+		if( $state === 'overdue' && Documents\Render::day( $due ) !== '' )
+			return self::render( 'document-overdue', [ '[[iso]]' => \Nino\Modules\Components::escape( $due ), '[[date]]' => \Nino\Modules\Components::escape( Documents\Render::day( $due ) ) ] );
+
+		return '[[/project/crm-documents/state/'. $state. ']]';
+	}
+
+	/**
+	 *	The gross amount of a document as the list writes it
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			gross, where Documents::released() has it
+	 *
+	 *	@return 	string										Escaped; '' for a document without lines (a contract, the Datenschutz, an information)
+	 */
+	public static function amount( array &$appData, array $document ): string {
+
+		if( in_array( $document['category'], Documents::PLAIN, true ) === true || is_int( $document['gross'] ?? null ) === false )
+			return '';
+
+		return \Nino\Modules\Components::escape( Documents\Money::format( $document['gross'], \Crm\Settings::get( $appData, 'currency' ) ) );
+	}
+
+	/**
+	 *	The cell of the day an invoice is due: "fällig am <day>" where it has one, "zahlbar sofort" for an invoice that is open and has none, nothing for the rest
+	 *
+	 *	@param		array 		$document			category, due_date
+	 *	@param		string		$state				As customerState() has it
+	 *
+	 *	@return 	string										Markup
+	 */
+	private static function dueCell( array $document, string $state ): string {
+
+		if( $document['category'] !== 'invoice' )
+			return '';
+
+		$day = Documents\Render::day( (string) ( $document['due_date'] ?? '' ) );
+
+		if( $day !== '' )
+			return self::render( 'document-due', [ '[[iso]]' => \Nino\Modules\Components::escape( (string) $document['due_date'] ), '[[date]]' => \Nino\Modules\Components::escape( $day ) ] );
+
+		return in_array( $state, [ 'open', 'overdue' ], true ) === true ? self::template( 'document-due-none' ) : '';
+	}
+
+	/**
+	 *	The line under the title of a document: its kind and its number where the title is its own, the number alone where the title says the
+	 *	kind already (documentTitle()), and the kind alone for a document without a number
+	 *
+	 *	@param		array 		$document			category, number, title
+	 *
+	 *	@return 	string										Markup
+	 */
+	private static function kindLine( array $document ): string {
+
+		$category = '[[/project/crm-documents/category/'. $document['category']. ']]';
+		$number = \Nino\Modules\Components::escape( $document['number'] );
+
+		if( $document['number'] === '' )
+			return $category;
+
+		if( $document['title'] === '' )
+			return '<span class="crm-documents__number">'. $number. '</span>';
+
+		return self::render( 'document-kind', [ '[[category]]' => $category, '[[number]]' => $number ] );
+	}
+
+	/**
+	 *	How an open invoice is paid, as the PDF says it: the amount, the payee (the company of the site), the bank, the IBAN and the BIC of the
+	 *	settings and the number as the purpose. Nothing where the settings hold neither a bank nor an IBAN: then there is nothing to tell
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			As Documents::released() has it
+	 *
+	 *	@return 	string										Markup
+	 */
+	public static function payBlock( array &$appData, array $document ): string {
+
+		$bank = \Crm\Settings::get( $appData, 'bank_name' );
+		$iban = \Crm\Settings::get( $appData, 'iban' );
+		$bic = \Crm\Settings::get( $appData, 'bic' );
+
+		if( $bank === '' && $iban === '' )
+			return '';
+
+		$company = trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/general/name' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+		$rows = '';
+
+		foreach( [ 'to' => $company, 'bank' => $bank, 'iban' => $iban, 'bic' => $bic ] as $name => $value )
+			if( $value !== '' )
+				$rows .= self::render( 'document-pay-row', [ '[[name]]' => $name, '[[value]]' => \Nino\Modules\Components::escape( $value ) ] );
+
+		return self::render( 'document-pay', [
+			'[[number]]' => \Nino\Modules\Components::escape( $document['number'] ),
+			'[[amount]]' => self::amount( $appData, $document ),
+			'[[rows]]'   => $rows,
+		] );
+	}
+
+	/**
+	 *	An empty state: an icon, the sentence that says what happens next, and the way to the studio - its e-mail address and its phone as links,
+	 *	from the words of the site
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$icon					A name of Portal\Icons
+	 *	@param		string		$message			Markup, a fill as a rule
+	 *	@param		string		$classes			Classes of the box beside crm-empty, '' for none
+	 *
+	 *	@return 	string										Markup
+	 */
+	public static function emptyState( array &$appData, string $icon, string $message, string $classes = '' ): string {
+
+		$mail = trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+		$phone = trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/phone' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+		$number = (string) preg_replace( '/[^0-9+]/', '', $phone );
+		$mailLink = filter_var( $mail, FILTER_VALIDATE_EMAIL ) !== false ? self::render( 'empty-mail', [ '[[address]]' => \Nino\Modules\Components::escape( $mail ) ] ) : '';
+		$phoneLink = $number !== '' && $number !== '+' ? self::render( 'empty-phone', [ '[[number]]' => \Nino\Modules\Components::escape( $number ), '[[phone]]' => \Nino\Modules\Components::escape( $phone ) ] ) : '';
+
+		return self::render( 'empty', [
+			'[[classes]]' => $classes === '' ? '' : ' '. $classes,
+			'[[icon]]'    => $icon,
+			'[[message]]' => $message,
+			'[[contact]]' => $mailLink === '' && $phoneLink === '' ? '' : self::render( 'empty-contact', [ '[[mail]]' => $mailLink, '[[phone]]' => $phoneLink ] ),
+		] );
 	}
 
 	/**
@@ -343,7 +694,7 @@ class Portal {
 
 	/**
 	 *	The markup of a component, read from the templates/ beside this class (the module's own directory, which is where the class is wherever
-	 *	the project is served from)
+	 *	the project is served from), with its icons put in ([[icon:<name>]], see Portal\Icons)
 	 *
 	 *	@param		string		$name					A file of templates/ without .tpl: lower case letters and hyphens
 	 *
@@ -359,6 +710,20 @@ class Portal {
 		if( $markup === false )
 			throw new \RuntimeException( 'The portal template "'. $name. '" cannot be read' );
 
-		return rtrim( $markup, "\n" );
+		return Icons::fill( rtrim( $markup, "\n" ) );
+	}
+
+	/**
+	 *	A template filled: every token is replaced by its value, in the order given, and an icon a value asks for is put in after that
+	 *	(an escaped value cannot ask for one: its brackets are entities)
+	 *
+	 *	@param		string		$name					A template, see template()
+	 *	@param		array 		$values				'[[token]]' => markup
+	 *
+	 *	@return 	string
+	 */
+	public static function render( string $name, array $values ): string {
+
+		return Icons::fill( str_replace( array_keys( $values ), array_values( $values ), self::template( $name ) ) );
 	}
 }

@@ -7,63 +7,35 @@ return [
 
 	// The details of the pages: name, title and description, read by the head of every page
 	'[[/_nino/webpage/portal/name]]' => 'Portal',
-	'[[/_nino/webpage/portal/title]]' => 'Client portal',
-	'[[/_nino/webpage/portal/description]]' => 'Your projects, documents, dates and data in one place.',
+	'[[/_nino/webpage/portal/title]]' => 'Customer portal',
+	'[[/_nino/webpage/portal/description]]' => 'Your projects, documents, dates and details in one place.',
 	'[[/_nino/webpage/portal/meine-daten/name]]' => 'My data',
 	'[[/_nino/webpage/portal/meine-daten/title]]' => 'My data',
-	'[[/_nino/webpage/portal/meine-daten/description]]' => 'Your details as a client.',
+	'[[/_nino/webpage/portal/meine-daten/description]]' => 'Your details as a client. They go on your next documents; documents that are finished do not change any more.',
 	'[[/_nino/webpage/portal/projekte/name]]' => 'Projects',
 	'[[/_nino/webpage/portal/projekte/title]]' => 'Your projects',
-	'[[/_nino/webpage/portal/projekte/description]]' => 'Your projects with offer, files and documents.',
+	'[[/_nino/webpage/portal/projekte/description]]' => 'What we are working on for you: the offer, the files to listen to and download and the documents of a project.',
 	'[[/_nino/webpage/portal/upload/name]]' => 'Upload',
 	'[[/_nino/webpage/portal/upload/title]]' => 'Upload files',
-	'[[/_nino/webpage/portal/upload/description]]' => 'Upload files for your projects.',
+	'[[/_nino/webpage/portal/upload/description]]' => 'What you upload here reaches us for all your projects together – drop us a line about what it belongs to.',
 	'[[/_nino/webpage/portal/belege/name]]' => 'Documents',
 	'[[/_nino/webpage/portal/belege/title]]' => 'Your documents',
-	'[[/_nino/webpage/portal/belege/description]]' => 'Offers, invoices, contracts and more that are shared with you.',
+	'[[/_nino/webpage/portal/belege/description]]' => 'Everything released to you, with its amount and its state: offers, invoices, contracts and privacy documents. What needs your signature, you sign here.',
 	'[[/_nino/webpage/portal/termine/name]]' => 'Dates',
 	'[[/_nino/webpage/portal/termine/title]]' => 'Your dates',
-	'[[/_nino/webpage/portal/termine/description]]' => 'The dates that are coming up for you.',
-	'[[/_nino/webpage/portal/datenschutz/name]]' => 'Privacy',
-	'[[/_nino/webpage/portal/datenschutz/title]]' => 'Privacy',
-	'[[/_nino/webpage/portal/datenschutz/description]]' => 'The privacy policy you agree to.',
+	'[[/_nino/webpage/portal/termine/description]]' => 'The dates coming up for you – with the subscription for your calendar.',
+	'[[/_nino/webpage/portal/datenschutz/name]]' => 'Privacy consent',
+	'[[/_nino/webpage/portal/datenschutz/title]]' => 'Privacy consent',
+	'[[/_nino/webpage/portal/datenschutz/description]]' => 'Your consent to the privacy policy of the customer portal. We record when you agreed; if the text changes, we ask again.',
 
 	// The details of the start page, the door (its Element-URI is '/', as the wizard writes it for a start page): the head reads them
-	'[[/_nino/webpage//name]]' => 'Sign in',
-	'[[/_nino/webpage//title]]' => 'Sign in',
-	'[[/_nino/webpage//description]]' => 'Sign in with the link we send you by email.',
-
-	// Start, page-portal.tpl
-	'[[/template/page-portal/intro/title]]' => 'Welcome to the client portal',
-	'[[/template/page-portal/intro/text]]' => 'Here you find your projects, files, documents and dates.',
-
-	// My data, page-portal-meine-daten.tpl
-	'[[/template/page-portal-meine-daten/intro/title]]' => 'My data',
-	'[[/template/page-portal-meine-daten/intro/text]]' => 'These are your details as a client. They go on your next documents; documents that are already final do not change.',
-
-	// Projects, page-portal-projekte.tpl
-	'[[/template/page-portal-projekte/intro/title]]' => 'Your projects',
-	'[[/template/page-portal-projekte/intro/text]]' => 'Here you see what we are working on for you: the offer, the files to listen to and download, and the documents of a project.',
-
-	// Upload, page-portal-upload.tpl
-	'[[/template/page-portal-upload/intro/title]]' => 'Upload files',
-	'[[/template/page-portal-upload/intro/text]]' => 'Upload files for us here.',
-
-	// Documents, page-portal-belege.tpl
-	'[[/template/page-portal-belege/intro/title]]' => 'Your documents',
-	'[[/template/page-portal-belege/intro/text]]' => 'Everything shared with you, with where it stands: offers, invoices, contracts and privacy documents. You sign what needs your signature here.',
-
-	// Dates, page-portal-termine.tpl
-	'[[/template/page-portal-termine/intro/title]]' => 'Your dates',
-	'[[/template/page-portal-termine/intro/text]]' => 'The dates that are coming up for you.',
-
-	// Privacy, page-portal-privacy.tpl
-	'[[/template/page-portal-privacy/intro/title]]' => 'Privacy',
-	'[[/template/page-portal-privacy/intro/text]]' => 'Read the privacy policy and agree to it. We keep a note of when you agreed; if the text changes, we ask again.',
+	'[[/_nino/webpage//name]]' => 'Customer portal',
+	'[[/_nino/webpage//title]]' => 'Customer portal',
+	'[[/_nino/webpage//description]]' => 'Your access comes from us by e-mail – sign in with the link we send you.',
 
 	// The portal's door - the site's start page, page-door.tpl
-	'[[/template/page-door/intro/title]]'               => 'Sign in',
-	'[[/template/page-door/intro/text]]'                => 'Enter the email address of your account. We send you a link by email - that signs you in, no password needed.',
+	'[[/template/page-door/intro/title]]'               => 'Customer portal',
+	'[[/template/page-door/intro/text]]'                => 'Your access comes from us by e-mail. If you have none, write to us. Enter the e-mail address of your account – we send you a link that signs you in, no password needed.',
 
 	// The Elements panel's own words for the type Positionen - the workbench's, not the site's (listed in the unit's blacklist)
 	'[[/_admin/elements/field/positionen/title]]' => 'Title',

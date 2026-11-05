@@ -1,0 +1,1 @@
+<nav class="crm-crumbs" aria-label="[[/project/crm-portal/head/path]]"><a class="crm-crumbs__link" href="[[href]]">[[parent]]</a>[[icon:chevron-right]]<span class="crm-crumbs__here" aria-current="page">[[here]]</span></nav>

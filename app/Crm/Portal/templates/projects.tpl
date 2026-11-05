@@ -1,5 +1,6 @@
-<div class="crm-projects[[classes]]">
+<section class="crm-projects[[classes]]"[[labelled]]>
+	[[heading]]
 	[[unknown]]
 	[[open]]
 	[[done]]
-</div>
+</section>

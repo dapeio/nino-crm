@@ -2,13 +2,15 @@
 declare(strict_types=1);
 /**
  *	Crm\Portal\Projects		The component [crm-projects] of the portal: the projects of the client of the member signed in. Without a project in the
- *												query it is the list - the open projects first, the done ones under their own heading - and with ?projekt=<id> the page of
- *												one project: its head, then the kernel's tabs Angebot (the released offers of the project with their lines and sums), Dateien
- *												(the files of the project's folder in the feature Files that the member may see, with the player of Review for an audio or
- *												video file), Belege (the released documents of the project, as [crm-documents] draws them) and Upload (the way to the page
- *												Upload). The tab that stands open is the one of the query (?tab=angebot, dateien, belege or upload; the first where there is
- *												none) and always Dateien where a file is asked to be played; the script of the kernel wires the buttons, and without it every
- *												panel stands open one under the other. The label of a tab carries the count of what is in it.
+ *												query it is the list - the open projects first, the one that was last active at the top, the done ones under their own
+ *												heading - and with ?projekt=<id> the page of one project: the kernel's tabs Angebot (the released offers of the project, the
+ *												ones that can be ordered first and open, the done and the expired ones folded to a line), Dateien (the files of the
+ *												project's folder in the feature Files that the member may see, with the player of Review for an audio or video file) and
+ *												Belege (the released documents of the project, as [crm-documents] draws them). The head of the page - the breadcrumb, the
+ *												title, the state and the description - is the page head's ([crm-portal-head], which reads current()). The tab that stands
+ *												open is the one of the query (?tab=angebot, dateien or belege; the first where there is none) and always Dateien where a
+ *												file is asked to be played; the script of the kernel wires the buttons and the portal's own script writes the tab into the
+ *												address, and without them every panel stands open one under the other. The label of a tab carries the count of what is in it.
  *
  *												Nothing here is stored or sent, and every value enters the markup escaped. A project of another client and an id that is none
  *												are the list with a sentence that the project is unknown. The player of Review returns to the page it stands on without the
@@ -31,13 +33,16 @@ class Projects {
 	private const string PAGE = '/portal/projekte';
 
 	// The tabs of the page of a project in their order: the value of ?tab= and the name of the section (its id is projekt-<name>) it opens
-	public const array TABS = [ 'angebot' => 'offer', 'dateien' => 'files', 'belege' => 'documents', 'upload' => 'upload' ];
+	public const array TABS = [ 'angebot' => 'offer', 'dateien' => 'files', 'belege' => 'documents' ];
+
+	// The project of this request, once it was looked up
+	private const string CURRENT = './crm/portal/project';
 
 	/**
 	 *	[crm-projects]
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$args					open ('1': leave out the done projects) and short ('1': at most SHORT, always the list)
+	 *	@param		array 		$args					open ('1': leave out the done projects) and short ('1': at most SHORT, always the list, under its heading with the way to all of them)
 	 *
 	 *	@return 	string
 	 */
@@ -49,7 +54,7 @@ class Projects {
 		$client = Portal::client( $appData );
 
 		if( $client === null )
-			return self::message( 'none', $classes );
+			return self::message( $appData, 'none', $classes );
 
 		$query = Portal::query( $appData );
 		$short = ( $args['short'] ?? '0' ) === '1';
@@ -60,16 +65,10 @@ class Projects {
 
 			$asked = is_string( $query['projekt'] ?? null ) ? $query['projekt'] : '';
 			$review = is_string( $query['review'] ?? null ) ? $query['review'] : '';
-			$project = null;
+			$project = self::current( $appData, $client );
+			$unknown = $asked !== '' && $project === null;
 
-			if( $asked !== '' ) {
-				$project = Projekte::get( $appData, $asked );
-				$unknown = $project === null || $project['client'] !== $client['number'];
-			}
-			elseif( $review !== '' )
-				$project = self::ofFile( $appData, $client, $review );
-
-			if( $project !== null && $unknown === false )
+			if( $project !== null )
 				return self::page( $appData, $client, $project, $review, is_string( $query['tab'] ?? null ) ? $query['tab'] : '', $classes );
 		}
 
@@ -77,12 +76,47 @@ class Projects {
 	}
 
 	/**
-	 *	The list of the client's projects
+	 *	The project the request is about: the one of ?projekt=<id> where it is the client's, else the one whose folder holds the file of ?review=<file>.
+	 *	Looked up once for the request; the page head and the component both ask
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client
+	 *
+	 *	@return 	array|null								As Projekte::get() has it; null where the request names none of the client's
+	 */
+	public static function current( array &$appData, array $client ): ?array {
+
+		$query = Portal::query( $appData );
+		$asked = is_string( $query['projekt'] ?? null ) ? $query['projekt'] : '';
+		$review = is_string( $query['review'] ?? null ) ? $query['review'] : '';
+		$key = $client['number']. '|'. $asked. '|'. $review;
+
+		// The answer is kept with what it was asked for, so that a second request in the same process (a test, a worker) never gets the answer of the first
+		if( ( $appData[self::CURRENT]['key'] ?? null ) === $key )
+			return $appData[self::CURRENT]['project'];
+
+		$project = null;
+
+		if( $asked !== '' ) {
+			$project = Projekte::get( $appData, $asked );
+			$project = $project !== null && $project['client'] === $client['number'] ? $project : null;
+		}
+		elseif( $review !== '' )
+			$project = self::ofFile( $appData, $client, $review );
+
+		$appData[self::CURRENT] = [ 'key' => $key, 'project' => $project ];
+
+		return $project;
+	}
+
+	/**
+	 *	The list of the client's projects, the one that was last active first: the day a document of it was released, a file came into its folder or
+	 *	it began, whichever is latest
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$client
 	 *	@param		bool			$open					Leave out the done ones
-	 *	@param		bool			$short				At most SHORT
+	 *	@param		bool			$short				At most SHORT, under the heading of the section
 	 *	@param		bool			$unknown			Say that the project asked for is none of the client's
 	 *	@param		string		$classes
 	 *
@@ -91,67 +125,78 @@ class Projects {
 	private static function list( array &$appData, array $client, bool $open, bool $short, bool $unknown, string $classes ): string {
 
 		$projects = Projekte::list( $appData, $client['number'], $open );
+		$say = $unknown === true ? self::template( 'projects-unknown' ) : '';
+		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
+
+		if( $projects === [] )
+			return Portal::render( 'projects-empty', [ '[[classes]]' => $classes, '[[unknown]]' => $say, '[[empty]]' => Portal::emptyState( $appData, 'folder', '[[/project/crm-portal/projects/none]]', 'crm-projects__empty' ) ] );
+
+		$counts = [];
+		$active = [];
+
+		foreach( Documents::released( $appData, $client['id'] ) as $document )
+			if( $document['project'] !== '' ) {
+				$counts[$document['project']] = ( $counts[$document['project']] ?? 0 ) + 1;
+				$active[$document['project']] = max( $active[$document['project']] ?? '', substr( $document['released_at'], 0, 10 ), $document['date'] );
+			}
+
+		$files = [];
+
+		foreach( $projects as $project ) {
+
+			$files[$project['id']] = self::folder( $appData, $project ) === null ? null : Files::visible( $appData, $project['folder'] );
+			$active[$project['id']] = max( $active[$project['id']] ?? '', $project['started'] );
+
+			foreach( $files[$project['id']] ?? [] as $file )
+				$active[$project['id']] = max( $active[$project['id']], substr( (string) $file['created'], 0, 10 ) );
+		}
+
+		// The latest day first; of two on a day the newer project (the list has it first already) - a stable sort keeps it so
+		usort( $projects, static fn( array $a, array $b ): int => strcmp( $active[$b['id']], $active[$a['id']] ) );
 
 		if( $short === true )
 			$projects = array_slice( $projects, 0, self::SHORT );
 
-		$say = $unknown === true ? self::template( 'projects-unknown' ) : '';
-
-		if( $projects === [] )
-			return str_replace( [ '[[classes]]', '[[unknown]]', '[[message]]' ], [ $classes, $say, '[[/project/crm-portal/projects/none]]' ], self::template( 'projects-empty' ) );
-
-		$counts = [];
-
-		foreach( Documents::released( $appData, $client['id'] ) as $document )
-			if( $document['project'] !== '' )
-				$counts[$document['project']] = ( $counts[$document['project']] ?? 0 ) + 1;
-
-		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 		$rows = [ 'open' => '', 'done' => '' ];
 
 		foreach( $projects as $project )
-			$rows[$project['done'] === true ? 'done' : 'open'] .= self::row( $appData, $project, $counts[$project['id']] ?? 0, $dir );
+			$rows[$project['done'] === true ? 'done' : 'open'] .= self::row( $project, $counts[$project['id']] ?? 0, $files[$project['id']] === null ? null : count( $files[$project['id']] ), $dir );
 
-		return str_replace(
-			[ '[[classes]]', '[[unknown]]', '[[open]]', '[[done]]' ],
-			[
-				$classes,
-				$say,
-				$rows['open'] === '' ? '' : str_replace( '[[rows]]', $rows['open'], self::template( 'projects-open' ) ),
-				$rows['done'] === '' ? '' : str_replace( '[[rows]]', $rows['done'], self::template( 'projects-done' ) ),
-			],
-			self::template( 'projects' )
-		);
+		return Portal::render( 'projects', [
+			'[[classes]]'  => $classes. ( $short === true ? ' crm-projects--short' : '' ),
+			'[[labelled]]' => $short === true ? ' aria-labelledby="crm-projects-heading"' : '',
+			'[[heading]]'  => $short === true ? Portal::render( 'projects-heading', [ '[[dir]]' => $dir ] ) : '',
+			'[[unknown]]'  => $say,
+			'[[open]]'     => $rows['open'] === '' ? '' : Portal::render( 'projects-open', [ '[[scroll]]' => $short === true ? '' : ' crm-scroll crm-scroll--cards', '[[rows]]' => $rows['open'] ] ),
+			'[[done]]'     => $rows['done'] === '' ? '' : Portal::render( 'projects-done', [ '[[rows]]' => $rows['done'] ] ),
+		] );
 	}
 
 	/**
-	 *	One row of the list
+	 *	One row of the list: a card that links the page of the project
 	 *
-	 *	@param		array 		&$appData
 	 *	@param		array 		$project
 	 *	@param		int				$documents		How many released documents name it
+	 *	@param		int|null	$files				How many files the member may see; null where there is no folder to count
 	 *	@param		string		$dir					The directory the project is served from, escaped
 	 *
 	 *	@return 	string
 	 */
-	private static function row( array &$appData, array $project, int $documents, string $dir ): string {
+	private static function row( array $project, int $documents, ?int $files, string $dir ): string {
 
 		$day = Documents\Render::day( $project['started'] );
-		$files = self::folder( $appData, $project ) === null ? null : count( Files::visible( $appData, $project['folder'] ) );
+		$state = $project['done'] === true ? 'done' : 'open';
 
-		return str_replace(
-			[ '[[id]]', '[[state]]', '[[dir]]', '[[title]]', '[[started]]', '[[files]]', '[[documents]]' ],
-			[
-				\Nino\Modules\Components::escape( $project['id'] ),
-				$project['done'] === true ? 'done' : 'open',
-				$dir,
-				\Nino\Modules\Components::escape( $project['title'] ),
-				$day === '' ? '' : str_replace( [ '[[iso]]', '[[date]]' ], [ \Nino\Modules\Components::escape( $project['started'] ), \Nino\Modules\Components::escape( $day ) ], self::template( 'project-started' ) ),
-				$files === null ? '' : self::count( 'files', $files ),
-				self::count( 'documents', $documents ),
-			],
-			self::template( 'project-row' )
-		);
+		return Portal::render( 'project-row', [
+			'[[id]]'        => \Nino\Modules\Components::escape( $project['id'] ),
+			'[[state]]'     => $state,
+			'[[tone]]'      => Portal::tone( $state ),
+			'[[dir]]'       => $dir,
+			'[[title]]'     => \Nino\Modules\Components::escape( $project['title'] ),
+			'[[started]]'   => $day === '' ? '' : Portal::render( 'project-started', [ '[[iso]]' => \Nino\Modules\Components::escape( $project['started'] ), '[[date]]' => \Nino\Modules\Components::escape( $day ) ] ),
+			'[[files]]'     => $files === null ? '' : self::count( 'files', $files ),
+			'[[documents]]' => self::count( 'documents', $documents ),
+		] );
 	}
 
 	/**
@@ -164,15 +209,15 @@ class Projects {
 	 */
 	private static function count( string $kind, int $number ): string {
 
-		return str_replace(
-			[ '[[kind]]', '[[number]]', '[[word]]' ],
-			[ $kind, (string) $number, '[[/project/crm-portal/projects/'. ( $kind === 'files' ? 'file' : 'document' ). '-'. ( $number === 1 ? 'one' : 'many' ). ']]' ],
-			self::template( 'project-count' )
-		);
+		return Portal::render( 'project-count', [
+			'[[kind]]'   => $kind,
+			'[[number]]' => (string) $number,
+			'[[word]]'   => '[[/project/crm-portal/projects/'. ( $kind === 'files' ? 'file' : 'document' ). '-'. ( $number === 1 ? 'one' : 'many' ). ']]',
+		] );
 	}
 
 	/**
-	 *	The page of one project
+	 *	The page of one project: its tabs
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$client
@@ -187,138 +232,84 @@ class Projects {
 
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 		$documents = Documents::released( $appData, $client['id'], $project['id'] );
-		$offers = '';
-		$offered = 0;
-
-		foreach( $documents as $document )
-			if( $document['category'] === 'offer' ) {
-
-				$one = self::offer( $appData, $client, $document, $dir );
-				$offers .= $one;
-				$offered += $one === '' ? 0 : 1;
-			}
-
-		$day = Documents\Render::day( $project['started'] );
-		$text = str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $project['description'] ) );
-
-		$files = self::files( $appData, $project, $review, $dir );
+		$files = self::files( $appData, $project, $review );
 		$sections = [
-			'offer'     => [ Order::state( $appData ). ( $offers !== '' ? $offers : self::template( 'project-offer-none' ) ), $offered ],
+			'offer'     => self::offers( $appData, $client, $documents, $dir ),
 			'files'     => $files,
 			'documents' => [ Portal::documentList( $appData, $documents, '', false ), count( $documents ) ],
-			'upload'    => [ str_replace( '[[dir]]', $dir, self::template( 'project-upload' ) ), null ],
 		];
 
 		// A file asked to be played is played in Dateien; else the tab of the query, and the first where it names none
 		$open = $review !== '' ? 'files' : ( self::TABS[$tab] ?? 'offer' );
+		$queries = array_flip( self::TABS );
 		$tabs = '';
 		$html = '';
 
 		foreach( $sections as $name => $section ) {
 
 			$active = $name === $open ? ' nino-is-active' : '';
-			$tabs .= str_replace(
-				[ '[[name]]', '[[active]]', '[[count]]' ],
-				[ $name, $active, $section[1] === null ? '' : str_replace( '[[number]]', (string) $section[1], self::template( 'project-tab-count' ) ) ],
-				self::template( 'project-tab' )
-			);
-			$html .= str_replace( [ '[[name]]', '[[active]]', '[[content]]' ], [ $name, $active, $section[0] ], self::template( 'project-section' ) );
+			$tabs .= Portal::render( 'project-tab', [
+				'[[name]]'   => $name,
+				'[[query]]'  => $queries[$name],
+				'[[active]]' => $active,
+				'[[count]]'  => $section[1] === null ? '' : Portal::render( 'project-tab-count', [ '[[number]]' => (string) $section[1] ] ),
+			] );
+			$html .= Portal::render( 'project-section', [ '[[name]]' => $name, '[[active]]' => $active, '[[content]]' => $section[0] ] );
 		}
 
-		return str_replace(
-			[ '[[classes]]', '[[id]]', '[[state]]', '[[dir]]', '[[title]]', '[[started]]', '[[description]]', '[[tabs]]', '[[sections]]' ],
-			[
-				$classes,
-				\Nino\Modules\Components::escape( $project['id'] ),
-				$project['done'] === true ? 'done' : 'open',
-				$dir,
-				\Nino\Modules\Components::escape( $project['title'] ),
-				$day === '' ? '' : str_replace( [ '[[iso]]', '[[date]]' ], [ \Nino\Modules\Components::escape( $project['started'] ), \Nino\Modules\Components::escape( $day ) ], self::template( 'project-started' ) ),
-				$text === '' ? '' : str_replace( '[[text]]', $text, self::template( 'project-description' ) ),
-				$tabs,
-				$html,
-			],
-			self::template( 'project' )
-		);
+		return Portal::render( 'project', [
+			'[[classes]]'  => $classes,
+			'[[id]]'       => \Nino\Modules\Components::escape( $project['id'] ),
+			'[[state]]'    => $project['done'] === true ? 'done' : 'open',
+			'[[tabs]]'     => $tabs,
+			'[[sections]]' => $html,
+		] );
 	}
 
 	/**
-	 *	One released offer: what it is, its lines, its sums, the download of its PDF and - where it can be ordered or was - the form of the order or the line that says it was
+	 *	The section Angebot: the released offers of the project, the ones that can be ordered first, each open, and under their own line the rest, each
+	 *	folded to its head - but open where the query names it, so that the message of an order stands in sight. Where the client has to agree to the
+	 *	Datenschutz first, the section says so once at its top; the message of an order that names no offer stands there too
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$client				The client of the member
-	 *	@param		array 		$released			As Documents::released() has it
-	 *	@param		string		$dir					The directory the project is served from, escaped
+	 *	@param		array 		$client
+	 *	@param		array 		$documents		As Documents::released() has them
+	 *	@param		string		$dir					Escaped
 	 *
-	 *	@return 	string										'' for an offer that cannot be read or whose state the words do not know
+	 *	@return 	array											The markup and the count of offers
 	 */
-	private static function offer( array &$appData, array $client, array $released, string $dir ): string {
+	private static function offers( array &$appData, array $client, array $documents, string $dir ): array {
 
-		$state = $released['expired'] === true ? 'expired' : $released['state'];
-		$document = Documents::get( $appData, $released['id'] );
+		$named = Order::named( $appData );
+		$orderable = '';
+		$rest = '';
+		$count = 0;
+		$waits = false;
 
-		if( $document === null || preg_match( '/^[a-z]{1,20}$/D', $state ) !== 1 )
-			return '';
+		foreach( $documents as $document ) {
 
-		$currency = \Crm\Settings::get( $appData, 'currency' );
-		$regular = $document['vat_mode'] === 'regular';
-		$totals = Documents\Money::totals( $document['lines'], (string) $document['vat_mode'], (bool) $document['reverse_charge'] );
-		$lines = '';
+			if( $document['category'] !== 'offer' )
+				continue;
 
-		foreach( $document['lines'] as $index => $line ) {
+			$open = Documents::orderable( $document ) === true;
+			$waits = $waits === true || $open === true;
+			$card = Offer::card( $appData, $client, $document, $dir, 'projekt', $open === true || $named === (int) $document['id'] );
 
-			$unit = (string) $line['unit'] === '' ? '' : ' '. $line['unit'];
+			if( $card === '' )
+				continue;
 
-			$lines .= str_replace(
-				[ '[[title]]', '[[description]]', '[[qty]]', '[[price]]', '[[rate]]', '[[amount]]' ],
-				[
-					\Nino\Modules\Components::escape( (string) $line['title'] ),
-					(string) $line['description'] === '' ? '' : str_replace( '[[text]]', str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( (string) $line['description'] ) ), self::template( 'offer-line-description' ) ),
-					\Nino\Modules\Components::escape( Documents\Money::formatQty( (int) $line['qty'] ). $unit ),
-					\Nino\Modules\Components::escape( Documents\Money::format( (int) $line['price_net'], $currency ) ),
-					$regular === true ? str_replace( '[[rate]]', \Nino\Modules\Components::escape( Documents\Money::formatRate( (int) $line['vat_rate'] ) ), self::template( 'offer-line-rate' ) ) : '',
-					\Nino\Modules\Components::escape( Documents\Money::format( $totals['amounts'][$index], $currency ) ),
-				],
-				self::template( 'offer-line' )
-			);
+			$count++;
+
+			if( $open === true )
+				$orderable .= $card;
+			else
+				$rest .= $card;
 		}
 
-		$sum = static fn( string $kind, string $label, int $cents ): string => str_replace(
-			[ '[[kind]]', '[[label]]', '[[amount]]' ],
-			[ $kind, \Nino\Modules\Components::escape( $label ), \Nino\Modules\Components::escape( Documents\Money::format( $cents, $currency ) ) ],
-			self::template( 'offer-sum' )
-		);
-		$sums = '';
+		$hint = $waits === true && Order::privacyFirst( $appData, $client ) === true ? Order::privacyHint( $dir ) : '';
+		$html = $hint. Order::state( $appData ). $orderable. ( $rest === '' ? '' : ( $orderable === '' ? '' : self::template( 'project-offers-rest' ) ). $rest );
 
-		if( $regular === true ) {
-
-			$sums .= $sum( 'net', Documents\Render::text( 'totals.net' ), $totals['net'] );
-
-			foreach( $totals['rates'] as $rate => $part )
-				$sums .= $sum( 'vat', Documents\Render::text( 'totals.vat', Documents\Money::formatRate( $rate ), Documents\Money::format( $part['net'], $currency ) ), $part['vat'] );
-		}
-
-		$sums .= $sum( 'gross', Documents\Render::text( 'totals.gross' ), $totals['gross'] );
-		$note = $regular === false ? 'vatnote.small_business' : ( (bool) $document['reverse_charge'] === true ? 'vatnote.reverse' : '' );
-		$valid = Documents\Render::day( (string) ( $document['valid_until'] ?? '' ) );
-
-		return str_replace(
-			[ '[[id]]', '[[state]]', '[[title]]', '[[iso]]', '[[date]]', '[[valid]]', '[[lines]]', '[[sums]]', '[[note]]', '[[dir]]', '[[order]]' ],
-			[
-				(string) $document['id'],
-				$state,
-				\Nino\Modules\Components::escape( $document['title'] !== '' ? $document['title'] : $document['number'] ),
-				\Nino\Modules\Components::escape( $document['date'] ),
-				\Nino\Modules\Components::escape( Documents\Render::day( $document['date'] ) ),
-				$valid === '' ? '' : str_replace( [ '[[iso]]', '[[date]]' ], [ \Nino\Modules\Components::escape( (string) $document['valid_until'] ), \Nino\Modules\Components::escape( $valid ) ], self::template( 'offer-valid' ) ),
-				$lines,
-				$sums,
-				$note === '' ? '' : str_replace( '[[text]]', \Nino\Modules\Components::escape( Documents\Render::text( $note ) ), self::template( 'offer-note' ) ),
-				$dir,
-				Order::block( $appData, $client, $released, 'projekt', $dir ),
-			],
-			self::template( 'offer' )
-		);
+		return [ $count === 0 ? self::template( 'project-offer-none' ) : $html, $count ];
 	}
 
 	/**
@@ -327,37 +318,38 @@ class Projects {
 	 *	@param		array 		&$appData
 	 *	@param		array 		$project
 	 *	@param		string		$review				The file asked to be played
-	 *	@param		string		$dir					Escaped
 	 *
 	 *	@return 	array											The markup and the count of files the member may see (null where there is no folder to count)
 	 */
-	private static function files( array &$appData, array $project, string $review, string $dir ): array {
+	private static function files( array &$appData, array $project, string $review ): array {
 
 		if( Crm::featureOn( $appData, 'files' ) === false )
-			return [ self::message( 'files-off', '', 'project-message' ), null ];
+			return [ self::message( $appData, 'files-off', '', 'project-message' ), null ];
 
 		$folder = self::folder( $appData, $project );
 
 		if( $folder === null )
-			return [ self::message( 'files-none', '', 'project-message' ), null ];
+			return [ self::message( $appData, 'files-none', '', 'project-message' ), null ];
 
 		$files = Files::visible( $appData, $folder['id'] );
 
 		if( $files === [] )
-			return [ self::message( 'files-empty', '', 'project-message' ), 0 ];
+			return [ self::message( $appData, 'files-empty', '', 'project-message' ), 0 ];
 
 		$player = '';
+		$playing = '';
 
 		if( $review !== '' && Crm::featureOn( $appData, 'review' ) === true )
 			foreach( $files as $file )
-				if( $file['id'] === $review && \Nino\Modules\Review::kind( $file['mime'] ) !== '' && \Nino\Modules\Files::path( $appData, $file['id'] ) !== null )
+				if( $file['id'] === $review && \Nino\Modules\Review::kind( $file['mime'] ) !== '' && \Nino\Modules\Files::path( $appData, $file['id'] ) !== null ) {
 					$player = \Nino\Modules\Review::componentReviewPlayer( $appData, [] );
+					$playing = $file['id'];
+				}
 
-		return [ str_replace(
-			[ '[[player]]', '[[rows]]' ],
-			[ $player, Files::rows( $appData, $files, \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) ). self::PAGE. '?projekt='. rawurlencode( $project['id'] ). '&review=' ) ],
-			self::template( 'project-files' )
-		), count( $files ) ];
+		return [ Portal::render( 'project-files', [
+			'[[player]]' => $player,
+			'[[rows]]'   => Files::rows( $appData, $files, \Nino\Filesystem::getDir( $appData ). self::PAGE. '?projekt='. rawurlencode( $project['id'] ). '&review=', $playing ),
+		] ), count( $files ) ];
 	}
 
 	/**
@@ -409,17 +401,23 @@ class Projects {
 	}
 
 	/**
-	 *	A sentence in the place of a list
+	 *	A sentence in the place of a list: an empty state that says what happens next
 	 *
+	 *	@param		array 		&$appData
 	 *	@param		string		$name					The end of the key of its word, below /project/crm-portal/projects/
 	 *	@param		string		$classes
-	 *	@param		string		$template
+	 *	@param		string		$template			projects-empty (the component's box) or project-message (a section of the page)
 	 *
 	 *	@return 	string
 	 */
-	private static function message( string $name, string $classes, string $template = 'projects-empty' ): string {
+	private static function message( array &$appData, string $name, string $classes, string $template = 'projects-empty' ): string {
 
-		return str_replace( [ '[[classes]]', '[[unknown]]', '[[message]]' ], [ $classes, '', '[[/project/crm-portal/projects/'. $name. ']]' ], self::template( $template ) );
+		$word = '[[/project/crm-portal/projects/'. $name. ']]';
+
+		if( $template === 'project-message' )
+			return Portal::render( 'project-message', [ '[[icon]]' => 'folder', '[[message]]' => $word ] );
+
+		return Portal::render( 'projects-empty', [ '[[classes]]' => $classes, '[[unknown]]' => '', '[[empty]]' => Portal::emptyState( $appData, 'folder', $word, 'crm-projects__empty' ) ] );
 	}
 
 	/**

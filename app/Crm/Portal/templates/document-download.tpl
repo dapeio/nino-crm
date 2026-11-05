@@ -1,0 +1,1 @@
+<a class="crm-documents__download crm-btn crm-btn--secondary crm-btn--small" href="[[dir]]/.crm/pdf/[[id]]?download=1">[[icon:download]]<span>[[/project/crm-documents/list/download]]</span><span class="nino-sr-only"> [[number]]</span></a>

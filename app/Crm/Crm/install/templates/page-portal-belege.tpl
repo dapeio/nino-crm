@@ -1,12 +1,11 @@
 <!-- nino:template-name Portal documents -->
 [template /templates/html-header]
-<div class="nino-wrap">
+<div class="nino-wrap crm-portal">
 
-<section id="intro" class="nino-section">
+<section id="belege" class="nino-section crm-page">
 	<div class="nino-grid-row">
-		<div class="nino-grid-100">
-			[title /template/page-portal-belege/intro/title tag="h2"]
-			[text /template/page-portal-belege/intro/text]
+		<div class="nino-grid-100 crm-page__inner">
+			[crm-portal-head]
 			[crm-documents]
 		</div>
 	</div>

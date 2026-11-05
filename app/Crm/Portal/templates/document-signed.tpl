@@ -1,1 +1,1 @@
-<a class="crm-documents__signed" href="[[dir]]/.sign/pdf?r=[[request]]&amp;kind=signed">[[/project/crm-documents/list/signed]]</a>
+<a class="crm-documents__signed crm-btn crm-btn--secondary crm-btn--small" href="[[dir]]/.sign/pdf?r=[[request]]&amp;kind=signed">[[icon:check]]<span>[[/project/crm-documents/list/signed]]</span><span class="nino-sr-only"> [[number]]</span></a>

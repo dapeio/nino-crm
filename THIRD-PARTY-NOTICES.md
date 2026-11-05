@@ -193,6 +193,15 @@ They are covered by the [Lucide](#lucide) section above: the ISC License and,
 for the icons derived from Feather, the MIT License, whose notices are quoted
 there and travel with these copies as well.
 
+The customer portal of the CRM module, which lives in this repository as well,
+draws its icons the same way: `app/Crm/Portal/Icons/Icons.php` holds the
+geometry of the thirty-two inline SVG icons its pages use - the shapes of the
+files of [Lucide](https://lucide.dev), release 0.577.0, unchanged - and the
+portal's templates ask for them by name (`[[icon:<name>]]`). They are covered by
+the [Lucide](#lucide) section above in the same way: the ISC License and, for
+the icons derived from Feather, the MIT License, whose notices are quoted there
+and travel with these copies as well.
+
 ## Adobe Core 14 AFM metrics
 
 The Pdf feature measures text in the twelve standard fonts it can set - Helvetica,

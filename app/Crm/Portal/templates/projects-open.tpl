@@ -1,3 +1,5 @@
-<ul class="crm-projects__list crm-card crm-table">
-		[[rows]]
-	</ul>
+<div class="crm-projects__scroll[[scroll]]">
+		<ul class="crm-projects__list crm-projects__list--open">
+			[[rows]]
+		</ul>
+	</div>

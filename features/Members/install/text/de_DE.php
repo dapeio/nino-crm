@@ -10,11 +10,11 @@ return [
 
 	// Die Anmeldeseite, page-members-login.tpl
 	'[[/template/page-members-login/intro/title]]'	=> 'Anmelden',
-	'[[/template/page-members-login/intro/text]]'	=> 'Gib die E-Mail-Adresse Deines Kontos ein. Wir schicken Dir einen Link per E-Mail - damit meldest Du Dich an, ganz ohne Passwort.',
+	'[[/template/page-members-login/intro/text]]'	=> 'Gib die E-Mail-Adresse Deines Kontos ein. Wir schicken Dir einen Link per E-Mail – damit meldest Du Dich an, ganz ohne Passwort.',
 
 	// Die Seite, die ein Link öffnet, page-members-confirm.tpl
 	'[[/template/page-members-confirm/intro/title]]'	=> 'Anmeldung bestätigen',
-	'[[/template/page-members-confirm/intro/text]]'	=> 'Klick auf den Button, um die Anmeldung abzuschließen. Noch ist nichts geschehen - der Link, dem Du gefolgt bist, hat Dich nur hierher gebracht.',
+	'[[/template/page-members-confirm/intro/text]]'	=> 'Klick auf den Button, um die Anmeldung abzuschließen. Noch ist nichts geschehen – der Link, dem Du gefolgt bist, hat Dich nur hierher gebracht.',
 
 	// Das Formular, [members-login]
 	'[[/feature/members/login/label]]'	=> 'E-Mail-Adresse',

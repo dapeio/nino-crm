@@ -23,7 +23,14 @@ class Privacy {
 	public const string ROUTE = '/.crm/datenschutz';
 	public const string PAGE = '/portal/datenschutz';
 
-	private const array STATES = [ 'agreed', 'unchecked', 'invalid', 'expired', 'changed' ];
+	// The states a page says, each with the tone and the icon of its note and whether it is a status or an alert
+	private const array STATES = [
+		'agreed'    => [ 'success', 'circle-check', 'status' ],
+		'unchecked' => [ 'error', 'circle-alert', 'alert' ],
+		'invalid'   => [ 'error', 'circle-alert', 'alert' ],
+		'expired'   => [ 'error', 'circle-alert', 'alert' ],
+		'changed'   => [ 'warning', 'circle-alert', 'alert' ],
+	];
 
 	/**
 	 *	[crm-privacy] - the text, the state and the form. A member of no client is told that the page is for clients; nothing for a visitor
@@ -44,17 +51,17 @@ class Privacy {
 		$client = Portal::client( $appData );
 
 		if( $client === null )
-			return str_replace( [ '[[classes]]', '[[message]]' ], [ $classes, '[[/project/crm-portal/privacy/none]]' ], Portal::template( 'privacy-none' ) );
+			return Portal::render( 'privacy-none', [ '[[classes]]' => $classes, '[[state]]' => '', '[[empty]]' => Portal::emptyState( $appData, 'shield-check', '[[/project/crm-portal/privacy/none]]', 'crm-privacy__empty' ) ] );
 
 		$text = Records::privacyText( $appData );
 
 		$query = Portal::query( $appData );
-		$state = is_string( $query['state'] ?? null ) === true && in_array( $query['state'], self::STATES, true ) === true ? $query['state'] : '';
-		$said = static fn( string $name ): string => str_replace( [ '[[state]]', '[[role]]' ], [ $name, $name === 'agreed' ? 'status' : 'alert' ], Portal::template( 'privacy-state' ) );
+		$state = is_string( $query['state'] ?? null ) === true && isset( self::STATES[$query['state']] ) === true ? $query['state'] : '';
+		$said = static fn( string $name ): string => Portal::render( 'privacy-state', [ '[[state]]' => $name, '[[tone]]' => self::STATES[$name][0], '[[icon]]' => self::STATES[$name][1], '[[role]]' => self::STATES[$name][2] ] );
 
 		// There is nothing to agree to: a post without a text was refused (invalid) - the sentence says so; the same word in the address of a page that has a text says nothing wrong
 		if( $text === '' )
-			return ( $state === 'invalid' ? $said( 'invalid' ) : '' ). str_replace( [ '[[classes]]', '[[message]]' ], [ $classes, '[[/project/crm-portal/privacy/empty]]' ], Portal::template( 'privacy-none' ) );
+			return Portal::render( 'privacy-none', [ '[[classes]]' => $classes, '[[state]]' => $state === 'invalid' ? $said( 'invalid' ) : '', '[[empty]]' => Portal::emptyState( $appData, 'shield-check', '[[/project/crm-portal/privacy/empty]]', 'crm-privacy__empty' ) ] );
 
 		if( $state === 'invalid' )
 			$state = '';
@@ -63,29 +70,25 @@ class Privacy {
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 
 		if( $standing['agreed'] === true )
-			$line = str_replace(
-				[ '[[iso]]', '[[date]]', '[[name]]' ],
-				[ \Nino\Modules\Components::escape( substr( $standing['at'], 0, 10 ) ), \Nino\Modules\Components::escape( Documents\Render::day( substr( $standing['at'], 0, 10 ) ) ), \Nino\Modules\Components::escape( $standing['member_name'] ) ],
-				Portal::template( 'privacy-agreed' )
-			);
+			$line = Portal::render( 'privacy-agreed', [
+				'[[iso]]'  => \Nino\Modules\Components::escape( substr( $standing['at'], 0, 10 ) ),
+				'[[date]]' => \Nino\Modules\Components::escape( Documents\Render::day( substr( $standing['at'], 0, 10 ) ) ),
+				'[[name]]' => \Nino\Modules\Components::escape( $standing['member_name'] ),
+			] );
 		else {
 			$changed = Settings::get( $appData, 'privacy_changed' );
-			$line = str_replace( '[[changed]]', Records::latestPrivacy( $appData, $client['id'] ) === null || Documents\Render::day( $changed ) === '' ? '' : str_replace(
-				[ '[[iso]]', '[[date]]' ], [ \Nino\Modules\Components::escape( $changed ), \Nino\Modules\Components::escape( Documents\Render::day( $changed ) ) ], Portal::template( 'privacy-changed' )
-			), Portal::template( 'privacy-open' ) );
+			$line = Portal::render( 'privacy-open', [ '[[changed]]' => Records::latestPrivacy( $appData, $client['id'] ) === null || Documents\Render::day( $changed ) === '' ? '' : Portal::render( 'privacy-changed', [
+				'[[iso]]' => \Nino\Modules\Components::escape( $changed ), '[[date]]' => \Nino\Modules\Components::escape( Documents\Render::day( $changed ) ),
+			] ) ] );
 		}
 
-		return str_replace(
-			[ '[[classes]]', '[[state]]', '[[text]]', '[[standing]]', '[[form]]' ],
-			[
-				$classes,
-				$state === '' ? '' : $said( $state ),
-				str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $text ) ),
-				$line,
-				$standing['agreed'] === true ? '' : str_replace( [ '[[dir]]', '[[hash]]' ], [ $dir, Records::hash( $text ) ], Portal::template( 'privacy-form' ) ),
-			],
-			Portal::template( 'privacy' )
-		);
+		return Portal::render( 'privacy', [
+			'[[classes]]'  => $classes,
+			'[[state]]'    => $state === '' ? '' : $said( $state ),
+			'[[text]]'     => str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $text ) ),
+			'[[standing]]' => $line,
+			'[[form]]'     => $standing['agreed'] === true ? '' : Portal::render( 'privacy-form', [ '[[dir]]' => $dir, '[[hash]]' => Records::hash( $text ) ] ),
+		] );
 	}
 
 	/**

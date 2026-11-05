@@ -37,20 +37,20 @@ class Files {
 		$classes = \Nino\Feature::classes( $args );
 
 		if( Crm::featureOn( $appData, 'files' ) === false )
-			return self::message( 'off', $classes );
+			return self::message( $appData, 'off', $classes );
 
 		$folder = self::uploadFolder( $appData );
 
 		if( $folder === null )
-			return self::message( 'none', $classes );
+			return self::message( $appData, 'none', $classes );
 
 		$rows = self::rows( $appData, self::visible( $appData, $folder['id'] ), '' );
 
-		return str_replace(
-			[ '[[classes]]', '[[folder]]', '[[rows]]' ],
-			[ $classes, \Nino\Modules\Components::escape( $folder['id'] ), $rows !== '' ? $rows : self::template( 'uploads-empty' ) ],
-			self::template( 'uploads' )
-		);
+		return Portal::render( 'uploads', [
+			'[[classes]]' => $classes,
+			'[[folder]]'  => \Nino\Modules\Components::escape( $folder['id'] ),
+			'[[list]]'    => $rows !== '' ? Portal::render( 'uploads-list', [ '[[rows]]' => $rows ] ) : Portal::template( 'uploads-empty' ),
+		] );
 	}
 
 	/**
@@ -88,16 +88,18 @@ class Files {
 	}
 
 	/**
-	 *	The rows of a list of files: the name as a link to the file, "neu" for a file younger than NEW_DAYS, the size, the day, the link that
-	 *	plays an audio or video file where Review is on and a listen address is given, and the download
+	 *	The rows of a list of files: the icon of the kind and the name - a link to the player for an audio or video file where Review is on and a
+	 *	listen address is given, else to the download -, "neu" for a file younger than NEW_DAYS, the size, the day, the button that plays and the
+	 *	download. The file that is being played is marked
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$files				As Files::files() has them
 	 *	@param		string		$listen				The address of the page the player stands on, up to and with 'review=' ('' for no link that plays)
+	 *	@param		string		$playing			The id of the file the player plays ('' for none)
 	 *
 	 *	@return 	string										'' for no file
 	 */
-	public static function rows( array &$appData, array $files, string $listen ): string {
+	public static function rows( array &$appData, array $files, string $listen, string $playing = '' ): string {
 
 		$words = [];
 
@@ -117,47 +119,42 @@ class Files {
 
 			$created = strtotime( $file['created'] );
 			$plays = $review === true && \Nino\Modules\Review::kind( $file['mime'] ) !== '';
+			$name = \Nino\Modules\Components::escape( $file['name'] );
+			$href = \Nino\Modules\Components::escape( $listen. $file['id'] );
+			$current = $playing !== '' && $file['id'] === $playing;
 
-			$rows .= str_replace(
-				[ '[[id]]', '[[mime]]', '[[name]]', '[[new]]', '[[size]]', '[[created]]', '[[date]]', '[[listen]]', '[[url]]' ],
-				[
-					\Nino\Modules\Components::escape( $file['id'] ),
-					\Nino\Modules\Components::escape( $file['mime'] ),
-					\Nino\Modules\Components::escape( $file['name'] ),
-					$created !== false && $created > $limit ? self::template( 'file-new' ) : '',
-					\Nino\Modules\Components::escape( \Nino\Modules\Files\Store::size( $file['size'], $words ) ),
-					\Nino\Modules\Components::escape( $file['created'] ),
-					\Nino\Modules\Components::escape( Documents\Render::day( substr( $file['created'], 0, 10 ) ) ),
-					$plays === true ? str_replace( '[[href]]', \Nino\Modules\Components::escape( $listen. $file['id'] ), self::template( 'file-listen' ) ) : '',
-					\Nino\Modules\Components::escape( $url ),
-				],
-				self::template( 'file' )
-			);
+			$rows .= Portal::render( 'file', [
+				'[[id]]'      => \Nino\Modules\Components::escape( $file['id'] ),
+				'[[mime]]'    => \Nino\Modules\Components::escape( $file['mime'] ),
+				'[[icon]]'    => Icons::ofFile( $file['mime'] ),
+				'[[name]]'    => $name,
+				'[[primary]]' => $plays === true ? $href. '#projekt-files' : \Nino\Modules\Components::escape( $url ). '?download=1',
+				'[[new]]'     => $created !== false && $created > $limit ? Portal::template( 'file-new' ) : '',
+				'[[mark]]'    => $current === true ? Portal::template( 'file-playing' ) : '',
+				'[[playing]]' => $current === true ? ' crm-files__row--playing' : '',
+				'[[current]]' => $current === true ? ' aria-current="true"' : '',
+				'[[size]]'    => \Nino\Modules\Components::escape( \Nino\Modules\Files\Store::size( $file['size'], $words ) ),
+				'[[created]]' => \Nino\Modules\Components::escape( $file['created'] ),
+				'[[date]]'    => \Nino\Modules\Components::escape( Documents\Render::day( substr( $file['created'], 0, 10 ) ) ),
+				'[[listen]]'  => $plays === true ? Portal::render( 'file-listen', [ '[[href]]' => $href, '[[name]]' => $name ] ) : '',
+				'[[url]]'     => \Nino\Modules\Components::escape( $url ),
+			] );
 		}
 
 		return $rows;
 	}
 
 	/**
-	 *	A sentence of the uploads where there is no list
+	 *	A sentence of the uploads where there is no list: an empty state that says what happens next
 	 *
+	 *	@param		array 		&$appData
 	 *	@param		string		$name					off or none
 	 *	@param		string		$classes
 	 *
 	 *	@return 	string
 	 */
-	private static function message( string $name, string $classes ): string {
+	private static function message( array &$appData, string $name, string $classes ): string {
 
-		return str_replace( [ '[[classes]]', '[[message]]' ], [ $classes, '[[/project/crm-portal/uploads/'. $name. ']]' ], self::template( 'uploads-message' ) );
-	}
-
-	/**
-	 *	@param		string		$name
-	 *
-	 *	@return 	string
-	 */
-	private static function template( string $name ): string {
-
-		return Portal::template( $name );
+		return Portal::render( 'uploads-message', [ '[[classes]]' => $classes, '[[empty]]' => Portal::emptyState( $appData, 'inbox', '[[/project/crm-portal/uploads/'. $name. ']]', 'crm-uploads__empty' ) ] );
 	}
 }

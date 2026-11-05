@@ -23,24 +23,30 @@ class Data {
 	public const string ROUTE = '/.crm/daten';
 	public const string PAGE = '/portal/meine-daten';
 
-	// The fields of the form, in their order: the client's fields the member may change, and how the input is made
+	// The fields of the form, in their order: the client's fields the member may change, how the input is made and whether it takes the whole line
 	public const array FIELDS = [
-		'company' => [ 'type' => 'text', 'autocomplete' => 'organization' ],
-		'name'    => [ 'type' => 'text', 'autocomplete' => 'name' ],
-		'street'  => [ 'type' => 'text', 'autocomplete' => 'street-address' ],
-		'zip'     => [ 'type' => 'text', 'autocomplete' => 'postal-code' ],
-		'city'    => [ 'type' => 'text', 'autocomplete' => 'address-level2' ],
-		'country' => [ 'type' => 'text', 'autocomplete' => 'country' ],
-		'phone'   => [ 'type' => 'tel', 'autocomplete' => 'tel' ],
-		'vat_id'  => [ 'type' => 'text', 'autocomplete' => 'off' ],
+		'company' => [ 'type' => 'text', 'autocomplete' => 'organization', 'wide' => false ],
+		'name'    => [ 'type' => 'text', 'autocomplete' => 'name', 'wide' => false ],
+		'street'  => [ 'type' => 'text', 'autocomplete' => 'street-address', 'wide' => true ],
+		'zip'     => [ 'type' => 'text', 'autocomplete' => 'postal-code', 'wide' => false ],
+		'city'    => [ 'type' => 'text', 'autocomplete' => 'address-level2', 'wide' => false ],
+		'country' => [ 'type' => 'select', 'autocomplete' => 'country', 'wide' => true ],
+		'phone'   => [ 'type' => 'tel', 'autocomplete' => 'tel', 'wide' => false ],
+		'vat_id'  => [ 'type' => 'text', 'autocomplete' => 'off', 'wide' => false ],
 	];
 
-	private const array STATES = [ 'saved', 'invalid', 'expired' ];
+	// The countries the select offers, by their code (Clients keeps the code): the neighbours and the usual ones, Deutschland first; the client's own
+	// code is offered besides them where it is none of these, so that nothing is lost
+	public const array COUNTRIES = [ 'DE', 'AT', 'CH', 'NL', 'BE', 'LU', 'DK', 'FR', 'IT', 'ES', 'PT', 'PL', 'CZ', 'SE', 'NO', 'FI', 'IE', 'GB', 'US' ];
+
+	// The states a page says, each with the tone and the icon of its note and whether it is a status or an alert
+	private const array STATES = [ 'saved' => [ 'success', 'circle-check', 'status' ], 'invalid' => [ 'error', 'circle-alert', 'alert' ], 'expired' => [ 'error', 'circle-alert', 'alert' ] ];
 
 	/**
-	 *	[crm-client-data] - the form with the client's company, name, address, country, phone and VAT id, the e-mail of the account beside it
-	 *	as a line that is only read, and a button. The state the query names is said above the form, and an invalid field beside the field.
-	 *	A member of no client is told there is no client; nothing for a visitor
+	 *	[crm-client-data] - the form with the client's company, name, address (the postal code and the city on one line), country (a select,
+	 *	Deutschland where the client has none), phone and VAT id, the e-mail of the account beside it as a line that is only read, and a button;
+	 *	under the form the block Datenschutz-Zustimmung: whether the client has agreed, and the way to the page. The state the query names is said
+	 *	above the form, and an invalid field beside the field. A member of no client is told there is no client; nothing for a visitor
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$args
@@ -58,10 +64,10 @@ class Data {
 		$client = Portal::client( $appData );
 
 		if( $client === null )
-			return str_replace( '[[classes]]', $classes, Portal::template( 'data-none' ) );
+			return Portal::render( 'data-none', [ '[[classes]]' => $classes, '[[empty]]' => Portal::emptyState( $appData, 'user', '[[/project/crm-portal/data/none]]', 'crm-data__empty' ) ] );
 
 		$query = Portal::query( $appData );
-		$state = is_string( $query['state'] ?? null ) === true && in_array( $query['state'], self::STATES, true ) === true ? $query['state'] : '';
+		$state = is_string( $query['state'] ?? null ) === true && isset( self::STATES[$query['state']] ) === true ? $query['state'] : '';
 		$field = is_string( $query['field'] ?? null ) === true && isset( self::FIELDS[$query['field']] ) === true ? $query['field'] : '';
 
 		if( $state === 'invalid' && $field === '' )
@@ -69,38 +75,79 @@ class Data {
 
 		$fields = '';
 
-		foreach( self::FIELDS as $name => $kind )
-			$fields .= str_replace(
-				[ '[[name]]', '[[type]]', '[[autocomplete]]', '[[value]]', '[[max]]', '[[invalid]]', '[[described]]', '[[error]]' ],
-				[
-					$name,
-					$kind['type'],
-					$kind['autocomplete'],
-					\Nino\Modules\Components::escape( (string) ( $client[$name] ?? '' ) ),
-					(string) Clients::FIELDS[$name],
-					$state === 'invalid' && $field === $name ? ' crm-data__field--invalid' : '',
-					$state === 'invalid' && $field === $name ? ' aria-invalid="true" aria-describedby="crm-data-'. $name. '-error"' : '',
-					$state === 'invalid' && $field === $name ? str_replace( '[[name]]', $name, Portal::template( 'data-error' ) ) : '',
-				],
-				Portal::template( 'data-field' )
-			);
+		foreach( self::FIELDS as $name => $kind ) {
+
+			$invalid = $state === 'invalid' && $field === $name;
+			$value = (string) ( $client[$name] ?? '' );
+			$described = $invalid === true ? ' aria-invalid="true" aria-describedby="crm-data-'. $name. '-error"' : '';
+
+			if( $kind['type'] === 'select' )
+				$input = Portal::render( 'data-select', [ '[[name]]' => $name, '[[autocomplete]]' => $kind['autocomplete'], '[[described]]' => $described, '[[options]]' => self::countries( $value ) ] );
+			else
+				$input = Portal::render( 'data-input', [
+					'[[name]]'         => $name,
+					'[[type]]'         => $kind['type'],
+					'[[autocomplete]]' => $kind['autocomplete'],
+					'[[value]]'        => \Nino\Modules\Components::escape( $value ),
+					'[[max]]'          => (string) Clients::FIELDS[$name],
+					'[[described]]'    => $described,
+				] );
+
+			$fields .= Portal::render( 'data-field', [
+				'[[name]]'    => $name,
+				'[[wide]]'    => $kind['wide'] === true ? ' crm-field--wide' : '',
+				'[[invalid]]' => $invalid === true ? ' crm-field--invalid crm-data__field--invalid' : '',
+				'[[input]]'   => $input,
+				'[[error]]'   => $invalid === true ? Portal::render( 'data-error', [ '[[name]]' => $name ] ) : '',
+			] );
+		}
 
 		$member = \Nino\Modules\Members::current( $appData );
 		$standing = Records::privacy( $appData, $client['id'] );
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 
-		return str_replace(
-			[ '[[classes]]', '[[dir]]', '[[privacy]]', '[[state]]', '[[fields]]', '[[email]]' ],
-			[
-				$classes,
-				$dir,
-				$standing['asked'] === false ? '' : str_replace( [ '[[agreed]]', '[[standing]]', '[[dir]]' ], [ $standing['agreed'] === true ? '1' : '0', Privacy::standingLine( $standing ), $dir ], Portal::template( 'data-privacy' ) ),
-				$state === '' ? '' : str_replace( [ '[[state]]', '[[field]]' ], [ $state, $state === 'invalid' ? $field : '' ], Portal::template( $state === 'invalid' ? 'data-state-invalid' : 'data-state' ) ),
-				$fields,
-				\Nino\Modules\Components::escape( (string) ( $member['email'] ?? '' ) ),
-			],
-			Portal::template( 'data' )
-		);
+		if( $state === 'invalid' )
+			$note = Portal::render( 'data-state-invalid', [ '[[field]]' => $field ] );
+		elseif( $state !== '' )
+			$note = Portal::render( 'data-state', [ '[[state]]' => $state, '[[tone]]' => self::STATES[$state][0], '[[icon]]' => self::STATES[$state][1], '[[role]]' => self::STATES[$state][2] ] );
+		else
+			$note = '';
+
+		return Portal::render( 'data', [
+			'[[classes]]' => $classes,
+			'[[dir]]'     => $dir,
+			'[[state]]'   => $note,
+			'[[fields]]'  => $fields,
+			'[[email]]'   => \Nino\Modules\Components::escape( (string) ( $member['email'] ?? '' ) ),
+			'[[privacy]]' => $standing['asked'] === false ? '' : Portal::render( 'data-privacy', [
+				'[[agreed]]'   => $standing['agreed'] === true ? '1' : '0',
+				'[[tone]]'     => $standing['agreed'] === true ? 'success' : 'warning',
+				'[[pill]]'     => $standing['agreed'] === true ? 'agreed' : 'open',
+				'[[link]]'     => $standing['agreed'] === true ? 'view' : 'link',
+				'[[standing]]' => Privacy::standingLine( $standing ),
+				'[[dir]]'      => $dir,
+			] ),
+		] );
+	}
+
+	/**
+	 *	The options of the select of the country: COUNTRIES with their names in the language of the page (the intl extension's where it is loaded,
+	 *	the code where not), the client's own code among them, and the client's country selected - Deutschland where the client has none
+	 *
+	 *	@param		string		$country			The client's code
+	 *
+	 *	@return 	string										Markup
+	 */
+	public static function countries( string $country ): string {
+
+		$chosen = preg_match( '/^[A-Z]{2}$/D', $country ) === 1 ? $country : 'DE';
+		$codes = in_array( $chosen, self::COUNTRIES, true ) === true ? self::COUNTRIES : array_merge( self::COUNTRIES, [ $chosen ] );
+		$options = '';
+
+		foreach( $codes as $code )
+			$options .= Portal::render( 'data-option', [ '[[code]]' => $code, '[[selected]]' => $code === $chosen ? ' selected' : '', '[[name]]' => \Nino\Modules\Components::escape( Documents\Render::country( $code ) ) ] );
+
+		return $options;
 	}
 
 	/**

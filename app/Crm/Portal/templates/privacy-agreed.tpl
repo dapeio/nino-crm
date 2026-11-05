@@ -1,1 +1,1 @@
-<p class="crm-privacy__standing crm-privacy__standing--agreed">[[/project/crm-portal/privacy/agreed-on]] <time datetime="[[iso]]">[[date]]</time> [[/project/crm-portal/privacy/agreed-by]] <span class="crm-privacy__who">[[name]]</span>.</p>
+<p class="crm-privacy__standing crm-privacy__standing--agreed">[[icon:circle-check]]<span>[[/project/crm-portal/privacy/agreed-on]] <time datetime="[[iso]]">[[date]]</time> [[/project/crm-portal/privacy/agreed-by]] <span class="crm-privacy__who">[[name]]</span>.</span></p>

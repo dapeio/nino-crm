@@ -1,451 +1,935 @@
 /**
  *	Crm - Portal
- *	portal.css		What the components of the client portal need on the site itself, in the look of the surface at /crm: the cards, the rows of
- *								the lists as the tables of the surface draw them (the lines between, the zebra, the muted meta, the links in the colour of the
- *								site), the chips of the states, the inputs, the buttons and the notes that say what happened (the toast of the surface, in the
- *								page). The navigation of the areas, the list of the released documents of a member's client, the projects with the page of one
- *								project (its tabs, its offer, its files), the uploads, the start page, the Datenschutz, the order under an offer and the form
- *								of the client's data. Bundled into the project's own /.cache/style.css by \Crm\Crm::init() (the module adds it with
- *								\Nino\Html::addAsset()) - never rendered through the fill/shortcode engine, so nothing in here is a textfill.
+ *	portal.css		The design of the customer portal: its own, built from the roles of the kernel's theme and nothing else, so that the site's
+ *								theme - light and dark, the Design feature's or the delivered one - still paints it. Bundled into the project's own
+ *								/.cache/style.css by \Crm\Crm::init() (the module adds it with \Nino\Html::addAsset(), and portal.js the same way into
+ *								/.cache/script.js) - never rendered through the fill/shortcode engine, so nothing in here is a textfill. The markup it
+ *								dresses is the templates of Portal/templates/ and the page templates of the install unit; the icons are inline SVG from
+ *								Portal\Icons.
  *
- *								Every colour, every corner and every space is a role of the kernel (--color-*, --radius-*, --space-*), which the theme of the
- *								site - the Design feature's, light and dark - sets; nothing here is a colour of its own, so the portal follows the theme. The
- *								shades (a zebra row, a chip, a muted line) are the ink of the page mixed into what is behind. The corners, the space and the
- *								border of the cards are three properties, --crm-documents-space, --crm-documents-corners and --crm-documents-border, whose
- *								defaults stand in :where(), which has no specificity: a rule of the project that moves a property wins over them by order.
- *								Two literals only, both outside the roles: the 999px of a chip (a pill, whatever the theme's corners are) and the .2em that sets a
- *								checkbox in line with the first line of its words. (The 2px of var(--forms-ring, 2px) and var(--forms-ring-offset, 2px) are the
- *								fallbacks of a role the kernel sets; they stand in for it where it is not set.) The corners of the cards follow the theme's surface radius (--radius-surface-alt: .4rem
- *								on the default, 0 under a theme that squares its surfaces); the kernel's own fields and buttons keep the corners the theme gives them.
- *								The inputs are the kernel's (.nino-form-input), the forms plain posts and no .nino-form (the kernel's script would take one for a contact form), the tabs its .nino-tabs: this file adds what they
- *								lack. It holds no script; the kernel's script wires the tabs, and without it every panel of a project stands open.
+ *	The system, in the order the chapters below follow:
+ *
+ *	1 Tokens		Every value is a property of :where(:root) (no specificity: a rule of the project that moves one wins by order), and every one
+ *							of them is made of a role of the theme.
+ *							Type scale, six steps and only those: --crm-text-xs .8125rem, -s .875rem, -m 1rem (the page's text), -l 1.125rem, -xl 1.375rem,
+ *							-xxl 1.75rem. Meta is xs, secondary words and buttons s, card titles l, section titles xl, the page title xxl.
+ *							Spacing, seven steps and only those: --crm-1 .25rem, -2 .5rem, -3 .75rem, -4 1rem, -5 1.5rem, -6 2rem, -7 3rem (4/8/12/16/24/32/48px).
+ *							Surfaces, three levels: --crm-page (the ground of a portal page), --crm-surface (a card, one step above it), --crm-surface-2
+ *							(a block inside a card, the second level). A step above is lighter, in both modes: light-dark() picks the mix per the
+ *							colour scheme in use, which the theme declares on :root (color-scheme: light dark) and a forced mode sets (:root
+ *							[data-nino-mode], as the Modeswitch feature writes it; the two lines are repeated here so that a forced mode is right
+ *							without that feature). The page is the ground with 4% ink in the light scheme and the ground itself in the dark one; a
+ *							card is the ground in the light scheme and the ground with 7% ink in the dark one. Lines are the border role mixed into
+ *							the ground, shadows the ink (light) or the black ground of the theme (dark) at a low alpha: the theme has no role for a
+ *							shadow, so these are the portal's tokens, said here.
+ *							Ink, three strengths: --crm-ink (the ink of the ground), --crm-ink-2 (76% of it, secondary), --crm-ink-3 (62%, meta -
+ *							4.5:1 on the page in both schemes). Links: --crm-link, the accent role pulled 16% towards the ink, which lifts it to AA
+ *							in the dark scheme and deepens it in the light one.
+ *							Tones, five: info (the accent), success, warning, danger (the theme's error) and muted (ink 3). A pill, a note and a
+ *							card's edge take one through --crm-tone.
+ *							Corners: --crm-radius for surfaces (the theme's alternative surface radius), --crm-radius-s for controls (the theme's
+ *							--radius), the pill 999px (a literal on purpose: a pill, whatever the theme's corners are). Touch: --crm-touch 44px,
+ *							the least height of every button, link row and control, phone or not.
+ *	2 Page			.crm-portal on the wrap, .crm-page on the section: the page's ground, the inner column at most 80rem wide, 16px (the row's
+ *							gutter below 768px) at the sides and more above. The preloader of the kernel is off on a portal page; the burger of the
+ *							main menu gets a touch-sized hit area; everything else of the frame is the theme's.
+ *	3 Head			.crm-head: the breadcrumb (.crm-crumbs) where there is a parent, the title as the largest text with a pill beside it where
+ *							the page has a state, the lead, the actions at the right (Abmelden, the calendar) and the meta line (member · company).
+ *							Section titles .crm-section__title (xl, --sub l) with .crm-section__head for a title and an action in one line.
+ *	4 Surfaces	.crm-card (surface, line, soft shadow), --link (elevation on hover and focus), --nested (the second level), --warning (an
+ *							edge in the warning tone). .crm-fold: a details whose summary is a ghost button and whose body is a nested block.
+ *	5 Pills		.crm-pill with --info, --success, --warning, --danger, --muted: the tone at 14% behind, the tone pulled towards the ink as
+ *							the text. Every state of the portal is one of them.
+ *	6 Notes		.crm-note with the same tones (--error is the danger tone): an icon in the tone, a left edge of it, the tone at 10% behind.
+ *							Success and error are told apart at a glance, light and dark.
+ *	7 Buttons	.crm-btn, 44px high: --primary (the theme's primary ground and ink), --secondary (surface with a line), --ghost (the link
+ *							alone); --small is the row size (xs words, less padding, the same height); --holds wraps a link a feature draws and
+ *							stretches it over the whole button. An icon in a button sits before its words.
+ *	8 Lists		.crm-table: a card whose rows are grids with a header row (sticky when the list scrolls) and column words; the amount is a
+ *							--num cell, right-aligned and tabular; the actions the last column. Under 640px the header goes, and a row stacks to a
+ *							card: the title first, the facts as a line, the actions last. .crm-scroll: from 768px a region of at most 60vh that
+ *							scrolls inside, with a fade at its lower edge and a shadow under its header while there is more (data-edge, set by
+ *							portal.js); on a phone the list flows. Documents, files, projects and the start cards are these lists.
+ *	9 Forms		.crm-fields, a grid of .crm-field (label above the control, two to a line from 640px, --wide for one that takes the line),
+ *							.crm-field__input (44px, surface, line, the theme's focus ring), hint and error at the field; .crm-check for a box with
+ *							its sentence. The forms of the features on the portal's pages (Files' upload with its drop zone, Review's comment,
+ *							Members' login on the door) take the same look, scoped to the portal's own markup; their files are not touched.
+ *	10 Tabs		The kernel's tabs restyled: .crm-project__tab is an underlined button with its count; the panels are plain. The
+ *							address follows the tab through portal.js.
+ *	11 Parts		The start cards, the projects, the offer card (a details that folds to its head line), the order, how to pay, the files,
+ *							the dates, the data form, the Datenschutz, the uploads and the door - each in its own chapter, each made of 1 to 10.
+ *	12 Empty		.crm-empty: an icon, the sentence that says what happens next, and the way to the studio.
+ *
+ *	The forms of the portal carry no .nino-form on purpose: the kernel's script would post one by XHR, and these are plain posts answered by
+ *	the server. The fields are the kernel's (.nino-form-input, .nino-form-select) with the look of the portal over them.
  */
 
+/*	1 Tokens	*/
+
 :where(:root) {
-	--crm-documents-space: calc( var(--space-1) * 1.5 );
-	--crm-documents-corners: var(--radius-surface-alt);
-	--crm-documents-border: var(--color-border);
-	--crm-pill: 999px; /* a literal on purpose: a pill, whatever the corners of the theme are */
+	--crm-text-xs: .8125rem;
+	--crm-text-s: .875rem;
+	--crm-text-m: 1rem;
+	--crm-text-l: 1.125rem;
+	--crm-text-xl: 1.375rem;
+	--crm-text-xxl: 1.75rem;
+
+	--crm-1: .25rem;
+	--crm-2: .5rem;
+	--crm-3: .75rem;
+	--crm-4: 1rem;
+	--crm-5: 1.5rem;
+	--crm-6: 2rem;
+	--crm-7: 3rem;
+
+	--crm-page: light-dark( color-mix(in srgb, var(--color-ground) 96%, var(--color-ink)), var(--color-ground) );
+	--crm-surface: light-dark( var(--color-ground), color-mix(in srgb, var(--color-ground) 93%, var(--color-ink)) );
+	--crm-surface-2: light-dark( color-mix(in srgb, var(--color-ground) 97%, var(--color-ink)), color-mix(in srgb, var(--color-ground) 87%, var(--color-ink)) );
+	--crm-line: color-mix(in srgb, var(--color-border) 55%, var(--color-ground));
+	--crm-line-strong: var(--color-border);
+	--crm-shadow-ink: light-dark( color-mix(in srgb, var(--color-ink) 12%, transparent), color-mix(in srgb, var(--color-section-black-bg) 70%, transparent) );
+	--crm-shadow-soft: light-dark( color-mix(in srgb, var(--color-ink) 7%, transparent), color-mix(in srgb, var(--color-section-black-bg) 45%, transparent) );
+	--crm-shadow-1: 0 1px 2px var(--crm-shadow-ink);
+	--crm-shadow-2: 0 1px 2px var(--crm-shadow-ink), 0 8px 24px var(--crm-shadow-soft);
+
+	--crm-ink: var(--color-ink);
+	--crm-ink-2: color-mix(in srgb, var(--color-ink) 76%, var(--color-ground));
+	--crm-ink-3: color-mix(in srgb, var(--color-ink) 62%, var(--color-ground));
+	--crm-link: color-mix(in srgb, var(--color-accent) 84%, var(--color-ink));
+
+	--crm-info: var(--color-accent);
+	--crm-success: var(--color-success);
+	--crm-warning: var(--color-warning);
+	--crm-danger: var(--color-error);
+	--crm-muted: var(--crm-ink-3);
+
+	--crm-radius: var(--radius-surface-alt);
+	--crm-radius-s: var(--radius);
+	--crm-pill: 999px;
+	--crm-touch: 44px;
+	--crm-page-max: 80rem;
 }
 
-/*	Shared: the card, the table, the chip, the note, the buttons	*/
+/*	A forced mode says its scheme, so that light-dark() picks the right mix (what the Modeswitch feature's stylesheet says too)	*/
+:root[data-nino-mode="light"] { color-scheme: light; }
+:root[data-nino-mode="dark"] { color-scheme: dark; }
 
-.crm-card {
+/*	2 Page	*/
+
+body:has(.crm-portal) .nino-preloader {
+	display: none;
+}
+
+body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
+	min-width: var(--crm-touch);
+	min-height: var(--crm-touch);
+	justify-content: center;
+}
+
+.crm-page.nino-section {
+	padding: var(--crm-6) 0 var(--crm-7);
+	background-color: var(--crm-page);
+	color: var(--crm-ink);
+}
+
+.crm-page .nino-grid-row {
+	max-width: calc( var(--crm-page-max) + 2 * var(--grid-gutter) );
+}
+
+.crm-page__inner {
+	min-width: 0;
+}
+
+.crm-portal,
+.crm-portal * {
 	box-sizing: border-box;
-	background-color: var(--color-ground);
-	color: var(--color-ink);
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
-	padding: var(--crm-documents-space) calc( var(--crm-documents-space) * 1.2 );
 }
 
-.crm-table {
-	margin: 0 0 var(--space-2);
-	padding: 0;
-	list-style: none;
-	overflow: hidden;
+.crm-portal a {
+	color: var(--crm-link);
 }
 
-.crm-table > li {
-	padding: calc( var(--space-1) * .75 ) calc( var(--crm-documents-space) * 1.2 );
-	border-top: 1px solid var(--crm-documents-border);
+.crm-icon {
+	width: 1.25em;
+	height: 1.25em;
+	flex: 0 0 auto;
+	vertical-align: -.25em;
 }
 
-.crm-table > li:first-child {
-	border-top: 0;
+.crm-portal :focus-visible {
+	outline: 2px solid var(--color-focus);
+	outline-offset: 2px;
 }
 
-.crm-table > li:nth-child(even) {
-	background-color: color-mix(in srgb, var(--color-ink) 4%, transparent);
+/*	What an anchor names is focused by the script so that a screen reader starts there; it is no control, so it draws no ring	*/
+.crm-portal [tabindex="-1"]:focus {
+	outline: none;
 }
 
-.crm-table > li:hover {
-	background-color: color-mix(in srgb, var(--color-ink) 7%, transparent);
+@media (prefers-reduced-motion: reduce) {
+	.crm-portal *,
+	.crm-portal *::before,
+	.crm-portal *::after {
+		transition: none !important;
+		animation: none !important;
+	}
 }
 
-.crm-chip {
-	--crm-tone: var(--color-ink);
+/*	3 Head	*/
 
+.crm-head {
+	margin: 0 0 var(--crm-6);
+}
+
+.crm-crumbs {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--crm-1);
+	margin: 0 0 var(--crm-3);
+	font-size: var(--crm-text-s);
+	color: var(--crm-ink-3);
+}
+
+.crm-crumbs__link {
 	display: inline-flex;
 	align-items: center;
-	box-sizing: border-box;
-	min-height: 1.375rem;
-	padding: 0 calc( var(--space-1) * 1.25 );
-	border: 1px solid color-mix(in srgb, var(--crm-tone) 45%, transparent);
-	border-radius: var(--crm-pill);
-	background-color: color-mix(in srgb, var(--crm-tone) 12%, transparent);
-	color: var(--color-ink);
-	font-size: .75rem;
-	font-weight: 500;
-	line-height: 1.2;
-	white-space: nowrap;
+	min-height: var(--crm-touch);
+	color: var(--crm-link);
+	text-decoration: none;
+	font-weight: 600;
 }
 
-.crm-chip--success,
-.crm-documents__row:is([data-state="signed"], [data-state="paid"], [data-state="accepted"]) .crm-chip,
-.crm-offer:is([data-state="accepted"]) .crm-offer__state,
-.crm-project[data-state="done"] .crm-project__state {
-	--crm-tone: var(--color-success);
+.crm-crumbs__link:hover {
+	text-decoration: underline;
 }
 
-.crm-documents__row:is([data-state="declined"], [data-state="cancelled"], [data-state="expired"]) .crm-chip,
-.crm-offer:is([data-state="declined"], [data-state="expired"]) .crm-offer__state {
-	--crm-tone: var(--color-warning);
+.crm-crumbs__here {
+	color: var(--crm-ink-2);
 }
 
-.crm-documents__row[data-state="sent"] .crm-chip,
-.crm-offer[data-state="sent"] .crm-offer__state,
-.crm-project[data-state="open"] .crm-project__state {
-	--crm-tone: var(--color-accent);
+.crm-head__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--crm-4) var(--crm-5);
 }
 
-.crm-note {
-	--crm-mark: transparent;
+.crm-head__main {
+	flex: 1 1 24rem;
+	min-width: 0;
+}
 
-	box-sizing: border-box;
-	margin: 0 0 var(--space-2);
-	padding: var(--space-1) var(--space-2);
-	border-radius: var(--crm-documents-corners);
-	background-color: var(--color-ink);
-	color: var(--color-ground);
-	box-shadow: inset .25rem 0 0 var(--crm-mark), 0 1px 2px color-mix(in srgb, var(--color-ink) 18%, transparent), 0 4px 16px color-mix(in srgb, var(--color-ink) 12%, transparent);
+.crm-head__title {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--crm-2) var(--crm-3);
+	margin: 0;
+	color: var(--crm-ink);
+	font-size: var(--crm-text-xxl);
+	font-weight: 700;
+	letter-spacing: -.01em;
+	line-height: 1.15;
 	overflow-wrap: anywhere;
 }
 
-.crm-data__state--saved,
-.crm-privacy__state--agreed,
-.crm-order__state--ordered {
-	--crm-mark: var(--color-success);
+.crm-head__badge {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--crm-3);
+	font-size: var(--crm-text-s);
+	font-weight: 400;
+	letter-spacing: 0;
+	color: var(--crm-ink-3);
 }
 
-.crm-note--warning,
-.crm-data__state--invalid,
-.crm-data__state--expired,
-.crm-privacy__state--expired,
-.crm-privacy__state--unchecked,
-.crm-privacy__state--invalid,
-.crm-privacy__state--changed,
-.crm-order__state--expired,
-.crm-order__state--unchecked,
-.crm-order__state--invalid,
-.crm-order__state--privacy,
-.crm-order__state--changed,
-.crm-order__state--nomail {
-	--crm-mark: var(--color-warning);
+.crm-head__lead {
+	max-width: 64ch;
+	margin: var(--crm-2) 0 0;
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-m);
+	line-height: 1.5;
+	overflow-wrap: anywhere;
 }
 
-/*	A button: the primary one is the kernel's (.nino-btn--primary) in the size of the surface's .btn, the quiet one the link in a button's shape	*/
+.crm-head__actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--crm-2);
+}
+
+.crm-head__meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--crm-2);
+	margin: var(--crm-4) 0 0;
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+}
+
+.crm-head__meta .crm-icon {
+	color: var(--crm-ink-3);
+}
+
+.crm-head__member {
+	font-weight: 600;
+	color: var(--crm-ink);
+}
+
+.crm-head__company::before {
+	content: "·";
+	margin-right: var(--crm-2);
+	color: var(--crm-ink-3);
+}
+
+.crm-section__title {
+	margin: 0 0 var(--crm-4);
+	color: var(--crm-ink);
+	font-size: var(--crm-text-xl);
+	font-weight: 700;
+	line-height: 1.25;
+}
+
+.crm-section__title--sub {
+	display: flex;
+	align-items: center;
+	gap: var(--crm-2);
+	font-size: var(--crm-text-l);
+}
+
+.crm-section__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--crm-2) var(--crm-4);
+	margin: 0 0 var(--crm-4);
+}
+
+.crm-section__head .crm-section__title {
+	margin: 0;
+}
+
+/*	4 Surfaces	*/
+
+.crm-card {
+	--color-ground: var(--crm-surface);
+	background-color: var(--crm-surface);
+	color: var(--crm-ink);
+	border: 1px solid var(--crm-line);
+	border-radius: var(--crm-radius);
+	box-shadow: var(--crm-shadow-1);
+}
+
+.crm-card--link {
+	transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease;
+}
+
+.crm-card--link:hover,
+.crm-card--link:focus-visible {
+	border-color: var(--crm-line-strong);
+	box-shadow: var(--crm-shadow-2);
+	transform: translateY(-1px);
+}
+
+.crm-card--nested {
+	--color-ground: var(--crm-surface-2);
+	background-color: var(--crm-surface-2);
+	box-shadow: none;
+}
+
+.crm-card--warning {
+	box-shadow: inset 4px 0 0 var(--crm-warning), var(--crm-shadow-1);
+}
+
+.crm-fold__summary {
+	list-style: none;
+}
+
+.crm-fold__summary::-webkit-details-marker {
+	display: none;
+}
+
+.crm-fold__summary .crm-icon--chevron-down {
+	transition: transform .2s ease;
+}
+
+.crm-fold[open] > .crm-fold__summary .crm-icon--chevron-down {
+	transform: rotate(180deg);
+}
+
+.crm-fold__body {
+	padding: var(--crm-3) 0 var(--crm-2);
+}
+
+/*	5 Pills	*/
+
+.crm-pill {
+	--crm-tone: var(--crm-info);
+	display: inline-flex;
+	align-items: center;
+	gap: .3em;
+	min-height: 1.5rem;
+	padding: .125rem .625rem;
+	border-radius: var(--crm-pill);
+	background-color: color-mix(in srgb, var(--crm-tone) 16%, var(--crm-surface));
+	color: color-mix(in srgb, var(--crm-tone) 68%, var(--crm-ink));
+	font-size: var(--crm-text-xs);
+	font-weight: 600;
+	line-height: 1.2;
+	white-space: nowrap;
+	vertical-align: middle;
+}
+
+.crm-pill--info { --crm-tone: var(--crm-info); }
+.crm-pill--success { --crm-tone: var(--crm-success); }
+.crm-pill--warning { --crm-tone: var(--crm-warning); }
+.crm-pill--danger { --crm-tone: var(--crm-danger); }
+.crm-pill--muted { --crm-tone: var(--crm-muted); }
+
+/*	6 Notes	*/
+
+.crm-note {
+	--crm-tone: var(--crm-info);
+	display: flex;
+	align-items: flex-start;
+	gap: var(--crm-3);
+	margin: 0 0 var(--crm-5);
+	padding: var(--crm-3) var(--crm-4);
+	border: 1px solid color-mix(in srgb, var(--crm-tone) 35%, var(--crm-surface));
+	border-left: 4px solid var(--crm-tone);
+	border-radius: var(--crm-radius);
+	background-color: color-mix(in srgb, var(--crm-tone) 10%, var(--crm-surface));
+	color: var(--crm-ink);
+	font-size: var(--crm-text-s);
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+}
+
+.crm-note > .crm-icon {
+	margin-top: .1em;
+	color: color-mix(in srgb, var(--crm-tone) 85%, var(--crm-ink));
+}
+
+.crm-note--success { --crm-tone: var(--crm-success); }
+.crm-note--error { --crm-tone: var(--crm-danger); }
+.crm-note--warning { --crm-tone: var(--crm-warning); }
+.crm-note--info { --crm-tone: var(--crm-info); }
+
+.crm-note a {
+	color: var(--crm-link);
+	font-weight: 600;
+}
+
+/*	7 Buttons	*/
 
 .crm-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	gap: calc( var(--space-1) * .75 );
-	box-sizing: border-box;
-	min-height: 2.25rem;
-	padding: 0 var(--space-2);
-	font-size: .9375rem;
-	line-height: 1.2;
-	text-decoration: none;
-}
-
-/*	On a button of the kernel .crm-btn sets the size and the padding and nothing else: its border, its corners, its weight and its case are the theme's	*/
-
-.crm-btn--quiet {
+	gap: var(--crm-2);
+	min-height: var(--crm-touch);
+	margin: 0;
+	padding: 0 var(--crm-4);
 	border: 1px solid transparent;
-	border-radius: var(--crm-documents-corners);
-	font-weight: 600;
-	cursor: pointer;
-}
-
-.crm-btn--quiet,
-.crm-offer__download,
-.crm-files__download,
-.crm-files__listen,
-.crm-documents__download,
-.crm-documents__sign,
-.crm-documents__signed {
-	border-color: transparent;
+	border-radius: var(--crm-radius-s);
 	background-color: transparent;
-	color: var(--color-accent);
-}
-
-.crm-btn--quiet:hover,
-.crm-offer__download:hover,
-.crm-files__download:hover,
-.crm-files__listen:hover,
-.crm-documents__download:hover,
-.crm-documents__sign:hover,
-.crm-documents__signed:hover {
-	background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+	color: var(--crm-ink);
+	font-family: inherit;
+	font-size: var(--crm-text-s);
+	font-weight: 600;
+	line-height: 1.2;
+	text-align: center;
 	text-decoration: none;
+	text-transform: none;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease;
 }
 
-/*	The small ones, as .btn.sm: the links of a row	*/
+.crm-btn .crm-icon {
+	width: 1.125rem;
+	height: 1.125rem;
+}
 
-.crm-offer__download,
-.crm-files__download,
-.crm-files__listen,
-.crm-documents__download,
-.crm-documents__sign,
-.crm-documents__signed {
+.crm-btn--primary {
+	background-color: var(--color-primary);
+	border-color: var(--color-primary);
+	color: var(--color-primary-text);
+}
+
+.crm-btn--primary:hover {
+	box-shadow: var(--crm-shadow-2);
+	color: var(--color-primary-text);
+}
+
+.crm-btn--secondary {
+	background-color: var(--crm-surface);
+	border-color: var(--crm-line-strong);
+	color: var(--crm-ink);
+	box-shadow: var(--crm-shadow-1);
+}
+
+.crm-btn--secondary:hover {
+	background-color: var(--crm-surface-2);
+	color: var(--crm-ink);
+}
+
+.crm-btn--ghost {
+	color: var(--crm-link);
+}
+
+.crm-btn--ghost:hover {
+	background-color: color-mix(in srgb, var(--crm-link) 10%, transparent);
+	color: var(--crm-link);
+}
+
+.crm-btn--small {
+	padding: 0 var(--crm-3);
+	font-size: var(--crm-text-xs);
+}
+
+.crm-btn--holds {
+	position: relative;
+	min-height: calc( var(--crm-touch) + 2px );
+}
+
+.crm-btn--holds a {
 	display: inline-flex;
 	align-items: center;
-	box-sizing: border-box;
-	min-height: 1.5rem;
-	padding: 0 var(--space-1);
-	border: 1px solid transparent;
-	border-radius: var(--crm-documents-corners);
-	font-size: .8125rem;
-	white-space: nowrap;
+	align-self: stretch;
+	color: inherit;
+	text-decoration: none;
 }
 
-.crm-documents__sign {
-	border-color: var(--color-accent);
-	font-weight: 500;
+.crm-btn--holds a::after {
+	content: "";
+	position: absolute;
+	inset: 0;
 }
 
-/*	The meta of a row: muted, small	*/
-
-.crm-projects__started,
-.crm-projects__count,
-.crm-files__size,
-.crm-files__date,
-.crm-documents__kind,
-.crm-documents__date,
-.crm-documents__project,
-.crm-offer__date,
-.crm-offer__valid,
-.crm-start__meta,
-.crm-project__meta,
-.crm-project__back,
-.crm-uploads__note,
-.crm-data__hint,
-.crm-offer__note {
-	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
-	font-size: .8125rem;
+.crm-btn--holds:focus-within {
+	outline: 2px solid var(--color-focus);
+	outline-offset: 2px;
 }
 
-.crm-projects__number {
-	color: var(--color-ink);
-	font-weight: 600;
+.crm-btn--holds a:focus-visible {
+	outline: none;
 }
 
-/*	A sentence where a list would be: a quiet box	*/
+/*	8 Lists - a row is a line of cells; a row that unfolds (an offer to its card, an open invoice to how it is paid) is a details whose summary
+	is that line and whose body follows it. Below 1024px a line stacks: the title first, the facts as a line, the actions last (from 640px at
+	the right of the facts); from 1024px the list is the grid and every line takes its columns from it (subgrid), so that a column stands in a
+	line from row to row whatever a row holds, under a header row that sticks while the list scrolls	*/
 
-.crm-projects__empty,
-.crm-uploads__empty,
-.crm-data__empty,
-.crm-documents__empty,
-.crm-privacy__empty,
-.crm-start__nothing,
-.crm-project__message {
-	box-sizing: border-box;
-	margin: 0 0 var(--space-2);
-	padding: var(--crm-documents-space) calc( var(--crm-documents-space) * 1.2 );
-	border: 1px dashed var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
-	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+.crm-table {
+	--crm-cols: minmax(0, 1fr);
+	padding: 0;
+	overflow: hidden;
 }
 
-.crm-documents {
-	box-sizing: border-box;
-	max-width: 48rem;
-	margin: 0 0 var(--space-2);
-	container-type: inline-size;
-}
-
-.crm-documents__list {
-	margin: 0 0 var(--space-2);
-}
-
-.crm-projects__row,
-.crm-files__row,
-.crm-documents__row {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: calc( var(--space-1) * .5 ) var(--space-2);
-}
-
-.crm-documents__title {
-	flex: 1 1 12rem;
-	font-weight: 500;
-	overflow-wrap: anywhere;
-}
-
-.crm-documents__kind {
-	text-transform: uppercase;
-	letter-spacing: .04em;
-	font-size: .75rem;
-}
-
-.crm-documents__project {
-	overflow-wrap: anywhere;
-}
-
-.crm-documents__project:empty {
-	display: none;
-}
-
-a.crm-documents__project {
-	color: var(--color-accent);
-}
-
-/*	The navigation of the areas (a component the pages may use): a row of links that wraps, the area the request is in marked	*/
-
-.crm-nav {
-	margin: 0 0 var(--space-3);
-}
-
-.crm-nav__list {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1);
+.crm-table__body {
 	margin: 0;
 	padding: 0;
 	list-style: none;
 }
 
-.crm-nav__link {
-	display: block;
-	padding: .35em .9em;
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
-	color: var(--color-accent);
-	text-decoration: none;
+.crm-table__head {
+	display: none;
 }
 
-.crm-nav__link:hover {
-	border-color: var(--color-accent);
-}
-
-.crm-nav__link[aria-current="page"] {
-	border-color: var(--color-accent);
-	font-weight: 600;
-	box-shadow: inset 0 -2px 0 var(--color-accent);
-}
-
-.crm-portal__who {
-	margin: 0 0 var(--space-2);
-}
-
-/*	The projects: the list, and the page of one	*/
-
-.crm-projects,
-.crm-uploads,
-.crm-project {
-	box-sizing: border-box;
-	max-width: 48rem;
-	margin: 0 0 var(--space-2);
-}
-
-.crm-projects__heading,
-.crm-uploads__heading {
-	margin: var(--space-3) 0 var(--space-1);
-	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
-	font-size: .75rem;
-	font-weight: 600;
-	letter-spacing: .06em;
-	text-transform: uppercase;
-}
-
-.crm-projects__title,
-.crm-files__name {
-	flex: 1 1 12rem;
-	font-weight: 500;
-	color: var(--color-accent);
-	overflow-wrap: anywhere;
-}
-
-.crm-projects__list--done .crm-projects__row {
-	opacity: .75;
-}
-
-.crm-projects__unknown {
-	max-width: 48rem;
-}
-
-.crm-files__empty {
-	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
-}
-
-.crm-start__link,
-.crm-order__link,
-.crm-data__link,
-.crm-project__back a {
-	color: var(--color-accent);
-}
-
-.crm-project__back {
-	margin: 0 0 var(--space-1);
-}
-
-.crm-project__title {
-	margin: 0 0 var(--space-1);
-	overflow-wrap: anywhere;
-}
-
-.crm-project__meta {
+.crm-table__line {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: var(--space-1) var(--space-2);
-	margin: 0 0 var(--space-1);
+	gap: var(--crm-2) var(--crm-3);
+	padding: var(--crm-4);
+	list-style: none;
 }
 
-.crm-project__description {
-	margin: 0 0 var(--space-2);
-	overflow-wrap: anywhere;
+.crm-table__line::-webkit-details-marker {
+	display: none;
 }
 
-/*	The tabs of a project, in the look of the tabs of the surface; the kernel's script wires the buttons to the panels (the roles and the keys). Without it
-	no panel is hidden: every one stands open, under its heading, and the buttons are inert	*/
+.crm-table__line > .crm-table__cell:first-child {
+	flex: 1 1 100%;
+}
+
+.crm-table__line > .crm-table__cell:empty {
+	display: none;
+}
+
+.crm-table__row + .crm-table__row {
+	border-top: 1px solid var(--crm-line);
+}
+
+.crm-table__line:hover {
+	background-color: color-mix(in srgb, var(--crm-ink) 3%, transparent);
+}
+
+summary.crm-table__line {
+	cursor: pointer;
+}
+
+.crm-table__fold > .crm-fold__body {
+	padding: 0 var(--crm-4) var(--crm-4);
+}
+
+.crm-table__toggle .crm-icon--chevron-down {
+	transition: transform .2s ease;
+}
+
+.crm-table__fold[open] > .crm-table__line .crm-table__toggle .crm-icon--chevron-down {
+	transform: rotate(180deg);
+}
+
+.crm-table__cell {
+	min-width: 0;
+	font-size: var(--crm-text-s);
+}
+
+.crm-table__num {
+	font-variant-numeric: tabular-nums;
+}
+
+.crm-table__actions {
+	display: flex;
+	flex: 1 1 100%;
+	flex-wrap: wrap;
+	gap: var(--crm-2);
+}
+
+time.crm-table__cell {
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+
+	.crm-table__actions {
+		flex: 0 0 auto;
+		margin-left: auto;
+		justify-content: flex-end;
+	}
+}
+
+@media (min-width: 768px) {
+
+	.crm-scroll {
+		position: relative;
+		max-height: 60vh;
+		overflow: auto;
+		overscroll-behavior: contain;
+	}
+
+	.crm-scroll::after {
+		content: "";
+		position: sticky;
+		bottom: 0;
+		z-index: 1;
+		display: block;
+		grid-column: 1 / -1;
+		height: 2.5rem;
+		margin-top: -2.5rem;
+		background: linear-gradient(to bottom, transparent, var(--crm-surface));
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity .15s ease;
+	}
+
+	.crm-scroll[data-edge="bottom"]::after,
+	.crm-scroll[data-edge="both"]::after {
+		opacity: 1;
+	}
+
+	.crm-scroll[data-edge="top"] .crm-table__head,
+	.crm-scroll[data-edge="both"] .crm-table__head {
+		box-shadow: 0 6px 14px -6px var(--crm-shadow-ink);
+	}
+
+	.crm-scroll--cards {
+		padding: var(--crm-1);
+		margin: calc( -1 * var(--crm-1) );
+	}
+
+	.crm-scroll--cards::after {
+		background: linear-gradient(to bottom, transparent, var(--crm-page));
+	}
+}
+
+@media (min-width: 1024px) {
+
+	.crm-table__body {
+		display: grid;
+		grid-template-columns: var(--crm-cols);
+	}
+
+	.crm-table__row,
+	.crm-table__fold {
+		display: grid;
+		grid-column: 1 / -1;
+		grid-template-columns: subgrid;
+	}
+
+	.crm-table__head,
+	.crm-table__line {
+		display: grid;
+		grid-column: 1 / -1;
+		grid-template-columns: subgrid;
+		gap: var(--crm-2) var(--crm-4);
+		padding: var(--crm-2) var(--crm-5);
+	}
+
+	.crm-table__line > .crm-table__cell:first-child,
+	.crm-table__actions {
+		flex: none;
+		margin-left: 0;
+	}
+
+	/*	An empty cell keeps its column, so that the cells after it stand where their column is	*/
+	.crm-table__line > .crm-table__cell:empty {
+		display: block;
+	}
+
+	.crm-table__head {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		min-height: 2.5rem;
+		border-bottom: 1px solid var(--crm-line);
+		background-color: var(--crm-surface);
+		color: var(--crm-ink-3);
+		font-size: var(--crm-text-xs);
+		font-weight: 600;
+		letter-spacing: .04em;
+		text-transform: uppercase;
+		transition: box-shadow .15s ease;
+	}
+
+	.crm-table__head .crm-table__actions {
+		visibility: hidden;
+	}
+
+	.crm-table__num {
+		text-align: right;
+	}
+
+	.crm-table__actions {
+		flex-wrap: nowrap;
+		justify-content: flex-end;
+	}
+
+	/*	The content of a details is a box of its own in some engines (::details-content), the body itself in others: either spans the columns	*/
+	.crm-table__fold::details-content,
+	.crm-table__fold > .crm-fold__body {
+		grid-column: 1 / -1;
+	}
+
+	.crm-table__fold > .crm-fold__body {
+		padding: 0 var(--crm-5) var(--crm-4);
+	}
+
+	/*	In the columns the download and the fold of a document are their icons, their words staying for a screen reader: the room is the title's	*/
+	.crm-documents__download > span:not(.nino-sr-only),
+	.crm-table__toggle > span:not(.nino-sr-only) {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+	}
+
+	.crm-documents__download,
+	.crm-table__toggle {
+		min-width: var(--crm-touch);
+		padding: 0;
+	}
+}
+
+/*	9 Forms	*/
+
+.crm-fields {
+	display: grid;
+	gap: var(--crm-4) var(--crm-5);
+}
+
+.crm-field {
+	display: grid;
+	gap: var(--crm-1);
+	margin: 0;
+	min-width: 0;
+}
+
+.crm-field__label {
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	font-weight: 600;
+}
+
+.crm-field .crm-field__input {
+	width: 100%;
+	max-width: 100%;
+	min-height: var(--crm-touch);
+	margin: 0;
+	padding: 0 var(--crm-3);
+	border: 1px solid var(--crm-line-strong);
+	border-radius: var(--crm-radius-s);
+	background-color: var(--crm-surface);
+	color: var(--crm-ink);
+	font-family: inherit;
+	font-size: var(--crm-text-m);
+	line-height: 1.4;
+	transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.crm-field .crm-field__input:focus {
+	border-color: var(--crm-link);
+	box-shadow: 0 0 0 1px var(--crm-link);
+}
+
+.crm-field .crm-field__input[readonly] {
+	background-color: var(--crm-surface-2);
+	color: var(--crm-ink-2);
+	cursor: default;
+}
+
+.crm-field--invalid .crm-field__input {
+	border-color: var(--crm-danger);
+	box-shadow: 0 0 0 1px var(--crm-danger);
+}
+
+.crm-field__hint {
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+	line-height: 1.4;
+}
+
+.crm-field__error {
+	display: flex;
+	align-items: center;
+	gap: var(--crm-1);
+	color: color-mix(in srgb, var(--crm-danger) 85%, var(--crm-ink));
+	font-size: var(--crm-text-xs);
+	font-weight: 600;
+}
+
+.crm-check {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--crm-3);
+	min-height: var(--crm-touch);
+	padding: var(--crm-2) 0;
+	cursor: pointer;
+	font-size: var(--crm-text-s);
+	letter-spacing: normal;
+	text-transform: none;
+	line-height: 1.5;
+}
+
+.crm-check input {
+	flex: 0 0 auto;
+	width: 1.5rem;
+	height: 1.5rem;
+	margin: 0;
+	accent-color: var(--color-primary);
+}
+
+/*	Two fields to a line from 640px, one below - but the postal code and the city share their line at every width	*/
+.crm-fields {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.crm-field {
+	grid-column: 1 / -1;
+}
+
+.crm-field--zip {
+	grid-column: 1;
+}
+
+.crm-field--city {
+	grid-column: 2;
+}
+
+@media (min-width: 640px) {
+
+	.crm-field:not(.crm-field--wide) {
+		grid-column: auto;
+	}
+}
+
+/*	10 Tabs	*/
 
 .crm-project__nav.nino-tabs-nav {
+	display: flex;
 	flex-wrap: nowrap;
-	gap: calc( var(--space-1) * .25 );
-	margin: var(--space-2) 0 var(--space-2);
-	border-bottom-color: var(--crm-documents-border);
+	gap: var(--crm-2);
+	margin: 0 0 var(--crm-5);
+	padding: 0;
+	border-bottom: 1px solid var(--crm-line-strong);
 	overflow-x: auto;
-}
-
-.crm-project__nav .crm-project__tab.nino-tabs-tab {
-	display: inline-flex;
-	align-items: center;
-	margin-bottom: -1px;
-	padding: var(--space-1) calc( var(--space-1) * 1.5 );
-	border-bottom: 2px solid transparent;
-	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
-	white-space: nowrap;
 }
 
 .crm-project__nav:not([role="tablist"]) {
 	display: none;
 }
 
+.crm-project__nav .crm-project__tab.nino-tabs-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--crm-2);
+	min-height: var(--crm-touch);
+	margin: 0 0 -1px;
+	padding: 0 var(--crm-3);
+	border: 0;
+	border-bottom: 3px solid transparent;
+	border-radius: 0;
+	background: none;
+	color: var(--crm-ink-2);
+	font-family: inherit;
+	font-size: var(--crm-text-m);
+	font-weight: 600;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: color .15s ease, border-color .15s ease;
+}
+
+.crm-project__nav .crm-project__tab.nino-tabs-tab:hover {
+	color: var(--crm-ink);
+}
+
 .crm-project__nav .crm-project__tab.nino-tabs-tab:focus-visible {
 	outline-offset: -2px;
 }
 
-.crm-project__nav .crm-project__tab.nino-tabs-tab:hover {
-	color: var(--color-ink);
-}
-
 .crm-project__nav .crm-project__tab.nino-tabs-tab.nino-is-active {
-	border-bottom-color: var(--color-accent);
-	color: var(--color-ink);
-	font-weight: 600;
+	border-bottom-color: var(--crm-link);
+	color: var(--crm-link);
 }
 
 .crm-project__count {
-	margin-left: calc( var(--space-1) * .5 );
-	padding: 0 calc( var(--space-1) * .75 );
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 1.5rem;
+	padding: 0 var(--crm-2);
 	border-radius: var(--crm-pill);
-	background-color: color-mix(in srgb, var(--color-ink) 9%, transparent);
-	color: color-mix(in srgb, var(--color-ink) 80%, transparent);
-	font-size: .6875rem;
-	font-weight: 500;
+	background-color: color-mix(in srgb, var(--crm-ink) 8%, transparent);
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-xs);
+	font-weight: 600;
+	line-height: 1.5rem;
+}
+
+.crm-project__tab.nino-is-active .crm-project__count {
+	background-color: color-mix(in srgb, var(--crm-link) 14%, transparent);
+	color: var(--crm-link);
 }
 
 .crm-project__section.nino-tabs-panel {
@@ -460,7 +944,7 @@ a.crm-documents__project {
 }
 
 .crm-project__section + .crm-project__section {
-	margin-top: var(--space-3);
+	margin-top: var(--crm-6);
 }
 
 .crm-project__section[role="tabpanel"] > .crm-project__heading {
@@ -468,34 +952,469 @@ a.crm-documents__project {
 }
 
 .crm-project__heading {
-	margin: 0 0 var(--space-1);
-	font-size: 1rem;
+	margin: 0 0 var(--crm-4);
+	font-size: var(--crm-text-xl);
 }
 
-/*	The offer: a card, its lines as the rows of a table that stack at a narrow width, its sums as a list of terms	*/
+.crm-project__rest {
+	margin: var(--crm-6) 0 var(--crm-4);
+	color: var(--crm-ink-2);
+}
+
+/*	11 Parts - the start page	*/
+
+.crm-start {
+	margin: 0 0 var(--crm-7);
+}
+
+.crm-start__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+	align-items: start;
+	gap: var(--crm-4);
+}
+
+.crm-start__card {
+	margin: 0;
+	padding: var(--crm-5) var(--crm-5) var(--crm-4);
+	min-width: 0;
+}
+
+.crm-start__title {
+	display: flex;
+	align-items: center;
+	gap: var(--crm-2);
+	margin: 0 0 var(--crm-3);
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+	font-weight: 600;
+	letter-spacing: .06em;
+	text-transform: uppercase;
+	line-height: 1.3;
+}
+
+.crm-start__title .crm-icon {
+	width: 1.25rem;
+	height: 1.25rem;
+	color: var(--crm-link);
+}
+
+.crm-card--warning .crm-start__title .crm-icon {
+	color: var(--crm-warning);
+}
+
+.crm-start__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.crm-start__row + .crm-start__row {
+	border-top: 1px solid var(--crm-line);
+}
+
+.crm-start__link {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--crm-1) var(--crm-3);
+	min-height: var(--crm-touch);
+	padding: var(--crm-3) 0;
+	color: inherit;
+	text-decoration: none;
+}
+
+.crm-start__link > .crm-icon {
+	grid-column: 2;
+	grid-row: 1 / span 2;
+	color: var(--crm-ink-3);
+	transition: transform .15s ease;
+}
+
+.crm-start__link:hover > .crm-icon {
+	transform: translateX(2px);
+	color: var(--crm-link);
+}
+
+.crm-start__link:hover .crm-start__text {
+	text-decoration: underline;
+}
+
+.crm-start__main {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: var(--crm-3);
+	min-width: 0;
+}
+
+.crm-start__text {
+	color: var(--crm-link);
+	font-weight: 600;
+	font-size: var(--crm-text-s);
+	overflow-wrap: anywhere;
+}
+
+.crm-start__extra {
+	flex: 0 0 auto;
+	color: var(--crm-ink);
+	font-size: var(--crm-text-s);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.crm-start__meta {
+	grid-column: 1;
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+	overflow-wrap: anywhere;
+}
+
+.crm-start__card > .crm-start__text {
+	margin: 0 0 var(--crm-3);
+	color: var(--crm-ink);
+	font-size: var(--crm-text-s);
+	font-weight: 400;
+	line-height: 1.5;
+}
+
+.crm-start__action {
+	margin: 0;
+}
+
+.crm-start__nothing {
+	grid-column: 1 / -1;
+}
+
+/*	11 Parts - the projects	*/
+
+.crm-projects {
+	margin: 0 0 var(--crm-7);
+}
+
+.crm-projects__list {
+	display: grid;
+	gap: var(--crm-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.crm-projects__row {
+	min-width: 0;
+}
+
+.crm-projects__link {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: var(--crm-4);
+	min-height: 4.5rem;
+	padding: var(--crm-4) var(--crm-5);
+	color: inherit;
+	text-decoration: none;
+}
+
+.crm-projects__icon {
+	display: grid;
+	place-items: center;
+	width: 2.5rem;
+	height: 2.5rem;
+	border-radius: var(--crm-radius-s);
+	background-color: color-mix(in srgb, var(--crm-info) 12%, var(--crm-surface));
+	color: var(--crm-link);
+}
+
+.crm-projects__icon .crm-icon {
+	width: 1.375rem;
+	height: 1.375rem;
+}
+
+.crm-projects__body {
+	display: grid;
+	gap: var(--crm-1);
+	min-width: 0;
+}
+
+.crm-projects__title {
+	color: var(--crm-link);
+	font-size: var(--crm-text-l);
+	font-weight: 700;
+	overflow-wrap: anywhere;
+}
+
+.crm-projects__link:hover .crm-projects__title {
+	text-decoration: underline;
+}
+
+.crm-projects__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--crm-1) var(--crm-3);
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+}
+
+.crm-projects__meta:empty {
+	display: none;
+}
+
+.crm-projects__number {
+	color: var(--crm-ink);
+	font-weight: 600;
+}
+
+.crm-projects__link > .crm-icon {
+	color: var(--crm-ink-3);
+}
+
+.crm-projects__list--done .crm-projects__link {
+	opacity: .85;
+}
+
+.crm-projects__heading {
+	margin-top: var(--crm-6);
+}
+
+@media (max-width: 479.98px) {
+
+	.crm-projects__link {
+		grid-template-columns: auto minmax(0, 1fr) auto;
+	}
+
+	.crm-projects__link > .crm-icon {
+		display: none;
+	}
+
+	.crm-projects__state {
+		grid-column: 2;
+		grid-row: 2;
+		justify-self: start;
+	}
+}
+
+/*	11 Parts - the documents	*/
+
+.crm-documents {
+	margin: 0 0 var(--crm-7);
+}
+
+.crm-documents .crm-table {
+	--crm-cols: minmax(12rem, 2.4fr) minmax(5rem, .9fr) 5.5rem 6.5rem 6rem auto auto;
+}
+
+.crm-documents .crm-table--project {
+	--crm-cols: minmax(12rem, 2.4fr) 5.5rem 6.5rem 6rem auto auto;
+}
+
+.crm-documents__doc {
+	display: flex;
+	align-items: center;
+	gap: var(--crm-3);
+}
+
+.crm-documents__icon {
+	display: grid;
+	place-items: center;
+	flex: 0 0 auto;
+	width: 2.25rem;
+	height: 2.25rem;
+	border-radius: var(--crm-radius-s);
+	background-color: var(--crm-surface-2);
+	color: var(--crm-ink-2);
+}
+
+.crm-documents__text {
+	display: grid;
+	gap: 2px;
+	min-width: 0;
+}
+
+.crm-documents__title {
+	color: var(--crm-ink);
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.crm-documents__kind {
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+}
+
+.crm-documents__number {
+	font-variant-numeric: tabular-nums;
+}
+
+a.crm-documents__project {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--crm-touch);
+	color: var(--crm-link);
+	font-weight: 600;
+	text-decoration: none;
+	overflow-wrap: anywhere;
+}
+
+a.crm-documents__project:hover {
+	text-decoration: underline;
+}
+
+.crm-documents__amount {
+	font-weight: 600;
+	color: var(--crm-ink);
+}
+
+.crm-documents__due {
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-xs);
+	font-variant-numeric: tabular-nums;
+}
+
+.crm-documents__row[data-state="overdue"] .crm-documents__due {
+	color: color-mix(in srgb, var(--crm-danger) 85%, var(--crm-ink));
+	font-weight: 600;
+}
+
+.crm-fold__body > .crm-offer {
+	margin: 0;
+}
+
+.crm-offer--bare > .crm-offer__body {
+	border-top: 0;
+}
+
+.crm-pay {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+	gap: var(--crm-3) var(--crm-5);
+	margin: 0;
+	padding: var(--crm-4) var(--crm-5);
+}
+
+.crm-pay__fact {
+	min-width: 0;
+}
+
+.crm-pay__fact dt {
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+	font-weight: 600;
+	letter-spacing: .04em;
+	text-transform: uppercase;
+}
+
+.crm-pay__fact dd {
+	margin: var(--crm-1) 0 0;
+	color: var(--crm-ink);
+	font-size: var(--crm-text-m);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	overflow-wrap: anywhere;
+}
+
+/*	The facts of a stacked line are one line of words with a dot between them; the first has none	*/
+@media (max-width: 1023.98px) {
+
+	.crm-documents__date::before,
+	.crm-documents__amount::before,
+	.crm-documents__due::before {
+		content: "·";
+		margin-right: var(--crm-3);
+		color: var(--crm-ink-3);
+	}
+
+	.crm-documents__project--none + .crm-documents__date::before,
+	.crm-table--project .crm-documents__date::before {
+		content: none;
+	}
+}
+
+@media (min-width: 1024px) {
+
+	.crm-documents__due-word {
+		display: none;
+	}
+}
+
+/*	11 Parts - the offer	*/
 
 .crm-offer {
-	margin: 0 0 var(--space-2);
+	margin: 0 0 var(--crm-4);
+	overflow: hidden;
+}
+
+.crm-offer__summary {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+	align-items: center;
+	gap: var(--crm-2) var(--crm-4);
+	padding: var(--crm-4) var(--crm-5);
+	list-style: none;
+	cursor: pointer;
+}
+
+.crm-offer__summary::-webkit-details-marker {
+	display: none;
+}
+
+.crm-offer__summary:hover {
+	background-color: color-mix(in srgb, var(--crm-ink) 3%, transparent);
+}
+
+.crm-offer__chevron {
+	display: grid;
+	place-items: center;
+	width: 2rem;
+	height: 2rem;
+	border-radius: var(--crm-pill);
+	background-color: var(--crm-surface-2);
+	color: var(--crm-ink-2);
+}
+
+.crm-offer__chevron .crm-icon {
+	transition: transform .2s ease;
+}
+
+.crm-offer[open] > .crm-offer__summary .crm-offer__chevron .crm-icon {
+	transform: rotate(180deg);
 }
 
 .crm-offer__head {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--space-1) var(--space-2);
-	margin: 0 0 var(--space-1);
+	display: grid;
+	gap: 2px;
+	min-width: 0;
 }
 
 .crm-offer__title {
-	flex: 1 1 12rem;
-	margin: 0;
-	font-size: 1rem;
+	color: var(--crm-ink);
+	font-size: var(--crm-text-l);
+	font-weight: 700;
 	overflow-wrap: anywhere;
+}
+
+.crm-offer__meta {
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+	font-variant-numeric: tabular-nums;
+}
+
+.crm-offer__gross {
+	color: var(--crm-ink);
+	font-size: var(--crm-text-l);
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.crm-offer__body {
+	padding: var(--crm-4) var(--crm-5) var(--crm-5);
+	border-top: 1px solid var(--crm-line);
 }
 
 .crm-offer__lines {
 	display: grid;
-	margin: 0 0 var(--space-1);
+	margin: 0;
 	padding: 0;
 	list-style: none;
 }
@@ -503,14 +1422,14 @@ a.crm-documents__project {
 .crm-offer__line {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
-	gap: 0 var(--space-2);
-	padding: calc( var(--space-1) * .75 ) 0;
-	border-top: 1px solid var(--crm-documents-border);
+	gap: 0 var(--crm-4);
+	padding: var(--crm-3) 0;
+	border-bottom: 1px solid var(--crm-line);
 }
 
 .crm-offer__line-title {
 	grid-column: 1;
-	font-weight: 500;
+	font-weight: 600;
 	overflow-wrap: anywhere;
 }
 
@@ -524,28 +1443,30 @@ a.crm-documents__project {
 .crm-offer__line-description,
 .crm-offer__line-meta {
 	grid-column: 1 / -1;
-	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
-	font-size: .8125rem;
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
 	overflow-wrap: anywhere;
 }
 
 .crm-offer__line-meta {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 0 var(--space-2);
+	gap: 0 var(--crm-3);
+	margin-top: 2px;
 }
 
 .crm-offer__sums {
 	margin: 0;
-	padding: var(--space-1) 0 0;
-	border-top: 1px solid var(--crm-documents-border);
+	padding: var(--crm-3) 0 0;
 }
 
 .crm-offer__sum {
 	display: flex;
 	justify-content: space-between;
-	gap: var(--space-2);
-	padding: calc( var(--space-1) * .25 ) 0;
+	gap: var(--crm-4);
+	padding: var(--crm-1) 0;
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
 }
 
 .crm-offer__sum dt,
@@ -558,184 +1479,75 @@ a.crm-documents__project {
 }
 
 .crm-offer__sum--gross {
-	margin-top: calc( var(--space-1) * .5 );
-	padding-top: var(--space-1);
-	border-top: 1px solid var(--crm-documents-border);
-	font-size: 1.0625rem;
-	font-weight: 600;
+	margin-top: var(--crm-2);
+	padding-top: var(--crm-3);
+	border-top: 2px solid var(--crm-line-strong);
+	color: var(--crm-ink);
+	font-size: var(--crm-text-l);
+	font-weight: 700;
 }
 
 .crm-offer__note {
-	margin: var(--space-1) 0 0;
-}
-
-.crm-offer__actions {
-	margin: var(--space-1) 0 0;
-}
-
-/*	The files: the rows of the table; the player of Review stands above it	*/
-
-.crm-files__row {
-	column-gap: var(--space-2);
-}
-
-/*	The form of the client's data: a card of rows, a label and its field beside it, one under the other at a narrow width	*/
-
-.crm-data {
-	box-sizing: border-box;
-	max-width: 40rem;
-	margin: 0 0 var(--space-2);
-}
-
-.crm-data__fields {
-	display: grid;
-	gap: var(--space-2);
-	margin: 0 0 var(--space-2);
-}
-
-.crm-data__field {
-	display: grid;
-	grid-template-columns: minmax(0, 11rem) minmax(0, 1fr);
-	gap: calc( var(--space-1) * .5 ) var(--space-2);
-	align-items: center;
-	margin: 0;
-}
-
-.crm-data__label {
-	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
-	font-size: .875rem;
-}
-
-.crm-data__hint,
-.crm-data__error {
-	grid-column: 2;
-}
-
-.crm-data__field .nino-form-input {
-	box-sizing: border-box;
-	width: 100%;
-	max-width: 100%;
-	min-height: 2.5rem;
-	margin: 0;
-	padding: calc( var(--space-1) * .75 ) calc( var(--space-1) * 1.5 );
-}
-
-.crm-data__input[readonly] {
-	background-color: color-mix(in srgb, var(--color-ink) 5%, transparent);
-	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
-	cursor: default;
-}
-
-.crm-data__field--invalid .crm-data__input {
-	border-color: var(--color-error);
-	box-shadow: 0 0 0 1px var(--color-error);
-}
-
-.crm-data__error {
-	color: var(--color-error);
-	font-size: .8125rem;
-}
-
-.crm-data__actions {
-	margin: 0;
-}
-
-.crm-data__privacy {
-	margin: 0 0 var(--space-2);
-	font-size: .875rem;
-}
-
-@media (max-width: 40rem) {
-
-	.crm-data__field {
-		grid-template-columns: minmax(0, 1fr);
-	}
-
-	.crm-data__hint,
-	.crm-data__error {
-		grid-column: 1;
-	}
-
-	.crm-start {
-		grid-template-columns: minmax(0, 1fr);
-	}
-
-	.crm-project__nav.nino-tabs-nav {
-		gap: 0;
-	}
-
-	.crm-project__nav .crm-project__tab.nino-tabs-tab {
-		padding-left: calc( var(--space-1) * .5 );
-		padding-right: calc( var(--space-1) * .5 );
-		font-size: .9375rem;
-	}
-
-	.crm-project__count {
-		margin-left: calc( var(--space-1) * .25 );
-		padding: 0 calc( var(--space-1) * .5 );
-	}
-}
-
-/*	The Datenschutz: the text in a card, where the client stands, the form	*/
-
-.crm-privacy {
-	box-sizing: border-box;
-	max-width: 48rem;
-	margin: 0 0 var(--space-2);
-}
-
-.crm-privacy__text {
-	margin: 0 0 var(--space-2);
-	overflow-wrap: anywhere;
-}
-
-.crm-privacy__standing {
-	margin: 0 0 var(--space-2);
-}
-
-.crm-privacy__check,
-.crm-order__check {
 	display: flex;
 	align-items: flex-start;
-	gap: var(--space-1);
-	letter-spacing: normal;
-	text-transform: none;
+	gap: var(--crm-2);
+	margin: var(--crm-3) 0 0;
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+	line-height: 1.5;
 }
 
-.crm-privacy__check input,
-.crm-order__check input {
-	flex: 0 0 auto;
-	width: 1.125rem;
-	height: 1.125rem;
-	margin-top: .2em; /* a literal on purpose: the nudge that sets the box in line with the first line of the words */
-	accent-color: var(--color-primary);
+.crm-offer__note .crm-icon {
+	margin-top: .1em;
 }
 
-.crm-privacy__field,
-.crm-order__field,
-.crm-privacy__actions,
-.crm-order__actions {
-	margin: 0 0 var(--space-1);
+.crm-offer__body > .crm-note,
+.crm-offer__body > .crm-order {
+	margin: var(--crm-4) 0 0;
 }
 
-/*	The order under an offer: a panel inside the card of the offer, or under the row of the document	*/
+@media (max-width: 639.98px) {
 
-.crm-order {
-	flex-basis: 100%;
-	box-sizing: border-box;
-	margin: var(--space-2) 0 0;
-	padding: var(--crm-documents-space) calc( var(--crm-documents-space) * 1.2 );
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
-	background-color: color-mix(in srgb, var(--color-ink) 4%, transparent);
+	.crm-offer__summary {
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		padding: var(--crm-4);
+	}
+
+	.crm-offer__head {
+		grid-column: 2 / span 2;
+	}
+
+	.crm-offer__gross {
+		grid-column: 2;
+		grid-row: 2;
+	}
+
+	.crm-offer__state {
+		grid-column: 3;
+		grid-row: 2;
+		justify-self: end;
+	}
+
+	.crm-offer__download {
+		grid-column: 2 / span 2;
+		grid-row: 3;
+		justify-self: start;
+	}
+
+	.crm-offer__body {
+		padding: var(--crm-4);
+	}
 }
 
-.crm-order--done {
-	box-shadow: inset .25rem 0 0 var(--color-success);
+/*	11 Parts - the order	*/
+
+.crm-order--form {
+	margin: var(--crm-4) 0 0;
+	padding: var(--crm-4) var(--crm-5);
 }
 
-.crm-order--privacy {
-	box-shadow: inset .25rem 0 0 var(--color-warning);
+.crm-order__field {
+	margin: 0 0 var(--crm-2);
 }
 
 .crm-order__sentence {
@@ -743,235 +1555,695 @@ a.crm-documents__project {
 }
 
 .crm-order__actions {
-	margin-bottom: 0;
+	margin: 0;
 }
 
-/*	What is pending: the cards of the start page, two to a line where there is room	*/
+.crm-order__state {
+	scroll-margin-top: var(--crm-5);
+}
 
-.crm-start {
+/*	11 Parts - the files	*/
+
+.crm-files.crm-table {
+	--crm-cols: minmax(12rem, 2fr) 5rem 6rem auto;
+}
+
+@media (max-width: 1023.98px) {
+
+	.crm-files__date::before {
+		content: "·";
+		margin-right: var(--crm-3);
+		color: var(--crm-ink-3);
+	}
+}
+
+.crm-files__file {
+	display: flex;
+	align-items: center;
+	gap: var(--crm-3);
+}
+
+.crm-files__icon {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-	gap: var(--space-2);
-	box-sizing: border-box;
-	max-width: 48rem;
-	margin: 0 0 var(--space-2);
+	place-items: center;
+	flex: 0 0 auto;
+	width: 2.25rem;
+	height: 2.25rem;
+	border-radius: var(--crm-radius-s);
+	background-color: var(--crm-surface-2);
+	color: var(--crm-ink-2);
 }
 
-.crm-start__heading,
-.crm-start__nothing {
-	grid-column: 1 / -1;
+.crm-files__row--playing .crm-files__icon {
+	background-color: color-mix(in srgb, var(--crm-info) 14%, var(--crm-surface));
+	color: var(--crm-link);
 }
 
-.crm-start__heading {
-	margin: 0;
-}
-
-.crm-start__nothing {
-	margin: 0;
-}
-
-.crm-start__card {
-	margin: 0;
+.crm-files__text {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--crm-2);
 	min-width: 0;
 }
 
-.crm-start__title {
-	margin: 0 0 var(--space-1);
-	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
-	font-size: .75rem;
+.crm-files__name {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--crm-touch);
+	color: var(--crm-link);
 	font-weight: 600;
-	letter-spacing: .06em;
-	text-transform: uppercase;
+	text-decoration: none;
+	overflow-wrap: anywhere;
 }
 
-.crm-start__list {
+.crm-files__name:hover {
+	text-decoration: underline;
+}
+
+.crm-files__row--playing {
+	box-shadow: inset 3px 0 0 var(--crm-link);
+	background-color: color-mix(in srgb, var(--crm-info) 6%, transparent);
+}
+
+.crm-files__size {
+	color: var(--crm-ink-2);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.crm-files__empty {
+	margin: 0;
+}
+
+
+/*	11 Parts - the uploads	*/
+
+.crm-uploads {
+	margin: 0 0 var(--crm-7);
+}
+
+.crm-uploads__note {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--crm-2);
+	margin: 0 0 var(--crm-4);
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	line-height: 1.5;
+}
+
+.crm-uploads__note .crm-icon {
+	margin-top: .15em;
+	color: var(--crm-ink-3);
+}
+
+.files-upload.crm-upload {
+	--color-ground: var(--crm-surface);
+	--color-ink: var(--crm-ink);
+	--color-accent: var(--crm-link);
+	--color-border: var(--crm-line);
+	display: grid;
+	gap: var(--crm-3);
+	max-width: none;
+	margin: 0 0 var(--crm-6);
+	padding: var(--crm-5);
+	border: 1px solid var(--crm-line);
+	border-radius: var(--crm-radius);
+	background-color: var(--crm-surface);
+	color: var(--crm-ink);
+	box-shadow: var(--crm-shadow-1);
+}
+
+.files-upload.crm-upload .files-upload__label {
+	grid-area: 1 / 1;
+	display: grid;
+	place-items: center;
+	min-height: 9rem;
+	margin: 0;
+	padding: var(--crm-5);
+	border: 2px dashed var(--crm-line-strong);
+	border-radius: var(--crm-radius);
+	background-color: var(--crm-surface-2);
+	color: var(--crm-link);
+	font-size: var(--crm-text-l);
+	font-weight: 600;
+	text-align: center;
+	cursor: pointer;
+	transition: border-color .15s ease, background-color .15s ease;
+}
+
+.files-upload.crm-upload .files-upload__input {
+	grid-area: 1 / 1;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.files-upload.crm-upload:has(.files-upload__input:focus-visible) .files-upload__label,
+.files-upload.crm-upload:has(.files-upload__input:hover) .files-upload__label,
+.crm-upload--over .files-upload__label {
+	border-color: var(--crm-link);
+	background-color: color-mix(in srgb, var(--crm-info) 10%, var(--crm-surface));
+}
+
+.files-upload.crm-upload:has(.files-upload__input:focus-visible) .files-upload__label {
+	outline: 2px solid var(--color-focus);
+	outline-offset: 2px;
+}
+
+.files-upload.crm-upload .files-upload__hint {
+	margin: 0;
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	line-height: 1.5;
+}
+
+.files-upload.crm-upload .files-upload__hint + .files-upload__hint {
+	margin-top: calc( -1 * var(--crm-2) );
+}
+
+.files-upload.crm-upload .files-upload__state {
+	margin: 0;
+	padding: var(--crm-3) var(--crm-4);
+	border-radius: var(--crm-radius);
+	background-color: color-mix(in srgb, var(--crm-info) 10%, var(--crm-surface));
+	font-size: var(--crm-text-s);
+}
+
+.files-upload.crm-upload > .nino-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--crm-2);
+	justify-self: start;
+	min-height: var(--crm-touch);
+	margin: 0;
+	padding: 0 var(--crm-5);
+	border-radius: var(--crm-radius-s);
+	font-size: var(--crm-text-s);
+	font-weight: 600;
+	text-transform: none;
+}
+
+.files-upload.crm-upload .files-upload__list {
+	margin: 0;
+}
+
+.files-upload.crm-upload .files-upload__item {
+	padding: var(--crm-2) 0;
+	border-top: 1px solid var(--crm-line);
+	font-size: var(--crm-text-s);
+}
+
+/*	11 Parts - the dates	*/
+
+.crm-dates {
+	margin: 0 0 var(--crm-7);
+}
+
+.crm-dates__list {
+	display: grid;
+	gap: var(--crm-3);
 	margin: 0;
 	padding: 0;
 	list-style: none;
 }
 
-.crm-start__row {
-	display: flex;
-	justify-content: space-between;
-	gap: var(--space-2);
-	padding: calc( var(--space-1) * .75 ) 0;
-	border-top: 1px solid var(--crm-documents-border);
+.crm-dates__row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--crm-4) var(--crm-5);
+	padding: var(--crm-4) var(--crm-5);
 }
 
-.crm-start__row:first-child {
-	border-top: 0;
+.crm-dates__when {
+	display: grid;
+	place-items: center;
+	gap: 2px;
+	width: 3.75rem;
+	padding: var(--crm-2) 0;
+	border-radius: var(--crm-radius-s);
+	background-color: color-mix(in srgb, var(--crm-info) 12%, var(--crm-surface));
+	color: var(--crm-link);
 }
 
-.crm-start__row > :first-child {
+.crm-dates__day {
+	font-size: var(--crm-text-xl);
+	font-weight: 700;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+}
+
+.crm-dates__month {
+	font-size: var(--crm-text-xs);
+	font-weight: 600;
+	letter-spacing: .04em;
+	text-transform: uppercase;
+}
+
+.crm-dates__body {
+	display: grid;
+	gap: var(--crm-1);
 	min-width: 0;
+}
+
+.crm-dates__title {
+	color: var(--crm-ink);
+	font-size: var(--crm-text-l);
+	font-weight: 700;
 	overflow-wrap: anywhere;
 }
 
-.crm-start__meta {
-	text-align: right;
+.crm-dates__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--crm-1) var(--crm-4);
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
 }
 
-.crm-start__text {
+.crm-dates__time,
+.crm-dates__place {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--crm-1);
+}
+
+.crm-dates__meta .crm-icon {
+	color: var(--crm-ink-3);
+}
+
+@media (max-width: 639.98px) {
+
+	.crm-dates__row {
+		grid-template-columns: auto minmax(0, 1fr);
+		padding: var(--crm-4);
+	}
+
+	.crm-dates__ics {
+		grid-column: 1 / -1;
+		justify-self: start;
+	}
+}
+
+/*	11 Parts - the data	*/
+
+.crm-data {
+	margin: 0 0 var(--crm-7);
+}
+
+.crm-data__card {
+	max-width: 48rem;
+	padding: var(--crm-5);
+}
+
+.crm-data__actions {
+	margin: var(--crm-5) 0 0;
+}
+
+.crm-data__privacy {
+	max-width: 48rem;
+	margin: var(--crm-5) 0 0;
+	padding: var(--crm-5);
+}
+
+.crm-data__privacy-title {
+	margin: 0 0 var(--crm-2);
+}
+
+.crm-data__privacy-title .crm-icon {
+	color: var(--crm-link);
+}
+
+.crm-data__privacy-text {
+	margin: 0 0 var(--crm-3);
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	line-height: 1.5;
+}
+
+.crm-data__privacy-action {
 	margin: 0;
 }
 
-/*	The rows of the documents as one grid where the list itself is 46rem wide (a container query, not the width of the window: the list stands in a column of any
-	width): the list is the grid and each row takes its columns (kind, title, project, day, state, links), so the day and
-	the chip stand in a line from row to row; the order under a row takes the whole of it. Narrower, the rows wrap as above. Title and project keep 6rem at least, so no
-	column collapses	*/
+/*	11 Parts - the Datenschutz	*/
 
-@container (min-width: 46rem) {
-
-	.crm-documents__list {
-		display: grid;
-		grid-template-columns: auto minmax(6rem, 1fr) minmax(6rem, 1fr) auto auto auto;
-		column-gap: var(--space-2);
-	}
-
-	.crm-documents__row {
-		display: grid;
-		grid-column: 1 / -1;
-		grid-template-columns: subgrid;
-		align-items: center;
-	}
-
-	.crm-documents__kind {
-		grid-column: 1;
-	}
-
-	.crm-documents__title {
-		grid-column: 2;
-	}
-
-	.crm-documents__project {
-		grid-column: 3;
-	}
-
-	.crm-documents__date {
-		grid-column: 4;
-	}
-
-	.crm-documents__state {
-		grid-column: 5;
-	}
-
-	.crm-documents__links {
-		grid-column: 6;
-		justify-self: end;
-	}
-
-	.crm-documents__row > .crm-order {
-		grid-column: 1 / -1;
-	}
-}
-
-.crm-documents__links {
-	display: inline-flex;
-	flex-wrap: wrap;
-	gap: calc( var(--space-1) * .5 );
-}
-
-/*	The upload form of the feature Files on the page Upload (it stands before .crm-uploads there) and the form of the comment in the player of Review on
-	the page of a project: the look of the portal for what the features draw, scoped to the portal's own pages; the files of the features are not touched	*/
-
-.files-upload:has(~ .crm-uploads) {
+.crm-privacy {
 	max-width: 48rem;
-	padding: var(--crm-documents-space) calc( var(--crm-documents-space) * 1.2 );
-	border-color: var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
+	margin: 0 0 var(--crm-7);
 }
 
-.files-upload:has(~ .crm-uploads) .files-upload__label {
-	font-size: .875rem;
-	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+.crm-privacy__text {
+	margin: 0 0 var(--crm-4);
+	padding: var(--crm-5);
+	font-size: var(--crm-text-m);
+	line-height: 1.6;
+	overflow-wrap: anywhere;
 }
 
-.files-upload:has(~ .crm-uploads) .files-upload__input {
-	box-sizing: border-box;
-	width: 100%;
-	padding: calc( var(--space-1) * .5 );
-	border: 1px dashed var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
-	color: var(--color-ink);
+.crm-privacy__standing-box {
+	padding: var(--crm-4) var(--crm-5);
 }
 
-.files-upload:has(~ .crm-uploads) .files-upload__input::file-selector-button {
-	min-height: 2.25rem;
-	margin-right: var(--space-2);
-	padding: 0 var(--space-2);
-	border: 1px solid transparent;
-	border-radius: var(--crm-documents-corners);
-	background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
-	color: var(--color-accent);
-	font: inherit;
-	font-size: .9375rem;
+.crm-privacy__standing {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--crm-2);
+	margin: 0;
+	color: var(--crm-ink);
+	font-size: var(--crm-text-s);
+	line-height: 1.5;
+}
+
+.crm-privacy__standing--agreed .crm-icon {
+	color: color-mix(in srgb, var(--crm-success) 85%, var(--crm-ink));
+}
+
+.crm-privacy__standing--open .crm-icon {
+	color: color-mix(in srgb, var(--crm-warning) 85%, var(--crm-ink));
+}
+
+.crm-privacy__standing .crm-icon {
+	margin-top: .1em;
+}
+
+.crm-privacy__form {
+	margin: var(--crm-3) 0 0;
+	padding-top: var(--crm-3);
+	border-top: 1px solid var(--crm-line);
+}
+
+.crm-privacy__field {
+	margin: 0 0 var(--crm-2);
+}
+
+.crm-privacy__actions {
+	margin: 0;
+}
+
+/*	11 Parts - the player of Review on the project page	*/
+
+.crm-project .review-player {
+	--color-ground: var(--crm-surface);
+	--color-ink: var(--crm-ink);
+	--color-accent: var(--crm-link);
+	--color-border: var(--crm-line);
+	margin: 0 0 var(--crm-5);
+	padding: var(--crm-5);
+	border: 1px solid var(--crm-line);
+	border-radius: var(--crm-radius);
+	background-color: var(--crm-surface);
+	color: var(--crm-ink);
+	box-shadow: var(--crm-shadow-1);
+}
+
+.crm-project .review-player__back {
+	margin: 0 0 var(--crm-2);
+	font-size: var(--crm-text-s);
+}
+
+.crm-project .review-player__back a {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--crm-touch);
+	color: var(--crm-link);
 	font-weight: 600;
-	cursor: pointer;
+	text-decoration: none;
 }
 
-.files-upload:has(~ .crm-uploads) .files-upload__input::file-selector-button:hover {
-	background-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+.crm-project .review-player__back a:hover {
+	text-decoration: underline;
 }
 
-.files-upload:has(~ .crm-uploads) .nino-btn {
-	min-height: 2.25rem;
-	padding: 0 var(--space-2);
-	font-size: .9375rem;
+.crm-project .review-player__title {
+	margin: 0 0 var(--crm-4);
+	font-size: var(--crm-text-xl);
+}
+
+.crm-project .review-player__comments {
+	margin: 0 0 var(--crm-3);
+	font-size: var(--crm-text-l);
+}
+
+.crm-project .review-form__label {
+	display: block;
+	margin: 0 0 var(--crm-1);
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	font-weight: 600;
 }
 
 .crm-project .review-form__at,
 .crm-project .review-form__text {
 	box-sizing: border-box;
-	padding: calc( var(--space-1) * .75 ) calc( var(--space-1) * 1.5 );
-	border: 1px solid var(--forms-edge, var(--crm-documents-border));
-	border-radius: var(--forms-corners, var(--radius-small));
-	background-color: var(--color-ground);
-	color: var(--color-ink);
+	min-height: var(--crm-touch);
+	padding: var(--crm-2) var(--crm-3);
+	border: 1px solid var(--crm-line-strong);
+	border-radius: var(--crm-radius-s);
+	background-color: var(--crm-surface);
+	color: var(--crm-ink);
 	font: inherit;
+	font-size: var(--crm-text-m);
 }
 
-.crm-project .review-form__at {
-	min-height: 2.5rem;
+.crm-project .review-form__text {
+	width: 100%;
 }
 
 .crm-project .review-form__at:focus,
 .crm-project .review-form__text:focus {
-	outline: var(--forms-ring, 2px) solid var(--color-focus);
-	outline-offset: var(--forms-ring-offset, 2px);
+	border-color: var(--crm-link);
+	box-shadow: 0 0 0 1px var(--crm-link);
+	outline: 2px solid var(--color-focus);
+	outline-offset: 2px;
 }
 
+.crm-project .review-form .nino-btn,
 .crm-project .review-comment__reply,
-.crm-project .review-form__cancel {
-	min-height: 1.5rem;
-	padding: 0 var(--space-1);
+.crm-project .review-form__cancel,
+.crm-project .review-form__now {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--crm-2);
+	min-height: var(--crm-touch);
+	margin: 0;
+	padding: 0 var(--crm-3);
 	border: 1px solid transparent;
-	border-radius: var(--crm-documents-corners);
-	background-color: transparent;
-	color: var(--color-accent);
-	font-size: .8125rem;
-}
-
-.crm-project .review-comment__reply:hover,
-.crm-project .review-form__cancel:hover {
-	background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+	border-radius: var(--crm-radius-s);
+	font-family: inherit;
+	font-size: var(--crm-text-s);
+	font-weight: 600;
+	text-transform: none;
+	cursor: pointer;
 }
 
 .crm-project .review-form .nino-btn {
-	min-height: 2.25rem;
-	padding: 0 var(--space-2);
-	font-size: .9375rem;
+	padding: 0 var(--crm-5);
 }
 
+.crm-project .review-comment__reply,
+.crm-project .review-form__cancel,
 .crm-project .review-form__now {
-	min-height: 1.5rem;
-	padding: 0 var(--space-1);
-	border: 1px solid transparent;
-	border-radius: var(--crm-documents-corners);
 	background-color: transparent;
-	color: var(--color-accent);
-	font-size: .8125rem;
+	color: var(--crm-link);
+	font-size: var(--crm-text-xs);
 }
 
+.crm-project .review-comment__reply:hover,
+.crm-project .review-form__cancel:hover,
 .crm-project .review-form__now:hover {
-	background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+	background-color: color-mix(in srgb, var(--crm-link) 10%, transparent);
+}
+
+/*	11 Parts - the door	*/
+
+.crm-page--door .crm-page__inner {
+	max-width: 30rem;
+	margin: 0 auto;
+	padding: var(--crm-4) 0;
+}
+
+.crm-page--door .nino-section-title {
+	margin-bottom: var(--crm-3);
+	font-size: var(--crm-text-xxl);
+	text-align: center;
+}
+
+.crm-page--door .nino-section-text {
+	margin-bottom: var(--crm-5);
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-m);
+	text-align: center;
+}
+
+.crm-door__card {
+	display: grid;
+	gap: var(--crm-4);
+	padding: var(--crm-6) var(--crm-5);
+}
+
+.crm-door__icon {
+	display: grid;
+	place-items: center;
+	width: 3.5rem;
+	height: 3.5rem;
+	margin: 0 auto;
+	border-radius: var(--crm-pill);
+	background-color: color-mix(in srgb, var(--crm-info) 12%, var(--crm-surface));
+	color: var(--crm-link);
+}
+
+.crm-door__icon .crm-icon {
+	width: 1.75rem;
+	height: 1.75rem;
+}
+
+.crm-door__enter {
+	margin: 0;
+}
+
+.crm-door__enter .crm-btn {
+	width: 100%;
+}
+
+.crm-door .members-login {
+	--color-ground: var(--crm-surface);
+	--color-ink: var(--crm-ink);
+	--color-accent: var(--crm-link);
+	--color-border: var(--crm-line-strong);
+	display: grid;
+	gap: var(--crm-2);
+	max-width: none;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	text-align: left;
+}
+
+.crm-door .members-login__label {
+	margin: 0;
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	font-weight: 600;
+}
+
+.crm-door .members-login .nino-form-input {
+	width: 100%;
+	min-height: var(--crm-touch);
+	margin: 0;
+	padding: 0 var(--crm-3);
+	border: 1px solid var(--crm-line-strong);
+	border-radius: var(--crm-radius-s);
+	background-color: var(--crm-surface);
+	color: var(--crm-ink);
+	font-size: var(--crm-text-m);
+}
+
+.crm-door .members-login .nino-form-input:focus {
+	border-color: var(--crm-link);
+	box-shadow: 0 0 0 1px var(--crm-link);
+}
+
+.crm-door .members-login__state {
+	margin: 0;
+	padding: var(--crm-3) var(--crm-4);
+	border-left: 4px solid var(--crm-info);
+	border-radius: var(--crm-radius);
+	background-color: color-mix(in srgb, var(--crm-info) 10%, var(--crm-surface));
+	font-size: var(--crm-text-s);
+	line-height: 1.5;
+}
+
+.crm-door .members-login .nino-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	min-height: var(--crm-touch);
+	margin: var(--crm-2) 0 0;
+	padding: 0 var(--crm-5);
+	border-radius: var(--crm-radius-s);
+	font-size: var(--crm-text-m);
+	font-weight: 600;
+	text-transform: none;
+}
+
+/*	12 Empty states	*/
+
+.crm-empty {
+	display: grid;
+	justify-items: center;
+	gap: var(--crm-2);
+	margin: 0 0 var(--crm-5);
+	padding: var(--crm-6) var(--crm-4);
+	border: 1px dashed var(--crm-line-strong);
+	border-radius: var(--crm-radius);
+	background-color: var(--crm-surface);
+	color: var(--crm-ink-2);
+	text-align: center;
+}
+
+.crm-empty > .crm-icon {
+	width: 2.25rem;
+	height: 2.25rem;
+	color: var(--crm-ink-3);
+}
+
+.crm-empty__text {
+	max-width: 48ch;
+	margin: 0;
+	color: var(--crm-ink);
+	font-size: var(--crm-text-m);
+	line-height: 1.5;
+}
+
+.crm-empty__contact {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	align-items: center;
+	gap: var(--crm-1) var(--crm-3);
+	margin: var(--crm-2) 0 0;
+	font-size: var(--crm-text-s);
+}
+
+.crm-empty__link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--crm-1);
+	min-height: var(--crm-touch);
+	color: var(--crm-link);
+	font-weight: 600;
+	text-decoration: none;
+	overflow-wrap: anywhere;
+}
+
+.crm-empty__link:hover {
+	text-decoration: underline;
+}
+
+.crm-empty--inline {
+	grid-template-columns: auto minmax(0, 1fr);
+	justify-items: start;
+	align-items: center;
+	padding: var(--crm-4) var(--crm-5);
+	text-align: left;
+}
+
+.crm-empty--inline > .crm-icon {
+	width: 1.5rem;
+	height: 1.5rem;
+	color: color-mix(in srgb, var(--crm-success) 85%, var(--crm-ink));
+}
+
+.crm-project__message {
+	margin: 0;
 }

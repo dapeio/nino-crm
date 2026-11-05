@@ -626,13 +626,17 @@ echo "\nThe component [crm-documents]\n";
 $schema = \Nino\Modules\Components::components( $appData )['crm-documents'] ?? [];
 check( 'the component is registered once: global, no source, a block, drawn as a div of the class crm-documents, in a section or a card, with an icon', ( $schema['group'] ?? '' ) === 'global' && ( $schema['source'] ?? '' ) === 'none' && ( $schema['preview'] ?? '' ) === 'block' && ( $schema['draws'] ?? '' ) === 'div .crm-documents'
 	&& ( $schema['in'] ?? [] ) === [ 'section', 'card' ] && count( $schema['icon'] ?? [] ) === 5 && count( \Nino\Callbacks::registered( $appData, '/nino/html/shortcode/crm-documents' ) ) === 1 );
-check( 'the style sheet of the list is in the bundle of the site, once, and declares its three properties in :where(:root)', count( array_keys( $appData['/nino/html/assets']['/.cache/style.css'] ?? [], '/app/Crm/Portal/assets/portal.css', true ) ) === 1
-	&& preg_match( '/:where\(:root\)\s*\{[^}]*--crm-documents-space[^}]*--crm-documents-corners[^}]*--crm-documents-border/s', (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' ) ) === 1 );
-check( '...the list stands at the left of its column as the other lists of the page do: no auto margin on the sides', preg_match( '/\n\.crm-documents \{[^}]*margin: 0 0 var\(--space-2\);/s', (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' ) ) === 1 );
+check( 'the style sheet of the portal is in the bundle of the site, once, and declares the type scale, the spacing and the surfaces in :where(:root)', count( array_keys( $appData['/nino/html/assets']['/.cache/style.css'] ?? [], '/app/Crm/Portal/assets/portal.css', true ) ) === 1
+	&& preg_match( '/:where\(:root\)\s*\{[^}]*--crm-text-xs[^}]*--crm-text-xxl[^}]*--crm-1:[^}]*--crm-7:[^}]*--crm-surface:/s', (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' ) ) === 1 );
+check( 'the script of the portal is in the bundle of the site, once, and the file is there', count( array_keys( $appData['/nino/html/assets']['/.cache/script.js'] ?? [], \Crm\Portal::SCRIPT, true ) ) === 1 && is_file( $root. \Crm\Portal::SCRIPT ) === true );
+check( '...the list stands at the left of its column as the other lists of the page do: no auto margin on the sides', preg_match( '/\n\.crm-documents \{[^}]*margin: 0 0 var\(--crm-7\);/s', (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' ) ) === 1 );
 
 $asVisitor();
-$empty = '<div class="crm-documents crm-documents--empty"><p class="crm-documents__empty">Für Dich liegen noch keine Dokumente bereit.</p></div>';
-check( 'a visitor is told there are none', preg_replace( '/>\s+</', '><', trim( \Nino\Html::renderHtml( $appData, '[crm-documents]' ) ) ) === $empty );
+$wordsDe = (array) require $root. '/app/Crm/Portal/text/de_DE.php';
+$wordsEn = (array) require $root. '/app/Crm/Portal/text/en_US.php';
+$emptyList = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
+check( 'a visitor is told there are none: the empty state, an icon and the sentence', portalFind( $emptyList, '//div[contains(@class, "crm-documents--empty")]/div[contains(@class, "crm-empty")]/svg[@aria-hidden="true"]' ) !== []
+	&& portalText( $emptyList, '//p[contains(@class, "crm-empty__text")]' ) === $wordsDe['[[/project/crm-documents/list/empty]]'] && portalFind( $emptyList, '//ul' ) === [] );
 check( '...a visitor never reaches the page: it is behind the gate of Members', portalServe( $appData, '/portal/belege' )['statusCode'] === 401 );
 
 check( 'a member of no client is told there are none, too', portalSignIn( $appData, $stray ) === true && str_contains( \Nino\Html::renderHtml( $appData, '[crm-documents]' ), 'crm-documents--empty' ) === true );
@@ -651,7 +655,7 @@ check( 'the released documents of a client: its own, no draft however it is flag
 
 check( 'a member of the client is signed in', portalSignIn( $appData, $accounts['anna'] ) === true );
 $html = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
-$rows = preg_split( '/(?=<li class="crm-documents__row")/', $html );
+$rows = preg_split( '/(?=<li class="crm-documents__row )/', $html );
 array_shift( $rows );
 $rowOf = static function( int $id ) use ( $rows ): string {
 	foreach( $rows as $row )
@@ -660,17 +664,23 @@ $rowOf = static function( int $id ) use ( $rows ): string {
 	return '';
 };
 $rowOfNow = static function( int $id ) use ( &$appData ): string {
-	foreach( preg_split( '/(?=<li class="crm-documents__row")/', \Nino\Html::renderHtml( $appData, '[crm-documents]' ) ) ?: [] as $row )
+	foreach( preg_split( '/(?=<li class="crm-documents__row )/', \Nino\Html::renderHtml( $appData, '[crm-documents]' ) ) ?: [] as $row )
 		if( str_contains( $row, 'data-document="'. $id. '"' ) === true )
 			return $row;
 	return '';
 };
 check( 'the list has a row for each released document of the member\'s client, newest first, and none for anything else', count( $rows ) === 5 && array_map( static fn( string $row ): int => (int) preg_replace( '/^.*?data-document="(\d+)".*$/s', '$1', $row ), $rows ) === [ $infoA['id'], $privacyA['id'], $contractA['id'], $invoiceA['id'], $offerA['id'] ]
 	&& str_contains( $html, 'data-document="'. $invoiceB['id']. '"' ) === false && str_contains( $html, 'data-document="'. $draftA['id']. '"' ) === false && str_contains( $html, 'data-document="'. $invoiceA2['id']. '"' ) === false );
-check( '...each says its kind, its title or its number, its day as d.m.Y and its state in words', str_contains( $rowOf( $invoiceA['id'] ), '>Rechnung</span>' ) === true && str_contains( $rowOf( $invoiceA['id'] ), '>R-2026-0001</span>' ) === true && str_contains( $rowOf( $invoiceA['id'] ), '>01.10.2026</time>' ) === true && str_contains( $rowOf( $invoiceA['id'] ), 'datetime="2026-10-01"' ) === true
-	&& str_contains( $rowOf( $invoiceA['id'] ), '>versendet</span>' ) === true && str_contains( $rowOf( $infoA['id'] ), '>Information</span>' ) === true && str_contains( $rowOf( $infoA['id'] ), '>Zugang</span>' ) === true && str_contains( $rowOf( $infoA['id'] ), '>offen</span>' ) === true );
-check( '...an offer past its day says it ran out, a document that is signed says it is signed', str_contains( $rowOf( $offerA['id'] ), '>abgelaufen</span>' ) === true && str_contains( $rowOf( $contractA['id'] ), '>unterschrieben</span>' ) === true );
-check( '...and has the download of the PDF: /.crm/pdf/<id>?download=1', array_filter( [ $infoA, $privacyA, $contractA, $invoiceA, $offerA ], static fn( array $document ): bool => str_contains( $rowOf( $document['id'] ), 'href="/.crm/pdf/'. $document['id']. '?download=1"' ) === false ) === [] );
+$cellOf = static fn( string $row, string $class ): string => portalText( '<ul>'. $row. '</ul>', '//*[contains(concat(" ", normalize-space(@class), " "), " '. $class. ' ")]' );
+$pillOf = static fn( string $row ): string => portalFind( '<ul>'. $row. '</ul>', '//span[contains(@class, "crm-documents__state")]/span[contains(@class, "crm-pill")]' )[0]->getAttribute( 'class' );
+check( '...each says its title (its kind where it has none of its own), its number, its day as d.m.Y with the machine day, and its state as a pill', $cellOf( $rowOf( $invoiceA['id'] ), 'crm-documents__title' ) === $wordsDe['[[/project/crm-documents/category/invoice]]'] && $cellOf( $rowOf( $invoiceA['id'] ), 'crm-documents__number' ) === 'R-2026-0001'
+	&& $cellOf( $rowOf( $invoiceA['id'] ), 'crm-documents__date' ) === '01.10.2026' && str_contains( $rowOf( $invoiceA['id'] ), 'datetime="2026-10-01"' ) === true
+	&& $cellOf( $rowOf( $infoA['id'] ), 'crm-documents__title' ) === 'Zugang' && $cellOf( $rowOf( $infoA['id'] ), 'crm-documents__kind' ) === $wordsDe['[[/project/crm-documents/category/information]]'] && $cellOf( $rowOf( $infoA['id'] ), 'crm-pill' ) === $wordsDe['[[/project/crm-documents/state/open]]']
+	&& $cellOf( $rowOf( $contractA['id'] ), 'crm-documents__title' ) === 'Dienstleistungsvertrag' && $cellOf( $rowOf( $contractA['id'] ), 'crm-documents__kind' ) === $wordsDe['[[/project/crm-documents/category/contract]]'] );
+check( '...an offer past its day says it ran out, a document that is signed says it is signed - each in the tone of its state', $cellOf( $rowOf( $offerA['id'] ), 'crm-pill' ) === $wordsDe['[[/project/crm-documents/state/expired]]'] && str_contains( $pillOf( $rowOf( $offerA['id'] ) ), 'crm-pill--muted' ) === true
+	&& $cellOf( $rowOf( $contractA['id'] ), 'crm-pill' ) === $wordsDe['[[/project/crm-documents/state/signed]]'] && str_contains( $pillOf( $rowOf( $contractA['id'] ) ), 'crm-pill--success' ) === true );
+check( '...and has the download of the PDF: /.crm/pdf/<id>?download=1, a small secondary button with an icon that is hidden from a reader and the number for one', array_filter( [ $infoA, $privacyA, $contractA, $invoiceA, $offerA ], static fn( array $document ): bool => str_contains( $rowOf( $document['id'] ), 'href="/.crm/pdf/'. $document['id']. '?download=1"' ) === false
+	|| portalFind( '<ul>'. $rowOf( $document['id'] ). '</ul>', '//a[contains(@class, "crm-documents__download") and contains(@class, "crm-btn--small")]/svg[@aria-hidden="true"]/following-sibling::span[contains(@class, "nino-sr-only")]' ) === [] ) === [] );
 check( 'a document that is signed has the link to the signed file of Sign, by its request; the one that waits for the signature the link to the page of the request', str_contains( $rowOf( $contractA['id'] ), 'href="/.sign/pdf?r='. $signed['sign_id']. '&amp;kind=signed"' ) === true && str_contains( $rowOf( $contractA['id'] ), 'href="/.sign?r=' ) === false
 	&& str_contains( $rowOf( $privacyA['id'] ), 'href="/.sign?r=' ) === false );
 
@@ -680,13 +690,13 @@ check( 'a document that Sign takes no signature for has no link to it', $waiting
 $waits = Documents::requestSignature( $appData, $contractA3['id'], $accounts['anna']['id'] );
 Documents::release( $appData, $contractA3['id'], false );
 $withLink = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
-check( 'where a signature is asked for (requested, viewed) the row links the request of Sign for the member: /.sign?r=<id>', is_array( $waits ) && str_contains( $withLink, 'class="crm-documents__sign" href="/.sign?r='. $waits['document']['sign_id']. '&amp;return=%2Fportal%2Fbelege"' ) === true && str_contains( $withLink, '>Jetzt unterschreiben</a>' ) === true );
+check( 'where a signature is asked for (requested, viewed) the row links the request of Sign for the member: /.sign?r=<id>', is_array( $waits ) && str_contains( $withLink, 'class="crm-documents__sign crm-btn crm-btn--primary crm-btn--small" href="/.sign?r='. $waits['document']['sign_id']. '&amp;return=%2Fportal%2Fbelege"' ) === true && str_contains( $withLink, '<span>'. $wordsDe['[[/project/crm-documents/list/sign]]']. '</span>' ) === true );
 $index = \Nino\Filesystem::getFileContent( $appData, '/data/sign/requests.php', [] );
 $index[$waits['document']['sign_id']]['status'] = 'viewed';
 \Nino\Filesystem::putFileContent( $appData, '/data/sign/requests.php', $index );
-check( '...a request the member has looked at is still one that waits: the link stays', str_contains( \Nino\Html::renderHtml( $appData, '[crm-documents]' ), 'class="crm-documents__sign" href="/.sign?r='. $waits['document']['sign_id']. '&amp;return=%2Fportal%2Fbelege"' ) === true );
+check( '...a request the member has looked at is still one that waits: the link stays', str_contains( \Nino\Html::renderHtml( $appData, '[crm-documents]' ), 'class="crm-documents__sign crm-btn crm-btn--primary crm-btn--small" href="/.sign?r='. $waits['document']['sign_id']. '&amp;return=%2Fportal%2Fbelege"' ) === true );
 \Nino\Modules\Sign::cancel( $appData, $waits['document']['sign_id'] );
-check( '...and a request that is cancelled in Sign is none, the first time the portal reads it', str_contains( \Nino\Html::renderHtml( $appData, '[crm-documents]' ), 'class="crm-documents__sign"' ) === false && array_column( Documents::released( $appData, $a['id'] ), 'sign_state', 'id' )[$contractA3['id']] === 'cancelled' );
+check( '...and a request that is cancelled in Sign is none, the first time the portal reads it', str_contains( \Nino\Html::renderHtml( $appData, '[crm-documents]' ), 'crm-documents__sign crm-btn' ) === false && array_column( Documents::released( $appData, $a['id'] ), 'sign_state', 'id' )[$contractA3['id']] === 'cancelled' );
 Documents::unrelease( $appData, $contractA3['id'] );
 
 // a request that Sign ended is no way to sign: no link, whatever the id says
@@ -721,11 +731,13 @@ check( 'no word is left as a key and the list carries a class of its own where t
 
 // the page, in both languages
 $page = portalPage( $appData, '/portal/belege' );
-check( 'the page /portal/belege is served to the member with the list in it under the title, and no navigation: the main menu is the way to the areas', $page[0] === 200 && str_contains( $page[1], '[crm-documents]' ) === false && str_contains( $page[1], 'class="crm-documents"' ) === true && str_contains( $page[1], 'Deine Belege' ) === true
-	&& str_contains( $page[1], 'crm-nav' ) === false && strpos( $page[1], '<h2' ) < strpos( $page[1], 'class="crm-documents"' ) );
+check( 'the page /portal/belege is served to the member with the list in it under the head of the page, and no navigation: the main menu is the way to the areas', $page[0] === 200 && str_contains( $page[1], '[crm-documents]' ) === false && str_contains( $page[1], 'class="crm-documents"' ) === true && portalFind( $page[1], '//div[contains(@class, "crm-head")]/div/div/h2[contains(@class, "crm-head__title")]' ) !== []
+	&& str_contains( $page[1], 'crm-nav' ) === false && strpos( $page[1], 'crm-head__title' ) < strpos( $page[1], 'class="crm-documents"' ) );
 $appData['./nino/locales/current'] = 'en_US';
 $english = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
-check( 'in English the words are English: Invoice, sent, signed, Download', str_contains( $english, '>Invoice</span>' ) === true && str_contains( $english, '>sent</span>' ) === true && str_contains( $english, '>signed</span>' ) === true && str_contains( $english, '>Download</a>' ) === true && str_contains( $english, '[[/project' ) === false );
+check( 'in English the words are the English ones: the kind, the state as the customer has it (overdue for the invoice, signed), the download', portalText( $english, '//li[@data-document="'. $invoiceA['id']. '"]//span[contains(@class, "crm-documents__title")]' ) === $wordsEn['[[/project/crm-documents/category/invoice]]']
+	&& str_starts_with( portalText( $english, '//li[@data-document="'. $invoiceA['id']. '"]//span[contains(@class, "crm-pill")]' ), $wordsEn['[[/project/crm-documents/state/overdue]]'] ) === true && portalText( $english, '//li[@data-document="'. $contractA['id']. '"]//span[contains(@class, "crm-pill")]' ) === $wordsEn['[[/project/crm-documents/state/signed]]']
+	&& portalText( $english, '//li[@data-document="'. $invoiceA['id']. '"]//a[contains(@class, "crm-documents__download")]/span[1]' ) === $wordsEn['[[/project/crm-documents/list/download]]'] && $wordsEn['[[/project/crm-documents/list/download]]'] !== $wordsDe['[[/project/crm-documents/list/download]]'] && str_contains( $english, '[[/project' ) === false );
 $appData['./nino/locales/current'] = 'de_DE';
 
 // a client whose documents are all of kinds the module does not write is told there are none
@@ -737,8 +749,6 @@ Db::exec( $appData, 'UPDATE documents SET category = \'information\' WHERE id = 
 $asAdmin();
 
 // the words of the list
-$wordsDe = (array) require $root. '/app/Crm/Portal/text/de_DE.php';
-$wordsEn = (array) require $root. '/app/Crm/Portal/text/en_US.php';
 $used = [];
 
 foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
@@ -746,10 +756,10 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 106 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 138 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
-	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'sent', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
+	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
 
 // a client with nothing released
 check( 'a member of a client with nothing released is told there are none', portalSignIn( $appData, $accounts['ben'] ) === true && ( Documents::unrelease( $appData, $invoiceB['id'] ) !== '' ) && ( Documents::unrelease( $appData, $infoB['id'] ) !== '' ) && str_contains( \Nino\Html::renderHtml( $appData, '[crm-documents]' ), 'crm-documents--empty' ) === true );
@@ -907,12 +917,12 @@ $regularLines = [
 ];
 \Crm\Settings::set( $appData, 'vat_mode', 'regular' );
 $offerRegular = $final( 'offer', $a['id'], [ 'date' => '2026-10-05', 'valid_until' => '2026-12-31', 'project' => $p1, 'template_key' => 'angebot', 'lines' => $regularLines ] );
-$offerReverse = $final( 'offer', $a['id'], [ 'date' => '2026-10-04', 'project' => $p1, 'template_key' => 'angebot', 'reverse_charge' => true, 'lines' => [ $line( 'Beratung EU' ) ] ] );
+$offerReverse = $final( 'offer', $a['id'], [ 'date' => '2026-10-04', 'valid_until' => '2099-12-31', 'project' => $p1, 'template_key' => 'angebot', 'reverse_charge' => true, 'lines' => [ $line( 'Beratung EU' ) ] ] );
 $offerHidden = $final( 'offer', $a['id'], [ 'date' => '2026-10-06', 'project' => $p1, 'template_key' => 'angebot', 'lines' => [ $line( 'Nicht freigegeben' ) ] ] );
 $offerOther = $final( 'offer', $a['id'], [ 'date' => '2026-10-07', 'project' => $p2, 'template_key' => 'angebot', 'lines' => [ $line( 'Andere Seite' ) ] ] );
 $offerB = $final( 'offer', $b['id'], [ 'date' => '2026-10-08', 'project' => $p3, 'template_key' => 'angebot', 'lines' => [ $line( 'Fremdes Angebot' ) ] ] );
 \Crm\Settings::set( $appData, 'vat_mode', 'small_business' );
-$offerSmall = $final( 'offer', $a['id'], [ 'date' => '2026-10-03', 'project' => $p1, 'template_key' => 'angebot', 'lines' => [ $line( 'Kleinunternehmer' ) ] ] );
+$offerSmall = $final( 'offer', $a['id'], [ 'date' => '2026-10-03', 'valid_until' => '2099-12-31', 'project' => $p1, 'template_key' => 'angebot', 'lines' => [ $line( 'Kleinunternehmer' ) ] ] );
 $invoiceP1 = $final( 'invoice', $a['id'], [ 'date' => '2026-10-10', 'project' => $p1, 'template_key' => 'rechnung', 'lines' => [ $line( 'Teil eins' ) ] ] );
 $invoiceP2 = $final( 'invoice', $a['id'], [ 'date' => '2026-10-11', 'project' => $p2, 'template_key' => 'rechnung', 'lines' => [ $line( 'Teil zwei' ) ] ] );
 
@@ -952,28 +962,28 @@ echo "\n[crm-projects]\n";
 $asVisitor();
 check( 'a visitor is told there is no project', str_contains( \Nino\Html::renderHtml( $appData, '[crm-projects]' ), 'crm-projects--empty' ) === true );
 portalSignIn( $appData, $stray );
-check( 'a member of no client is told there is none', count( portalFind( \Nino\Html::renderHtml( $appData, '[crm-projects]' ), '//div[contains(@class, "crm-projects--empty")]/p[@class="crm-projects__empty"]' ) ) === 1 );
+check( 'a member of no client is told there is none', count( portalFind( \Nino\Html::renderHtml( $appData, '[crm-projects]' ), '//section[contains(@class, "crm-projects--empty")]/div[contains(@class, "crm-empty")]/svg[@aria-hidden="true"]/following-sibling::p[contains(@class, "crm-empty__text")]' ) ) === 1 );
 portalSignIn( $appData, $accounts['ben'] );
 $benList = portalPage( $appData, '/portal/projekte' )[1];
-check( 'a client with a project sees it, and only its own: the title as a link to the page of the project', portalFind( $benList, '//a[@class="crm-projects__title"]/@href' )[0]->nodeValue === '/portal/projekte?projekt='. $p3 && count( portalFind( $benList, '//li[@class="crm-projects__row"]' ) ) === 1 && str_contains( $benList, 'Album 2027' ) === false );
+check( 'a client with a project sees it, and only its own: the title as a link to the page of the project', portalFind( $benList, '//a[contains(@class, "crm-projects__link")]/@href' )[0]->nodeValue === '/portal/projekte?projekt='. $p3 && count( portalFind( $benList, '//li[@class="crm-projects__row"]' ) ) === 1 && str_contains( $benList, 'Album 2027' ) === false );
 
 portalSignIn( $appData, $accounts['anna'] );
 $list = portalPage( $appData, '/portal/projekte' )[1];
-$open = portalFind( $list, '//ul[contains(concat(" ", normalize-space(@class), " "), " crm-projects__list ")][not(contains(@class, "--done"))]/li' );
+$open = portalFind( $list, '//ul[contains(@class, "crm-projects__list--open")]/li' );
 $done = portalFind( $list, '//ul[contains(@class, "crm-projects__list--done")]/li' );
-check( 'the list: the open projects first, the newest on top, each a row with its id and state; the done ones in a list of their own under a heading; the project of another client is not there', count( $open ) === 2
-	&& array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-project' ), $open ) === [ $p4, $p1 ] && array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-state' ), $open ) === [ 'open', 'open' ]
-	&& count( $done ) === 1 && $done[0]->getAttribute( 'data-project' ) === $p2 && $done[0]->getAttribute( 'data-state' ) === 'done' && count( portalFind( $list, '//h3[@class="crm-projects__heading"]' ) ) === 1
-	&& str_contains( $list, 'Podcast B' ) === false && portalFind( $list, '//h3[@class="crm-projects__heading"]/following-sibling::ul[1]' )[0]->getAttribute( 'class' ) === 'crm-projects__list crm-projects__list--done crm-card crm-table' );
-$row = $open[1];
+check( 'the list: the open projects first, the one with the latest activity on top (the files and the documents count, not only the day it began), each a row with its id and state; the done ones in a list of their own under a heading; the project of another client is not there', count( $open ) === 2
+	&& array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-project' ), $open ) === [ $p1, $p4 ] && array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-state' ), $open ) === [ 'open', 'open' ]
+	&& count( $done ) === 1 && $done[0]->getAttribute( 'data-project' ) === $p2 && $done[0]->getAttribute( 'data-state' ) === 'done' && count( portalFind( $list, '//h3[contains(@class, "crm-projects__heading")]' ) ) === 1
+	&& str_contains( $list, 'Podcast B' ) === false && portalFind( $list, '//h3[contains(@class, "crm-projects__heading")]/following-sibling::ul[1]' )[0]->getAttribute( 'class' ) === 'crm-projects__list crm-projects__list--done' );
+$row = $open[0];
 $rowHtml = $row->ownerDocument->saveHTML( $row );
-check( '...a row has the title as a link to the page, the day it began, the counts of files and of released documents - the files the member may see only (4 of the 6: the three visible ones and the member\'s own)', portalText( $rowHtml, '//a[@class="crm-projects__title"]' ) === 'Album 2027'
-	&& portalFind( $rowHtml, '//a[@class="crm-projects__title"]/@href' )[0]->nodeValue === '/portal/projekte?projekt='. $p1 && portalFind( $rowHtml, '//time/@datetime' )[0]->nodeValue === '2026-10-01'
-	&& portalText( $rowHtml, '//span[contains(@class, "crm-projects__count--files")]/span' ) === '4' && portalText( $rowHtml, '//span[contains(@class, "crm-projects__count--documents")]/span' ) === '4' );
-check( '...a project without a folder has no count of files, one without documents says 0', portalFind( $open[0]->ownerDocument->saveHTML( $open[0] ), '//span[contains(@class, "crm-projects__count--files")]' ) === [] && portalText( $open[0]->ownerDocument->saveHTML( $open[0] ), '//span[contains(@class, "crm-projects__count--documents")]/span' ) === '0' );
+check( '...a row has the title as a link to the page, the day it began, the counts of files and of released documents - the files the member may see only (4 of the 6: the three visible ones and the member\'s own)', portalText( $rowHtml, '//span[@class="crm-projects__title"]' ) === 'Album 2027'
+	&& portalFind( $rowHtml, '//a[contains(@class, "crm-projects__link")]/@href' )[0]->nodeValue === '/portal/projekte?projekt='. $p1 && portalFind( $rowHtml, '//time/@datetime' )[0]->nodeValue === '2026-10-01'
+	&& portalText( $rowHtml, '//span[contains(@class, "crm-projects__count--files")]/span[@class="crm-projects__number"]' ) === '4' && portalText( $rowHtml, '//span[contains(@class, "crm-projects__count--documents")]/span[@class="crm-projects__number"]' ) === '4' );
+check( '...a project without a folder has no count of files, one without documents says 0', portalFind( $open[1]->ownerDocument->saveHTML( $open[1] ), '//span[contains(@class, "crm-projects__count--files")]' ) === [] && portalText( $open[1]->ownerDocument->saveHTML( $open[1] ), '//span[contains(@class, "crm-projects__count--documents")]/span[@class="crm-projects__number"]' ) === '0' );
 $wordOf = static fn( string $html, string $kind ): string => trim( (string) preg_replace( '/^\d+/', '', portalText( $html, '//span[contains(@class, "crm-projects__count--'. $kind. '")]' ) ) );
 $benRow = portalFind( $benList, '//li[@class="crm-projects__row"]' )[0];
-check( '...the word of a count follows its number: one file and one document are said in the singular, four in the plural', portalText( $benRow->ownerDocument->saveHTML( $benRow ), '//span[contains(@class, "crm-projects__count--files")]/span' ) === '1' && portalText( $benRow->ownerDocument->saveHTML( $benRow ), '//span[contains(@class, "crm-projects__count--documents")]/span' ) === '1'
+check( '...the word of a count follows its number: one file and one document are said in the singular, four in the plural', portalText( $benRow->ownerDocument->saveHTML( $benRow ), '//span[contains(@class, "crm-projects__count--files")]/span[@class="crm-projects__number"]' ) === '1' && portalText( $benRow->ownerDocument->saveHTML( $benRow ), '//span[contains(@class, "crm-projects__count--documents")]/span[@class="crm-projects__number"]' ) === '1'
 	&& $wordOf( $benRow->ownerDocument->saveHTML( $benRow ), 'files' ) !== '' && $wordOf( $benRow->ownerDocument->saveHTML( $benRow ), 'files' ) !== $wordOf( $rowHtml, 'files' ) && $wordOf( $benRow->ownerDocument->saveHTML( $benRow ), 'documents' ) !== $wordOf( $rowHtml, 'documents' ) && portalLeft( $list ) === false );
 
 $wordsOfPortal = (array) require $root. '/app/Crm/Portal/text/de_DE.php';
@@ -982,7 +992,9 @@ check( '...and the singular is the word of the one, the plural the word of the m
 
 // the start page: the open ones, at most five
 $short = \Nino\Html::renderHtml( $appData, '[crm-projects open="1" short="1"]' );
-check( 'the start page lists the open projects only: the done one is left out, and no heading', array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-project' ), portalFind( $short, '//li[@class="crm-projects__row"]' ) ) === [ $p4, $p1 ] && portalFind( $short, '//h3' ) === [] );
+check( 'the start page lists the open projects only: the done one is left out; the short list has its heading and the link to all of them, which the list of the page has not', array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-project' ), portalFind( $short, '//li[@class="crm-projects__row"]' ) ) === [ $p1, $p4 ]
+	&& count( portalFind( $short, '//div[contains(@class, "crm-section__head")]/h3[@id="crm-projects-heading"]' ) ) === 1 && portalFind( $short, '//section[@aria-labelledby="crm-projects-heading"]' ) !== [] && portalFind( $short, '//div[contains(@class, "crm-section__head")]/a[contains(@class, "crm-projects__all")]/@href' )[0]->nodeValue === '/portal/projekte'
+	&& portalFind( $list, '//a[contains(@class, "crm-projects__all")]' ) === [] );
 $many = $ownProjects;
 
 for( $n = 0; $n < 6; $n++ )
@@ -1001,28 +1013,46 @@ $page = portalPage( $appData, '/portal/projekte?projekt='. $p1 );
 $html = $page[1];
 $head = portalFind( $html, '//article[contains(@class, "crm-project")]' );
 check( 'the page of a project is the page, not the list: one article for the project, the list is gone', $page[0] === 200 && count( $head ) === 1 && $head[0]->getAttribute( 'data-project' ) === $p1 && $head[0]->getAttribute( 'data-state' ) === 'open' && portalFind( $html, '//ul[contains(concat(" ", normalize-space(@class), " "), " crm-projects__list ")]' ) === [] );
-check( '...the head: the title, the description with its line breaks as <br> and every character escaped (markup and a shortcode in it are text), the day it began, its state, and the way back to the list', portalText( $html, '//h3[@class="crm-project__title"]' ) === 'Album 2027'
-	&& str_contains( $html, 'Aufnahme &lt;b&gt;und&lt;/b&gt;<br>Mix &#91;members-name]' ) === true && portalFind( $html, '//p[@class="crm-project__back"]/a/@href' )[0]->nodeValue === '/portal/projekte' && portalFind( $html, '//div[@class="crm-project__head"]//time/@datetime' )[0]->nodeValue === '2026-10-01'
-	&& portalText( $html, '//span[contains(concat(" ", normalize-space(@class), " "), " crm-project__state ")]' ) !== '' && portalText( $html, '//span[contains(concat(" ", normalize-space(@class), " "), " crm-project__state ")]' ) !== portalText( portalPage( $appData, '/portal/projekte?projekt='. $p2 )[1], '//span[contains(concat(" ", normalize-space(@class), " "), " crm-project__state ")]' ) );
+$pageHead = portalFind( $html, '//div[@class="crm-head"]' );
+check( '...the head of the page: the title of the project is the page title, the description under it with its line breaks as <br> and every character escaped (markup and a shortcode in it are text), the day it began, its state as a pill, the way back as a breadcrumb, and no list heading or intro above', count( $pageHead ) === 1
+	&& portalText( $html, '//div[@class="crm-head"]//h2[contains(@class, "crm-head__title")]/span[@class="crm-head__name"]' ) === 'Album 2027' && str_contains( $html, 'Aufnahme &lt;b&gt;und&lt;/b&gt;<br>Mix &#91;members-name]' ) === true
+	&& portalFind( $html, '//p[@class="crm-head__lead"]' ) !== [] && portalFind( $html, '//nav[contains(@class, "crm-crumbs")]/a/@href' )[0]->nodeValue === '/portal/projekte' && portalText( $html, '//nav[contains(@class, "crm-crumbs")]/span[@aria-current="page"]' ) === 'Album 2027'
+	&& portalFind( $html, '//span[contains(@class, "crm-head__since")]/time/@datetime' )[0]->nodeValue === '2026-10-01' && str_contains( portalFind( $html, '//span[contains(@class, "crm-head__state")]' )[0]->getAttribute( 'class' ), 'crm-pill--info' ) === true
+	&& portalText( $html, '//span[contains(@class, "crm-head__state")]' ) !== portalText( portalPage( $appData, '/portal/projekte?projekt='. $p2 )[1], '//span[contains(@class, "crm-head__state")]' )
+	&& portalFind( $html, '//h3[contains(@class, "crm-projects__heading")] | //h3[@class="crm-project__title"]' ) === [] && portalFind( $html, '//article//h2' ) === [] );
 $sections = portalFind( $html, '//section[contains(@class, "crm-project__section")]' );
-check( '...the head is no <header>: the stylesheet of the kernel draws every header of the page as the head of the site, so no component of the portal writes one (nor a footer or a main)', portalFind( $html, '//article//header | //article//footer | //article//main' ) === [] && portalFind( $list, '//div[contains(@class, "crm-projects")]//header | //div[contains(@class, "crm-projects")]//footer' ) === [] );
-check( '...then four sections, each with a heading: Angebot, Dateien, Belege, Upload', array_map( static fn( \DOMElement $section ): string => preg_replace( '/^.*crm-project__section--(\w+).*$/', '$1', $section->getAttribute( 'class' ) ), $sections ) === [ 'offer', 'files', 'documents', 'upload' ]
-	&& array_filter( $sections, static fn( \DOMElement $section ): bool => $section->getElementsByTagName( 'h4' )->length !== 1 || trim( $section->getElementsByTagName( 'h4' )->item( 0 )->textContent ) === '' ) === [] && portalLeft( $html ) === false );
+check( '...the head is no <header>: the stylesheet of the kernel draws every header of the page as the head of the site, so no component of the portal writes one (nor a footer or a main)', portalFind( $html, '//article//header | //article//footer | //article//main | //div[contains(@class, "crm-head")]//header' ) === [] && portalFind( $list, '//section[contains(@class, "crm-projects")]//header | //section[contains(@class, "crm-projects")]//footer' ) === [] );
+check( '...then three tabs with their sections, each with a heading: Angebot, Dateien, Belege - and no Upload: the upload is global, there is no section, no tab and no link to it in the project', array_map( static fn( \DOMElement $section ): string => preg_replace( '/^.*crm-project__section--(\w+).*$/', '$1', $section->getAttribute( 'class' ) ), $sections ) === [ 'offer', 'files', 'documents' ]
+	&& array_filter( $sections, static fn( \DOMElement $section ): bool => $section->getElementsByTagName( 'h4' )->length !== 1 || trim( $section->getElementsByTagName( 'h4' )->item( 0 )->textContent ) === '' ) === [] && portalLeft( $html ) === false
+	&& array_map( static fn( \DOMElement $tab ): string => $tab->getAttribute( 'data-tab' ), portalFind( $html, '//article//button[contains(@class, "crm-project__tab")]' ) ) === [ 'angebot', 'dateien', 'belege' ]
+	&& portalFind( $html, '//article//*[contains(@class, "--upload")]' ) === [] && portalFind( $html, '//article//a[contains(@href, "/portal/upload")]' ) === [] );
 
-// the offers
-$offers = portalFind( $html, '//section[contains(@class, "crm-project__section--offer")]//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")]' );
-check( 'Angebot: the released offers of the project, newest first - not the one that is not released, not the offer of another project, not another client\'s', array_map( static fn( \DOMElement $offer ): string => $offer->getAttribute( 'data-document' ), $offers ) === [ (string) $offerRegular['id'], (string) $offerReverse['id'], (string) $offerSmall['id'] ]
+// the offers: orderable ones open, the rest folded to a line
+$offerQuery = '//section[contains(@class, "crm-project__section--offer")]//details[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")]';
+$offers = portalFind( $html, $offerQuery );
+check( 'Angebot: the released offers of the project, newest first - not the one that is not released, not the offer of another project, not another client\'s - each a card that folds', array_map( static fn( \DOMElement $offer ): string => $offer->getAttribute( 'data-document' ), $offers ) === [ (string) $offerRegular['id'], (string) $offerReverse['id'], (string) $offerSmall['id'] ]
+	&& array_filter( $offers, static fn( \DOMElement $offer ): bool => $offer->getElementsByTagName( 'summary' )->length !== 1 || $offer->getAttribute( 'id' ) !== 'angebot-'. $offer->getAttribute( 'data-document' ) ) === []
 	&& str_contains( $html, 'Nicht freigegeben' ) === false && str_contains( $html, 'Andere Seite' ) === false && str_contains( $html, 'Fremdes Angebot' ) === false );
+check( '...all three can be ordered here, so all three are expanded, and no heading of folded ones stands between them', array_filter( $offers, static fn( \DOMElement $offer ): bool => $offer->hasAttribute( 'open' ) === false ) === [] && portalFind( $html, '//h5[contains(@class, "crm-project__rest")]' ) === [] );
 $validWas = Db::row( $appData, 'SELECT valid_until FROM documents WHERE id = :id', [ 'id' => $offerReverse['id'] ] )['valid_until'];
 Db::exec( $appData, 'UPDATE documents SET valid_until = \'2020-01-01\' WHERE id = :id', [ 'id' => $offerReverse['id'] ] );
-$expiredOffers = portalFind( portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1], '//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")]' );
-check( '...an offer that is open or sent and past its day says it is expired, as the list of documents does', array_map( static fn( \DOMElement $offer ): string => $offer->getAttribute( 'data-state' ), $expiredOffers )[1] === 'expired' );
+$afterExpiry = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
+$expiredOffers = portalFind( $afterExpiry, $offerQuery );
+$expiredCard = portalFind( $afterExpiry, '//details[@data-document="'. $offerReverse['id']. '"]' )[0];
+check( '...an offer that is open or sent and past its day says it is expired, as the list of documents does: its card is folded to its line, comes after the heading of the folded ones, and has no form', $expiredCard->getAttribute( 'data-state' ) === 'expired' && $expiredCard->hasAttribute( 'open' ) === false
+	&& array_map( static fn( \DOMElement $offer ): string => $offer->getAttribute( 'data-document' ), $expiredOffers ) === [ (string) $offerRegular['id'], (string) $offerSmall['id'], (string) $offerReverse['id'] ]
+	&& count( portalFind( $afterExpiry, '//h5[contains(@class, "crm-project__rest")]/following-sibling::details[@data-document="'. $offerReverse['id']. '"]' ) ) === 1 && portalFind( $afterExpiry, '//h5[contains(@class, "crm-project__rest")]/preceding-sibling::details[@data-document="'. $offerSmall['id']. '"]' ) !== []
+	&& $expiredCard->getElementsByTagName( 'form' )->length === 0 && str_contains( portalFind( $afterExpiry, '//details[@data-document="'. $offerReverse['id']. '"]//*[contains(@class, "crm-offer__state")]' )[0]->getAttribute( 'class' ), 'crm-pill--muted' ) === true );
+$named = portalPage( $appData, '/portal/projekte?projekt='. $p1. '&beleg='. $offerReverse['id'] )[1];
+check( '...a folded card that the address names (?beleg=<id>) is expanded, the other folded cards stay as they are', portalFind( $named, '//details[@data-document="'. $offerReverse['id']. '"]' )[0]->hasAttribute( 'open' ) === true );
 Db::exec( $appData, 'UPDATE documents SET valid_until = :v WHERE id = :id', [ 'v' => $validWas, 'id' => $offerReverse['id'] ] );
 $offerHtml = $offers[0]->ownerDocument->saveHTML( $offers[0] );
 $lineRows = portalFind( $offerHtml, '//li[@class="crm-offer__line"]' );
-check( '...an offer: its number, the day, "gültig bis" with its day, its state in words, and the download of the PDF', portalText( $offerHtml, '//h5[@class="crm-offer__title"]' ) === $offerRegular['number'] && portalFind( $offerHtml, '//time[@class="crm-offer__date"]/@datetime' )[0]->nodeValue === '2026-10-05'
-	&& portalFind( $offerHtml, '//span[@class="crm-offer__valid"]/time/@datetime' )[0]->nodeValue === '2026-12-31' && portalText( $offerHtml, '//span[@class="crm-offer__valid"]/time' ) === '31.12.2026' && portalText( $offerHtml, '//span[contains(concat(" ", normalize-space(@class), " "), " crm-offer__state ")]' ) !== ''
-	&& portalFind( $offerHtml, '//a[@class="crm-offer__download"]/@href' )[0]->nodeValue === '/.crm/pdf/'. $offerRegular['id']. '?download=1' && count( portalFind( $html, '//span[@class="crm-offer__valid"]' ) ) === 3 );
+check( '...an offer: its title (the kind and the project), its number, the day, "gültig bis" with its day, its gross amount, its state as a pill, and the download of the PDF in the summary', portalText( $offerHtml, '//summary//span[@class="crm-offer__title"]' ) === $wordsDe['[[/project/crm-documents/category/offer]]']. ' Album 2027'
+	&& portalText( $offerHtml, '//summary//span[@class="crm-offer__number"]' ) === $offerRegular['number'] && portalFind( $offerHtml, '//time[@class="crm-offer__date"]/@datetime' )[0]->nodeValue === '2026-10-05'
+	&& portalFind( $offerHtml, '//span[@class="crm-offer__valid"]/time/@datetime' )[0]->nodeValue === '2026-12-31' && portalText( $offerHtml, '//span[@class="crm-offer__valid"]/time' ) === '31.12.2026' && portalText( $offerHtml, '//summary//span[@class="crm-offer__gross"]' ) === '392,60 €'
+	&& str_contains( portalFind( $offerHtml, '//summary//span[contains(@class, "crm-offer__state")]' )[0]->getAttribute( 'class' ), 'crm-pill--info' ) === true && portalText( $offerHtml, '//summary//span[contains(@class, "crm-offer__state")]' ) !== ''
+	&& portalFind( $offerHtml, '//summary/a[contains(@class, "crm-offer__download")]/@href' )[0]->nodeValue === '/.crm/pdf/'. $offerRegular['id']. '?download=1' && count( portalFind( $html, '//span[@class="crm-offer__valid"]' ) ) === 3 );
 check( '...its lines: title and description (line breaks as <br>, escaped), quantity with its unit, the net price, the VAT rate as the document carries it, the amount', count( $lineRows ) === 2
 	&& portalText( $offerHtml, '//li[1]/span[@class="crm-offer__line-title"]' ) === 'Mix <i>live</i>' && str_contains( $offerHtml, 'Zwei Songs<br>mit Master' ) === true && str_contains( $offerHtml, '<i>' ) === false
 	&& portalText( $offerHtml, '//li[1]//span[@class="crm-offer__line-qty"]' ) === '3 Std.' && str_contains( portalText( $offerHtml, '//li[1]//span[@class="crm-offer__line-price"]' ), '80,00' ) === true
@@ -1039,25 +1069,26 @@ check( '...the form of the order stands under the offers that can be ordered and
 	=== count( array_filter( [ $offerRegular, $offerReverse, $offerSmall ], static fn( array $offer ): bool => Documents::orderable( (array) Documents::get( $appData, $offer['id'] ) ) === true ) ) );
 
 // the files
-$rows = portalFind( $html, '//section[contains(@class, "crm-project__section--files")]//li[@class="crm-files__row"]' );
-$names = array_map( static fn( \DOMElement $row ): string => trim( $row->getElementsByTagName( 'a' )->item( 0 )->textContent ), $rows );
+$rows = portalFind( $html, '//section[contains(@class, "crm-project__section--files")]//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' );
+$names = array_map( static fn( \DOMElement $row ): string => trim( portalText( $row->ownerDocument->saveHTML( $row ), '//a[contains(@class, "crm-files__name")]' ) ), $rows );
 check( 'Dateien: the files the member may see (Files::allowed) - the visible ones and the member\'s own, not the hidden ones of the owner or of another account - the newest first', $names === [ 'Song.mp3', 'Meins.wav', 'Clip.mp4', 'Notizen.pdf' ] && str_contains( $html, 'Geheim.mp3' ) === false && str_contains( $html, 'Carl.mp3' ) === false );
 $rowHtmls = array_map( static fn( \DOMElement $row ): string => $row->ownerDocument->saveHTML( $row ), $rows );
-check( '...a row: the name as a link to the file, its size, its day, and the download as the Files browser has it (?download=1)', portalFind( $rowHtmls[0], '//a[@class="crm-files__name"]/@href' )[0]->nodeValue === '/.files/'. $song['id'] && portalFind( $rowHtmls[0], '//a[@class="crm-files__download"]/@href' )[0]->nodeValue === '/.files/'. $song['id']. '?download=1'
-	&& portalText( $rowHtmls[0], '//span[@class="crm-files__size"]' ) !== '' && str_contains( portalText( $rowHtmls[0], '//span[@class="crm-files__size"]' ), '[[' ) === false && portalFind( $rowHtmls[3], '//time/@datetime' )[0]->nodeValue === '2026-01-01T09:00:00Z' && portalText( $rowHtmls[3], '//time' ) === '01.01.2026' && $rows[0]->getAttribute( 'data-files-mime' ) === 'audio/mpeg' );
+check( '...a row: the name as a link - to the player for an audio or video file, to the download for any other -, its size, its day, and the download as the Files browser has it (?download=1)', portalFind( $rowHtmls[0], '//a[contains(@class, "crm-files__name")]/@href' )[0]->nodeValue === '/portal/projekte?projekt='. $p1. '&review='. $song['id']. '#projekt-files'
+	&& portalFind( $rowHtmls[3], '//a[contains(@class, "crm-files__name")]/@href' )[0]->nodeValue === '/.files/'. $notes['id']. '?download=1' && portalFind( $rowHtmls[0], '//a[contains(@class, "crm-files__download")]/@href' )[0]->nodeValue === '/.files/'. $song['id']. '?download=1'
+	&& portalText( $rowHtmls[0], '//span[contains(@class, "crm-files__size")]' ) !== '' && str_contains( portalText( $rowHtmls[0], '//span[contains(@class, "crm-files__size")]' ), '[[' ) === false && portalFind( $rowHtmls[3], '//time/@datetime' )[0]->nodeValue === '2026-01-01T09:00:00Z' && portalText( $rowHtmls[3], '//time' ) === '01.01.2026' && $rows[0]->getAttribute( 'data-files-mime' ) === 'audio/mpeg' );
 check( '...a file younger than 14 days is marked "neu", an older one is not', array_map( static fn( string $row ): bool => portalFind( $row, '//span[contains(concat(" ", normalize-space(@class), " "), " crm-files__new ")]' ) !== [], $rowHtmls ) === [ true, true, true, false ] );
-check( '...with Review on, "Anhören" is offered for audio and video only: for the mp3, the wav and the mp4, not for the pdf; it leads to the same page with &review=<file>', array_map( static fn( string $row ): string => portalFind( $row, '//a[@class="crm-files__listen"]' ) === [] ? '' : portalFind( $row, '//a[@class="crm-files__listen"]/@href' )[0]->nodeValue, $rowHtmls )
+check( '...with Review on, "Anhören" is offered for audio and video only: for the mp3, the wav and the mp4, not for the pdf; it leads to the same page with &review=<file>', array_map( static fn( string $row ): string => portalFind( $row, '//a[contains(@class, "crm-files__listen")]' ) === [] ? '' : portalFind( $row, '//a[contains(@class, "crm-files__listen")]/@href' )[0]->nodeValue, $rowHtmls )
 	=== [ '/portal/projekte?projekt='. $p1. '&review='. $song['id']. '#projekt-files', '/portal/projekte?projekt='. $p1. '&review='. $mine['id']. '#projekt-files', '/portal/projekte?projekt='. $p1. '&review='. $clip['id']. '#projekt-files', '' ] );
 check( '...without ?review= there is no player on the page', portalFind( $html, '//div[contains(@class, "review-player")]' ) === [] );
 
 \Nino\Features::deactivate( $appData, 'review' );
 $noReview = portalPage( $appData, '/portal/projekte?projekt='. $p1. '&review='. $song['id'] )[1];
-check( 'with Review off there is no link that listens, and a file asked for with ?review= is not played', portalFind( $noReview, '//a[@class="crm-files__listen"]' ) === [] && portalFind( $noReview, '//div[contains(@class, "review-player")]' ) === [] && count( portalFind( $noReview, '//li[@class="crm-files__row"]' ) ) === 4 );
+check( 'with Review off there is no link that listens, and a file asked for with ?review= is not played', portalFind( $noReview, '//a[contains(@class, "crm-files__listen")]' ) === [] && portalFind( $noReview, '//div[contains(@class, "review-player")]' ) === [] && count( portalFind( $noReview, '//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' ) ) === 4 );
 \Nino\Features::activate( $appData, 'review' );
 
 $played = portalPage( $appData, '/portal/projekte?projekt='. $p1. '&review='. $song['id'] )[1];
 check( 'with ?review=<file> the player of Review stands above the list: the audio element with the file as its source, and the list is still there', count( portalFind( $played, '//section[contains(@class, "crm-project__section--files")]//div[contains(@class, "review-player")]' ) ) === 1
-	&& portalFind( $played, '//audio/@src | //audio/source/@src' )[0]->nodeValue === '/.files/'. $song['id'] && count( portalFind( $played, '//li[@class="crm-files__row"]' ) ) === 4
+	&& portalFind( $played, '//audio/@src | //audio/source/@src' )[0]->nodeValue === '/.files/'. $song['id'] && count( portalFind( $played, '//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' ) ) === 4
 	&& count( portalFind( $played, '//div[contains(@class, "review-player")]/following::ul[contains(concat(" ", normalize-space(@class), " "), " crm-files__list ")]' ) ) === 1 );
 check( '...a video file gets the video element; a file that is not audio or video, a file the member may not see, one of another folder and an id that is none are not played - the page is the page of the project all the same, without a player',
 	portalFind( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&review='. $clip['id'] )[1], '//video' ) !== []
@@ -1084,7 +1115,7 @@ check( '...a file of a folder that no project of the client names is the list; a
 $unknownOf = static function( string $query ) use ( &$appData ): bool {
 	$answer = portalPage( $appData, '/portal/projekte?'. $query )[1];
 
-	return count( portalFind( $answer, '//p[contains(@class, "crm-projects__unknown")][@role="status"]' ) ) === 1 && portalFind( $answer, '//article[contains(@class, "crm-project")]' ) === [] && count( portalFind( $answer, '//li[@class="crm-projects__row"]' ) ) === 3
+	return count( portalFind( $answer, '//p[contains(@class, "crm-projects__unknown")][@role="alert"]' ) ) === 1 && portalFind( $answer, '//article[contains(@class, "crm-project")]' ) === [] && count( portalFind( $answer, '//li[@class="crm-projects__row"]' ) ) === 3
 		&& str_contains( $answer, 'Podcast B' ) === false && str_contains( $answer, 'Fremdes Angebot' ) === false;
 };
 check( 'the project of another client is the list with the sentence that the project is unknown - and nothing of that project', $unknownOf( 'projekt='. $p3 ) === true );
@@ -1096,12 +1127,12 @@ check( '...and a query that is not a string is no project: the plain list, no se
 // the files of a project that has no folder, and where Files is off
 $noFolder = portalPage( $appData, '/portal/projekte?projekt='. $p4 )[1];
 $filesOnly = static fn( string $html ): string => portalText( $html, '//section[contains(@class, "crm-project__section--files")]' );
-check( 'a project without a folder says so in its Dateien section: a sentence and no list', portalFind( $noFolder, '//section[contains(@class, "crm-project__section--files")]/p[@class="crm-project__message"]' ) !== [] && portalFind( $noFolder, '//section[contains(@class, "crm-project__section--files")]//li' ) === [] );
+check( 'a project without a folder says so in its Dateien section: a sentence and no list', portalFind( $noFolder, '//section[contains(@class, "crm-project__section--files")]/div[contains(@class, "crm-project__message")]' ) !== [] && portalFind( $noFolder, '//section[contains(@class, "crm-project__section--files")]//li' ) === [] );
 $folderless = $filesOnly( $noFolder );
 \Nino\Features::deactivate( $appData, 'review' );
 \Nino\Features::deactivate( $appData, 'files' );
 $filesOff = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
-check( '...with Files off the section says so, in another sentence, and the page is still the page of the project', portalFind( $filesOff, '//section[contains(@class, "crm-project__section--files")]/p[@class="crm-project__message"]' ) !== [] && $filesOnly( $filesOff ) !== '' && $filesOnly( $filesOff ) !== $folderless
+check( '...with Files off the section says so, in another sentence, and the page is still the page of the project', portalFind( $filesOff, '//section[contains(@class, "crm-project__section--files")]/div[contains(@class, "crm-project__message")]' ) !== [] && $filesOnly( $filesOff ) !== '' && $filesOnly( $filesOff ) !== $folderless
 	&& portalFind( $filesOff, '//section[contains(@class, "crm-project__section--files")]//li' ) === [] && count( portalFind( $filesOff, '//article[@data-project="'. $p1. '"]' ) ) === 1 && portalFind( $filesOff, '//span[contains(@class, "crm-projects__count--files")]' ) === [] );
 check( '...and the list has no count of files then', portalFind( portalPage( $appData, '/portal/projekte' )[1], '//span[contains(@class, "crm-projects__count--files")]' ) === [] && trim( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ) ) !== '' );
 \Nino\Features::activate( $appData, 'files' );
@@ -1114,12 +1145,12 @@ check( 'a folder with nothing the member may see says so; a folder that is not o
 \Nino\Filesystem::putFileContent( $appData, '/elements/projekte.php', $many );
 
 // the documents of the project, and the way to the upload
-$documentRows = portalFind( $html, '//section[contains(@class, "crm-project__section--documents")]//li[@class="crm-documents__row"]' );
+$documentRows = portalFind( $html, '//section[contains(@class, "crm-project__section--documents")]//li[contains(concat(" ", normalize-space(@class), " "), " crm-documents__row ")]' );
 check( 'Belege: the released documents of the project, of every category, the newest first - the rows of [crm-documents] - and none of another project or of none', array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-document' ), $documentRows )
 	=== [ (string) $invoiceP1['id'], (string) $offerRegular['id'], (string) $offerReverse['id'], (string) $offerSmall['id'] ] && array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-category' ), $documentRows ) === [ 'invoice', 'offer', 'offer', 'offer' ]
-	&& portalFind( $html, '//section[contains(@class, "crm-project__section--documents")]//a[@class="crm-documents__download"]' )[0]->getAttribute( 'href' ) === '/.crm/pdf/'. $invoiceP1['id']. '?download=1' && portalFind( $html, '//section[contains(@class, "crm-project__section--documents")]//*[contains(@class, "crm-documents__project")]' ) === [] );
-check( '...a project with no document says so with the sentence of the list', portalFind( $noFolder, '//section[contains(@class, "crm-project__section--documents")]//p[@class="crm-documents__empty"]' ) !== [] );
-check( 'Upload: one sentence and the link to /portal/upload', portalFind( $html, '//section[contains(@class, "crm-project__section--upload")]//a/@href' )[0]->nodeValue === '/portal/upload' && portalFind( $html, '//section[contains(@class, "crm-project__section--upload")]//form' ) === [] );
+	&& portalFind( $html, '//section[contains(@class, "crm-project__section--documents")]//a[contains(@class, "crm-documents__download")]' )[0]->getAttribute( 'href' ) === '/.crm/pdf/'. $invoiceP1['id']. '?download=1' && portalFind( $html, '//section[contains(@class, "crm-project__section--documents")]//*[contains(@class, "crm-documents__project")]' ) === []
+	&& array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( $html, '//section[contains(@class, "crm-project__section--documents")]//a[contains(@class, "crm-documents__offer")]' ) ) === [ '/portal/projekte?projekt='. $p1. '&tab=angebot#angebot-'. $offerRegular['id'], '/portal/projekte?projekt='. $p1. '&tab=angebot#angebot-'. $offerReverse['id'], '/portal/projekte?projekt='. $p1. '&tab=angebot#angebot-'. $offerSmall['id'] ] );
+check( '...a project with no document says so with the sentence of the list', portalFind( $noFolder, '//section[contains(@class, "crm-project__section--documents")]//div[contains(@class, "crm-documents__empty")]/p[contains(@class, "crm-empty__text")]' ) !== [] );
 
 // --- The tabs of the page of a project -------------------------------------------------------------------------------------------
 
@@ -1133,74 +1164,83 @@ $openIds = static fn( string $page ): array => [
 	array_values( array_map( static fn( \DOMElement $panel ): string => $panel->getAttribute( 'id' ), array_filter( $tabPanels( $page ), static fn( \DOMElement $panel ): bool => str_contains( ' '. $panel->getAttribute( 'class' ). ' ', ' nino-is-active ' ) ) ) ),
 ];
 $withTabs = portalFind( $html, '//article[@data-project]/div['. $token( 'nino-tabs' ). ']' );
-check( 'the page of a project has the kernel\'s tabs under the head: one .nino-tabs with a .nino-tabs-nav of four buttons and four .nino-tabs-panel sections', count( $withTabs ) === 1 && count( portalFind( $html, '//div['. $token( 'nino-tabs' ). ']/div['. $token( 'nino-tabs-nav' ). ']' ) ) === 1
-	&& count( $tabButtons( $html ) ) === 4 && count( $tabPanels( $html ) ) === 4 && count( portalFind( $html, '//div['. $token( 'nino-tabs' ). ']/div['. $token( 'nino-tabs-nav' ). ']/*[not(self::button)]' ) ) === 0 );
-check( '...each button is a button of type button with the id of its panel in data-tabs-target - Angebot, Dateien, Belege, Upload, in this order - and each panel has that id (the anchors of the start page stay: projekt-files)', array_map( static fn( \DOMElement $button ): string => $button->getAttribute( 'data-tabs-target' ), $tabButtons( $html ) ) === [ 'projekt-offer', 'projekt-files', 'projekt-documents', 'projekt-upload' ]
-	&& array_map( static fn( \DOMElement $panel ): string => $panel->getAttribute( 'id' ), $tabPanels( $html ) ) === [ 'projekt-offer', 'projekt-files', 'projekt-documents', 'projekt-upload' ] && array_filter( $tabButtons( $html ), static fn( \DOMElement $button ): bool => $button->getAttribute( 'type' ) !== 'button' ) === []
-	&& array_map( static fn( \DOMElement $button ): string => preg_replace( '/\s*\d+$/', '', trim( preg_replace( '/[\s\x{00A0}]+/u', ' ', $button->textContent ) ) ), $tabButtons( $html ) ) === array_map( static fn( string $name ): string => $wordsOfPortal['[[/project/crm-portal/projects/section-'. $name. ']]'], [ 'offer', 'files', 'documents', 'upload' ] ) );
+check( 'the page of a project has the kernel\'s tabs under the head: one .nino-tabs with a .nino-tabs-nav of three buttons and three .nino-tabs-panel sections', count( $withTabs ) === 1 && count( portalFind( $html, '//div['. $token( 'nino-tabs' ). ']/div['. $token( 'nino-tabs-nav' ). ']' ) ) === 1
+	&& count( $tabButtons( $html ) ) === 3 && count( $tabPanels( $html ) ) === 3 && count( portalFind( $html, '//div['. $token( 'nino-tabs' ). ']/div['. $token( 'nino-tabs-nav' ). ']/*[not(self::button)]' ) ) === 0 );
+check( '...each button is a button of type button with the id of its panel in data-tabs-target - Angebot, Dateien, Belege, in this order - and each panel has that id (the anchors of the start page stay: projekt-files)', array_map( static fn( \DOMElement $button ): string => $button->getAttribute( 'data-tabs-target' ), $tabButtons( $html ) ) === [ 'projekt-offer', 'projekt-files', 'projekt-documents' ]
+	&& array_map( static fn( \DOMElement $panel ): string => $panel->getAttribute( 'id' ), $tabPanels( $html ) ) === [ 'projekt-offer', 'projekt-files', 'projekt-documents' ] && array_filter( $tabButtons( $html ), static fn( \DOMElement $button ): bool => $button->getAttribute( 'type' ) !== 'button' ) === []
+	&& array_map( static fn( \DOMElement $button ): string => preg_replace( '/\s*\d+$/', '', trim( preg_replace( '/[\s\x{00A0}]+/u', ' ', $button->textContent ) ) ), $tabButtons( $html ) ) === array_map( static fn( string $name ): string => $wordsOfPortal['[[/project/crm-portal/projects/section-'. $name. ']]'], [ 'offer', 'files', 'documents' ] ) );
 check( '...the first stands open without a query: its button and its panel carry nino-is-active and no other does', $openIds( $html ) === [ [ 'projekt-offer' ], [ 'projekt-offer' ] ] );
-check( '...?tab= chooses the tab on the server: angebot, dateien, belege, upload - the button and the panel of it, and only those', array_map( static fn( string $tab ): array => $openIds( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&tab='. $tab )[1] ), [ 'angebot', 'dateien', 'belege', 'upload' ] )
-	=== [ [ [ 'projekt-offer' ], [ 'projekt-offer' ] ], [ [ 'projekt-files' ], [ 'projekt-files' ] ], [ [ 'projekt-documents' ], [ 'projekt-documents' ] ], [ [ 'projekt-upload' ], [ 'projekt-upload' ] ] ] );
+check( '...?tab= chooses the tab on the server: angebot, dateien, belege - the button and the panel of it, and only those', array_map( static fn( string $tab ): array => $openIds( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&tab='. $tab )[1] ), [ 'angebot', 'dateien', 'belege' ] )
+	=== [ [ [ 'projekt-offer' ], [ 'projekt-offer' ] ], [ [ 'projekt-files' ], [ 'projekt-files' ] ], [ [ 'projekt-documents' ], [ 'projekt-documents' ] ] ] );
 $ignored = ninoWarnings();
-check( '...a tab that is none, one with markup in it and one that is not a string leave the first open - and say nothing of it', array_map( static fn( string $query ): array => $openIds( portalPage( $appData, '/portal/projekte?projekt='. $p1. $query )[1] ), [ '&tab=nothing', '&tab=%3Cb%3E', '&tab[]=belege', '&tab=', '&tab=files' ] )
-	=== array_fill( 0, 5, [ [ 'projekt-offer' ], [ 'projekt-offer' ] ] ) && str_contains( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&tab=%3Cb%3E' )[1], '<b>' ) === false && ninoWarnings() === [] );
+check( '...a tab that is none, one with markup in it and one that is not a string leave the first open - and say nothing of it', array_map( static fn( string $query ): array => $openIds( portalPage( $appData, '/portal/projekte?projekt='. $p1. $query )[1] ), [ '&tab=nothing', '&tab=%3Cb%3E', '&tab[]=belege', '&tab=', '&tab=files', '&tab=upload' ] )
+	=== array_fill( 0, 6, [ [ 'projekt-offer' ], [ 'projekt-offer' ] ] ) && str_contains( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&tab=%3Cb%3E' )[1], '<b>' ) === false && ninoWarnings() === [] );
 check( '...a file asked to be played opens Dateien, whatever tab the query names', $openIds( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&review='. $song['id'] )[1] ) === [ [ 'projekt-files' ], [ 'projekt-files' ] ]
 	&& $openIds( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&tab=belege&review='. $song['id'] )[1] ) === [ [ 'projekt-files' ], [ 'projekt-files' ] ] && $openIds( portalPage( $appData, '/portal/projekte?review='. $song['id'] )[1] ) === [ [ 'projekt-files' ], [ 'projekt-files' ] ] );
 $countOf = static fn( string $page, string $name ): string => portalText( $page, '//button[@data-tabs-target="projekt-'. $name. '"]/span[@class="crm-project__count"]' );
-check( '...the label of a tab carries the count of what is in it: the offers, the files the member may see, the documents - and Upload none', $countOf( $html, 'offer' ) === (string) count( portalFind( $html, '//section[@id="projekt-offer"]//div['. $token( 'crm-offer' ). ']' ) ) && $countOf( $html, 'offer' ) === '3'
-	&& $countOf( $html, 'files' ) === (string) count( portalFind( $html, '//section[@id="projekt-files"]//li[@class="crm-files__row"]' ) ) && $countOf( $html, 'files' ) === '4'
-	&& $countOf( $html, 'documents' ) === (string) count( portalFind( $html, '//section[@id="projekt-documents"]//li[@class="crm-documents__row"]' ) ) && $countOf( $html, 'documents' ) === '4' && $countOf( $html, 'upload' ) === '' );
+check( '...the label of a tab carries the count of what is in it: the offers, the files the member may see, the documents', $countOf( $html, 'offer' ) === (string) count( portalFind( $html, '//section[@id="projekt-offer"]//details['. $token( 'crm-offer' ). ']' ) ) && $countOf( $html, 'offer' ) === '3'
+	&& $countOf( $html, 'files' ) === (string) count( portalFind( $html, '//section[@id="projekt-files"]//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' ) ) && $countOf( $html, 'files' ) === '4'
+	&& $countOf( $html, 'documents' ) === (string) count( portalFind( $html, '//section[@id="projekt-documents"]//li[contains(concat(" ", normalize-space(@class), " "), " crm-documents__row ")]' ) ) && $countOf( $html, 'documents' ) === '4' );
 check( '...a project with nothing in a tab counts 0 for the offers and the documents and says its sentence in the panel; a project without a folder and a site without Files count no files - and the panels are all there', $countOf( $noFolder, 'offer' ) === '0' && $countOf( $noFolder, 'documents' ) === '0' && $countOf( $noFolder, 'files' ) === ''
-	&& portalFind( $noFolder, '//section[@id="projekt-offer"]/p[@class="crm-project__message"]' ) !== [] && portalFind( $noFolder, '//section[@id="projekt-files"]/p[@class="crm-project__message"]' ) !== [] && $countOf( $filesOff, 'files' ) === '' && count( $tabPanels( $noFolder ) ) === 4 && count( $tabPanels( $filesOff ) ) === 4
+	&& portalFind( $noFolder, '//section[@id="projekt-offer"]/div[contains(@class, "crm-project__message")]' ) !== [] && portalFind( $noFolder, '//section[@id="projekt-files"]/div[contains(@class, "crm-project__message")]' ) !== [] && $countOf( $filesOff, 'files' ) === '' && count( $tabPanels( $noFolder ) ) === 3 && count( $tabPanels( $filesOff ) ) === 3
 	&& $countOf( portalPage( $appData, '/portal/projekte?projekt='. $p5 )[1], 'files' ) === '0' );
 check( '...no panel is hidden in the markup (the script of the kernel hides them, and without it every panel stands open), and the page holds no script, no style and no handler of the module\'s own', portalFind( $html, '//section[@hidden or @style or @aria-hidden]' ) === [] && portalFind( $html, '//article//script | //article//style | //article//*[@style] | //article//*[@onclick]' ) === [] );
 
-// the look: the classes the templates carry, and a sheet that takes every colour from the kernel
+// the look: the classes the templates carry, and a sheet that takes every value from the kernel's roles or from its own scales
 $cardsOf = static fn( string $page, string $query ): int => count( portalFind( $page, $query ) );
-check( 'the cards are .crm-card: the offers, the lists of files and of documents and of projects (as tables)', $cardsOf( $html, '//div['. $token( 'crm-offer' ). '][not('. $token( 'crm-card' ). ')]' ) === 0 && $cardsOf( $html, '//div['. $token( 'crm-offer' ). ']['. $token( 'crm-card' ). ']' ) === 3
-	&& $cardsOf( $html, '//ul['. $token( 'crm-files__list' ). ']['. $token( 'crm-card' ). ']['. $token( 'crm-table' ). ']' ) === 1 && $cardsOf( $html, '//ul['. $token( 'crm-documents__list' ). ']['. $token( 'crm-card' ). ']['. $token( 'crm-table' ). ']' ) === 1
-	&& $cardsOf( $list, '//ul['. $token( 'crm-projects__list' ). '][not('. $token( 'crm-card' ). ')]' ) === 0 && $cardsOf( $list, '//ul['. $token( 'crm-projects__list' ). ']['. $token( 'crm-table' ). ']' ) === 2 );
-check( '...and the states are .crm-chip: the state of a project, of an offer and of a document, and the mark "neu" of a file', $cardsOf( $html, '//span['. $token( 'crm-project__state' ). ']['. $token( 'crm-chip' ). ']' ) === 1 && $cardsOf( $html, '//span['. $token( 'crm-offer__state' ). '][not('. $token( 'crm-chip' ). ')]' ) === 0 && $cardsOf( $html, '//span['. $token( 'crm-offer__state' ). ']['. $token( 'crm-chip' ). ']' ) === 3
-	&& $cardsOf( $html, '//span['. $token( 'crm-documents__state' ). '][not('. $token( 'crm-chip' ). ')]' ) === 0 && $cardsOf( $html, '//span['. $token( 'crm-files__new' ). '][not('. $token( 'crm-chip' ). ')]' ) === 0 );
+check( 'the cards are .crm-card: the offers (details), the lists of files and of documents (a table that scrolls), the projects (links)', $cardsOf( $html, '//details['. $token( 'crm-offer' ). '][not('. $token( 'crm-card' ). ')]' ) === 0 && $cardsOf( $html, '//details['. $token( 'crm-offer' ). ']['. $token( 'crm-card' ). ']' ) === 3
+	&& $cardsOf( $html, '//div['. $token( 'crm-table' ). ']['. $token( 'crm-card' ). ']['. $token( 'crm-scroll' ). ']/ul['. $token( 'crm-files__list' ). ']' ) === 1 && $cardsOf( $html, '//div['. $token( 'crm-table' ). ']['. $token( 'crm-card' ). ']['. $token( 'crm-scroll' ). ']/ul['. $token( 'crm-documents__list' ). ']' ) === 1
+	&& $cardsOf( $list, '//li['. $token( 'crm-projects__row' ). ']/a['. $token( 'crm-card' ). ']['. $token( 'crm-card--link' ). ']' ) === 3 && $cardsOf( $list, '//li['. $token( 'crm-projects__row' ). '][not(a)]' ) === 0 );
+check( '...and the states are .crm-pill, with the tone of the state in the class: the state of a project, of an offer and of a document, and the mark "neu" of a file - and no .crm-chip is left anywhere', $cardsOf( $html, '//span['. $token( 'crm-head__state' ). ']['. $token( 'crm-pill' ). ']' ) === 1 && $cardsOf( $html, '//span['. $token( 'crm-offer__state' ). '][not('. $token( 'crm-pill' ). ')]' ) === 0 && $cardsOf( $html, '//span['. $token( 'crm-offer__state' ). ']['. $token( 'crm-pill' ). ']' ) === 3
+	&& $cardsOf( $html, '//span['. $token( 'crm-documents__state' ). ']/span[not('. $token( 'crm-pill' ). ')]' ) === 0 && $cardsOf( $html, '//span['. $token( 'crm-files__new' ). '][not('. $token( 'crm-pill' ). ')]' ) === 0
+	&& $cardsOf( $html, '//span[contains(@class, "crm-pill")][not(contains(@class, "crm-pill--"))]' ) === 0 && str_contains( $html, 'crm-chip' ) === false );
 $sheet = (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' );
-check( 'portal.css holds no colour of its own - no hex, no rgb(), hsl() or the like, no named colour on a property - and reads the roles of the kernel: --color-*, --radius-*, --space-*', preg_match( '/#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/', $sheet ) === 0
+check( 'portal.css holds no colour of its own - no hex, no rgb(), hsl() or the like, no named colour on a property - and builds its tokens from the roles of the kernel: --color-ink, -ground, -border, -accent, -success, -warning, -error, -primary, -focus and --radius-surface-alt', preg_match( '/#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/', $sheet ) === 0
 	&& preg_match( '/^\s*(?:color|background(?:-color)?|border(?:-[a-z]+)*|outline(?:-color)?|box-shadow|fill|stroke):[^;]*\b(?:white|black|red|green|blue|gray|grey|orange|yellow|purple|silver)\b/m', $sheet ) === 0
-	&& str_contains( $sheet, 'var(--color-ink)' ) && str_contains( $sheet, 'var(--color-ground)' ) && str_contains( $sheet, 'var(--color-border)' ) && str_contains( $sheet, 'var(--color-accent)' ) && str_contains( $sheet, 'var(--radius-surface-alt)' ) && str_contains( $sheet, 'var(--space-2)' ) && str_contains( $sheet, '--color-success' ) && str_contains( $sheet, '--color-warning' ) );
-check( '...it has no @font-face, no @import, no url() and no !important, and styles the kernel\'s own tabs: a panel stands open until the script hides it, and a hidden one is not shown', preg_match( '/@font-face|@import|url\(|!important/', $sheet ) === 0
-	&& preg_match( '/\.crm-project__section\.nino-tabs-panel\s*\{[^}]*display:\s*block/s', $sheet ) === 1 && preg_match( '/\.crm-project__section\.nino-tabs-panel\[hidden\]\s*\{[^}]*display:\s*none/s', $sheet ) === 1 && preg_match( '/\.crm-project__nav [^{]*\.nino-is-active\s*\{[^}]*border-bottom-color:\s*var\(--color-accent\)/s', $sheet ) === 1 );
-check( '...and draws the states it knows: the chips of paid, accepted, signed, declined, cancelled, expired and sent have a tone, the notes of saved and of expired have a mark', array_filter( [ 'paid', 'accepted', 'signed', 'declined', 'cancelled', 'expired', 'sent' ], static fn( string $state ): bool => preg_match( '/\[data-state="'. $state. '"\][^{]*\.crm-chip[^{]*\{[^}]*--crm-tone:/s', $sheet ) !== 1 ) === [] && str_contains( $sheet, '.crm-data__state--saved' ) && str_contains( $sheet, '.crm-data__state--expired' ) );
+	&& array_diff( [ '--color-ink', '--color-ground', '--color-border', '--color-accent', '--color-success', '--color-warning', '--color-error', '--color-primary', '--color-focus', '--radius-surface-alt', '--radius' ], array_map( static fn( string $name ): string => $name, array_unique( (array) ( preg_match_all( '/var\(\s*(--(?:color|radius)[a-z-]*)/', $sheet, $roles ) > 0 ? $roles[1] : [] ) ) ) ) === [] );
+$scale = preg_match_all( '/^\s*(--crm-text-(?:xs|s|m|l|xl|xxl)):\s*([.0-9]+rem);/m', $sheet, $steps ) === 6 && $steps[2] === [ '.8125rem', '.875rem', '1rem', '1.125rem', '1.375rem', '1.75rem' ];
+$spacing = preg_match_all( '/^\s*(--crm-[1-7]):\s*([.0-9]+rem);/m', $sheet, $gaps ) === 7 && $gaps[2] === [ '.25rem', '.5rem', '.75rem', '1rem', '1.5rem', '2rem', '3rem' ];
+check( '...it has the type scale of six steps and the spacing of seven, and uses the scale of type: every font-size of the sheet is one of the six steps', $scale === true && $spacing === true
+	&& preg_match_all( '/font-size:\s*([^;]+);/', $sheet, $sizes ) > 50 && array_filter( $sizes[1], static fn( string $size ): bool => preg_match( '/^var\(--crm-text-(?:xs|s|m|l|xl|xxl)\)$/', $size ) !== 1 ) === [] );
+check( '...it has no @font-face, no @import, no url(), and !important only twice, both inside the block of reduced motion', preg_match( '/@font-face|@import|url\(/', $sheet ) === 0 && substr_count( $sheet, '!important' ) === 2
+	&& preg_match( '/@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*transition: none !important;[^@]*animation: none !important;[^@]*\}\s*\}/s', $sheet ) === 1 );
+check( '...it styles the kernel\'s own tabs: a panel stands open until the script hides it and a hidden one is not shown, the active tab takes the link colour', preg_match( '/\.crm-project__section\.nino-tabs-panel\s*\{[^}]*display:\s*block/s', $sheet ) === 1 && preg_match( '/\.crm-project__section\.nino-tabs-panel\[hidden\]\s*\{[^}]*display:\s*none/s', $sheet ) === 1
+	&& preg_match( '/\.crm-project__nav [^{]*\.nino-is-active\s*\{[^}]*border-bottom-color:\s*var\(--crm-link\)/s', $sheet ) === 1 );
+check( '...and draws the states it knows: each tone of a pill and of a note is a tone, every state of Portal::TONES has one, the overdue due day is marked', array_filter( [ 'info', 'success', 'warning', 'danger', 'muted' ], static fn( string $tone ): bool => preg_match( '/\.crm-pill--'. $tone. '\s*\{\s*--crm-tone:/', $sheet ) !== 1 ) === []
+	&& array_filter( [ 'success', 'error', 'warning', 'info' ], static fn( string $tone ): bool => preg_match( '/\.crm-note--'. $tone. '\s*\{\s*--crm-tone:/', $sheet ) !== 1 ) === [] && array_diff( array_values( \Crm\Portal::TONES ), [ 'info', 'success', 'warning', 'danger', 'muted' ] ) === []
+	&& array_diff( [ 'open', 'overdue', 'paid', 'accepted', 'signed', 'agreed', 'expired', 'declined', 'cancelled', 'done', 'pending' ], array_keys( \Crm\Portal::TONES ) ) === [] && str_contains( $sheet, '.crm-documents__row[data-state="overdue"] .crm-documents__due' ) );
 $noForm = array_filter( (array) glob( $root. '/app/Crm/Portal/templates/*.tpl' ), static fn( string $file ): bool => preg_match( '/class="[^"]*\bnino-form(?![-_a-z])/', (string) file_get_contents( $file ) ) === 1 );
 check( 'no template of the portal carries .nino-form: the script of the kernel binds every .nino-form as a contact form that posts by XHR and says the sentence of the Form module - the forms of the portal are plain posts with the answer of the server', $noForm === [] && count( (array) glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ) > 50
 	&& preg_match( '/<form [^>]*method="post"[^>]*action="[^"]*\/\.crm\/(daten|datenschutz|auftrag)"/', (string) file_get_contents( $root. '/app/Crm/Portal/templates/data.tpl' ). (string) file_get_contents( $root. '/app/Crm/Portal/templates/privacy-form.tpl' ). (string) file_get_contents( $root. '/app/Crm/Portal/templates/order-form.tpl' ) ) === 1 );
-check( '...the corners follow the theme: the cards read --radius-surface-alt, no rule of the sheet sets a border-radius on a kernel field (.nino-form-input) or on a kernel button (.nino-btn), and .crm-btn sets no border and no radius of its own', str_contains( $sheet, '--crm-documents-corners: var(--radius-surface-alt)' ) && str_contains( $sheet, 'var(--radius-large)' ) === false
-	&& preg_match( '/[^{}]*\.nino-form-input[^{}]*\{[^}]*border-radius/', $sheet ) === 0 && preg_match( '/[^{}]*\.nino-btn[^{}]*\{[^}]*border(?:-radius)?:/', $sheet ) === 0
-	&& preg_match( '/\n\.crm-btn \{[^}]*\}/', $sheet, $btn ) === 1 && preg_match( '/border(?!-box)|radius|font-weight|text-transform/', $btn[0] ) === 0 );
-check( '...the focus ring of a tab is not cut by the scrolling row, the binding sentences keep their case, and a row of tabs the script did not wire is not shown', preg_match( '/\.crm-project__tab\.nino-tabs-tab:focus-visible\s*\{[^}]*outline-offset:\s*-2px/s', $sheet ) === 1
-	&& preg_match( '/\.crm-order__check\s*\{[^}]*letter-spacing:\s*normal;[^}]*text-transform:\s*none/s', $sheet ) === 1 && preg_match( '/\.crm-privacy__check,\s*\.crm-order__check\s*\{[^}]*text-transform:\s*none/s', $sheet ) === 1
-	&& preg_match( '/\.crm-project__nav:not\(\[role="tablist"\]\)\s*\{[^}]*display:\s*none/s', $sheet ) === 1 );
-check( '...the form of Files on the page Upload and the comment form of Review on a project get the look of the portal, scoped to the portal\'s own markup - and the features\' files are not touched', preg_match( '/\.files-upload:has\(~ \.crm-uploads\)[^{]*\{[^}]*max-width:\s*48rem/s', $sheet ) === 1 && str_contains( $sheet, '::file-selector-button' ) && preg_match( '/\.crm-project \.review-form__at,\s*\.crm-project \.review-form__text\s*\{/', $sheet ) === 1 && preg_match( '/\.crm-project \.review-form__at,\s*\.crm-project \.review-form__text\s*\{[^}]*border:[^;]*var\(--forms-edge/s', $sheet ) === 1 && preg_match( '/\.crm-project \.review-form \.nino-btn\s*\{[^}]*min-height:\s*2\.25rem/s', $sheet ) === 1 && str_contains( $sheet, '.crm-project .review-form__now' )
-	&& array_filter( (array) preg_split( '/\R/', $sheet ), static fn( string $line ): bool => preg_match( '/^\.(?:files-|review-)[^{]*\{/', $line ) === 1 && str_contains( $line, ':has(~ .crm-uploads)' ) === false ) === [] );
-check( '...the reply and cancel buttons of the player take the small quiet button, scoped to the project page', preg_match( '/\.crm-project \.review-comment__reply,\s*\.crm-project \.review-form__cancel\s*\{[^}]*border:\s*1px solid transparent[^}]*color:\s*var\(--color-accent\)/s', $sheet ) === 1 );
-check( '...the rows of the documents are one grid from 48rem (the list is the grid, a row a subgrid with the links in one cell), and the sheet keeps two literals only, said in a comment: the 999px of a chip and the .2em of a checkbox', preg_match( '/\.crm-documents \{[^}]*container-type:\s*inline-size/s', $sheet ) === 1 && preg_match( '/@container \(min-width: 4[0-9]rem\)\s*\{[^@]*\.crm-documents__list\s*\{[^}]*display:\s*grid[^@]*grid-template-columns:\s*subgrid/s', $sheet ) === 1 && str_contains( $sheet, '@media (min-width: 48rem)' ) === false
-	&& preg_match( '/\.crm-documents__list\s*\{[^}]*grid-template-columns:[^;]*minmax\(([0-9.]+)rem, 1fr\) minmax\(([0-9.]+)rem, 1fr\)/s', $sheet, $cols ) === 1 && (float) $cols[1] >= 6 && (float) $cols[2] >= 6 && str_contains( $sheet, 'minmax(0, 1fr) minmax(0, 1fr)' ) === false
-	&& count( portalFind( \Nino\Html::renderHtml( $appData, '[crm-documents]' ), '//li[contains(@class, "crm-documents__row")]/span[@class="crm-documents__links"]/a[@class="crm-documents__download"]' ) ) >= 1
-	&& preg_match_all( '/[a-z-]+:\s*(?:999px|\.2em)/', $sheet ) === 2 && preg_match_all( '/a literal on purpose/', $sheet ) === 2 );
+check( '...the corners follow the theme: the surfaces read --crm-radius, which is the theme\'s --radius-surface-alt, the controls --crm-radius-s, which is its --radius, no rule sets a border-radius on a kernel field (.nino-form-input) or on a kernel button (.nino-btn) outside the portal\'s own scopes, and .crm-btn has a border, a radius and the touch height of its own', str_contains( $sheet, '--crm-radius: var(--radius-surface-alt)' ) && str_contains( $sheet, '--crm-radius-s: var(--radius)' ) && str_contains( $sheet, 'var(--radius-large)' ) === false
+	&& preg_match( '/\n\.crm-btn \{[^}]*\}/', $sheet, $btn ) === 1 && preg_match( '/border:\s*1px solid transparent;/', $btn[0] ) === 1 && str_contains( $btn[0], 'border-radius: var(--crm-radius-s)' ) && str_contains( $btn[0], 'min-height: var(--crm-touch)' ) && preg_match( '/--crm-touch:\s*44px;/', $sheet ) === 1 );
+check( '...the focus ring of a tab is not cut by the scrolling row, the binding sentences keep their case, and a row of tabs the script did not wire is not shown', preg_match( '/\.crm-project__nav \.crm-project__tab\.nino-tabs-tab:focus-visible\s*\{[^}]*outline-offset:\s*-2px/s', $sheet ) === 1
+	&& preg_match( '/\n\.crm-check \{[^}]*letter-spacing:\s*normal;\s*text-transform:\s*none/s', $sheet ) === 1 && preg_match( '/\.crm-project__nav:not\(\[role="tablist"\]\)\s*\{[^}]*display:\s*none/s', $sheet ) === 1 );
+check( '...the form of Files on the page Upload and the comment form of Review on a project get the look of the portal, scoped to the portal\'s own markup (.files-upload.crm-upload, .crm-project) - and the features\' files are not touched', preg_match( '/\n\.files-upload\.crm-upload \{[^}]*border-radius:\s*var\(--crm-radius\)/s', $sheet ) === 1 && str_contains( $sheet, '::file-selector-button' ) === false && str_contains( $sheet, ':has(~ .crm-uploads)' ) === false
+	&& preg_match( '/\.crm-project \.review-form__at,\s*\.crm-project \.review-form__text\s*\{[^}]*border:\s*1px solid var\(--crm-line-strong\)/s', $sheet ) === 1 && preg_match( '/\.crm-project \.review-form \.nino-btn,[^{]*\{[^}]*min-height:\s*var\(--crm-touch\)/s', $sheet ) === 1 && str_contains( $sheet, '.crm-project .review-form__now' )
+	&& array_filter( (array) preg_split( '/\R/', $sheet ), static fn( string $line ): bool => preg_match( '/^\.(?:files-upload__|review-)[^{]*\{/', $line ) === 1 ) === [] && str_contains( file_get_contents( $root. '/app/Crm/Portal/assets/portal.js' ), "'.files-upload.crm-upload'" ) === true );
+check( '...the reply and cancel buttons of the player take the small quiet button, scoped to the project page', preg_match( '/\.crm-project \.review-comment__reply,\s*\.crm-project \.review-form__cancel,\s*\.crm-project \.review-form__now\s*\{[^}]*background-color:\s*transparent;[^}]*color:\s*var\(--crm-link\)/s', $sheet ) === 1 );
+check( '...the rows of the lists are one grid from 1024px (the body is the grid, a row and its line a subgrid), below it a row stacks as a card - no container query -, and the sheet keeps the one literal of the pill, said in a comment', preg_match( '/@media \(min-width: 1024px\)\s*\{\s*\.crm-table__body\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*var\(--crm-cols\)[^@]*\.crm-table__row,\s*\.crm-table__fold\s*\{[^}]*grid-template-columns:\s*subgrid/s', $sheet ) === 1 && str_contains( $sheet, '@container' ) === false
+	&& preg_match( '/\.crm-documents \.crm-table\s*\{\s*--crm-cols:\s*minmax\(([0-9.]+)rem, ([0-9.]+)fr\)/s', $sheet, $cols ) === 1 && (float) $cols[1] >= 10
+	&& count( portalFind( $html, '//li[contains(@class, "crm-documents__row")]//span[contains(@class, "crm-documents__links")]/a[contains(@class, "crm-documents__download")]' ) ) >= 1
+	&& preg_match_all( '/[a-z-]+:\s*999px/', $sheet ) === 1 && preg_match_all( '/a literal on purpose/', $sheet ) === 1 );
 
 // --- [crm-documents]: the project -----------------------------------------------------------------------------------------------
 
 echo "\n[crm-documents] and the project\n";
 
+portalSignIn( $appData, $accounts['anna'] );
 $all = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
-$projectCell = static fn( string $html, int $id ): array => portalFind( $html, '//li[@data-document="'. $id. '"]/*[contains(@class, "crm-documents__project")]' );
+$projectCell = static fn( string $html, int $id ): array => portalFind( $html, '//li[@data-document="'. $id. '"]//*[contains(@class, "crm-documents__project")]' );
 check( 'every row has the cell of its project: a link to the page of the project, with its title, where the document has one - and an empty cell where it has none', $projectCell( $all, $invoiceP1['id'] )[0]->nodeName === 'a' && $projectCell( $all, $invoiceP1['id'] )[0]->getAttribute( 'href' ) === '/portal/projekte?projekt='. $p1. '&tab=belege'
 	&& trim( $projectCell( $all, $invoiceP1['id'] )[0]->textContent ) === 'Album 2027' && $projectCell( $all, $invoiceP2['id'] )[0]->getAttribute( 'href' ) === '/portal/projekte?projekt='. $p2. '&tab=belege' && count( $projectCell( $all, $invoiceA['id'] ) ) === 1
-	&& trim( $projectCell( $all, $invoiceA['id'] )[0]->textContent ) === '' && $projectCell( $all, $invoiceA['id'] )[0]->getAttribute( 'href' ) === '' && count( portalFind( $all, '//li[@class="crm-documents__row"]' ) ) === count( portalFind( $all, '//li/*[contains(@class, "crm-documents__project")]' ) ) );
+	&& trim( $projectCell( $all, $invoiceA['id'] )[0]->textContent ) === '' && $projectCell( $all, $invoiceA['id'] )[0]->getAttribute( 'href' ) === '' && count( portalFind( $all, '//li[contains(concat(" ", normalize-space(@class), " "), " crm-documents__row ")]' ) ) === count( portalFind( $all, '//li//*[contains(@class, "crm-documents__project")]' ) ) );
 Db::exec( $appData, 'UPDATE documents SET project = \'00099\' WHERE id = :id', [ 'id' => $invoiceA['id'] ] );
 $gone = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
 check( 'a document whose project is gone from the type has the empty cell, not a link with no title', portalFind( $gone, '//li[@data-document="'. $invoiceA['id']. '"]//a[contains(@class, "crm-documents__project")]' ) === [] && count( $projectCell( $gone, $invoiceA['id'] ) ) === 1 );
 Db::exec( $appData, "UPDATE documents SET project = '' WHERE id = :id", [ 'id' => $invoiceA['id'] ] );
 $one = \Nino\Html::renderHtml( $appData, '[crm-documents project="'. $p1. '"]' );
-check( 'project="<id>" lists the documents of that project and none other, and leaves the cell of the project out', array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-document' ), portalFind( $one, '//li[@class="crm-documents__row"]' ) ) === [ (string) $invoiceP1['id'], (string) $offerRegular['id'], (string) $offerReverse['id'], (string) $offerSmall['id'] ]
+check( 'project="<id>" lists the documents of that project and none other, and leaves the cell of the project out', array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-document' ), portalFind( $one, '//li[contains(concat(" ", normalize-space(@class), " "), " crm-documents__row ")]' ) ) === [ (string) $invoiceP1['id'], (string) $offerRegular['id'], (string) $offerReverse['id'], (string) $offerSmall['id'] ]
 	&& portalFind( $one, '//*[contains(@class, "crm-documents__project")]' ) === [] );
 check( '...a project that has no document, one of another client, one that is none and one that is no id are the sentence that there are none', array_filter( [ $p4, $p3, '00099', '../x', "a'b" ], static fn( string $id ): bool => str_contains( \Nino\Html::renderHtml( $appData, '[crm-documents project="'. htmlspecialchars( $id, ENT_QUOTES ). '"]' ), 'crm-documents--empty' ) === false ) === [] );
 $byProject = Documents::released( $appData, $a['id'], $p1 );
@@ -1217,28 +1257,28 @@ $asVisitor();
 check( 'a visitor gets nothing of the uploads', trim( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ) ) === '' );
 portalSignIn( $appData, $accounts['anna'] );
 $noUpload = \Nino\Html::renderHtml( $appData, '[crm-uploads]' );
-check( 'a group without an upload folder reads the sentence that the folder has to be made: a block of its own, no list, and no form of Files on the page', portalFind( $noUpload, '//div[contains(@class, "crm-uploads--empty")]/p[@class="crm-uploads__empty"]' ) !== [] && portalFind( $noUpload, '//ul' ) === []
+check( 'a group without an upload folder reads the sentence that the folder has to be made: a block of its own, no list, and no form of Files on the page', portalFind( $noUpload, '//section[contains(@class, "crm-uploads--empty")]/div[contains(@class, "crm-uploads__empty")]/svg[@aria-hidden="true"]/following-sibling::p[contains(@class, "crm-empty__text")]' ) !== [] && portalFind( $noUpload, '//ul' ) === []
 	&& portalFind( portalPage( $appData, '/portal/upload' )[1], '//form[contains(@class, "files-upload")]' ) === [] && str_contains( $noUpload, '[[' ) === false );
 $store::markUpload( $appData, $folderUp['id'], true );
 $uploads = \Nino\Html::renderHtml( $appData, '[crm-uploads]' );
-$uploadRows = portalFind( $uploads, '//li[@class="crm-files__row"]' );
-check( 'a group with an upload folder: its files the member may see, the member\'s own among them, not another account\'s hidden ones, the newest first - name, size, day and the download', array_map( static fn( \DOMElement $row ): string => trim( $row->getElementsByTagName( 'a' )->item( 0 )->textContent ), $uploadRows ) === [ 'Eingang-eigen.txt', 'Eingang-sichtbar.txt' ]
-	&& str_contains( $uploads, 'Eingang-carl.txt' ) === false && portalFind( $uploads, '//li[1]//a[@class="crm-files__download"]/@href' )[0]->nodeValue === '/.files/'. $upOwn['id']. '?download=1' && portalText( $uploads, '//li[1]//span[@class="crm-files__size"]' ) !== ''
-	&& portalFind( $uploads, '//li[1]//time/@datetime' )[0]->nodeValue === $upOwn['created'] && portalFind( $uploads, '//a[@class="crm-files__listen"]' ) === [] );
-check( '...the list says that uploads are temporary (a note, in its block)', portalText( $uploads, '//p[@class="crm-uploads__note"]' ) !== '' && portalText( $uploads, '//h3[@class="crm-uploads__heading"]' ) !== '' );
+$uploadRows = portalFind( $uploads, '//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' );
+check( 'a group with an upload folder: its files the member may see, the member\'s own among them, not another account\'s hidden ones, the newest first - name, size, day and the download', array_map( static fn( \DOMElement $row ): string => trim( portalText( $row->ownerDocument->saveHTML( $row ), '//a[contains(@class, "crm-files__name")]' ) ), $uploadRows ) === [ 'Eingang-eigen.txt', 'Eingang-sichtbar.txt' ]
+	&& str_contains( $uploads, 'Eingang-carl.txt' ) === false && portalFind( $uploads, '//li[contains(@class, "crm-files__row")][1]//a[contains(@class, "crm-files__download")]/@href' )[0]->nodeValue === '/.files/'. $upOwn['id']. '?download=1' && portalText( $uploads, '//li[contains(@class, "crm-files__row")][1]//span[contains(@class, "crm-files__size")]' ) !== ''
+	&& portalFind( $uploads, '//li[contains(@class, "crm-files__row")][1]//time/@datetime' )[0]->nodeValue === $upOwn['created'] && portalFind( $uploads, '//a[contains(@class, "crm-files__listen")]' ) === [] );
+check( '...the list says that uploads are temporary (a note, in its block)', portalText( $uploads, '//p[contains(@class, "crm-uploads__note")]' ) !== '' && portalText( $uploads, '//h3[contains(@class, "crm-uploads__heading")]' ) !== '' );
 $uploadPage = portalPage( $appData, '/portal/upload' )[1];
-check( 'the page Upload has the form of Files for the folder of the group - posting to /.files/upload with the folder - and the list under it', count( portalFind( $uploadPage, '//form[contains(@class, "files-upload")]' ) ) === 1 && portalFind( $uploadPage, '//form[contains(@class, "files-upload")]/@action' )[0]->nodeValue === '/.files/upload'
-	&& portalFind( $uploadPage, '//form[contains(@class, "files-upload")]/input[@name="folder"]/@value' )[0]->nodeValue === $folderUp['id'] && count( portalFind( $uploadPage, '//form[contains(@class, "files-upload")]/following::div[contains(@class, "crm-uploads")]' ) ) === 1 && str_contains( $uploadPage, 'crm-nav' ) === false );
+check( 'the page Upload has the form of Files for the folder of the group - posting to /.files/upload with the folder - and the list under it', count( portalFind( $uploadPage, '//form[contains(@class, "files-upload")][contains(@class, "crm-upload")]' ) ) === 1 && portalFind( $uploadPage, '//form[contains(@class, "files-upload")]/@action' )[0]->nodeValue === '/.files/upload'
+	&& portalFind( $uploadPage, '//form[contains(@class, "files-upload")]/input[@name="folder"]/@value' )[0]->nodeValue === $folderUp['id'] && count( portalFind( $uploadPage, '//form[contains(@class, "files-upload")]/following-sibling::section[contains(@class, "crm-uploads")]' ) ) === 1 && str_contains( $uploadPage, 'crm-nav' ) === false );
 $noEmpty = $put( $folderUp, 'Zusatz.txt', 'txt', 'text/plain', true, $owner, $ago( 10 ) );
-check( 'a file put there later is in the list at once, on top', trim( portalFind( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ), '//li[@class="crm-files__row"]' )[0]->getElementsByTagName( 'a' )->item( 0 )->textContent ) === 'Zusatz.txt' );
+check( 'a file put there later is in the list at once, on top', trim( portalFind( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ), '//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' )[0]->getElementsByTagName( 'a' )->item( 0 )->textContent ) === 'Zusatz.txt' );
 portalSignIn( $appData, $accounts['ben'] );
-check( 'a client whose group has no upload folder reads the sentence, whatever another group has', portalFind( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ), '//div[contains(@class, "crm-uploads--empty")]' ) !== [] );
+check( 'a client whose group has no upload folder reads the sentence, whatever another group has', portalFind( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ), '//section[contains(@class, "crm-uploads--empty")]' ) !== [] );
 portalSignIn( $appData, $stray );
-check( 'a member of no group too', portalFind( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ), '//div[contains(@class, "crm-uploads--empty")]' ) !== [] );
+check( 'a member of no group too', portalFind( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ), '//section[contains(@class, "crm-uploads--empty")]' ) !== [] );
 portalSignIn( $appData, $accounts['anna'] );
 \Nino\Features::deactivate( $appData, 'review' );
 \Nino\Features::deactivate( $appData, 'files' );
-check( 'with Files off the block says so', portalFind( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ), '//div[contains(@class, "crm-uploads--empty")]' ) !== [] );
+check( 'with Files off the block says so', portalFind( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ), '//section[contains(@class, "crm-uploads--empty")]' ) !== [] );
 \Nino\Features::activate( $appData, 'files' );
 \Nino\Features::activate( $appData, 'review' );
 
@@ -1247,18 +1287,22 @@ check( 'with Files off the block says so', portalFind( \Nino\Html::renderHtml( $
 echo "\nThe page Termine\n";
 
 $dates = portalPage( $appData, '/portal/termine' )[1];
-check( 'while there is no date, the page says so with the sentence of Events', portalFind( $dates, '//p[@class="events-empty"]' ) !== [] && portalFind( $dates, '//time[contains(@class, "events-when")]' ) === [] && str_contains( $dates, '[events' ) === false );
+check( 'while there is no date, the page says so in an empty state: an icon, the sentence and the studio\'s e-mail and phone as links', portalFind( $dates, '//div[contains(@class, "crm-dates--empty")]/div[contains(@class, "crm-empty")]/svg[@aria-hidden="true"]/following-sibling::p[contains(@class, "crm-empty__text")]' ) !== [] && portalFind( $dates, '//li[contains(@class, "crm-dates__row")]' ) === []
+	&& portalFind( $dates, '//p[contains(@class, "crm-empty__contact")]/a[starts-with(@href, "mailto:owner@")]' ) !== [] && portalFind( $dates, '//p[contains(@class, "crm-empty__contact")]/a[starts-with(@href, "tel:")]' ) !== [] && str_contains( $dates, '[events' ) === false );
 $soon = static fn( int $days ): string => date( 'Y-m-d\TH:i', strtotime( '+'. $days. ' days 10:00' ) );
 \Nino\Elements::insertElement( $appData, '/events/aufnahme-a', [ 'title' => 'Aufnahme Gruppe A', 'start' => $soon( 12 ), 'end' => date( 'Y-m-d\TH:i', strtotime( '+12 days 12:00' ) ), 'place' => 'Studio 1', 'group' => $a['group'] ], 'de_DE' );
 \Nino\Elements::insertElement( $appData, '/events/aufnahme-b', [ 'title' => 'Aufnahme Gruppe B', 'start' => $soon( 13 ), 'group' => $b['group'] ], 'de_DE' );
 \Nino\Elements::insertElement( $appData, '/events/offen', [ 'title' => 'Offener Termin', 'start' => $soon( 20 ) ], 'de_DE' );
 \Nino\Elements::insertElement( $appData, '/events/vorbei', [ 'title' => 'Vergangener Termin', 'start' => date( 'Y-m-d\TH:i', strtotime( '-30 days 10:00' ) ), 'group' => $a['group'] ], 'de_DE' );
 $dates = portalPage( $appData, '/portal/termine' )[1];
-check( 'the page lists the coming dates of the client\'s group and the dates for everyone - not those of another group, not the ones that are over: a title, the time as a chip, the place, the link to the calendar file', str_contains( $dates, 'Aufnahme Gruppe A' ) === true && str_contains( $dates, 'Offener Termin' ) === true
-	&& str_contains( $dates, 'Aufnahme Gruppe B' ) === false && str_contains( $dates, 'Vergangener Termin' ) === false && count( portalFind( $dates, '//time[contains(@class, "events-when")]' ) ) === 2 && str_contains( $dates, 'Studio 1' ) === true
-	&& array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( $dates, '//a[contains(@class, "events-ics")]' ) ) === [ '/.events/aufnahme-a.ics', '/.events/offen.ics' ] );
-check( '...with the link to the feed of the member (the token of the account is in it) and no navigation on the page', count( portalFind( $dates, '//a[contains(@class, "events-feed")]' ) ) === 1 && preg_match( '~\?k=[A-Za-z0-9_-]+$~', portalFind( $dates, '//a[contains(@class, "events-feed")]/@href' )[0]->nodeValue ) === 1
-	&& str_contains( $dates, 'crm-nav' ) === false && portalLeft( $dates ) === false );
+$dateRows = portalFind( $dates, '//li[contains(@class, "crm-dates__row")]' );
+check( 'the page lists the coming dates of the client\'s group and the dates for everyone - not those of another group, not the ones that are over: a card each, with an anchor by its name, the day as a time element, a title, the time of day, the place and the link to the calendar file', str_contains( $dates, 'Aufnahme Gruppe A' ) === true && str_contains( $dates, 'Offener Termin' ) === true
+	&& str_contains( $dates, 'Aufnahme Gruppe B' ) === false && str_contains( $dates, 'Vergangener Termin' ) === false && array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'id' ), $dateRows ) === [ 'termin-aufnahme-a', 'termin-offen' ] && array_filter( $dateRows, static fn( \DOMElement $row ): bool => str_contains( $row->getAttribute( 'class' ), 'crm-card' ) === false ) === []
+	&& count( portalFind( $dates, '//li[contains(@class, "crm-dates__row")]/time[contains(@class, "crm-dates__when")]/@datetime' ) ) === 2 && portalText( $dates, '//li[@id="termin-aufnahme-a"]//span[contains(@class, "crm-dates__title")]' ) === 'Aufnahme Gruppe A' && portalText( $dates, '//li[@id="termin-aufnahme-a"]//span[contains(@class, "crm-dates__place")]' ) === 'Studio 1'
+	&& str_ends_with( portalText( $dates, '//li[@id="termin-aufnahme-a"]//span[contains(@class, "crm-dates__time")]' ), '10:00–12:00' ) === true && str_ends_with( portalText( $dates, '//li[@id="termin-offen"]//span[contains(@class, "crm-dates__time")]' ), '10:00' ) === true
+	&& array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( $dates, '//li[contains(@class, "crm-dates__row")]//span[contains(@class, "crm-dates__ics")]/a[contains(@class, "events-ics")]' ) ) === [ '/.events/aufnahme-a.ics', '/.events/offen.ics' ] );
+check( '...with the link to the feed of the member (the token of the account is in it) as a button in the page head, and no navigation on the page', count( portalFind( $dates, '//a[contains(@class, "events-feed")]' ) ) === 1 && count( portalFind( $dates, '//div[contains(@class, "crm-head__actions")]//span[contains(@class, "crm-btn--holds")]/a[contains(@class, "events-feed")]' ) ) === 1
+	&& preg_match( '~\?k=[A-Za-z0-9_-]+$~', portalFind( $dates, '//a[contains(@class, "events-feed")]/@href' )[0]->nodeValue ) === 1 && str_contains( $dates, 'crm-nav' ) === false && portalLeft( $dates ) === false );
 portalSignIn( $appData, $accounts['ben'] );
 $benDates = portalPage( $appData, '/portal/termine' )[1];
 check( 'another client sees the dates of its own group and the open ones: not those of Studio Nord', str_contains( $benDates, 'Aufnahme Gruppe B' ) === true && str_contains( $benDates, 'Offener Termin' ) === true && str_contains( $benDates, 'Aufnahme Gruppe A' ) === false );
@@ -1281,21 +1325,23 @@ $client = (array) \Crm\Clients::get( $appData, $a['id'] );
 $data = portalPage( $appData, '/portal/meine-daten' )[1];
 $inputs = portalFind( $data, '//form[contains(@class, "crm-data")]//input[@name]' );
 $values = array_column( array_map( static fn( \DOMElement $input ): array => [ $input->getAttribute( 'name' ), $input->getAttribute( 'value' ) ], $inputs ), 1, 0 );
-check( 'the form posts to /.crm/daten and has the fields Firma, Name, Straße, PLZ, Ort, Land, Telefon, USt-IdNr. with the values of the client - and the csrf token', portalFind( $data, '//form[contains(@class, "crm-data")]/@action' )[0]->nodeValue === '/.crm/daten' && portalFind( $data, '//form[contains(@class, "crm-data")]/@method' )[0]->nodeValue === 'post'
-	&& array_keys( $values ) === [ '_csrf', 'company', 'name', 'street', 'zip', 'city', 'country', 'phone', 'vat_id' ] && $values['_csrf'] === \Nino\Csrf::getToken( $appData )
-	&& array_diff_key( $values, [ '_csrf' => 1 ] ) === array_intersect_key( $client, array_flip( [ 'company', 'name', 'street', 'zip', 'city', 'country', 'phone', 'vat_id' ] ) ) );
+check( 'the form posts to /.crm/daten and has the fields Firma, Name, Straße, PLZ, Ort, Land (a select), Telefon, USt-IdNr. with the values of the client - and the csrf token', portalFind( $data, '//form[contains(@class, "crm-data")]/@action' )[0]->nodeValue === '/.crm/daten' && portalFind( $data, '//form[contains(@class, "crm-data")]/@method' )[0]->nodeValue === 'post'
+	&& array_keys( $values ) === [ '_csrf', 'company', 'name', 'street', 'zip', 'city', 'phone', 'vat_id' ] && $values['_csrf'] === \Nino\Csrf::getToken( $appData )
+	&& array_diff_key( $values, [ '_csrf' => 1 ] ) === array_intersect_key( $client, array_flip( [ 'company', 'name', 'street', 'zip', 'city', 'phone', 'vat_id' ] ) )
+	&& portalFind( $data, '//form//select[@name="country"]/option[@selected]/@value' )[0]->nodeValue === $client['country'] && portalFind( $data, '//form//select[@name="country"]/option[@value="DE"]' ) !== [] );
 check( '...every value is text: markup and a shortcode in the company are escaped, and each field has its label and the length the client takes', str_contains( $data, 'Nord &quot;A&amp;B&quot; &lt;x&gt; &#91;members-name]' ) === true && str_contains( $data, '<x>' ) === false
-	&& count( portalFind( $data, '//form[contains(@class, "crm-data")]//label[@for]' ) ) === 9 && portalFind( $data, '//input[@name="country"]/@maxlength' )[0]->nodeValue === '2' && portalFind( $data, '//input[@name="company"]/@maxlength' )[0]->nodeValue === '120' && portalFind( $data, '//input[@name="phone"]/@type' )[0]->nodeValue === 'tel' );
+	&& count( portalFind( $data, '//form[contains(@class, "crm-data")]//label[@for]' ) ) === 9 &&  portalFind( $data, '//input[@name="company"]/@maxlength' )[0]->nodeValue === '120' && portalFind( $data, '//input[@name="phone"]/@type' )[0]->nodeValue === 'tel' );
 $email = portalFind( $data, '//form[contains(@class, "crm-data")]//input[@readonly]' );
 check( '...the e-mail of the account is shown and cannot be sent: readonly, no name, with its own sentence', count( $email ) === 1 && $email[0]->getAttribute( 'value' ) === 'anna@example.org' && $email[0]->getAttribute( 'name' ) === '' && portalFind( $data, '//*[@id="crm-data-email-hint"]' ) !== [] && portalFind( $data, '//form[contains(@class, "crm-data")]//button[@type="submit"]' ) !== [] );
-check( '...the form is a plain form (no .nino-form: the kernel\'s script would post it as a contact form), every input of it - the e-mail among them - the kernel\'s .nino-form-input, the fields stand in one .crm-card, and the button is the kernel\'s primary one in the shape of the portal (.crm-btn)', count( portalFind( $data, '//form[contains(concat(" ", normalize-space(@class), " "), " crm-data ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-form "))]' ) ) === 1
-	&& count( portalFind( $data, '//form//input[not(@type="hidden")]' ) ) === 9 && count( portalFind( $data, '//form//input[not(@type="hidden")][contains(concat(" ", normalize-space(@class), " "), " nino-form-input ")]' ) ) === 9 && count( portalFind( $data, '//form//div[contains(concat(" ", normalize-space(@class), " "), " crm-data__fields ")][contains(concat(" ", normalize-space(@class), " "), " crm-card ")]//input[contains(concat(" ", normalize-space(@class), " "), " nino-form-input ")]' ) ) === 9
-	&& count( portalFind( $data, '//form//button[@type="submit"][contains(concat(" ", normalize-space(@class), " "), " crm-btn ")][contains(concat(" ", normalize-space(@class), " "), " nino-btn ")][contains(concat(" ", normalize-space(@class), " "), " nino-btn--primary ")]' ) ) === 1 );
+check( '...the form is a plain form (no .nino-form: the kernel\'s script would post it as a contact form), every input of it - the e-mail among them - the kernel\'s .nino-form-input or .nino-form-select, the fields stand in one .crm-card, and the button is the portal\'s primary one (.crm-btn)', count( portalFind( $data, '//form[contains(concat(" ", normalize-space(@class), " "), " crm-data__form ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-form "))]' ) ) === 1
+	&& count( portalFind( $data, '//form//input[not(@type="hidden")]' ) ) === 8 && count( portalFind( $data, '//form//input[not(@type="hidden")][contains(concat(" ", normalize-space(@class), " "), " nino-form-input ")]' ) ) === 8 && count( portalFind( $data, '//form//select[contains(concat(" ", normalize-space(@class), " "), " nino-form-select ")]' ) ) === 1
+	&& count( portalFind( $data, '//form//div[contains(concat(" ", normalize-space(@class), " "), " crm-data__card ")][contains(concat(" ", normalize-space(@class), " "), " crm-card ")]/div[contains(concat(" ", normalize-space(@class), " "), " crm-fields ")]//input[contains(concat(" ", normalize-space(@class), " "), " nino-form-input ")]' ) ) === 8
+	&& count( portalFind( $data, '//form//button[@type="submit"][contains(concat(" ", normalize-space(@class), " "), " crm-btn ")][contains(concat(" ", normalize-space(@class), " "), " crm-btn--primary ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-btn "))]' ) ) === 1 );
 check( '...no state and no error before anything was posted', portalFind( $data, '//*[contains(@class, "crm-data__state") or contains(@class, "crm-data__error")]' ) === [] && portalFind( $data, '//*[@aria-invalid]' ) === [] );
 $saved = portalPage( $appData, '/portal/meine-daten?state=saved' )[1];
 $expired = portalPage( $appData, '/portal/meine-daten?state=expired' )[1];
 $invalid = portalPage( $appData, '/portal/meine-daten?state=invalid&field=zip' )[1];
-check( 'the state of the query is said above the form: saved and expired as a status, invalid as an alert that names the field - and the field says it beside itself, marked invalid and described by its sentence', portalFind( $saved, '//p[@role="status"][contains(@class, "crm-data__state--saved")]' ) !== [] && portalFind( $expired, '//p[@role="status"][contains(@class, "crm-data__state--expired")]' ) !== []
+check( 'the state of the query is said above the form: saved as a status in the success tone, expired and invalid as an alert in the error tone - the invalid one names the field - and the field says it beside itself, marked invalid and described by its sentence', portalFind( $saved, '//p[@role="status"][contains(@class, "crm-data__state--saved")][contains(@class, "crm-note--success")]' ) !== [] && portalFind( $expired, '//p[@role="alert"][contains(@class, "crm-data__state--expired")][contains(@class, "crm-note--error")]' ) !== []
 	&& portalText( $saved, '//p[contains(@class, "crm-data__state")]' ) !== portalText( $expired, '//p[contains(@class, "crm-data__state")]' ) && count( portalFind( $invalid, '//p[@role="alert"][contains(@class, "crm-data__state--invalid")]' ) ) === 1
 	&& str_contains( portalText( $invalid, '//p[@role="alert"]' ), portalText( $invalid, '//label[@for="crm-data-zip"]' ) ) === true && portalFind( $invalid, '//input[@name="zip"]/@aria-invalid' )[0]->nodeValue === 'true' && portalFind( $invalid, '//input[@name="zip"]/@aria-describedby' )[0]->nodeValue === 'crm-data-zip-error'
 	&& portalText( $invalid, '//span[@id="crm-data-zip-error"]' ) !== '' && count( portalFind( $invalid, '//*[@aria-invalid]' ) ) === 1 && count( portalFind( $invalid, '//span[contains(@class, "crm-data__error")]' ) ) === 1 );
@@ -1400,10 +1446,10 @@ $isText = static fn( string $html, string $query ): bool => portalText( $html, $
 $oddList = portalPage( $appData, '/portal/projekte' )[1];
 $oddPage = portalPage( $appData, '/portal/projekte?projekt='. $pOdd )[1];
 $oddBelege = portalPage( $appData, '/portal/belege' )[1];
-check( 'the title of a project is text in its row of the list and in the head of its page', $isText( $oddList, '//li[@data-project="'. $pOdd. '"]//a[@class="crm-projects__title"]' ) === true && $isText( $oddPage, '//h3[@class="crm-project__title"]' ) === true
-	&& portalFind( $oddList, '//li[@data-project="'. $pOdd. '"]//i' ) === [] && portalFind( $oddPage, '//h3[@class="crm-project__title"]//i' ) === [] );
-check( '...so is the title of an offer, the project in the cell of the documents and the name of a file in its row', $isText( $oddPage, '//div[@data-document="'. $offerOdd['id']. '"]//h5' ) === true && $isText( $oddBelege, '//li[@data-document="'. $offerOdd['id']. '"]//a[contains(@class, "crm-documents__project")]' ) === true
-	&& portalText( $oddPage, '//li[@data-files-id="'. $oddFile['id']. '"]//a[@class="crm-files__name"]' ) === $odd. '.mp3' && portalFind( $oddPage, '//div[@data-document="'. $offerOdd['id']. '"]//i | //li[@data-files-id="'. $oddFile['id']. '"]//i' ) === [] && portalFind( $oddBelege, '//a[contains(@class, "crm-documents__project")]//i' ) === [] );
+check( 'the title of a project is text in its row of the list and in the head of its page', $isText( $oddList, '//li[@data-project="'. $pOdd. '"]//span[@class="crm-projects__title"]' ) === true && $isText( $oddPage, '//div[@class="crm-head"]//span[@class="crm-head__name"]' ) === true
+	&& portalFind( $oddList, '//li[@data-project="'. $pOdd. '"]//i' ) === [] && portalFind( $oddPage, '//div[@class="crm-head"]//i | //nav[contains(@class, "crm-crumbs")]//i' ) === [] && $isText( $oddPage, '//nav[contains(@class, "crm-crumbs")]/span[@aria-current="page"]' ) === true );
+check( '...so is the title of an offer, the project in the cell of the documents and the name of a file in its row', $isText( $oddPage, '//details[@data-document="'. $offerOdd['id']. '"]//span[@class="crm-offer__title"]' ) === true && $isText( $oddBelege, '//li[@data-document="'. $offerOdd['id']. '"]//a[contains(@class, "crm-documents__project")]' ) === true
+	&& portalText( $oddPage, '//li[@data-files-id="'. $oddFile['id']. '"]//a[contains(@class, "crm-files__name")]' ) === $odd. '.mp3' && portalFind( $oddPage, '//details[@data-document="'. $offerOdd['id']. '"]//i | //li[@data-files-id="'. $oddFile['id']. '"]//i' ) === [] && portalFind( $oddBelege, '//a[contains(@class, "crm-documents__project")]//i' ) === [] );
 portalSignIn( $appData, $oddAccount );
 $oddData = portalPage( $appData, '/portal/meine-daten' )[1];
 check( '...and the e-mail of the account in Meine Daten is the value of its field, whatever it holds', portalFind( $oddData, '//input[@readonly]/@value' )[0]->nodeValue === $oddEmail && str_contains( $oddData, '&#91;members-name]' ) === true && str_contains( $oddData, '<b>' ) === false );
@@ -1426,15 +1472,24 @@ echo "\nThe main menu\n";
 $menu = static function() use ( &$appData ): array {
 	return \Nino\Modules\Navigation::routeLines( $appData, 'main' );
 };
+// a page of the site that is open to everybody and in the menu, to see that the callback takes out the protected pages and nothing else
+$appData['/nino/http/routes']['GET://kontakt'] = [ 'uri' => '/kontakt', 'body' => 'x', 'navs' => [ 'main' => 9 ] ];
+\Nino\Html::addFills( $appData, [ '[[/_nino/webpage/kontakt/name]]' => 'Kontakt' ], '*' );
 $asVisitor();
 $visitorMenu = $menu();
+$visitorMenuHtml = \Nino\Modules\Navigation::doShortcode( $appData, [ 'nav' => 'main' ] );
 portalSignIn( $appData, $accounts['anna'] );
 $memberMenu = $menu();
+$memberMenuHtml = \Nino\Modules\Navigation::doShortcode( $appData, [ 'nav' => 'main' ] );
 $portalLines = [ '/portal:Portal', '/portal/meine-daten:Meine Daten', '/portal/projekte:Projekte', '/portal/upload:Upload', '/portal/belege:Belege', '/portal/termine:Termine' ];
-check( 'the main menu of the site lists the six pages of the portal, each with the name of its page, in the order of the unit - for a visitor, who is sent to the login by the protected path, and for a member alike - and not the page Datenschutz', array_values( array_intersect( $visitorMenu, $portalLines ) ) === $portalLines && $visitorMenu === $memberMenu
+check( 'the main menu of a member lists the six pages of the portal, each with the name of its page, in the order of the unit, beside the pages of the site - and not the page Datenschutz', array_values( array_intersect( $memberMenu, $portalLines ) ) === $portalLines && in_array( '/kontakt:Kontakt', $memberMenu, true ) === true
 	&& array_filter( $memberMenu, static fn( string $line ): bool => str_contains( $line, 'datenschutz' ) === true ) === [] );
-$menuHtml = \Nino\Modules\Navigation::doShortcode( $appData, [ 'nav' => 'main' ] );
-check( '...drawn by the kernel\'s navigation, each page is a link with its name', array_filter( [ 'Portal' => '/portal', 'Meine Daten' => '/portal/meine-daten', 'Projekte' => '/portal/projekte', 'Upload' => '/portal/upload', 'Belege' => '/portal/belege', 'Termine' => '/portal/termine' ], static fn( string $href, string $name ): bool => count( portalFind( $menuHtml, '//a[@href="'. $href. '"][normalize-space(.)="'. $name. '"]' ) ) !== 1, ARRAY_FILTER_USE_BOTH ) === [] );
+check( '...drawn by the kernel\'s navigation, each page is a link with its name', array_filter( [ 'Portal' => '/portal', 'Meine Daten' => '/portal/meine-daten', 'Projekte' => '/portal/projekte', 'Upload' => '/portal/upload', 'Belege' => '/portal/belege', 'Termine' => '/portal/termine', 'Kontakt' => '/kontakt' ], static fn( string $href, string $name ): bool => count( portalFind( $memberMenuHtml, '//a[@href="'. $href. '"][normalize-space(.)="'. $name. '"]' ) ) !== 1, ARRAY_FILTER_USE_BOTH ) === [] );
+check( 'the main menu of a visitor has no line of the portal - the callback of the project takes out every line whose path Members protects - and keeps the others, in their order', array_intersect( $visitorMenu, $portalLines ) === [] && $visitorMenu === array_values( array_diff( $memberMenu, $portalLines ) ) && in_array( '/kontakt:Kontakt', $visitorMenu, true ) === true
+	&& portalFind( $visitorMenuHtml, '//a[starts-with(@href, "/portal")]' ) === [] && count( portalFind( $visitorMenuHtml, '//a[@href="/kontakt"]' ) ) === 1 );
+check( '...the callback is registered once, for the callback of the kernel that fires it', count( \Nino\Callbacks::registered( $appData, '/nino/navigation/lines' ) ) === 1 );
+unset( $appData['/nino/http/routes']['GET://kontakt'] );
+portalSignIn( $appData, $accounts['anna'] );
 
 // --- The Datenschutz --------------------------------------------------------------------------------------------------------------
 
@@ -1451,9 +1506,9 @@ $recordsOf = static function( int $clientId, ?string $kind = null ) use ( &$appD
 $asVisitor();
 check( 'while the owner keeps no text the portal asks for nothing: the client has not "agreed", the nav has five links, and the page says there is nothing to agree to', \Crm\Settings::get( $appData, 'privacy_text' ) === '' && \Crm\Records::privacy( $appData, $a['id'] ) === [ 'asked' => false, 'agreed' => false, 'at' => '', 'member_name' => '' ] );
 portalSignIn( $appData, $accounts['anna'] );
-check( '...Meine Daten has no line about it', portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//p[@class="crm-data__privacy"]' ) === [] );
+check( '...Meine Daten has no line about it', portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//section[contains(@class, "crm-data__privacy")]' ) === [] );
 check( '...the nav has the five areas and no link to the Datenschutz; the page shows the sentence and no form', count( $navHrefs( '/portal' ) ) === 5 && in_array( '/portal/datenschutz', $navHrefs( '/portal' ), true ) === false
-	&& portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//p[@class="crm-privacy__empty"]' ) !== [] && portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//form[contains(@class, "crm-privacy__form")]' ) === [] );
+	&& portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//div[contains(@class, "crm-privacy--empty")]/div[contains(@class, "crm-empty")]/p[contains(@class, "crm-empty__text")]' ) !== [] && portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//form[contains(@class, "crm-privacy__form")]' ) === [] );
 $emptyPost = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1' ] );
 check( '...a post with no text to agree to is ?state=invalid and keeps nothing', $emptyPost['statusCode'] === 303 && ( $emptyPost['header']['Location'] ?? '' ) === '/portal/datenschutz?state=invalid' && $recordsOf( $a['id'] ) === [] );
 
@@ -1465,7 +1520,7 @@ $asVisitor();
 check( 'a visitor gets nothing of the component', trim( \Nino\Html::renderHtml( $appData, '[crm-privacy]' ) ) === '' );
 portalSignIn( $appData, $stray );
 $strayPage = portalPage( $appData, '/portal/datenschutz' )[1];
-check( 'a member of no client reads the sentence: no text, no form, and no link in the nav', portalFind( $strayPage, '//div[contains(@class, "crm-privacy--empty")]/p[@class="crm-privacy__empty"]' ) !== [] && portalFind( $strayPage, '//form' ) === [] && count( $navHrefs( '/portal' ) ) === 5 );
+check( 'a member of no client reads the sentence: no text, no form, and no link in the nav', portalFind( $strayPage, '//div[contains(@class, "crm-privacy--empty")]/div[contains(@class, "crm-privacy__empty")]/p[contains(@class, "crm-empty__text")]' ) !== [] && portalFind( $strayPage, '//form' ) === [] && count( $navHrefs( '/portal' ) ) === 5 );
 portalSignIn( $appData, $accounts['anna'] );
 [ $status, $page ] = portalPage( $appData, '/portal/datenschutz' );
 check( 'a client that has not agreed reads the text with its line breaks as <br>, every character escaped (markup and a shortcode in it are text), and the sentence that it has not agreed', $status === 200 && str_contains( $page, 'Wir speichern Deine Daten &lt;b&gt;nur&lt;/b&gt; für das Projekt.<br>Kontakt: &#91;members-name] &amp; Co<br><br>Stand 2026' ) === true
@@ -1474,13 +1529,15 @@ $form = portalFind( $page, '//form[contains(@class, "crm-privacy__form")]' );
 check( '...and the form: it posts to /.crm/datenschutz, with the csrf token, a box that must be ticked - required, value 1 - and the button', count( $form ) === 1 && portalFind( $page, '//form[contains(@class, "crm-privacy__form")]/@action' )[0]->nodeValue === '/.crm/datenschutz' && portalFind( $page, '//form[contains(@class, "crm-privacy__form")]/@method' )[0]->nodeValue === 'post'
 	&& portalFind( $page, '//form//input[@name="_csrf"]/@value' )[0]->nodeValue === \Nino\Csrf::getToken( $appData ) && portalFind( $page, '//form//input[@type="checkbox"][@name="agree"][@required][@value="1"]' ) !== [] && portalFind( $page, '//form//button[@type="submit"]' ) !== []
 	&& portalText( $page, '//form//label' ) !== '' && portalFind( $page, '//form//label/@for' )[0]->nodeValue === portalFind( $page, '//form//input[@type="checkbox"]/@id' )[0]->nodeValue );
-check( '...the form is a plain form with the button of the portal, and the text above it is a .crm-card', count( portalFind( $page, '//form[contains(concat(" ", normalize-space(@class), " "), " crm-privacy__form ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-form "))]//button[@type="submit"][contains(concat(" ", normalize-space(@class), " "), " crm-btn ")][contains(concat(" ", normalize-space(@class), " "), " nino-btn--primary ")]' ) ) === 1 && count( portalFind( $page, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-privacy__text ")][contains(concat(" ", normalize-space(@class), " "), " crm-card ")]' ) ) === 1 );
+check( '...the form is a plain form with the button of the portal, and the text above it is a .crm-card', count( portalFind( $page, '//form[contains(concat(" ", normalize-space(@class), " "), " crm-privacy__form ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-form "))]//button[@type="submit"][contains(concat(" ", normalize-space(@class), " "), " crm-btn ")][contains(concat(" ", normalize-space(@class), " "), " crm-btn--primary ")]' ) ) === 1 && count( portalFind( $page, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-privacy__text ")][contains(concat(" ", normalize-space(@class), " "), " crm-card ")]' ) ) === 1 );
 $sixth = $navHrefs( '/portal' );
 check( 'the nav has a sixth link, to the page, as long as the client has not agreed: after the five, marked on the page itself and on no other', count( $sixth ) === 6 && $sixth[5] === '/portal/datenschutz' && array_slice( $sixth, 0, 5 ) === [ '/portal/meine-daten', '/portal/projekte', '/portal/upload', '/portal/belege', '/portal/termine' ]
 	&& array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( portalNavAt( $appData, '/portal/datenschutz' ), '//nav//a[@aria-current="page"]' ) ) === [ '/portal/datenschutz' ] && portalFind( portalNavAt( $appData, '/portal' ), '//nav//a[@aria-current]' ) === [] );
-check( '...the link has the name of its page, in the words of the pages', portalText( portalNavAt( $appData, '/portal' ), '//nav//a[@href="/portal/datenschutz"]' ) === 'Datenschutz' );
+$unitDe = (array) require $root. '/app/Crm/Crm/install/text/de_DE.php';
+check( '...the link has the name of its page, in the words of the pages', portalText( portalNavAt( $appData, '/portal' ), '//nav//a[@href="/portal/datenschutz"]' ) === $unitDe['[[/_nino/webpage/portal/datenschutz/name]]'] );
 $data = portalPage( $appData, '/portal/meine-daten' )[1];
-check( 'Meine Daten has a line with the state and the link to the page, while the owner asks for a text', portalFind( $data, '//p[@class="crm-data__privacy"][@data-agreed="0"]' ) !== [] && portalFind( $data, '//p[@class="crm-data__privacy"]/a/@href' )[0]->nodeValue === '/portal/datenschutz' );
+check( 'Meine Daten has a line with the state and the link to the page, while the owner asks for a text', portalFind( $data, '//section[contains(@class, "crm-data__privacy")][@data-agreed="0"]' ) !== [] && portalFind( $data, '//section[contains(@class, "crm-data__privacy")]//a[contains(@class, "crm-data__link")]/@href' )[0]->nodeValue === '/portal/datenschutz'
+	&& str_contains( portalFind( $data, '//section[contains(@class, "crm-data__privacy")]//span[contains(@class, "crm-pill")]' )[0]->getAttribute( 'class' ), 'crm-pill--warning' ) === true );
 
 // the post
 $asVisitor();
@@ -1509,16 +1566,16 @@ check( '...no mail goes out for it', count( $mails ) === $mailsBeforeAgree );
 $againPost = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1' ] );
 check( 'a second post of the same text makes no second record: it is agreed to once', $location( $againPost ) === '/portal/datenschutz?state=agreed' && count( $recordsOf( $a['id'] ) ) === 1 );
 $agreedPage = portalPage( $appData, '/portal/datenschutz' )[1];
-check( 'the page now says when and by whom, with the day as a time element, and has no form; the nav is back to five links', portalFind( $agreedPage, '//form[contains(@class, "crm-privacy__form")]' ) === [] && portalFind( $agreedPage, '//p[contains(@class, "crm-privacy__standing--agreed")]/time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' )
-	&& portalText( $agreedPage, '//p[contains(@class, "crm-privacy__standing--agreed")]/time' ) === \Crm\Documents\Render::day( gmdate( 'Y-m-d' ) ) && portalText( $agreedPage, '//span[@class="crm-privacy__who"]' ) === 'Anna Nord' && count( $navHrefs( '/portal' ) ) === 5 );
+check( 'the page now says when and by whom, with the day as a time element, and has no form; the nav is back to five links', portalFind( $agreedPage, '//form[contains(@class, "crm-privacy__form")]' ) === [] && portalFind( $agreedPage, '//p[contains(@class, "crm-privacy__standing--agreed")]//time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' )
+	&& portalText( $agreedPage, '//p[contains(@class, "crm-privacy__standing--agreed")]//time' ) === \Crm\Documents\Render::day( gmdate( 'Y-m-d' ) ) && portalText( $agreedPage, '//span[@class="crm-privacy__who"]' ) === 'Anna Nord' && count( $navHrefs( '/portal' ) ) === 5 );
 $privacyOfA = (array) \Crm\Clients::get( $appData, $a['id'] )['privacy'];
 check( 'the client has agreed, not the account: Carl of the same client sees it as agreed; the standing is on the client as Clients::get() and list() have it; another client has not agreed', $privacyOfA === [ 'asked' => true, 'agreed' => true, 'at' => $kept[0]['at'], 'member_name' => 'Anna Nord' ]
 	&& array_column( \Crm\Clients::list( $appData ), 'privacy', 'id' )[$a['id']] === $privacyOfA && array_column( \Crm\Clients::list( $appData ), 'privacy', 'id' )[$b['id']]['agreed'] === false && \Crm\Records::privacy( $appData, $b['id'] )['asked'] === true );
 portalSignIn( $appData, $accounts['carl'] );
-check( '...Carl sees the same page: agreed, by Anna, and the data page says it with the link', count( $navHrefs( '/portal' ) ) === 5 && portalText( portalPage( $appData, '/portal/datenschutz' )[1], '//span[@class="crm-privacy__who"]' ) === 'Anna Nord' && portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//p[@class="crm-data__privacy"][@data-agreed="1"]' ) !== [] );
+check( '...Carl sees the same page: agreed, by Anna, and the data page says it with the link', count( $navHrefs( '/portal' ) ) === 5 && portalText( portalPage( $appData, '/portal/datenschutz' )[1], '//span[@class="crm-privacy__who"]' ) === 'Anna Nord' && portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//section[contains(@class, "crm-data__privacy")][@data-agreed="1"]' ) !== [] );
 portalSignIn( $appData, $accounts['ben'] );
 check( 'Ben\'s client has not agreed: it is asked, whatever Studio Nord did', count( $navHrefs( '/portal' ) ) === 6 && portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//form[contains(@class, "crm-privacy__form")]' ) !== [] );
-check( '...and no sentence says that the text changed: that is said only to a client that agreed to an earlier text', portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//p[contains(@class, "crm-privacy__standing--open")]/time' ) === [] && \Crm\Settings::get( $appData, 'privacy_changed' ) !== '' );
+check( '...and no sentence says that the text changed: that is said only to a client that agreed to an earlier text', portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//p[contains(@class, "crm-privacy__standing--open")]//time' ) === [] && \Crm\Settings::get( $appData, 'privacy_changed' ) !== '' );
 $staleText = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1', 'shown' => hash( 'sha256', 'Eine frühere Fassung' ) ] );
 $staleCheck = $recordsOf( $b['id'] ) === [] && \Crm\Records::privacy( $appData, $b['id'] )['agreed'] === false;
 $changedPage = portalPage( $appData, '/portal/datenschutz?state=changed' )[1];
@@ -1536,7 +1593,7 @@ Db::exec( $appData, 'UPDATE settings SET value = \'2026-11-01\' WHERE key = \'pr
 portalSignIn( $appData, $accounts['anna'] );
 $changedPage = portalPage( $appData, '/portal/datenschutz' )[1];
 check( 'a text that is changed asks again: the client has not agreed to it, the nav has its sixth link, the page has the form and says when the text changed - the old records stay', \Crm\Records::privacy( $appData, $a['id'] )['agreed'] === false && count( $navHrefs( '/portal' ) ) === 6 && portalFind( $changedPage, '//form[contains(@class, "crm-privacy__form")]' ) !== []
-	&& portalFind( $changedPage, '//p[contains(@class, "crm-privacy__standing--open")]/time/@datetime' )[0]->nodeValue === '2026-11-01' && $recordsOf( $a['id'] ) === $beforeChange && \Crm\Records::latestPrivacy( $appData, $a['id'] )['sha256'] === hash( 'sha256', $text ) );
+	&& portalFind( $changedPage, '//p[contains(@class, "crm-privacy__standing--open")]//time/@datetime' )[0]->nodeValue === '2026-11-01' && $recordsOf( $a['id'] ) === $beforeChange && \Crm\Records::latestPrivacy( $appData, $a['id'] )['sha256'] === hash( 'sha256', $text ) );
 portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1' ] );
 $twoKept = $recordsOf( $a['id'], 'privacy' );
 check( '...agreeing to the new text is a record of its own, with the hash of the new text; the first record is as it was', count( $twoKept ) === 2 && $twoKept[0]['sha256'] === hash( 'sha256', \Crm\Settings::get( $appData, 'privacy_text' ) ) && $twoKept[1] === $beforeChange[0] && \Crm\Records::privacy( $appData, $a['id'] )['agreed'] === true );
@@ -1555,7 +1612,7 @@ unset( $_SERVER['HTTP_X_FORWARDED_FOR'], $_SERVER['HTTP_CLIENT_IP'] );
 $eddaPage = portalPage( $appData, '/portal/datenschutz' )[1];
 check( 'the address kept with a record is the peer\'s: a forged X-Forwarded-For or Client-IP header is not taken for it', $location( $forged ) === '/portal/datenschutz?state=agreed' && $recordsOf( $e['id'] )[0]['ip'] === '127.0.0.1' );
 check( 'the name of the account that agreed is text where the page says who: markup and a shortcode in it are shown as typed, escaped', portalText( $eddaPage, '//span[@class="crm-privacy__who"]' ) === '<i>Edda</i> [members-name]' && str_contains( $eddaPage, '&lt;i&gt;Edda&lt;/i&gt; &#91;members-name]' ) === true && portalFind( $eddaPage, '//span[@class="crm-privacy__who"]/i' ) === []
-	&& str_contains( portalText( portalPage( $appData, '/portal/meine-daten' )[1], '//p[@class="crm-data__privacy"]' ), '<i>Edda</i> [members-name]' ) === true );
+	&& str_contains( portalText( portalPage( $appData, '/portal/meine-daten' )[1], '//section[contains(@class, "crm-data__privacy")]' ), '<i>Edda</i> [members-name]' ) === true );
 portalSignIn( $appData, $accounts['anna'] );
 
 // --- The order -------------------------------------------------------------------------------------------------------------------
@@ -1594,6 +1651,7 @@ check( 'the fixtures: offers of Studio Nord that are open and run on, one that r
 	&& Documents::get( $appData, $orderExpired['id'] )['expired'] === true && Documents::get( $appData, $orderToday['id'] )['expired'] === false && Documents::get( $appData, $orderDeclined['id'] )['state'] === 'declined' && Documents::get( $appData, $orderOwnerAccepted['id'] )['state'] === 'accepted' );
 check( 'which offers can be ordered is one rule: an offer open or sent that has not run out - the day it is valid until counts', array_map( static fn( int $id ): bool => Documents::orderable( (array) Documents::get( $appData, $id ) ), [ $orderOne['id'], $orderExpired['id'], $orderDeclined['id'], $orderOwnerAccepted['id'], $orderToday['id'], $invoiceA['id'] ] ) === [ true, false, false, false, true, false ] );
 
+$toList = static fn( string $state, int $id ): string => '/portal/belege?state='. $state. '&beleg='. $id. '#beleg-'. $id;
 $formsOf = static fn( string $html ): array => array_map( static fn( \DOMElement $form ): string => $form->getAttribute( 'data-document' ), portalFind( $html, '//form[contains(@class, "crm-order")]' ) );
 $orderable = array_map( 'strval', [ $orderOne['id'], $orderThree['id'], $orderToday['id'] ] );
 
@@ -1601,10 +1659,11 @@ $orderable = array_map( 'strval', [ $orderOne['id'], $orderThree['id'], $orderTo
 \Crm\Settings::set( $appData, 'privacy_text', \Crm\Settings::get( $appData, 'privacy_text' ). ' Und noch eins.' );
 $projectPage = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
 $notes = portalFind( $projectPage, '//section[contains(@class, "crm-project__section--offer")]//p[contains(@class, "crm-order--privacy")]' );
-check( 'while the client has not agreed to the Datenschutz the form is replaced, under each offer that can be ordered, by the sentence that the Datenschutz comes first, with the link to the page - and there is no form', count( $notes ) === 3 && array_unique( array_map( static fn( \DOMElement $note ): string => portalFind( $note->ownerDocument->saveHTML( $note ), '//a/@href' )[0]->nodeValue, $notes ) ) === [ '/portal/datenschutz' ]
-	&& portalFind( $projectPage, '//form[contains(@class, "crm-order")]' ) === [] );
+check( 'while the client has not agreed to the Datenschutz there is no form under the offers that can be ordered; the sentence that the Datenschutz comes first, with the link to the page, stands once, above the offers and not under each of them', count( $notes ) === 1 && array_unique( array_map( static fn( \DOMElement $note ): string => portalFind( $note->ownerDocument->saveHTML( $note ), '//a/@href' )[0]->nodeValue, $notes ) ) === [ '/portal/datenschutz' ]
+	&& portalFind( $projectPage, '//form[contains(@class, "crm-order")]' ) === [] && portalFind( $projectPage, '//p[contains(@class, "crm-order--privacy")]/following-sibling::details[contains(@class, "crm-offer")]' ) !== [] && portalFind( $projectPage, '//details[contains(@class, "crm-offer")]//p[contains(@class, "crm-order--privacy")]' ) === []
+	&& count( portalFind( portalPage( $appData, '/portal/belege' )[1], '//p[contains(@class, "crm-order--privacy")]' ) ) === 1 );
 $privacyFirst = portalServe( $appData, '/.crm/auftrag', 'POST', [ 'document' => (string) $orderOne['id'], 'from' => 'projekt', 'agree' => '1' ] );
-check( '...a post is ?state=privacy, back to the page of the project, and nothing is kept: no record, the offer is as it was', $location( $privacyFirst ) === '/portal/projekte?projekt='. $p1. '&state=privacy' && $recordsOf( $a['id'], 'order' ) === [] && in_array( Documents::get( $appData, $orderOne['id'] )['state'], [ 'open', 'sent' ], true ) === true );
+check( '...a post is ?state=privacy, back to the page of the project, and nothing is kept: no record, the offer is as it was', $location( $privacyFirst ) === '/portal/projekte?projekt='. $p1. '&tab=angebot&state=privacy&beleg='. $orderOne['id']. '#angebot-'. $orderOne['id'] && $recordsOf( $a['id'], 'order' ) === [] && in_array( Documents::get( $appData, $orderOne['id'] )['state'], [ 'open', 'sent' ], true ) === true );
 portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1' ] );
 
 // the form
@@ -1614,7 +1673,7 @@ $formOne = portalFind( $projectPage, '//form[contains(@class, "crm-order")][@dat
 check( 'under each offer that can be ordered stands the form, in its section: the offers that ran out, the one not released, the declined one and the one the owner accepted have none - and no sentence about the Datenschutz is left', count( $formOne ) === 1 && $formsOf( $projectPage ) === array_map( 'strval', array_values( array_intersect( [ $orderToday['id'], $orderThree['id'], $orderOne['id'] ], array_map( 'intval', $formsOf( $projectPage ) ) ) ) )
 	&& array_diff( $orderable, $formsOf( $projectPage ) ) === [] && portalFind( $projectPage, '//p[contains(@class, "crm-order--privacy")]' ) === [] && portalFind( $projectPage, '//section[contains(@class, "crm-project__section--offer")]//form' ) !== []
 	&& array_filter( $formsOf( $projectPage ), static fn( string $id ): bool => in_array( $id, array_map( 'strval', [ $orderExpired['id'], $orderUnreleased['id'], $orderDeclined['id'], $orderOwnerAccepted['id'] ] ), true ) ) === [] );
-check( '...the form is a plain form with the button of the portal', count( portalFind( $projectPage, '//form[contains(concat(" ", normalize-space(@class), " "), " crm-order ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-form "))]//button[@type="submit"][contains(concat(" ", normalize-space(@class), " "), " crm-btn ")][contains(concat(" ", normalize-space(@class), " "), " nino-btn--primary ")]' ) ) === count( $formsOf( $projectPage ) ) && count( $formsOf( $projectPage ) ) >= 1 );
+check( '...the form is a plain form with the button of the portal', count( portalFind( $projectPage, '//form[contains(concat(" ", normalize-space(@class), " "), " crm-order ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-form "))]//button[@type="submit"][contains(concat(" ", normalize-space(@class), " "), " crm-btn ")][contains(concat(" ", normalize-space(@class), " "), " crm-btn--primary ")]' ) ) === count( $formsOf( $projectPage ) ) && count( $formsOf( $projectPage ) ) >= 1 );
 check( '...it carries the hash of the offer as it shows it - the JSON and the sentence - in a hidden field, which the post is compared with', portalFind( $projectPage, '//form[@data-document="'. $orderOne['id']. '"]//input[@name="shown"]/@value' )[0]->nodeValue === hash( 'sha256', \Crm\Records::orderShown( $appData, (array) Documents::get( $appData, $orderOne['id'] ), $sentence ) ) );
 check( '...it posts to /.crm/auftrag with the token, names the offer and the page it stands on, and has the box - required - with the sentence as its label: the company and the number of the offer, every character escaped (a shortcode in the name is text)', portalFind( $projectPage, '//form[@data-document="'. $orderOne['id']. '"]/@action' )[0]->nodeValue === '/.crm/auftrag' && portalFind( $projectPage, '//form[@data-document="'. $orderOne['id']. '"]/@method' )[0]->nodeValue === 'post'
 	&& portalFind( $projectPage, '//form[@data-document="'. $orderOne['id']. '"]//input[@name="_csrf"]/@value' )[0]->nodeValue === \Nino\Csrf::getToken( $appData ) && portalFind( $projectPage, '//form[@data-document="'. $orderOne['id']. '"]//input[@name="document"]/@value' )[0]->nodeValue === (string) $orderOne['id']
@@ -1672,15 +1731,16 @@ $refusals = [
 
 foreach( $refusals as $why => [ $over, $state ] ) {
 	$answer = $orderPost( $over );
-	check( 'refused - '. $why. ': ?state='. $state. ', back to a page of the portal, nothing is kept, nobody is mailed', $answer['statusCode'] === 303 && str_ends_with( $location( $answer ), 'state='. $state ) === true && str_starts_with( $location( $answer ), '/portal/' ) === true && $untouched() );
+	check( 'refused - '. $why. ': ?state='. $state. ', back to a page of the portal, nothing is kept, nobody is mailed', $answer['statusCode'] === 303 && preg_match( '/[?&]state='. $state. '(?:&|#|$)/D', $location( $answer ) ) === 1 && str_starts_with( $location( $answer ), '/portal/' ) === true && $untouched() );
 }
 
 $orderBenProject = $final( 'offer', $b['id'], [ 'date' => $today, 'valid_until' => $valid( 20 ), 'project' => $p3, 'template_key' => 'angebot', 'lines' => [ $line( 'Bens Angebot im Projekt' ) ] ] );
 Documents::release( $appData, $orderBenProject['id'], false );
 check( '...an offer of another client that names a project is no reason to name that project: the redirect is the list of documents - whatever else is wrong with the post: a token that is not the session\'s, a box that is not ticked', $location( $orderPost( [ 'document' => (string) $orderBenProject['id'] ] ) ) === '/portal/belege?state=invalid'
 	&& $location( $orderPost( [ 'document' => (string) $orderBenProject['id'], '_csrf' => 'wrong' ] ) ) === '/portal/belege?state=expired' && $location( $orderPost( [ 'document' => (string) $orderBenProject['id'], 'agree' => '' ] ) ) === '/portal/belege?state=invalid' );
-check( '...the page the refusal goes back to is the page of the project of an offer of the client, the list of documents for a document that is not the client\'s, and an unknown place is the list too', $location( $orderPost( [ '_csrf' => 'wrong' ] ) ) === '/portal/projekte?projekt='. $p1. '&state=expired' && $location( $orderPost( [ 'document' => (string) $orderBen['id'] ] ) ) === '/portal/belege?state=invalid'
-	&& $location( $orderPost( [ 'from' => 'woanders', 'agree' => '' ] ) ) === '/portal/belege?state=unchecked' && $location( $orderPost( [ 'document' => (string) $orderTwo['id'], 'agree' => '' ] ) ) === '/portal/belege?state=unchecked' );
+check( '...the page the refusal goes back to is the tab Angebot of the project of an offer of the client, with the offer named and the anchor of its card - the list of documents for a document that is not the client\'s, and an unknown place is the list too; an offer that may not be shown any more is not named', $location( $orderPost( [ '_csrf' => 'wrong' ] ) ) === '/portal/projekte?projekt='. $p1. '&tab=angebot&state=expired&beleg='. $orderOne['id']. '#angebot-'. $orderOne['id'] && $location( $orderPost( [ 'document' => (string) $orderBen['id'] ] ) ) === '/portal/belege?state=invalid'
+	&& $location( $orderPost( [ 'from' => 'woanders', 'agree' => '' ] ) ) === '/portal/belege?state=unchecked&beleg='. $orderOne['id']. '#beleg-'. $orderOne['id'] && $location( $orderPost( [ 'document' => (string) $orderTwo['id'], 'agree' => '' ] ) ) === '/portal/belege?state=unchecked&beleg='. $orderTwo['id']. '#beleg-'. $orderTwo['id']
+	&& $location( $orderPost( [ 'document' => (string) $orderExpired['id'] ] ) ) === '/portal/projekte?projekt='. $p1. '&tab=angebot&state=invalid' );
 
 // the order
 \Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
@@ -1689,7 +1749,7 @@ $orderRecords = $recordsOf( $a['id'], 'order' );
 $mailsOut = $orderMails();
 $orderDoc = (array) Documents::get( $appData, $orderOne['id'] );
 $shown = (array) json_decode( $orderRecords[0]['shown'] ?? '', true );
-check( 'the order: ?state=ordered on the page of the project, the offer is accepted and one record of kind order is kept', $ordered['statusCode'] === 303 && $location( $ordered ) === '/portal/projekte?projekt='. $p1. '&state=ordered' && $orderDoc['state'] === 'accepted' && count( $orderRecords ) === 1 && $orderRecords[0]['kind'] === 'order' );
+check( 'the order: ?state=ordered on the page of the project, the offer is accepted and one record of kind order is kept', $ordered['statusCode'] === 303 && $location( $ordered ) === '/portal/projekte?projekt='. $p1. '&tab=angebot&state=ordered&beleg='. $orderOne['id']. '#angebot-'. $orderOne['id'] && $orderDoc['state'] === 'accepted' && count( $orderRecords ) === 1 && $orderRecords[0]['kind'] === 'order' );
 check( '...the record names the offer and its project, the account as it was (id, address, name), the client, the time, the address and the browser', $orderRecords[0]['document_id'] === $orderOne['id'] && $orderRecords[0]['project'] === $p1 && $orderRecords[0]['client_id'] === $a['id'] && $orderRecords[0]['member_id'] === $accounts['anna']['id'] && $orderRecords[0]['member_email'] === 'anna@example.org' && $orderRecords[0]['member_name'] === 'Anna Nord'
 	&& substr( $orderRecords[0]['at'], 0, 10 ) === gmdate( 'Y-m-d' ) && $orderRecords[0]['ip'] === '127.0.0.1' && $orderRecords[0]['agent'] === 'Browser/1.0 (Test)' && \Crm\Records::forDocument( $appData, $orderOne['id'] ) === $orderRecords[0] );
 check( '...what the customer was shown is kept with its hash: the JSON of the offer - number, title, day, validity, project, VAT mode, lines, sums and the particulars of the company - and the sentence of the box, as read', $orderRecords[0]['sha256'] === hash( 'sha256', $orderRecords[0]['shown'] ) && $shown['number'] === $orderOne['number'] && $shown['date'] === $today && $shown['valid_until'] === $valid( 20 ) && $shown['project'] === $p1 && $shown['vat_mode'] === 'small_business'
@@ -1707,17 +1767,19 @@ check( '...the confirmation goes to the account that ordered, the reply to the o
 	&& str_contains( $confirmMail['body'], \Crm\Documents\Render::day( gmdate( 'Y-m-d' ) ) ) === true && str_contains( $confirmMail['body'], '[[' ) === false && array_diff( array_keys( $confirmMail ), [ 'to', 'subject', 'body', 'replyTo', 'sender', 'headers', 'sent' ] ) === [] && preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', strip_tags( $confirmMail['body'] ) ) !== 1 );
 
 // after it
-$afterPage = portalPage( $appData, '/portal/projekte?projekt='. $p1. '&state=ordered' )[1];
+$afterPage = portalPage( $appData, '/portal/projekte?projekt='. $p1. '&tab=angebot&state=ordered&beleg='. $orderOne['id'] )[1];
 $doneLine = portalFind( $afterPage, '//p[contains(@class, "crm-order--done")][@data-document="'. $orderOne['id']. '"]' );
-check( 'the offer says it was ordered, when and by whom, instead of the form; its state is accepted; the page says it in a status', count( $doneLine ) === 1 && portalFind( $afterPage, '//p[@data-document="'. $orderOne['id']. '"]/time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' ) && portalText( $afterPage, '//p[@data-document="'. $orderOne['id']. '"]/span[@class="crm-order__who"]' ) === 'Anna Nord'
-	&& portalFind( $afterPage, '//form[@data-document="'. $orderOne['id']. '"]' ) === [] && portalFind( $afterPage, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderOne['id']. '"]/@data-state' )[0]->nodeValue === 'accepted' && portalFind( $afterPage, '//p[@role="status"][contains(@class, "crm-order__state--ordered")]' ) !== [] );
-check( '...an offer the owner accepted shows its state and no line about an order - there is no record of one; an offer that ran out says so, an offer that was declined says that too, neither with a form', portalFind( $afterPage, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderOwnerAccepted['id']. '"]/@data-state' )[0]->nodeValue === 'accepted' && portalFind( $afterPage, '//*[@data-document="'. $orderOwnerAccepted['id']. '"][contains(@class, "crm-order")]' ) === []
-	&& portalFind( $afterPage, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderExpired['id']. '"]/@data-state' )[0]->nodeValue === 'expired' && portalFind( $afterPage, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderDeclined['id']. '"]/@data-state' )[0]->nodeValue === 'declined'
-	&& portalFind( $afterPage, '//*[@data-document="'. $orderExpired['id']. '" or @data-document="'. $orderDeclined['id']. '"][contains(@class, "crm-order")]' ) === [] );
+$offerCard = static fn( int $id ): string => '//details['. $token( 'crm-offer' ). '][@data-document="'. $id. '"]';
+check( 'the offer says it was ordered, when and by whom, instead of the form; its state is accepted; and the sentence of the order stands in the card of that offer (S5), once on the page, in a status, the card expanded', count( $doneLine ) === 1 && count( portalFind( $afterPage, $offerCard( $orderOne['id'] ). '//p[contains(@class, "crm-order--done")]' ) ) === 1 && portalFind( $afterPage, '//p[@data-document="'. $orderOne['id']. '"]//time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' ) && portalText( $afterPage, '//p[@data-document="'. $orderOne['id']. '"]/span/span[@class="crm-order__who"]' ) === 'Anna Nord'
+	&& portalFind( $afterPage, '//form[@data-document="'. $orderOne['id']. '"]' ) === [] && portalFind( $afterPage, $offerCard( $orderOne['id'] ). '/@data-state' )[0]->nodeValue === 'accepted' && portalFind( $afterPage, $offerCard( $orderOne['id'] ) )[0]->hasAttribute( 'open' ) === true
+	&& count( portalFind( $afterPage, '//p[@role="status"][contains(@class, "crm-order__state--ordered")]' ) ) === 1 && count( portalFind( $afterPage, $offerCard( $orderOne['id'] ). '//p[@role="status"][contains(@class, "crm-order__state--ordered")]' ) ) === 1 );
+check( '...an offer the owner accepted shows its state and no line about an order - there is no record of one; an offer that ran out says so, an offer that was declined says that too, neither with a form', portalFind( $afterPage, $offerCard( $orderOwnerAccepted['id'] ). '/@data-state' )[0]->nodeValue === 'accepted' && portalFind( $afterPage, '//*[@data-document="'. $orderOwnerAccepted['id']. '"][contains(@class, "crm-order")]' ) === []
+	&& portalFind( $afterPage, $offerCard( $orderExpired['id'] ). '/@data-state' )[0]->nodeValue === 'expired' && portalFind( $afterPage, $offerCard( $orderDeclined['id'] ). '/@data-state' )[0]->nodeValue === 'declined'
+	&& portalFind( $afterPage, '//*[@data-document="'. $orderExpired['id']. '" or @data-document="'. $orderDeclined['id']. '"][contains(@class, "crm-order")]' ) === [] && portalFind( $afterPage, $offerCard( $orderExpired['id'] ). '//form | '. $offerCard( $orderDeclined['id'] ). '//form' ) === [] );
 $belegeAfter = portalPage( $appData, '/portal/belege' )[1];
-check( '...the list of documents says the same under the row of the offer', portalFind( $belegeAfter, '//li[@data-document="'. $orderOne['id']. '"]//p[contains(@class, "crm-order--done")]' ) !== [] && portalFind( $belegeAfter, '//li[@data-document="'. $orderOne['id']. '"]//form' ) === [] && portalText( $belegeAfter, '//li[@data-document="'. $orderOne['id']. '"]//span[contains(concat(" ", normalize-space(@class), " "), " crm-documents__state ")]' ) === 'angenommen' );
+check( '...the list of documents says the same under the row of the offer', portalFind( $belegeAfter, '//li[@data-document="'. $orderOne['id']. '"]//p[contains(@class, "crm-order--done")]' ) !== [] && portalFind( $belegeAfter, '//li[@data-document="'. $orderOne['id']. '"]//form' ) === [] && portalText( $belegeAfter, '//li[@data-document="'. $orderOne['id']. '"]//span[contains(concat(" ", normalize-space(@class), " "), " crm-documents__state ")]' ) === $wordsDe['[[/project/crm-documents/state/accepted]]'] );
 portalSignIn( $appData, $accounts['carl'] );
-check( '...Carl of the same client reads it as Anna\'s order; Ben cannot order Studio Nord\'s offer: it is invalid for his client', portalText( portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1], '//p[@data-document="'. $orderOne['id']. '"]/span[@class="crm-order__who"]' ) === 'Anna Nord' );
+check( '...Carl of the same client reads it as Anna\'s order; Ben cannot order Studio Nord\'s offer: it is invalid for his client', portalText( portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1], '//p[@data-document="'. $orderOne['id']. '"]/span/span[@class="crm-order__who"]' ) === 'Anna Nord' );
 portalSignIn( $appData, $accounts['ben'] );
 \Crm\Settings::set( $appData, 'privacy_text', '' );
 $benPost = portalServe( $appData, '/.crm/auftrag', 'POST', [ 'document' => (string) $orderTwo['id'], 'from' => 'belege', 'agree' => '1' ] );
@@ -1726,17 +1788,17 @@ check( '...Ben posting the id of an offer of Studio Nord is ?state=invalid, noth
 portalSignIn( $appData, $accounts['anna'] );
 $sentSoFar = count( $orderMails() );
 $twice = $orderPost();
-check( 'the same offer ordered again is ?state=invalid: no second record, no second step, no mail', $location( $twice ) === '/portal/projekte?projekt='. $p1. '&state=invalid' && count( $recordsOf( $a['id'], 'order' ) ) === 1 && count( $orderMails() ) === $sentSoFar );
+check( 'the same offer ordered again is ?state=invalid: no second record, no second step, no mail', $location( $twice ) === '/portal/projekte?projekt='. $p1. '&tab=angebot&state=invalid' && count( $recordsOf( $a['id'], 'order' ) ) === 1 && count( $orderMails() ) === $sentSoFar );
 
 // from the list of documents; an offer without a project; valid until today
 $reset();
 $fromList = $orderPost( [ 'document' => (string) $orderTwo['id'], 'from' => 'belege' ] );
-check( 'ordered from the list of documents: the redirect goes back to the list; an offer without a project goes there from the page of a project too; the offer that is valid until today can be ordered', $location( $fromList ) === '/portal/belege?state=ordered' && Documents::get( $appData, $orderTwo['id'] )['state'] === 'accepted' );
+check( 'ordered from the list of documents: the redirect goes back to the list; an offer without a project goes there from the page of a project too; the offer that is valid until today can be ordered', $location( $fromList ) === $toList( 'ordered', $orderTwo['id'] ) && Documents::get( $appData, $orderTwo['id'] )['state'] === 'accepted' );
 $reset();
 $noProject = $orderPost( [ 'document' => (string) $orderThree['id'], 'from' => 'belege' ] );
 $reset();
 $todayPost = $orderPost( [ 'document' => (string) $orderToday['id'] ] );
-check( '...', $location( $noProject ) === '/portal/belege?state=ordered' && $location( $todayPost ) === '/portal/projekte?projekt='. $p1. '&state=ordered' && Documents::get( $appData, $orderToday['id'] )['state'] === 'accepted' && count( $recordsOf( $a['id'], 'order' ) ) === 4 );
+check( '...', $location( $noProject ) === $toList( 'ordered', $orderThree['id'] ) && $location( $todayPost ) === '/portal/projekte?projekt='. $p1. '&tab=angebot&state=ordered&beleg='. $orderToday['id']. '#angebot-'. $orderToday['id'] && Documents::get( $appData, $orderToday['id'] )['state'] === 'accepted' && count( $recordsOf( $a['id'], 'order' ) ) === 4 );
 check( 'the offers that were ordered are the orders of the client, the newest first', array_column( $recordsOf( $a['id'], 'order' ), 'document_id' ) === [ $orderToday['id'], $orderThree['id'], $orderTwo['id'], $orderOne['id'] ] && array_column( $recordsOf( $a['id'] ), 'kind' ) === [ 'order', 'order', 'order', 'order', 'privacy', 'privacy', 'privacy' ] && $recordsOf( $b['id'] ) === [] );
 
 // one transaction: the record and the step
@@ -1758,7 +1820,7 @@ $delivery = false;
 $ignored = ninoWarnings();
 $failed = $orderPost( [ 'document' => (string) $orderFail['id'], 'from' => 'belege' ] );
 $delivery = true;
-check( 'a mail the transport refuses does not undo the order: ?state=nomail - the page does not promise a confirmation -, the offer is accepted, the record is kept, and the log has a line that names the offer', $location( $failed ) === '/portal/belege?state=nomail' && Documents::get( $appData, $orderFail['id'] )['state'] === 'accepted' && \Crm\Records::forDocument( $appData, $orderFail['id'] ) !== null && str_contains( implode( ' ', ninoWarnings() ), $orderFail['number'] ) === true );
+check( 'a mail the transport refuses does not undo the order: ?state=nomail - the page does not promise a confirmation -, the offer is accepted, the record is kept, and the log has a line that names the offer', $location( $failed ) === $toList( 'nomail', $orderFail['id'] ) && Documents::get( $appData, $orderFail['id'] )['state'] === 'accepted' && \Crm\Records::forDocument( $appData, $orderFail['id'] ) !== null && str_contains( implode( ' ', ninoWarnings() ), $orderFail['number'] ) === true );
 $orderQuiet = $mkOffer( 'Ohne Adresse' );
 $reset();
 \Nino\Html::addFills( $appData, [ '[[/project/website/general/url]]' => '' ], '*' );
@@ -1766,7 +1828,7 @@ $ignored = ninoWarnings();
 $sentSoFar = count( $orderMails() );
 $quiet = $orderPost( [ 'document' => (string) $orderQuiet['id'], 'from' => 'belege' ] );
 \Nino\Html::addFills( $appData, [ '[[/project/website/general/url]]' => 'example.org/club' ], '*' );
-check( 'a site with no address has no link to put into a mail: the order is made all the same, nobody is mailed, the log has the line and the page promises nothing', $location( $quiet ) === '/portal/belege?state=nomail' && str_contains( implode( ' ', ninoWarnings() ), $orderQuiet['number'] ) === true && Documents::get( $appData, $orderQuiet['id'] )['state'] === 'accepted' && count( $orderMails() ) === $sentSoFar );
+check( 'a site with no address has no link to put into a mail: the order is made all the same, nobody is mailed, the log has the line and the page promises nothing', $location( $quiet ) === $toList( 'nomail', $orderQuiet['id'] ) && str_contains( implode( ' ', ninoWarnings() ), $orderQuiet['number'] ) === true && Documents::get( $appData, $orderQuiet['id'] )['state'] === 'accepted' && count( $orderMails() ) === $sentSoFar );
 
 // the cap of mails of the kernel: the order is kept, the log says what was not sent and the page does not promise a confirmation
 $orderCap = $mkOffer( 'Am Deckel' );
@@ -1783,7 +1845,7 @@ $warned = implode( ' ', ninoWarnings() );
 check( 'the mails of an order are one call of the cap: five go (two mails each), the sixth is "limit" and writes the warning that names the offer and no address', array_slice( $capped, 0, 5 ) === [ 2, 2, 2, 2, 2 ] && $capped[5] === 'limit' && str_contains( $warned, $orderOne['number'] ) === true && str_contains( $warned, 'cap of mails' ) === true && str_contains( $warned, '@' ) === false );
 $ignored = ninoWarnings();
 $capOrder = $orderPost( [ 'document' => (string) $orderCap['id'], 'from' => 'belege' ] );
-check( '...an order at the cap is kept all the same, ?state=nomail says so - and not that a confirmation was sent - and the log has the line', $location( $capOrder ) === '/portal/belege?state=nomail' && Documents::get( $appData, $orderCap['id'] )['state'] === 'accepted' && \Crm\Records::forDocument( $appData, $orderCap['id'] ) !== null && str_contains( implode( ' ', ninoWarnings() ), 'cap of mails' ) === true
+check( '...an order at the cap is kept all the same, ?state=nomail says so - and not that a confirmation was sent - and the log has the line', $location( $capOrder ) === $toList( 'nomail', $orderCap['id'] ) && Documents::get( $appData, $orderCap['id'] )['state'] === 'accepted' && \Crm\Records::forDocument( $appData, $orderCap['id'] ) !== null && str_contains( implode( ' ', ninoWarnings() ), 'cap of mails' ) === true
 	&& portalFind( portalPage( $appData, '/portal/belege?state=nomail' )[1], '//p[@role="status"][contains(@class, "crm-order__state--nomail")]' ) !== [] && portalText( portalPage( $appData, '/portal/belege?state=nomail' )[1], '//p[contains(@class, "crm-order__state--nomail")]' ) !== portalText( portalPage( $appData, '/portal/belege?state=ordered' )[1], '//p[contains(@class, "crm-order__state--ordered")]' ) );
 $reset();
 
@@ -1791,7 +1853,10 @@ $reset();
 
 echo "\n[crm-portal-start]\n";
 
-$cards = static fn( string $html ): array => array_map( static fn( \DOMElement $card ): string => $card->getAttribute( 'data-card' ), portalFind( $html, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-start__card ")]' ) );
+$cards = static fn( string $html ): array => array_map( static fn( \DOMElement $card ): string => $card->getAttribute( 'data-card' ), portalFind( $html, '//article[contains(concat(" ", normalize-space(@class), " "), " crm-start__card ")]' ) );
+$rowsOf = static fn( string $html, string $card ): array => portalFind( $html, '//article[@data-card="'. $card. '"]//li[contains(@class, "crm-start__row")]' );
+$partOf = static fn( \DOMElement $row, string $part ): string => portalText( $row->ownerDocument->saveHTML( $row ), '//span[@class="crm-start__'. $part. '"]' );
+$hrefOf = static fn( \DOMElement $row ): string => portalFind( $row->ownerDocument->saveHTML( $row ), '//a[contains(@class, "crm-start__link")]/@href' )[0]->nodeValue;
 $asVisitor();
 check( 'a visitor gets nothing of the start page', trim( \Nino\Html::renderHtml( $appData, '[crm-portal-start]' ) ) === '' );
 portalSignIn( $appData, $stray );
@@ -1803,10 +1868,11 @@ $dora = \Nino\Modules\Members::add( $appData, 'dora@example.org', 'Dora Leer', $
 \Nino\Features::deactivate( $appData, 'events' );
 portalSignIn( $appData, $dora );
 $nothing = portalPage( $appData, '/portal' )[1];
-check( 'a client for whom nothing applies reads one sentence: the heading "Was liegt an", no card', portalText( $nothing, '//h3[@class="crm-start__heading"]' ) === $wordsOfPortal['[[/project/crm-portal/start/heading]]'] && $cards( $nothing ) === [] && portalText( $nothing, '//p[@class="crm-start__nothing"]' ) === $wordsOfPortal['[[/project/crm-portal/start/nothing]]'] && portalLeft( $nothing ) === false );
+check( 'a client for whom nothing applies reads one sentence: the heading of the section, no card, and an empty state in line with an icon', portalText( $nothing, '//section[@aria-labelledby="crm-start-heading"]/h3[@id="crm-start-heading"][contains(@class, "crm-section__title")]' ) === $wordsOfPortal['[[/project/crm-portal/start/heading]]'] && $cards( $nothing ) === []
+	&& portalText( $nothing, '//div[contains(@class, "crm-start__nothing")][contains(@class, "crm-empty")]/svg[@aria-hidden="true"]/following-sibling::p[contains(@class, "crm-empty__text")]' ) === $wordsOfPortal['[[/project/crm-portal/start/nothing]]'] && portalLeft( $nothing ) === false );
 check( '...the start page has the cards above the open projects: the heading comes before the list of projects', strpos( $nothing, 'crm-start' ) < strpos( $nothing, 'crm-projects' ) );
 \Crm\Settings::set( $appData, 'privacy_text', $text );
-check( 'the card Datenschutz stands there while the owner asks for a text that the client has not agreed to, with the link - and alone it is the only card', $cards( portalPage( $appData, '/portal' )[1] ) === [ 'privacy' ] && portalFind( portalPage( $appData, '/portal' )[1], '//div[@data-card="privacy"]//a/@href' )[0]->nodeValue === '/portal/datenschutz' );
+check( 'the card Datenschutz stands there while the owner asks for a text that the client has not agreed to, with the link - and alone it is the only card', $cards( portalPage( $appData, '/portal' )[1] ) === [ 'privacy' ] && portalFind( portalPage( $appData, '/portal' )[1], '//article[@data-card="privacy"]//a/@href' )[0]->nodeValue === '/portal/datenschutz' );
 \Nino\Features::activate( $appData, 'events' );
 portalSignIn( $appData, $accounts['anna'] );
 Db::exec( $appData, 'UPDATE documents SET released_at = :at, date = :day WHERE id = :id', [ 'at' => gmdate( 'Y-m-d\TH:i:s\Z', time() - 20 * 86400 ), 'day' => date( 'Y-m-d', strtotime( '+1 day' ) ), 'id' => $invoiceA['id'] ] );
@@ -1821,47 +1887,54 @@ $pNew = $made( 'Dateien-Test', $a['number'], [ 'folder' => $folderNew['id'] ] );
 $orderOpen = $mkOffer( 'Wartet', [ 'project' => $p1 ] );
 $orderOpenPlain = $mkOffer( 'Wartet ohne Projekt', [] );
 $start = portalPage( $appData, '/portal' )[1];
-check( 'for Studio Nord the cards are there that apply - not the Datenschutz it has agreed to: the offers, the documents, the files and the dates', $cards( $start ) === [ 'offers', 'documents', 'files', 'dates' ] && portalFind( $start, '//div[@data-card="privacy"]' ) === [] );
-$offerRows = portalFind( $start, '//div[@data-card="offers"]//li' );
-$offerLinks = array_map( static fn( \DOMElement $row ): string => $row->getElementsByTagName( 'a' )->item( 0 )->getAttribute( 'href' ), $offerRows );
-$expectedTitles = [ $orderAtomic['number'], $orderOpen['number'], $orderOpenPlain['number'] ];
-sort( $expectedTitles );
-$offerTitles = array_map( static fn( \DOMElement $row ): string => portalText( $row->ownerDocument->saveHTML( $row ), '//a' ), $offerRows );
-sort( $offerTitles );
-check( 'Angebote, die auf Deine Beauftragung warten: each offer that can be ordered - not those that were ordered, ran out or are not released - with its number', count( $offerRows ) === 3 && $offerTitles === $expectedTitles );
-check( '...the day it is valid until and the way to its project page, or to the list of documents for an offer without a project', in_array( '/portal/projekte?projekt='. $p1. '&tab=angebot', $offerLinks, true ) === true && in_array( '/portal/belege', $offerLinks, true ) === true && str_contains( portalText( $start, '//div[@data-card="offers"]' ), \Crm\Documents\Render::day( $valid( 20 ) ) ) === true );
+check( 'for Studio Nord the cards are there that apply - not the Datenschutz it has agreed to: the offers, the documents, the files and the dates', $cards( $start ) === [ 'offers', 'documents', 'files', 'dates' ] && portalFind( $start, '//article[@data-card="privacy"]' ) === [] );
+$offerRows = $rowsOf( $start, 'offers' );
+$offerLinks = array_map( $hrefOf, $offerRows );
+$expectedNumbers = [ $orderAtomic['number'], $orderOpen['number'], $orderOpenPlain['number'] ];
+sort( $expectedNumbers );
+$offerNumbers = array_map( static fn( \DOMElement $row ) => explode( ' ', $partOf( $row, 'meta' ) )[0], $offerRows );
+sort( $offerNumbers );
+check( 'Angebote, die auf Deine Beauftragung warten: each offer that can be ordered - not those that were ordered, ran out or are not released - a row with its title and amount and its number as meta', count( $offerRows ) === 3 && $offerNumbers === $expectedNumbers && array_filter( $offerRows, static fn( \DOMElement $row ): bool => $partOf( $row, 'text' ) === '' || preg_match( '/\d,\d\d/', $partOf( $row, 'extra' ) ) !== 1 ) === [] );
+$expectedLinks = [ '/portal/projekte?projekt='. $p1. '&tab=angebot#angebot-'. $orderOpen['id'], '/portal/belege#beleg-'. $orderAtomic['id'], '/portal/belege#beleg-'. $orderOpenPlain['id'] ];
+$sortedLinks = $offerLinks;
+sort( $expectedLinks );
+sort( $sortedLinks );
+check( '...the link leads to the offer itself - the project page on the tab Angebot at the anchor of its card, or the anchor of its row in the list of documents for an offer without a project - and the meta has the day it is valid until', $sortedLinks === $expectedLinks && str_contains( portalText( $start, '//article[@data-card="offers"]' ), \Crm\Documents\Render::day( $valid( 20 ) ) ) === true );
 
 // an offer with no validity day: it never runs out, says no "gültig bis", is on the card with no day and can be ordered
 $openValid = Db::row( $appData, 'SELECT valid_until FROM documents WHERE id = :id', [ 'id' => $orderOpen['id'] ] )['valid_until'];
 Db::exec( $appData, 'UPDATE documents SET valid_until = NULL WHERE id = :id', [ 'id' => $orderOpen['id'] ] );
 $undatedStart = portalPage( $appData, '/portal' )[1];
-$undatedRow = array_values( array_filter( portalFind( $undatedStart, '//div[@data-card="offers"]//li' ), static fn( \DOMElement $row ): bool => portalText( $row->ownerDocument->saveHTML( $row ), '//a' ) === $orderOpen['number'] ) );
+$undatedRows = $rowsOf( $undatedStart, 'offers' );
+$undatedRow = array_values( array_filter( $undatedRows, static fn( \DOMElement $row ): bool => str_starts_with( $partOf( $row, 'meta' ), $orderOpen['number'] ) ) );
 $undatedProject = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
 check( 'an offer without a validity day can be ordered while it is open or sent, and is not expired', Documents::orderable( (array) Documents::get( $appData, $orderOpen['id'] ) ) === true && Documents::get( $appData, $orderOpen['id'] )['expired'] === false
 	&& array_column( Documents::released( $appData, $a['id'] ), 'expired', 'id' )[$orderOpen['id']] === false );
-check( '...the card of the start page has its row all the same, with no day behind it - and the other rows keep theirs', count( $undatedRow ) === 1 && portalText( $undatedRow[0]->ownerDocument->saveHTML( $undatedRow[0] ), '//span[@class="crm-start__meta"]' ) === ''
-	&& count( portalFind( $undatedStart, '//div[@data-card="offers"]//li' ) ) === 3 && count( array_filter( portalFind( $undatedStart, '//div[@data-card="offers"]//span[@class="crm-start__meta"]' ), static fn( \DOMElement $meta ): bool => trim( $meta->textContent ) !== '' ) ) === 2 );
-check( '...its offer on the page of the project has no line "gültig bis" and no time element for it, has the form of the order, and the others have their lines', portalFind( $undatedProject, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderOpen['id']. '"]//span[@class="crm-offer__valid"]' ) === []
-	&& portalFind( $undatedProject, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderOpen['id']. '"]//form[contains(@class, "crm-order")]' ) !== [] && portalFind( $undatedProject, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderOne['id']. '"]//span[@class="crm-offer__valid"]' ) !== [] );
+check( '...the card of the start page has its row all the same, with the number and no day behind it - and the other rows keep theirs', count( $undatedRow ) === 1 && $partOf( $undatedRow[0], 'meta' ) === $orderOpen['number']
+	&& count( $undatedRows ) === 3 && count( array_filter( $undatedRows, static fn( \DOMElement $row ): bool => str_contains( $partOf( $row, 'meta' ), '·' ) === true ) ) === 2 );
+$undatedCard = '//details[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderOpen['id']. '"]';
+check( '...its offer on the page of the project has no line "gültig bis" and no time element for it, has the form of the order, and the others have their lines', portalFind( $undatedProject, $undatedCard. '//span[@class="crm-offer__valid"]' ) === [] && portalFind( $undatedProject, $undatedCard. '//summary//time[not(@class="crm-offer__date")]' ) === []
+	&& portalFind( $undatedProject, $undatedCard. '//form[contains(@class, "crm-order")]' ) !== [] && portalFind( $undatedProject, '//details[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderOne['id']. '"]//span[@class="crm-offer__valid"]' ) !== [] );
 Db::exec( $appData, 'UPDATE documents SET valid_until = :v WHERE id = :id', [ 'v' => $openValid, 'id' => $orderOpen['id'] ] );
 Db::exec( $appData, 'UPDATE documents SET title = :t WHERE id = :id', [ 't' => '<b>Neu</b> [members-name]', 'id' => $orderOpenPlain['id'] ] );
 $markupStart = portalPage( $appData, '/portal' )[1];
-check( 'the title of an offer in the card is text: markup and a shortcode in it are shown as typed', str_contains( $markupStart, '&lt;b&gt;Neu&lt;/b&gt; &#91;members-name]' ) === true && str_contains( $markupStart, '<b>Neu</b>' ) === false && portalFind( $markupStart, '//div[@data-card="offers"]//b' ) === [] );
-check( 'the start page greets with the name of the member once and, after it, the company of the client as a block of its own', count( portalFind( $markupStart, '//section[@id="intro"]//span[contains(@class, "members-name")]' ) ) === 1 && portalText( $markupStart, '//section[@id="intro"]//span[contains(@class, "members-name")]' ) === 'Anna Nord'
-	&& portalText( $markupStart, '//section[@id="intro"]//span[contains(@class, "members-name")]/following-sibling::div[@class="crm-client"]' ) === \Crm\Clients::get( $appData, $a['id'] )['company'] );
-$documentRows = portalFind( $start, '//div[@data-card="documents"]//li' );
-check( 'Neue Dokumente der letzten 14 Tage: what was released lately, at most five, each with its kind and the day it was released and the way to the list - a document released twenty days ago is not there', count( $documentRows ) === 5 && str_contains( portalText( $start, '//div[@data-card="documents"]' ), $invoiceA['number'] ) === false
-	&& array_unique( array_map( static fn( \DOMElement $row ): string => $row->getElementsByTagName( 'a' )->item( 0 )->getAttribute( 'href' ), $documentRows ) ) === [ '/portal/belege' ] );
-$fileRows = portalFind( $start, '//div[@data-card="files"]//li' );
-check( '...a project whose folder holds one lately visible file of the owner, the member\'s own new upload, an old visible file and a hidden one counts exactly one new file', portalText( $start, '//div[@data-card="files"]//li[a[@href="/portal/projekte?projekt='. $pNew. '&tab=dateien#projekt-files"]]' ) === 'Dateien-Test 1 neue Datei' );
-check( 'Neue Dateien der letzten 14 Tage: for each project with a folder the number of files that came lately and that the member may see - the member\'s own uploads are no news, the old file and the hidden ones are not counted - and the way to the files of the project', count( $fileRows ) >= 1 && portalText( $start, '//div[@data-card="files"]//a[@href="/portal/projekte?projekt='. $p1. '&tab=dateien#projekt-files"]' ) === 'Album 2027'
-	&& preg_match( '/^Album 2027 ([2-9]) neue Dateien$/D', portalText( $start, '//div[@data-card="files"]//li[a[@href="/portal/projekte?projekt='. $p1. '&tab=dateien#projekt-files"]]' ) ) === 1 );
-check( 'the cards of the start page are .crm-card, and the page is a grid of them: no card without the class, and the links of the offers and of the files name their tab (angebot, dateien)', portalFind( $start, '//div[@data-card][not(contains(concat(" ", normalize-space(@class), " "), " crm-card "))]' ) === [] && count( portalFind( $start, '//div[@data-card]' ) ) >= 3
-	&& array_filter( array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( $start, '//div[@data-card="files"]//a' ) ), static fn( string $href ): bool => str_contains( $href, '&tab=dateien#projekt-files' ) === false ) === []
-	&& array_filter( array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( $start, '//div[@data-card="offers"]//a' ) ), static fn( string $href ): bool => str_contains( $href, 'projekt=' ) === true && str_contains( $href, '&tab=angebot' ) === false ) === [] );
-$dateRows = portalFind( $start, '//div[@data-card="dates"]//li' );
-check( 'Termine der nächsten 30 Tage: the dates of the member\'s group and for everyone, the soonest first, with the day and the time - not another group\'s, not one that is over or further away than thirty days - and the way to the page Termine', array_map( static fn( \DOMElement $row ): string => portalText( $row->ownerDocument->saveHTML( $row ), '//a' ), $dateRows ) === [ 'Aufnahme Gruppe A', '<b>x</b> [members-name]', 'Offener Termin' ]
-	&& str_contains( $start, '&lt;b&gt;x&lt;/b&gt; &#91;members-name]' ) === true && str_contains( portalText( $start, '//div[@data-card="dates"]//li' ), date( 'd.m.Y', strtotime( '+12 days' ) ). ' 10:00' ) === true && portalFind( $start, '//div[@data-card="dates"]//a/@href' )[0]->nodeValue === '/portal/termine' && str_contains( $start, 'Zu spät für die Karte' ) === false );
+check( 'the title of an offer in the card is text: markup and a shortcode in it are shown as typed', str_contains( $markupStart, '&lt;b&gt;Neu&lt;/b&gt; &#91;members-name]' ) === true && str_contains( $markupStart, '<b>Neu</b>' ) === false && portalFind( $markupStart, '//article[@data-card="offers"]//b' ) === [] );
+check( 'the start page names the member once, in the page head, and after it the company of the client; the greeting is no block of the page template', count( portalFind( $markupStart, '//div[contains(@class, "crm-head")]//span[contains(@class, "crm-head__member")]' ) ) === 1 && portalText( $markupStart, '//span[contains(@class, "crm-head__member")]' ) === 'Anna Nord'
+	&& portalText( $markupStart, '//span[contains(@class, "crm-head__member")]/following-sibling::span[contains(@class, "crm-head__company")]' ) === \Crm\Clients::get( $appData, $a['id'] )['company'] && portalFind( $markupStart, '//a[contains(@class, "crm-head__logout")]' ) !== [] && portalFind( $markupStart, '//section[@id="portal"]//*[contains(@class, "members-name") or contains(@class, "crm-client")]' ) === [] );
+$documentRows = $rowsOf( $start, 'documents' );
+check( 'Neue Dokumente der letzten 14 Tage: what was released lately, at most five, each with its title and amount, its number and the day it was released as meta, and the anchor of its row - a document released twenty days ago is not there', count( $documentRows ) === 5 && str_contains( portalText( $start, '//article[@data-card="documents"]' ), $invoiceA['number'] ) === false
+	&& array_filter( $documentRows, static fn( \DOMElement $row ) => preg_match( '~^(/portal/belege|/portal/projekte\?projekt=\d{5}&tab=belege)#beleg-\d+$~D', $hrefOf( $row ) ) !== 1 || str_ends_with( $partOf( $row, 'meta' ), \Crm\Documents\Render::day( gmdate( 'Y-m-d' ) ) ) === false ) === [] );
+$fileRows = $rowsOf( $start, 'files' );
+$fileRowOf = static fn( array $rows, string $project ): ?\DOMElement => array_values( array_filter( $rows, static fn( \DOMElement $row ): bool => $hrefOf( $row ) === '/portal/projekte?projekt='. $project. '&tab=dateien#projekt-files' ) )[0] ?? null;
+check( '...a project whose folder holds one lately visible file of the owner, the member\'s own new upload, an old visible file and a hidden one counts exactly one new file', $fileRowOf( $fileRows, $pNew ) !== null && preg_match( '/^1 \S/', $partOf( $fileRowOf( $fileRows, $pNew ), 'extra' ) ) === 1 );
+check( 'Neue Dateien der letzten 14 Tage: for each project with a folder the number of files that came lately and that the member may see - the member\'s own uploads are no news, the old file and the hidden ones are not counted - and the way to the files of the project', count( $fileRows ) >= 1 && $fileRowOf( $fileRows, $p1 ) !== null && $partOf( $fileRowOf( $fileRows, $p1 ), 'text' ) === 'Album 2027'
+	&& preg_match( '/^[2-9] \S/', $partOf( $fileRowOf( $fileRows, $p1 ), 'extra' ) ) === 1 && $partOf( $fileRowOf( $fileRows, $p1 ), 'extra' ) !== $partOf( $fileRowOf( $fileRows, $pNew ), 'extra' ) );
+check( 'the cards of the start page are .crm-card in one grid: no card without the class, and the links of the offers and of the files name their tab (angebot, dateien) and the anchor of their card', portalFind( $start, '//article[@data-card][not(contains(concat(" ", normalize-space(@class), " "), " crm-card "))]' ) === [] && count( portalFind( $start, '//div[contains(@class, "crm-start__grid")]/article[@data-card]' ) ) >= 3
+	&& array_filter( array_map( $hrefOf, $fileRows ), static fn( string $href ): bool => str_contains( $href, '&tab=dateien#projekt-files' ) === false ) === []
+	&& array_filter( $offerRows, static fn( \DOMElement $row ): bool => str_contains( $hrefOf( $row ), 'projekt=' ) === true && str_contains( $hrefOf( $row ), '&tab=angebot#angebot-' ) === false ) === [] );
+$dateRows = $rowsOf( $start, 'dates' );
+check( 'Termine der nächsten 30 Tage: the dates of the member\'s group and for everyone, the soonest first, with the day and the time - not another group\'s, not one that is over or further away than thirty days - and the way to the date itself on the page Termine', array_map( static fn( \DOMElement $row ): string => $partOf( $row, 'text' ), $dateRows ) === [ 'Aufnahme Gruppe A', '<b>x</b> [members-name]', 'Offener Termin' ]
+	&& str_contains( $start, '&lt;b&gt;x&lt;/b&gt; &#91;members-name]' ) === true && str_contains( $partOf( $dateRows[0], 'extra' ), date( 'd.m.Y', strtotime( '+12 days' ) ). ', 10:00' ) === true && array_map( $hrefOf, $dateRows ) === [ '/portal/termine#termin-aufnahme-a', '/portal/termine#termin-markup', '/portal/termine#termin-offen' ] && str_contains( $start, 'Zu spät für die Karte' ) === false );
 \Nino\Features::deactivate( $appData, 'events' );
 check( 'where Events is off there is no card of dates', in_array( 'dates', $cards( portalPage( $appData, '/portal' )[1] ), true ) === false );
 \Nino\Features::activate( $appData, 'events' );
@@ -1891,13 +1964,13 @@ foreach( [ $xmlA, $noXml, $xmlB ] as $document )
 	Documents::release( $appData, $document['id'], false );
 
 $xmlRow = static function( int $id ) use ( &$appData ): string {
-	foreach( preg_split( '/(?=<li class="crm-documents__row")/', \Nino\Html::renderHtml( $appData, '[crm-documents]' ) ) ?: [] as $row )
+	foreach( preg_split( '/(?=<li class="crm-documents__row )/', \Nino\Html::renderHtml( $appData, '[crm-documents]' ) ) ?: [] as $row )
 		if( str_contains( $row, 'data-document="'. $id. '"' ) === true )
 			return $row;
 
 	return '';
 };
-$linksOf = static fn( string $row ): array => array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( '<ul>'. $row. '</ul>', '//span[@class="crm-documents__links"]/a' ) );
+$linksOf = static fn( string $row ): array => array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( '<ul>'. $row. '</ul>', '//span[contains(@class, "crm-documents__links")]/a' ) );
 
 check( 'the member of the client is served the file of a released invoice: 200, application/xml, an attachment under the number, kept out of every cache', portalSignIn( $appData, $accounts['anna'] ) === true && ( $served = portalServe( $appData, '/.crm/xml/'. $xmlA['id'] ) )['statusCode'] === 200
 	&& ( $served['file'] ?? '' ) === \Nino\Filesystem::path( $appData, $xmlA['xml_path'] ) && $served['header']['Content-Type'] === 'application/xml' && $served['header']['Content-Disposition'] === 'attachment; filename="'. $xmlA['number']. '.xml"' && $served['header']['Cache-Control'] === 'private, no-store' );
@@ -1928,8 +2001,8 @@ check( 'the workbench keeps the route: any document with a file, released or not
 
 portalSignIn( $appData, $accounts['anna'] );
 $withFile = $xmlRow( $xmlA['id'] );
-check( 'the row of a document with a file has a second download in its links, next to the PDF: "E-Rechnung (XML)", the address of the route, no query', $linksOf( $withFile ) === [ '/.crm/pdf/'. $xmlA['id']. '?download=1', '/.crm/xml/'. $xmlA['id'] ]
-	&& portalText( '<ul>'. $withFile. '</ul>', '//a[contains(@class, "crm-documents__xml")]' ) === $wordsDe['[[/project/crm-documents/list/xml]]'] && portalFind( '<ul>'. $withFile. '</ul>', '//a[@class="crm-documents__download crm-documents__xml"]' ) !== [] );
+check( 'the row of a document with a file has a second download in the action area of its row, next to the PDF: "E-Rechnung (XML)", the address of the route, no query - a small secondary button like the first, its icon hidden from a reader and the number for one', $linksOf( $withFile ) === [ '/.crm/pdf/'. $xmlA['id']. '?download=1', '/.crm/xml/'. $xmlA['id'] ]
+	&& portalText( '<ul>'. $withFile. '</ul>', '//a[contains(@class, "crm-documents__xml")]/span[1]' ) === $wordsDe['[[/project/crm-documents/list/xml]]'] && portalFind( '<ul>'. $withFile. '</ul>', '//span[contains(@class, "crm-table__actions")]/a[contains(@class, "crm-documents__download")][contains(@class, "crm-documents__xml")][contains(@class, "crm-btn--small")][contains(@class, "crm-btn--secondary")]/svg[@aria-hidden="true"]/following-sibling::span[contains(@class, "nino-sr-only")]' ) !== [] );
 check( '...a row of a document without a file has the PDF alone, and so has a row of the private client\'s', $linksOf( $xmlRow( $noXml['id'] ) ) === [ '/.crm/pdf/'. $noXml['id']. '?download=1' ] && str_contains( $xmlRow( $noXml['id'] ), 'crm-documents__xml' ) === false && str_contains( $xmlRow( $invoiceA['id'] ), '/.crm/xml/' ) === false );
 $projectHtml = portalPage( $appData, '/portal/projekte?projekt='. $p1. '&tab=belege' )[1];
 check( '...the Belege tab of a project shows it in the same row', array_map( static fn( \DOMElement $link ): string => $link->getAttribute( 'href' ), portalFind( $projectHtml, '//section[contains(@class, "crm-project__section--documents")]//li[@data-document="'. $xmlA['id']. '"]//a' ) ) === [ '/.crm/pdf/'. $xmlA['id']. '?download=1', '/.crm/xml/'. $xmlA['id'] ] );
@@ -1940,6 +2013,172 @@ check( 'on a site in a directory the address of the file has the directory in fr
 
 	return $row;
 } )(), 'href="/club/.crm/xml/'. $xmlA['id']. '"' ) === true );
+
+// --- The design: head, pills, amounts, due days, how to pay, anchors, empty states, icons -------------------------------------------------------
+
+echo "\nThe design of the portal\n";
+
+$asAdmin();
+$settingsWere = [ 'bank_name' => \Crm\Settings::get( $appData, 'bank_name' ), 'iban' => \Crm\Settings::get( $appData, 'iban' ), 'bic' => \Crm\Settings::get( $appData, 'bic' ) ];
+$mkInvoice = static function( string $title, array $over = [] ) use ( $final, $a, $line, $today, &$appData ): array {
+	$invoice = $final( 'invoice', $a['id'], $over + [ 'date' => $today, 'template_key' => 'rechnung', 'lines' => [ $line( $title ) ] ] );
+	Documents::release( $appData, $invoice['id'], false );
+
+	return $invoice;
+};
+$invFuture = $mkInvoice( 'Fällt später' );
+$invPast = $mkInvoice( 'Lange her', [ 'date' => '2026-01-10' ] );
+$invPaid = $mkInvoice( 'Bezahlt' );
+$invCancelled = $mkInvoice( 'Storniert' );
+$invNoDue = $mkInvoice( 'Ohne Tag' );
+foreach( [ $invFuture, $invPast, $invPaid, $invNoDue ] as $sent )
+	Documents::setState( $appData, $sent['id'], 'sent' );
+
+Documents::setState( $appData, $invPaid['id'], 'paid' );
+Db::exec( $appData, 'UPDATE documents SET state = \'cancelled\' WHERE id = :id', [ 'id' => $invCancelled['id'] ] );
+Db::exec( $appData, 'UPDATE documents SET due_date = NULL WHERE id = :id', [ 'id' => $invNoDue['id'] ] );
+\Crm\Settings::set( $appData, 'bank_name', 'Hamburger <b>Sparkasse</b>' );
+\Crm\Settings::set( $appData, 'iban', 'DE02 1203 0000 0000 2020 51' );
+\Crm\Settings::set( $appData, 'bic', 'BYLADEM1001' );
+check( 'the fixtures: an invoice that is still sent and falls due later, one past its day, one paid, one cancelled, one with no day to pay by', Documents::get( $appData, $invFuture['id'] )['state'] === 'sent' && Documents::get( $appData, $invFuture['id'] )['due_date'] === date( 'Y-m-d', strtotime( '+14 days' ) ) && Documents::get( $appData, $invPast['id'] )['due_date'] === '2026-01-24'
+	&& Documents::get( $appData, $invPaid['id'] )['state'] === 'paid' && Documents::get( $appData, $invCancelled['id'] )['state'] === 'cancelled' && Documents::get( $appData, $invPast['id'] )['state'] === 'sent' && (string) Documents::get( $appData, $invNoDue['id'] )['due_date'] === '' );
+portalSignIn( $appData, $accounts['anna'] );
+$docs = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
+$pill = static fn( string $html, int $id ): ?\DOMElement => portalFind( $html, '//li[@data-document="'. $id. '"]//span[contains(@class, "crm-documents__state")]/span[contains(@class, "crm-pill")]' )[0] ?? null;
+$toneOf = static fn( string $html, int $id ): string => $pill( $html, $id ) === null ? '' : preg_replace( '/^.*crm-pill--(\w+).*$/s', '$1', $pill( $html, $id )->getAttribute( 'class' ) );
+check( 'the pill of a row has the tone of the state: an invoice that is open is info, one past its day danger, one paid success, a cancelled one muted - an offer that ran out muted, a signed contract success', $toneOf( $docs, $invFuture['id'] ) === 'info' && $toneOf( $docs, $invPast['id'] ) === 'danger' && $toneOf( $docs, $invPaid['id'] ) === 'success' && $toneOf( $docs, $invCancelled['id'] ) === 'muted'
+	&& $toneOf( $docs, $offerA['id'] ) === 'muted' && $toneOf( $docs, $contractA['id'] ) === 'success' && $toneOf( $docs, $infoA['id'] ) === 'info' );
+check( '...the row says the state as the customer has it in data-state - an invoice past its day is overdue, one that was sent is open, and neither "sent" nor "draft" is a state of any row', array_map( static fn( int $id ): string => portalFind( $docs, '//li[@data-document="'. $id. '"]/@data-state' )[0]->nodeValue, [ $invFuture['id'], $invPast['id'], $invPaid['id'], $invCancelled['id'] ] ) === [ 'open', 'overdue', 'paid', 'cancelled' ]
+	&& portalFind( $docs, '//li[@data-state="sent" or @data-state="draft"]' ) === [] && portalText( $docs, '//li[@data-document="'. $invFuture['id']. '"]//span[contains(@class, "crm-pill")]' ) === $wordsDe['[[/project/crm-documents/state/open]]'] );
+check( '...a customer never reads "versendet" or "Entwurf": the words have no key for either state, in German and in English, and no row carries one', array_filter( [ 'sent', 'draft' ], static fn( string $state ): bool => isset( $wordsDe['[[/project/crm-documents/state/'. $state. ']]'] ) || isset( $wordsEn['[[/project/crm-documents/state/'. $state. ']]'] ) ) === []
+	&& array_filter( [ 'versendet', 'Entwurf' ], static fn( string $word ): bool => str_contains( $docs, $word ) || str_contains( portalPage( $appData, '/portal/belege' )[1], $word ) || str_contains( portalPage( $appData, '/portal' )[1], $word ) ) === [] );
+check( '...an invoice past its day says since when, with the day as a time element in the pill; one that is open says nothing of it', portalFind( $docs, '//li[@data-document="'. $invPast['id']. '"]//span[contains(@class, "crm-pill--danger")]/time/@datetime' )[0]->nodeValue === '2026-01-24'
+	&& str_starts_with( portalText( $docs, '//li[@data-document="'. $invPast['id']. '"]//span[contains(@class, "crm-pill--danger")]' ), $wordsDe['[[/project/crm-documents/state/overdue]]'] ) === true && portalFind( $docs, '//li[@data-document="'. $invFuture['id']. '"]//span[contains(@class, "crm-pill")]/time' ) === [] );
+$cell = static fn( string $html, int $id, string $name ): ?\DOMElement => portalFind( $html, '//li[@data-document="'. $id. '"]//*[contains(concat(" ", normalize-space(@class), " "), " crm-documents__'. $name. ' ")]' )[0] ?? null;
+check( 'the amount cell: the gross amount of a document with lines, right-aligned as a number cell - empty for a contract, a privacy document and an information', portalText( $docs, '//li[@data-document="'. $invFuture['id']. '"]//span[contains(@class, "crm-documents__amount")]' ) === '100,00 €' && str_contains( $cell( $docs, $invFuture['id'], 'amount' )->getAttribute( 'class' ), 'crm-table__num' ) === true
+	&& portalText( $docs, '//li[@data-document="'. $offerA['id']. '"]//span[contains(@class, "crm-documents__amount")]' ) === '100,00 €' && trim( $cell( $docs, $contractA['id'], 'amount' )->textContent ) === '' && trim( $cell( $docs, $infoA['id'], 'amount' )->textContent ) === '' && trim( $cell( $docs, $privacyA['id'], 'amount' )->textContent ) === '' );
+check( 'the due cell: an invoice names its day with the machine day ("fällig am"), one with no day says it is payable at once, a paid one keeps its day, and no other kind has a due cell with anything in it', portalFind( $docs, '//li[@data-document="'. $invFuture['id']. '"]//span[contains(@class, "crm-documents__due")]/time/@datetime' )[0]->nodeValue === date( 'Y-m-d', strtotime( '+14 days' ) )
+	&& portalFind( $docs, '//li[@data-document="'. $invNoDue['id']. '"]//span[contains(@class, "crm-documents__due-none")]' ) !== [] && portalText( $docs, '//li[@data-document="'. $invNoDue['id']. '"]//span[contains(@class, "crm-documents__due-none")]' ) === $wordsDe['[[/project/crm-documents/list/due-none]]']
+	&& portalFind( $docs, '//li[@data-document="'. $invPaid['id']. '"]//span[contains(@class, "crm-documents__due")]/time' ) !== [] && trim( $cell( $docs, $offerA['id'], 'due' )->textContent ) === '' && trim( $cell( $docs, $contractA['id'], 'due' )->textContent ) === '' );
+
+// how an open invoice is paid
+$payOf = static fn( string $html, int $id ): array => portalFind( $html, '//li[@data-document="'. $id. '"]/details[contains(@class, "crm-documents__fold")]/div[contains(@class, "crm-fold__body")]/dl[contains(@class, "crm-pay")]' );
+$pay = $payOf( $docs, $invFuture['id'] );
+$facts = $pay === [] ? [] : portalFind( $pay[0]->ownerDocument->saveHTML( $pay[0] ), '//div[contains(@class, "crm-pay__fact")]' );
+check( 'an open invoice folds out to how it is paid: the amount, the payee, the bank, the IBAN and the BIC of the settings, and the number as the purpose - in a nested card, every value escaped, collapsed until it is asked for', count( $pay ) === 1 && str_contains( $pay[0]->getAttribute( 'class' ), 'crm-card--nested' ) === true
+	&& array_map( static fn( \DOMElement $fact ): string => preg_replace( '/^.*crm-pay__fact--/', '', $fact->getAttribute( 'class' ) ), $facts ) === [ 'amount', 'to', 'bank', 'iban', 'bic', 'purpose' ]
+	&& array_map( static fn( \DOMElement $fact ): string => portalText( $fact->ownerDocument->saveHTML( $fact ), '//dd' ), $facts ) === [ '100,00 €', portalText( $pay[0]->ownerDocument->saveHTML( $pay[0] ), '//div[contains(@class, "crm-pay__fact--to")]/dd' ), 'Hamburger <b>Sparkasse</b>', 'DE02 1203 0000 0000 2020 51', 'BYLADEM1001', $invFuture['number'] ]
+	&& portalFind( $docs, '//li[@data-document="'. $invFuture['id']. '"]/details/@open' ) === [] && portalFind( $docs, '//li[@data-document="'. $invFuture['id']. '"]//dl[contains(@class, "crm-pay")]//b' ) === [] );
+check( '...the row has the button that unfolds it, a span in the summary with the word and the number for a screen reader; an invoice past its day has the same block', portalText( $docs, '//li[@data-document="'. $invFuture['id']. '"]/details/summary//span[contains(@class, "crm-table__toggle")]/span[1]' ) === $wordsDe['[[/project/crm-portal/pay/fold]]']
+	&& portalText( $docs, '//li[@data-document="'. $invFuture['id']. '"]/details/summary//span[contains(@class, "crm-table__toggle")]/span[contains(@class, "nino-sr-only")]' ) === $invFuture['number'] && count( $payOf( $docs, $invPast['id'] ) ) === 1 && count( $payOf( $docs, $invNoDue['id'] ) ) === 1 );
+check( '...a paid or a cancelled invoice has no block and no fold: the row is the plain line; nor have an offer\'s or a contract\'s rows one of these', array_filter( [ $invPaid['id'], $invCancelled['id'] ], static fn( int $id ): bool => $payOf( $docs, $id ) !== [] || portalFind( $docs, '//li[@data-document="'. $id. '"]/details' ) !== [] || portalFind( $docs, '//li[@data-document="'. $id. '"]/div[contains(@class, "crm-documents__line")]' ) === [] ) === []
+	&& portalFind( $docs, '//li[@data-category="contract"]//dl[contains(@class, "crm-pay")] | //li[@data-category="offer"]//dl[contains(@class, "crm-pay")]' ) === [] );
+\Crm\Settings::set( $appData, 'bic', '' );
+$noBic = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
+check( '...a BIC that the settings do not have is not a line of the block', array_map( static fn( \DOMElement $fact ): string => preg_replace( '/^.*crm-pay__fact--/', '', $fact->getAttribute( 'class' ) ), portalFind( $noBic, '//li[@data-document="'. $invFuture['id']. '"]//div[contains(@class, "crm-pay__fact")]' ) ) === [ 'amount', 'to', 'bank', 'iban', 'purpose' ] );
+\Crm\Settings::set( $appData, 'bank_name', '' );
+\Crm\Settings::set( $appData, 'iban', '' );
+$noBank = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
+check( '...and where the settings hold neither a bank nor an IBAN there is nothing to tell: no block, no fold and no button on the row of an open invoice', portalFind( $noBank, '//dl[contains(@class, "crm-pay")]' ) === [] && portalFind( $noBank, '//li[@data-document="'. $invFuture['id']. '"]/details' ) === [] && portalFind( $noBank, '//li[@data-document="'. $invFuture['id']. '"]//span[contains(@class, "crm-table__toggle")]' ) === [] );
+foreach( $settingsWere as $key => $value )
+	\Crm\Settings::set( $appData, $key, $value );
+
+// the offers in the list of documents: a row that unfolds to its card, folded unless the address names it
+$offerRowOf = static fn( string $html, int $id ): array => portalFind( $html, '//li[@data-document="'. $id. '"]/details[contains(@class, "crm-documents__fold")]' );
+$beleg = portalPage( $appData, '/portal/belege' )[1];
+check( 'an offer in the list of documents is a row that folds out to its card - collapsed to its line, with the button that unfolds it - and so are the orderable ones; no fold is open on the page', count( $offerRowOf( $beleg, $orderOpenPlain['id'] ) ) === 1 && $offerRowOf( $beleg, $orderOpenPlain['id'] )[0]->hasAttribute( 'open' ) === false && count( $offerRowOf( $beleg, $offerA['id'] ) ) === 1
+	&& portalText( $beleg, '//li[@data-document="'. $orderOpenPlain['id']. '"]/details/summary//span[contains(@class, "crm-table__toggle")]/span[1]' ) === $wordsDe['[[/project/crm-portal/order/fold]]'] && portalFind( $beleg, '//li[@data-document="'. $orderOpenPlain['id']. '"]/details/div[contains(@class, "crm-fold__body")]//form[contains(@class, "crm-order")]' ) !== []
+	&& portalFind( $beleg, '//li//details[@open]' ) === [] );
+$named = portalPage( $appData, '/portal/belege?beleg='. $orderOpenPlain['id'] )[1];
+check( '...the address that names an offer (?beleg=<id>) unfolds that row and no other', $offerRowOf( $named, $orderOpenPlain['id'] )[0]->hasAttribute( 'open' ) === true && count( portalFind( $named, '//li//details[@open]' ) ) === 1 );
+
+// every row and every card has the anchor the start page and the redirects lead to
+$projectDocs = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
+$idsOf = static fn( string $html ): array => array_map( static fn( \DOMNode $node ): string => (string) $node->nodeValue, portalFind( $html, '//@id' ) );
+check( 'the anchors: each document row is #beleg-<id> and each offer card #angebot-<id>, and no id is given twice on a page', array_filter( portalFind( $beleg, '//li[@data-document]' ), static fn( \DOMElement $row ): bool => $row->getAttribute( 'id' ) !== 'beleg-'. $row->getAttribute( 'data-document' ) ) === []
+	&& array_filter( portalFind( $projectDocs, '//details[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")]' ), static fn( \DOMElement $card ): bool => $card->getAttribute( 'id' ) !== 'angebot-'. $card->getAttribute( 'data-document' ) ) === [] && portalFind( $projectDocs, '//details[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")]' ) !== []
+	&& array_unique( $idsOf( $beleg ) ) === $idsOf( $beleg ) && array_unique( $idsOf( $projectDocs ) ) === $idsOf( $projectDocs ) );
+$startNow = portalPage( $appData, '/portal' )[1];
+$targets = [];
+
+foreach( [ 'offers', 'documents', 'files', 'dates' ] as $card )
+	foreach( $rowsOf( $startNow, $card ) as $row )
+		$targets[] = $hrefOf( $row );
+
+check( '...every link on a card of the start page leads to an anchor that the page it names has', count( $targets ) >= 8 && array_filter( $targets, static function( string $href ) use ( &$appData ): bool {
+	[ $address, $fragment ] = explode( '#', $href, 2 ) + [ '', '' ];
+
+	return $fragment === '' || portalFind( portalPage( $appData, html_entity_decode( $address ) )[1], '//*[@id="'. $fragment. '"]' ) === [];
+} ) === [] );
+
+// the head of every page
+$pagesOf = [ '/portal' => 'portal', '/portal/meine-daten' => 'meine-daten', '/portal/projekte' => 'projekte', '/portal/upload' => 'upload', '/portal/belege' => 'belege', '/portal/termine' => 'termine', '/portal/datenschutz' => 'datenschutz' ];
+$headIssues = [];
+
+foreach( $pagesOf as $uri => $name ) {
+	$one = portalPage( $appData, $uri )[1];
+	$headOk = count( portalFind( $one, '//div[@class="crm-head"]' ) ) === 1 && count( portalFind( $one, '//div[@class="crm-head"]//h2[contains(@class, "crm-head__title")]/span[@class="crm-head__name"]' ) ) === 1
+		&& portalText( $one, '//span[@class="crm-head__name"]' ) === $unitDe['[[/_nino/webpage/portal'. ( $name === 'portal' ? '' : '/'. $name ). '/title]]'] && count( portalFind( $one, '//p[@class="crm-head__lead"]' ) ) === 1
+		&& portalText( $one, '//p[@class="crm-head__meta"]/span[@class="crm-head__member"]' ) === 'Anna Nord' && portalText( $one, '//p[@class="crm-head__meta"]/span[@class="crm-head__company"]' ) !== ''
+		&& portalFind( $one, '//div[@class="crm-head"]//div[contains(@class, "crm-head__actions")]/a[contains(@class, "crm-head__logout")][@href="/.members/logout"][contains(@class, "crm-btn")]/svg[@aria-hidden="true"]' ) !== []
+		&& portalFind( $one, '//div[@class="crm-head"]//header' ) === [] && strpos( $one, 'crm-head__title' ) < strpos( $one, 'class="crm-' . ( [ 'portal' => 'start', 'meine-daten' => 'data', 'projekte' => 'projects', 'upload' => 'upload', 'belege' => 'documents', 'termine' => 'dates', 'datenschutz' => 'privacy' ][$name] ). '' );
+
+	if( $headOk === false )
+		$headIssues[] = $uri;
+}
+
+check( 'every page of the portal opens with the page head: a div (never a header), the page title as the h2, the lead, the member and the company in the meta line and the button Abmelden with its icon - and it is the first thing in the page, before the content', $headIssues === [] );
+check( '...the calendar is in the head of Termine only, the breadcrumb in the head of a project only', array_filter( array_keys( $pagesOf ), static fn( string $uri ): bool => ( portalFind( portalPage( $appData, $uri )[1], '//div[@class="crm-head"]//a[contains(@class, "events-feed")]' ) !== [] ) !== ( $uri === '/portal/termine' ) ) === []
+	&& array_filter( array_keys( $pagesOf ), static fn( string $uri ): bool => portalFind( portalPage( $appData, $uri )[1], '//div[@class="crm-head"]//nav[contains(@class, "crm-crumbs")]' ) !== [] ) === [] && portalFind( $projectDocs, '//div[@class="crm-head"]//nav[contains(@class, "crm-crumbs")]' ) !== [] );
+
+// the empty states: an icon, the sentence, and the way to the studio
+$strayState = portalSignIn( $appData, $stray ) === true;
+$emptyOf = static fn( string $component ): string => \Nino\Html::renderHtml( $appData, '['. $component. ']' );
+$emptyChecks = array_filter( [ 'crm-documents', 'crm-projects', 'crm-client-data', 'crm-privacy', 'crm-uploads' ], static function( string $component ) use ( $emptyOf ): bool {
+	$html = $emptyOf( $component );
+
+	return count( portalFind( $html, '//div[contains(@class, "crm-empty")]/svg[@aria-hidden="true"]/following-sibling::p[contains(@class, "crm-empty__text")]' ) ) !== 1
+		|| portalFind( $html, '//p[contains(@class, "crm-empty__contact")]/a[contains(@class, "crm-empty__link")][starts-with(@href, "mailto:")]' ) === [] || portalFind( $html, '//p[contains(@class, "crm-empty__contact")]/a[contains(@class, "crm-empty__link")][starts-with(@href, "tel:")]' ) === []
+		|| count( portalFind( $html, '//p[contains(@class, "crm-empty__contact")]/a[contains(@class, "crm-empty__link")]' ) ) !== count( portalFind( $html, '//p[contains(@class, "crm-empty__contact")]/a[contains(@class, "crm-empty__link")]/svg[@aria-hidden="true"]' ) );
+} );
+check( 'the empty states - documents, projects, data, Datenschutz, uploads - each have an icon, one sentence and the e-mail address and the phone number of the studio as links (mailto: and tel:)', $strayState === true && $emptyChecks === [] );
+$mailWas = (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' );
+$phoneWas = (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/phone' );
+\Nino\Html::addFills( $appData, [ '[[/project/company/contact/email]]' => 'no-address', '[[/project/company/contact/phone]]' => 'keine' ], '*' );
+$bare = portalPage( $appData, '/portal/belege' )[1];
+\Nino\Html::addFills( $appData, [ '[[/project/company/contact/email]]' => 'no-address', '[[/project/company/contact/phone]]' => '+49 (0) 170 1234567' ], '*' );
+$phoneOnly = portalPage( $appData, '/portal/belege' )[1];
+\Nino\Html::addFills( $appData, [ '[[/project/company/contact/email]]' => $mailWas, '[[/project/company/contact/phone]]' => $phoneWas ], '*' );
+check( '...a studio without an address and a phone leaves the way out and keeps the sentence; with one of them it links that one', portalFind( $bare, '//p[contains(@class, "crm-empty__text")]' ) !== [] && portalFind( $bare, '//p[contains(@class, "crm-empty__contact")]' ) === []
+	&& portalFind( $phoneOnly, '//p[contains(@class, "crm-empty__contact")]/a[starts-with(@href, "tel:")]' ) !== [] && portalFind( $phoneOnly, '//a[starts-with(@href, "mailto:")]' ) === [] );
+portalSignIn( $appData, $accounts['anna'] );
+
+// the icons: inline SVG, decoration hidden from a reader, a named one an image with its name
+$decor = \Crm\Portal\Icons::svg( 'check' );
+$named = \Crm\Portal\Icons::svg( 'check', 'Erledigt <b>' );
+check( 'an icon is an inline svg: beside words it is hidden from a reader and cannot be focused, with a name it is an image carrying it, escaped - and a name that is no icon is nothing', str_starts_with( $decor, '<svg ' ) === true && str_contains( $decor, 'aria-hidden="true"' ) === true && str_contains( $decor, 'focusable="false"' ) === true && str_contains( $decor, 'role=' ) === false && str_contains( $decor, 'class="crm-icon crm-icon--check"' )
+	&& str_contains( $named, 'role="img"' ) === true && str_contains( $named, 'aria-label="Erledigt &lt;b&gt;"' ) === true && str_contains( $named, 'aria-hidden' ) === false && \Crm\Portal\Icons::svg( 'no-such-icon' ) === '' && \Crm\Portal\Icons::fill( 'a[[icon:check]]b[[icon:nothing]]c' ) === 'a'. $decor. 'bc' );
+$withButtons = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
+check( '...in a button or a link made a button the icon is hidden: the sign-out, the download, the order and the data form each hold an svg with aria-hidden before their words - and no svg of a portal page is left to a reader without a name', portalFind( $withButtons, '//a[contains(@class, "crm-btn")]/svg[@aria-hidden="true"]/following-sibling::span' ) !== [] && portalFind( $withButtons, '//button[contains(@class, "crm-btn")][@type="submit"]/svg[@aria-hidden="true"]/following-sibling::span' ) !== []
+	&& portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//button[contains(@class, "crm-btn--primary")]/svg[@aria-hidden="true"]' ) !== []
+	&& array_filter( array_keys( $pagesOf ) + [ 'extra' => '/portal/projekte?projekt='. $p1 ], static fn( string $uri ): bool => portalFind( portalPage( $appData, str_starts_with( $uri, '/' ) ? $uri : '/portal' )[1], '//section[contains(@class, "crm-page")]//svg[not(@aria-hidden="true")][not(@role="img")]' ) !== [] ) === [] );
+
+// no inline anything: markup is in the templates, the look in the sheet, the behaviour in the script file
+$inline = [];
+
+foreach( array_merge( (array) glob( $root. '/app/Crm/Portal/templates/*.tpl' ), (array) glob( $root. '/app/Crm/Crm/install/templates/*.tpl' ) ) as $file )
+	if( preg_match( '/<style|<script|\sstyle=|\son[a-z]+=|javascript:/i', (string) file_get_contents( $file ) ) === 1 )
+		$inline[] = basename( $file );
+
+check( 'no template of the portal or of the install unit holds a style element, a script element, a style attribute, a handler attribute or a javascript: address (the policy of the surface stays strict, the portal asks nothing of it)', $inline === [] && str_contains( (string) file_get_contents( $root. '/app/Crm/Portal/Portal.php' ), 'unsafe-inline' ) === false );
+check( '...and no page of the portal holds one either: the only script is the file of the bundle, the only style the sheet of the bundle', array_filter( array_keys( $pagesOf ), static function( string $uri ) use ( &$appData ): bool {
+	$one = portalPage( $appData, $uri )[1];
+
+	return portalFind( $one, '//section[contains(@class, "crm-page")]//script | //section[contains(@class, "crm-page")]//style | //section[contains(@class, "crm-page")]//*[@style]' ) !== [] || preg_match( '/\son(?:click|load|error|change|input|submit|toggle)=/i', $one ) === 1;
+} ) === [] );
+$script = (string) file_get_contents( $root. \Crm\Portal::SCRIPT );
+check( 'the script file is there, a strict module of its own that keeps the address true with the tab (replaceState), takes the state out of the address after it was shown and marks the scroll edges - and writes no markup from text', str_starts_with( ltrim( $script ), '/**' ) === true && str_contains( $script, "'use strict'" ) === true && str_contains( $script, 'replaceState' ) === true && str_contains( $script, 'data-edge' ) === true
+	&& preg_match( '/innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function/', $script ) !== 1 );
 
 // The rest of the suite runs as it did before: Review and Events off
 foreach( [ 'events', 'review' ] as $key )

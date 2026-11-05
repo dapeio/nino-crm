@@ -11,59 +11,31 @@ return [
 	'[[/_nino/webpage/portal/description]]' => 'Deine Projekte, Belege, Termine und Daten an einem Ort.',
 	'[[/_nino/webpage/portal/meine-daten/name]]' => 'Meine Daten',
 	'[[/_nino/webpage/portal/meine-daten/title]]' => 'Meine Daten',
-	'[[/_nino/webpage/portal/meine-daten/description]]' => 'Deine Angaben als Kunde.',
+	'[[/_nino/webpage/portal/meine-daten/description]]' => 'Deine Angaben als Kunde. Sie stehen auf Deinen nächsten Belegen; Belege, die schon fertig sind, ändern sich nicht mehr.',
 	'[[/_nino/webpage/portal/projekte/name]]' => 'Projekte',
 	'[[/_nino/webpage/portal/projekte/title]]' => 'Deine Projekte',
-	'[[/_nino/webpage/portal/projekte/description]]' => 'Deine Projekte mit Angebot, Dateien und Belegen.',
+	'[[/_nino/webpage/portal/projekte/description]]' => 'Woran wir für Dich arbeiten: das Angebot, die Dateien zum Anhören und Laden und die Belege eines Projekts.',
 	'[[/_nino/webpage/portal/upload/name]]' => 'Upload',
 	'[[/_nino/webpage/portal/upload/title]]' => 'Dateien hochladen',
-	'[[/_nino/webpage/portal/upload/description]]' => 'Lade Dateien für Deine Projekte hoch.',
+	'[[/_nino/webpage/portal/upload/description]]' => 'Was Du hier hochlädst, kommt bei uns für alle Deine Projekte gemeinsam an – schreib uns kurz, wozu es gehört.',
 	'[[/_nino/webpage/portal/belege/name]]' => 'Belege',
 	'[[/_nino/webpage/portal/belege/title]]' => 'Deine Belege',
-	'[[/_nino/webpage/portal/belege/description]]' => 'Angebote, Rechnungen, Verträge und mehr, die für Dich freigegeben sind.',
+	'[[/_nino/webpage/portal/belege/description]]' => 'Alles, was für Dich freigegeben ist, mit Betrag und Stand: Angebote, Rechnungen, Verträge und Datenschutzdokumente. Was Deine Unterschrift braucht, unterschreibst Du hier.',
 	'[[/_nino/webpage/portal/termine/name]]' => 'Termine',
 	'[[/_nino/webpage/portal/termine/title]]' => 'Deine Termine',
-	'[[/_nino/webpage/portal/termine/description]]' => 'Die Termine, die für Dich anstehen.',
-	'[[/_nino/webpage/portal/datenschutz/name]]' => 'Datenschutz',
-	'[[/_nino/webpage/portal/datenschutz/title]]' => 'Datenschutz',
-	'[[/_nino/webpage/portal/datenschutz/description]]' => 'Die Datenschutzerklärung, der Du zustimmst.',
+	'[[/_nino/webpage/portal/termine/description]]' => 'Die Termine, die für Dich anstehen – mit dem Abo für Deinen Kalender.',
+	'[[/_nino/webpage/portal/datenschutz/name]]' => 'Datenschutz-Zustimmung',
+	'[[/_nino/webpage/portal/datenschutz/title]]' => 'Datenschutz-Zustimmung',
+	'[[/_nino/webpage/portal/datenschutz/description]]' => 'Deine Zustimmung zur Datenschutzerklärung des Kundenportals. Wir halten fest, wann Du zugestimmt hast; ändert sich der Text, fragen wir noch einmal.',
 
 	// Die Angaben der Startseite, des Tors (der Element-URI ist '/', wie ihn der Assistent für die Startseite schreibt): der Kopf liest sie
-	'[[/_nino/webpage//name]]' => 'Anmelden',
-	'[[/_nino/webpage//title]]' => 'Anmelden',
-	'[[/_nino/webpage//description]]' => 'Melde Dich mit dem Link an, den wir Dir per E-Mail schicken.',
-
-	// Start, page-portal.tpl
-	'[[/template/page-portal/intro/title]]' => 'Willkommen im Kundenportal',
-	'[[/template/page-portal/intro/text]]' => 'Hier findest Du Deine Projekte, Dateien, Belege und Termine.',
-
-	// Meine Daten, page-portal-meine-daten.tpl
-	'[[/template/page-portal-meine-daten/intro/title]]' => 'Meine Daten',
-	'[[/template/page-portal-meine-daten/intro/text]]' => 'Das sind Deine Angaben als Kunde. Sie stehen auf Deinen nächsten Belegen; Belege, die schon fertig sind, ändern sich nicht mehr.',
-
-	// Projekte, page-portal-projekte.tpl
-	'[[/template/page-portal-projekte/intro/title]]' => 'Deine Projekte',
-	'[[/template/page-portal-projekte/intro/text]]' => 'Hier siehst Du, woran wir für Dich arbeiten: das Angebot, die Dateien zum Anhören und Laden und die Belege eines Projekts.',
-
-	// Upload, page-portal-upload.tpl
-	'[[/template/page-portal-upload/intro/title]]' => 'Dateien hochladen',
-	'[[/template/page-portal-upload/intro/text]]' => 'Lade hier Dateien für uns hoch.',
-
-	// Belege, page-portal-belege.tpl
-	'[[/template/page-portal-belege/intro/title]]' => 'Deine Belege',
-	'[[/template/page-portal-belege/intro/text]]' => 'Alles, was für Dich freigegeben ist, mit seinem Stand: Angebote, Rechnungen, Verträge und Datenschutzdokumente. Was Deine Unterschrift braucht, unterschreibst Du hier.',
-
-	// Termine, page-portal-termine.tpl
-	'[[/template/page-portal-termine/intro/title]]' => 'Deine Termine',
-	'[[/template/page-portal-termine/intro/text]]' => 'Die Termine, die für Dich anstehen.',
-
-	// Datenschutz, page-portal-privacy.tpl
-	'[[/template/page-portal-privacy/intro/title]]' => 'Datenschutz',
-	'[[/template/page-portal-privacy/intro/text]]' => 'Lies die Datenschutzerklärung und stimme ihr zu. Wir halten fest, wann Du zugestimmt hast; ändert sich der Text, fragen wir noch einmal.',
+	'[[/_nino/webpage//name]]' => 'Kundenportal',
+	'[[/_nino/webpage//title]]' => 'Kundenportal',
+	'[[/_nino/webpage//description]]' => 'Dein Zugang kommt von uns per E-Mail – melde Dich mit dem Link an, den wir Dir schicken.',
 
 	// Das Tor des Portals - die Startseite der Website, page-door.tpl
-	'[[/template/page-door/intro/title]]'               => 'Anmelden',
-	'[[/template/page-door/intro/text]]'                => 'Gib die E-Mail-Adresse Deines Kontos ein. Wir schicken Dir einen Link per E-Mail - damit meldest Du Dich an, ganz ohne Passwort.',
+	'[[/template/page-door/intro/title]]'               => 'Kundenportal',
+	'[[/template/page-door/intro/text]]'                => 'Dein Zugang kommt von uns per E-Mail. Hast Du keinen, schreib uns. Gib hier die E-Mail-Adresse Deines Kontos ein – wir schicken Dir einen Link, mit dem Du Dich ohne Passwort anmeldest.',
 
 	// Die Worte des Elemente-Panels für den Typ Positionen - die der Workbench, nicht der Website (in der Blacklist der Einheit)
 	'[[/_admin/elements/field/positionen/title]]' => 'Titel',

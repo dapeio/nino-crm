@@ -1,1 +1,1 @@
- <span class="crm-project__count">[[number]]</span>
+<span class="crm-project__count">[[number]]</span>

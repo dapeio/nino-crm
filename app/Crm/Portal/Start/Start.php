@@ -1,11 +1,12 @@
 <?php
 declare(strict_types=1);
 /**
- *	Crm\Portal\Start		The component [crm-portal-start] of the start page of the portal - "Was liegt an": what waits for the client, as cards that stand there only
- *											when they apply: the Datenschutz that is not agreed to yet (the way to it), the offers that wait for the order (each with its number or
- *											title, the day it is valid until, the way to its project page or to the list of documents), the documents released in the last
- *											NEW_DAYS days, the files that came into the folders of the client's projects in the last NEW_DAYS days (the count for each project and the way to
- *											its page) and the dates of the next DATES_DAYS days of the member's group and for everyone (through the feature Events; where it is off, none).
+ *	Crm\Portal\Start		The component [crm-portal-start] of the start page of the portal - "Was gerade ansteht": what waits for the client, as cards that stand there only
+ *											when they apply: the Datenschutz that is not agreed to yet (the way to it), the offers that wait for the order (each with its title - the
+ *											number where it has none -, its gross amount, its number and the day it is valid until, the way to its card on the project page or in
+ *											the list of documents), the documents released in the last NEW_DAYS days (each with its title, its amount, its kind, its number and the
+ *											way to its row), the files that came into the folders of the client's projects in the last NEW_DAYS days (the count for each project and the
+ *											way to its page) and the dates of the next DATES_DAYS days of the member's group and for everyone (through the feature Events; where it is off, none).
  *											Where nothing applies it is one sentence. Nothing here is stored or sent, and every value enters the markup escaped. A visitor and a
  *											member of no client get nothing.
  */
@@ -23,6 +24,9 @@ class Start {
 	public const int NEW_DAYS = 14;
 	public const int DATES_DAYS = 30;
 	public const int ROWS = 5;
+
+	// The icon of each card, and the tone of the one that asks for something
+	private const array ICONS = [ 'privacy' => 'shield-check', 'offers' => 'receipt', 'documents' => 'file-text', 'files' => 'music', 'dates' => 'calendar' ];
 
 	/**
 	 *	[crm-portal-start]
@@ -50,7 +54,7 @@ class Start {
 		$standing = Records::privacy( $appData, $client['id'] );
 
 		if( $standing['asked'] === true && $standing['agreed'] === false )
-			$cards['privacy'] = str_replace( '[[dir]]', $dir, Portal::template( 'start-privacy' ) );
+			$cards['privacy'] = Portal::render( 'start-privacy', [ '[[dir]]' => $dir ] );
 
 		$documents = Documents::released( $appData, $client['id'] );
 		$offers = [];
@@ -59,17 +63,17 @@ class Start {
 
 		foreach( $documents as $document ) {
 
+			$title = Portal::documentTitle( $document );
+			$kind = $document['number'] === '' ? '[[/project/crm-documents/category/'. $document['category']. ']]' : $escape( $document['number'] );
+
 			if( Documents::orderable( $document ) === true )
 				$offers[] = self::row(
-					self::projectHref( $document['project'], $dir ), $escape( $document['title'] !== '' ? $document['title'] : $document['number'] ),
-					$document['valid_until'] === '' ? '' : '[[/project/crm-portal/projects/offer-valid]] '. $escape( Documents\Render::day( $document['valid_until'] ) )
+					self::documentHref( $document, $dir, 'angebot' ), $title, Portal::amount( $appData, $document ),
+					$kind. ( $document['valid_until'] === '' ? '' : ' · [[/project/crm-portal/projects/offer-valid]] '. $escape( Documents\Render::day( $document['valid_until'] ) ) )
 				);
 
 			if( $document['released_at'] !== '' && $document['released_at'] >= $since )
-				$recent[] = self::row(
-					$dir. Order::PAGE_DOCUMENTS, $escape( $document['title'] !== '' ? $document['title'] : $document['number'] ),
-					'[[/project/crm-documents/category/'. $document['category']. ']] · '. $escape( Documents\Render::day( substr( $document['released_at'], 0, 10 ) ) )
-				);
+				$recent[] = self::row( self::documentHref( $document, $dir, 'belege' ), $title, Portal::amount( $appData, $document ), $kind. ' · '. $escape( Documents\Render::day( substr( $document['released_at'], 0, 10 ) ) ) );
 		}
 
 		if( $offers !== [] )
@@ -91,9 +95,9 @@ class Start {
 		$html = '';
 
 		foreach( $cards as $name => $content )
-			$html .= str_replace( [ '[[name]]', '[[content]]' ], [ $name, $content ], Portal::template( 'start-card' ) );
+			$html .= Portal::render( 'start-card', [ '[[name]]' => $name, '[[icon]]' => self::ICONS[$name], '[[tone]]' => $name === 'privacy' ? ' crm-card--warning' : '', '[[content]]' => $content ] );
 
-		return str_replace( [ '[[classes]]', '[[cards]]' ], [ \Nino\Feature::classes( $args ), $html !== '' ? $html : Portal::template( 'start-nothing' ) ], Portal::template( 'start' ) );
+		return Portal::render( 'start', [ '[[classes]]' => \Nino\Feature::classes( $args ), '[[cards]]' => $html !== '' ? $html : Portal::template( 'start-nothing' ) ] );
 	}
 
 	/**
@@ -131,7 +135,7 @@ class Start {
 			if( $new !== [] )
 				$rows[] = self::row(
 					$dir. Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $project['id'] ). '&amp;tab=dateien#projekt-files', \Nino\Modules\Components::escape( $project['title'] ),
-					count( $new ). ' [[/project/crm-portal/start/new-file-'. ( count( $new ) === 1 ? 'one' : 'many' ). ']]'
+					count( $new ). ' [[/project/crm-portal/start/new-file-'. ( count( $new ) === 1 ? 'one' : 'many' ). ']]', ''
 				);
 		}
 
@@ -148,30 +152,17 @@ class Start {
 	 */
 	private static function dates( array &$appData, string $dir ): array {
 
-		if( Crm::featureOn( $appData, 'events' ) === false || \Nino\Filesystem::fileExists( $appData, '/elements'. \Nino\Modules\Events::TYPE. '.php' ) === false )
-			return [];
-
-		$elements = [];
-
-		foreach( (array) \Nino\Elements::queryElements( $appData, \Nino\Modules\Events::TYPE, [], '', [] ) as $element ) {
-
-			$with = is_array( $element ) === true && is_string( $element['.uri'] ?? null ) === true ? \Nino\Elements::getElementWithFallback( $appData, $element['.uri'], '' ) : false;
-
-			if( is_array( $with ) === true )
-				$elements[] = $with;
-		}
-
-		$limit = \Nino\Modules\Events::now( $appData )->modify( '+'. self::DATES_DAYS. ' days' );
+		$limit = Dates::now( $appData )?->modify( '+'. self::DATES_DAYS. ' days' );
 		$rows = [];
 
-		foreach( \Nino\Modules\Events::dates( $appData, $elements, 'upcoming', \Nino\Modules\Events::viewer( $appData ) ) as $date ) {
+		foreach( $limit === null ? [] : Dates::upcoming( $appData ) as $date ) {
 
 			if( $date['start'] > $limit || count( $rows ) >= self::ROWS )
 				continue;
 
 			$rows[] = self::row(
-				$dir. '/portal/termine', \Nino\Modules\Components::escape( $date['title'] ),
-				\Nino\Modules\Components::escape( Documents\Render::day( $date['start']->format( 'Y-m-d' ) ). ( $date['allDay'] === true ? '' : ' '. $date['start']->format( 'H:i' ) ) )
+				$dir. '/portal/termine#termin-'. \Nino\Modules\Components::escape( $date['slug'] ), \Nino\Modules\Components::escape( $date['title'] ),
+				\Nino\Modules\Components::escape( Dates::when( $appData, $date ) ), $date['place'] === '' ? '' : \Nino\Modules\Components::escape( $date['place'] )
 			);
 		}
 
@@ -179,28 +170,33 @@ class Start {
 	}
 
 	/**
-	 *	Where an offer of a project is read: its project page, the list of documents for an offer without one
+	 *	Where a document is read: its card in the section of its project page, or its row in the list of documents for one without a project
 	 *
-	 *	@param		string		$project
+	 *	@param		array 		$document			As Documents::released() has it
 	 *	@param		string		$dir					Escaped
+	 *	@param		string		$tab					angebot for an offer that waits (the section Angebot), belege for a document that is new (the section Belege)
 	 *
 	 *	@return 	string
 	 */
-	private static function projectHref( string $project, string $dir ): string {
+	private static function documentHref( array $document, string $dir, string $tab ): string {
 
-		return preg_match( Projekte::ID, $project ) === 1 ? $dir. Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $project ). '&amp;tab=angebot' : $dir. Order::PAGE_DOCUMENTS;
+		if( preg_match( Projekte::ID, $document['project'] ) !== 1 )
+			return $dir. Order::PAGE_DOCUMENTS. '#beleg-'. $document['id'];
+
+		return $dir. Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $document['project'] ). '&amp;tab='. $tab. '#'. ( $tab === 'angebot' ? 'angebot-' : 'beleg-' ). $document['id'];
 	}
 
 	/**
 	 *	@param		string		$href					Escaped
 	 *	@param		string		$title				Escaped
-	 *	@param		string		$meta					Markup
+	 *	@param		string		$extra				Markup, what stands at the right of the title - an amount, a count, a time; '' for nothing
+	 *	@param		string		$meta					Markup, the line under the title; '' for none
 	 *
 	 *	@return 	string
 	 */
-	private static function row( string $href, string $title, string $meta ): string {
+	private static function row( string $href, string $title, string $extra, string $meta ): string {
 
-		return str_replace( [ '[[href]]', '[[title]]', '[[meta]]' ], [ $href, $title, $meta ], Portal::template( 'start-row' ) );
+		return Portal::render( 'start-row', [ '[[href]]' => $href, '[[title]]' => $title, '[[extra]]' => $extra === '' ? '' : Portal::render( 'start-extra', [ '[[extra]]' => $extra ] ), '[[meta]]' => $meta ] );
 	}
 
 	/**
@@ -210,6 +206,6 @@ class Start {
 	 */
 	private static function list( array $rows ): string {
 
-		return str_replace( '[[rows]]', implode( "\n\t\t\t", $rows ), Portal::template( 'start-list' ) );
+		return Portal::render( 'start-list', [ '[[rows]]' => implode( "\n\t\t\t\t", $rows ) ] );
 	}
 }

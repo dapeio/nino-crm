@@ -4,8 +4,8 @@ declare(strict_types=1);
  *	Crm\Portal\Order		The customer orders an offer in the portal. Under the content of an offer - on the page of its project and in the list of the
  *											documents - stands the form of the order while the offer can be ordered (an offer that is released to the portal, open or sent and
  *											not past its day): the sentence "Ich beauftrage <company> verbindlich mit dem Angebot <number> zu den genannten Konditionen." as the label of a
- *											box that must be ticked, and the button. While the client has not agreed to the Datenschutz the form is replaced by the sentence that the
- *											Datenschutz comes first, with the way to it. An offer that was ordered says when and by whom instead.
+ *											box that must be ticked, and the button. While the client has not agreed to the Datenschutz there is no form: the list that holds the offers
+ *											says once, at its top, that the Datenschutz comes first, with the way to it (privacyHint()). An offer that was ordered says when and by whom instead.
  *
  *											POST /.crm/auftrag takes the form. Only the signed-in member of a client may post (a visitor and a member of no client are answered 404,
  *											as the other forms of the portal answer a stranger). Every answer is a redirect to the page the form stood on with a state in the query:
@@ -28,8 +28,17 @@ class Order {
 	public const string PAGE_DOCUMENTS = '/portal/belege';
 	public const string PAGE_PROJECTS = '/portal/projekte';
 
-	// The states a page says, and where the form was: the list of documents or the page of a project
-	public const array STATES = [ 'ordered', 'nomail', 'invalid', 'unchecked', 'privacy', 'expired', 'changed' ];
+	// The states a page says - each with the tone and the icon of its note and whether it is a status or an alert -, and where the form was: the list
+	// of documents or the page of a project
+	public const array STATES = [
+		'ordered'   => [ 'success', 'circle-check', 'status' ],
+		'nomail'    => [ 'success', 'circle-check', 'status' ],
+		'invalid'   => [ 'error', 'circle-alert', 'alert' ],
+		'unchecked' => [ 'error', 'circle-alert', 'alert' ],
+		'privacy'   => [ 'warning', 'shield-check', 'alert' ],
+		'expired'   => [ 'error', 'circle-alert', 'alert' ],
+		'changed'   => [ 'error', 'circle-alert', 'alert' ],
+	];
 	public const array FROM = [ 'belege', 'projekt' ];
 
 	/**
@@ -41,7 +50,7 @@ class Order {
 	 *	@param		string		$from					belege (the list of documents) or projekt (the page of a project)
 	 *	@param		string		$dir					The directory the project is served from, escaped
 	 *
-	 *	@return 	string										The form; the sentence that the Datenschutz comes first; the line that says it was ordered; or nothing for an offer that cannot be ordered
+	 *	@return 	string										The form; the line that says it was ordered; or nothing for an offer that cannot be ordered and while the Datenschutz comes first
 	 */
 	public static function block( array &$appData, array $client, array $offer, string $from, string $dir ): string {
 
@@ -53,13 +62,8 @@ class Order {
 		if( $record !== null )
 			return self::done( $record, $dir );
 
-		if( Documents::orderable( $offer ) === false )
+		if( Documents::orderable( $offer ) === false || self::privacyFirst( $appData, $client ) === true )
 			return '';
-
-		$standing = Records::privacy( $appData, (int) $client['id'] );
-
-		if( $standing['asked'] === true && $standing['agreed'] === false )
-			return str_replace( [ '[[id]]', '[[dir]]' ], [ (string) $offer['id'], $dir ], Portal::template( 'order-privacy' ) );
 
 		$full = Documents::get( $appData, (int) $offer['id'] );
 
@@ -68,11 +72,40 @@ class Order {
 
 		$sentence = self::sentence( $appData, $offer );
 
-		return str_replace(
-			[ '[[id]]', '[[dir]]', '[[from]]', '[[sentence]]', '[[hash]]' ],
-			[ (string) $offer['id'], $dir, $from, \Nino\Modules\Components::escape( $sentence ), Records::hash( Records::orderShown( $appData, $full, $sentence ) ) ],
-			Portal::template( 'order-form' )
-		);
+		return Portal::render( 'order-form', [
+			'[[id]]'       => (string) $offer['id'],
+			'[[dir]]'      => $dir,
+			'[[from]]'     => $from,
+			'[[sentence]]' => \Nino\Modules\Components::escape( $sentence ),
+			'[[hash]]'     => Records::hash( Records::orderShown( $appData, $full, $sentence ) ),
+		] );
+	}
+
+	/**
+	 *	Whether the client has to agree to the Datenschutz before it may order: it is asked for one and has not agreed to it
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client
+	 *
+	 *	@return 	bool
+	 */
+	public static function privacyFirst( array &$appData, array $client ): bool {
+
+		$standing = Records::privacy( $appData, (int) $client['id'] );
+
+		return $standing['asked'] === true && $standing['agreed'] === false;
+	}
+
+	/**
+	 *	The sentence that the Datenschutz comes first, with the way to it: said once at the top of a list that holds an offer that could be ordered
+	 *
+	 *	@param		string		$dir					Escaped
+	 *
+	 *	@return 	string
+	 */
+	public static function privacyHint( string $dir ): string {
+
+		return Portal::render( 'order-privacy', [ '[[id]]' => '', '[[dir]]' => $dir ] );
 	}
 
 	/**
@@ -98,18 +131,37 @@ class Order {
 	}
 
 	/**
-	 *	The sentence about the state the query names, for the page the form stood on
+	 *	The sentence about the state the query names, for the page the form stood on: in the card of the offer the query names (?beleg=<id>) where
+	 *	it names one, else at the top of the list or the section
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$for					The document whose card asks, 0 for the slot at the top
+	 *
+	 *	@return 	string										'' where the query names no state, or names it for another place
+	 */
+	public static function state( array &$appData, int $for = 0 ): string {
+
+		$query = Portal::query( $appData );
+		$state = is_string( $query['state'] ?? null ) === true && isset( self::STATES[$query['state']] ) === true ? $query['state'] : '';
+
+		if( $state === '' || self::named( $appData ) !== $for )
+			return '';
+
+		return Portal::render( 'order-state', [ '[[state]]' => $state, '[[tone]]' => self::STATES[$state][0], '[[icon]]' => self::STATES[$state][1], '[[role]]' => self::STATES[$state][2], '[[id]]' => (string) $for ] );
+	}
+
+	/**
+	 *	The document the query names beside a state (?beleg=<id>): the one whose card says the sentence
 	 *
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	string										'' where the query names none
+	 *	@return 	int												0 where it names none
 	 */
-	public static function state( array &$appData ): string {
+	public static function named( array &$appData ): int {
 
 		$query = Portal::query( $appData );
-		$state = is_string( $query['state'] ?? null ) === true && in_array( $query['state'], self::STATES, true ) === true ? $query['state'] : '';
 
-		return $state === '' ? '' : str_replace( [ '[[state]]', '[[role]]' ], [ $state, in_array( $state, [ 'ordered', 'nomail' ], true ) === true ? 'status' : 'alert' ], Portal::template( 'order-state' ) );
+		return is_string( $query['beleg'] ?? null ) === true && preg_match( '/^[1-9][0-9]{0,9}$/D', $query['beleg'] ) === 1 ? (int) $query['beleg'] : 0;
 	}
 
 	/**
@@ -206,19 +258,22 @@ class Order {
 
 		$name = (string) $record['member_name'] !== '' ? (string) $record['member_name'] : (string) $record['member_email'];
 
-		return str_replace(
-			[ '[[id]]', '[[iso]]', '[[date]]', '[[name]]' ],
-			[ (string) $record['document_id'], \Nino\Modules\Components::escape( substr( (string) $record['at'], 0, 10 ) ), \Nino\Modules\Components::escape( Documents\Render::day( substr( (string) $record['at'], 0, 10 ) ) ), \Nino\Modules\Components::escape( $name ) ],
-			Portal::template( 'order-done' )
-		);
+		return Portal::render( 'order-done', [
+			'[[id]]'   => (string) $record['document_id'],
+			'[[iso]]'  => \Nino\Modules\Components::escape( substr( (string) $record['at'], 0, 10 ) ),
+			'[[date]]' => \Nino\Modules\Components::escape( Documents\Render::day( substr( (string) $record['at'], 0, 10 ) ) ),
+			'[[name]]' => \Nino\Modules\Components::escape( $name ),
+		] );
 	}
 
 	/**
-	 *	The redirect to the page the form stood on, with a state
+	 *	The redirect to the page the form stood on, with a state - and, where the offer is still shown, the offer it is about (?beleg=<id>) and the
+	 *	anchor of its card, so that the sentence stands at the offer: #angebot-<id> in the section Angebot of the project page, #beleg-<id> in the list
+	 *	of documents. An offer that may not be shown any more (invalid) is not named: the sentence stands at the top
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$request
-	 *	@param		string		$state				One of STATES
+	 *	@param		string		$state				A key of STATES
 	 *	@param		string		$from					One of FROM
 	 *	@param		array|null	$document			The offer, as get() has it, where it is the client's: its project is the page of the project
 	 *
@@ -227,7 +282,8 @@ class Order {
 	private static function redirect( array &$appData, array &$request, string $state, string $from, ?array $document ): void {
 
 		$project = $document !== null && $from === 'projekt' && preg_match( Projekte::ID, (string) $document['project'] ) === 1 ? (string) $document['project'] : '';
-		$target = $project === '' ? self::PAGE_DOCUMENTS. '?state='. $state : self::PAGE_PROJECTS. '?projekt='. rawurlencode( $project ). '&state='. $state;
+		$named = $document !== null && $state !== 'invalid' ? '&beleg='. $document['id']. '#'. ( $project === '' ? 'beleg-' : 'angebot-' ). $document['id'] : '';
+		$target = $project === '' ? self::PAGE_DOCUMENTS. '?state='. $state. $named : self::PAGE_PROJECTS. '?projekt='. rawurlencode( $project ). '&tab=angebot&state='. $state. $named;
 
 		\Nino\Http::redirect( $appData, $request, $target, 303 );
 	}

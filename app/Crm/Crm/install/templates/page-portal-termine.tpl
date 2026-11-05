@@ -1,33 +1,12 @@
 <!-- nino:template-name Portal dates -->
 [template /templates/html-header]
-<div class="nino-wrap">
+<div class="nino-wrap crm-portal">
 
-<section id="intro" class="nino-section">
+<section id="termine" class="nino-section crm-page">
 	<div class="nino-grid-row">
-		<div class="nino-grid-100">
-			[title /template/page-portal-termine/intro/title tag="h2"]
-			[text /template/page-portal-termine/intro/text]
-		</div>
-	</div>
-</section>
-
-<section id="dates" class="nino-section">
-	<div class="nino-grid-row">
-		<div class="nino-grid-100">
-			[events /events]
-				[title title tag="h3"]
-				[event-when start end="end"]
-				[text place]
-				[event-ics .slug]
-			[/events]
-		</div>
-	</div>
-</section>
-
-<section id="feed" class="nino-section">
-	<div class="nino-grid-row">
-		<div class="nino-grid-100">
-			[event-feed]
+		<div class="nino-grid-100 crm-page__inner">
+			[crm-portal-head calendar="1"]
+			[crm-portal-dates]
 		</div>
 	</div>
 </section>

@@ -1,1 +1,1 @@
-<p class="crm-order crm-order--privacy" data-document="[[id]]">[[/project/crm-portal/order/privacy-first]] <a class="crm-order__link" href="[[dir]]/portal/datenschutz">[[/project/crm-portal/order/privacy-link]]</a></p>
+<p class="crm-order crm-order--privacy crm-note crm-note--warning" data-document="[[id]]">[[icon:shield-check]]<span class="crm-note__text">[[/project/crm-portal/order/privacy-first]] <a class="crm-order__link" href="[[dir]]/portal/datenschutz">[[/project/crm-portal/order/privacy-link]]</a></span></p>

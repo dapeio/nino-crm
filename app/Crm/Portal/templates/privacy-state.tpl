@@ -1,1 +1,1 @@
-<p class="crm-privacy__state crm-privacy__state--[[state]] crm-note" role="[[role]]">[[/project/crm-portal/privacy/state-[[state]]]]</p>
+<p class="crm-privacy__state crm-privacy__state--[[state]] crm-note crm-note--[[tone]]" role="[[role]]">[[icon:[[icon]]]]<span class="crm-note__text">[[/project/crm-portal/privacy/state-[[state]]]]</span></p>

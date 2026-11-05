@@ -1,1 +1,1 @@
-<a class="crm-documents__sign" href="[[dir]]/.sign?r=[[request]]&amp;return=%2Fportal%2Fbelege">[[/project/crm-documents/list/sign]]</a>
+<a class="crm-documents__sign crm-btn crm-btn--primary crm-btn--small" href="[[dir]]/.sign?r=[[request]]&amp;return=%2Fportal%2Fbelege">[[icon:pen-line]]<span>[[/project/crm-documents/list/sign]]</span><span class="nino-sr-only"> [[number]]</span></a>

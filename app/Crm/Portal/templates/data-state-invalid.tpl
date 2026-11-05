@@ -1,1 +1,1 @@
-<p class="crm-data__state crm-data__state--invalid crm-note" role="alert">[[/project/crm-portal/data/state-invalid]] <strong>[[/project/crm-portal/data/field/[[field]]]]</strong></p>
+<p class="crm-data__state crm-data__state--invalid crm-note crm-note--error" role="alert">[[icon:circle-alert]]<span class="crm-note__text">[[/project/crm-portal/data/state-invalid]] <strong>[[/project/crm-portal/data/field/[[field]]]]</strong></span></p>

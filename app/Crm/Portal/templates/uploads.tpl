@@ -1,7 +1,7 @@
-<div class="crm-uploads[[classes]]" data-folder="[[folder]]">
-	<h3 class="crm-uploads__heading">[[/project/crm-portal/uploads/heading]]</h3>
-	<p class="crm-uploads__note">[[/project/crm-portal/uploads/note]]</p>
-	<ul class="crm-files__list crm-card crm-table">
-		[[rows]]
-	</ul>
-</div>
+<section class="crm-uploads[[classes]]" data-folder="[[folder]]" aria-labelledby="crm-uploads-heading">
+	<div class="crm-section__head">
+		<h3 class="crm-uploads__heading crm-section__title" id="crm-uploads-heading">[[/project/crm-portal/uploads/heading]]</h3>
+	</div>
+	<p class="crm-uploads__note">[[icon:info]]<span>[[/project/crm-portal/uploads/note]]</span></p>
+	[[list]]
+</section>

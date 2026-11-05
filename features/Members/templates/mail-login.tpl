@@ -2,7 +2,7 @@
 	<h1 style="margin:0 0 [[/project/mail/spacing/medium]]; font-size:[[/project/mail/font/large]]; color:[[/project/mail/color/text]];">[[/feature/members/mail/login-title]]</h1>
 	<p style="margin:0 0 [[/project/mail/spacing/medium]];">[[/feature/members/mail/login-intro]]</p>
 	<p style="margin:0 0 [[/project/mail/spacing/medium]]; text-align:center;">
-		<a href="[[link]]" style="display:inline-block; padding:[[/project/mail/spacing/small]] [[/project/mail/spacing/medium]]; background:[[/project/mail/color/primary]]; color:[[/project/mail/color/background]]; text-decoration:none;">[[/feature/members/mail/login-button]]</a>
+		<a href="[[link]]" style="display:inline-block; padding:[[/project/mail/spacing/small]] [[/project/mail/spacing/medium]]; background:[[/project/mail/color/text]]; color:[[/project/mail/color/background]]; text-decoration:none;">[[/feature/members/mail/login-button]]</a>
 	</p>
 	<p style="margin:0 0 [[/project/mail/spacing/medium]]; font-size:[[/project/mail/font/small]];">[[/feature/members/mail/login-valid]] [[minutes]] [[/feature/members/mail/login-minutes]]</p>
 	<p style="margin:0 0 [[/project/mail/spacing/medium]]; font-size:[[/project/mail/font/small]];">[[/feature/members/mail/login-notice]]</p>

@@ -1,1 +1,1 @@
-<a class="crm-documents__download crm-documents__xml" href="[[dir]]/.crm/xml/[[id]]">[[/project/crm-documents/list/xml]]</a>
+<a class="crm-documents__download crm-documents__xml crm-btn crm-btn--secondary crm-btn--small" href="[[dir]]/.crm/xml/[[id]]">[[icon:file-text]]<span>[[/project/crm-documents/list/xml]]</span><span class="nino-sr-only"> [[number]]</span></a>

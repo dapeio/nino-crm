@@ -1188,7 +1188,7 @@ class Documents {
 	 *	@param		int				$clientId
 	 *	@param		string		$project			Only the documents of this project ('' for all of them)
 	 *
-	 *	@return 	array											id, category, number, title, state, expired, date, valid_until, sign_id, sign_state, project, project_title, released_at, xml (whether there is an electronic invoice to download)
+	 *	@return 	array											id, category, number, title, state, expired, overdue, date, due_date, valid_until, gross, sign_id, sign_state, project, project_title, released_at, xml (whether there is an electronic invoice to download)
 	 */
 	public static function released( array &$appData, int $clientId, string $project = '' ): array {
 
@@ -1200,13 +1200,14 @@ class Documents {
 		if( $project !== '' )
 			$params['project'] = $project;
 
-		$rows = Db::rows( $appData, 'SELECT id, category, number, title, state, date, valid_until, sign_id, sign_state, project, released_at, xml_path FROM documents
+		$rows = Db::rows( $appData, 'SELECT id, category, number, title, state, date, due_date, valid_until, gross, sign_id, sign_state, project, released_at, xml_path FROM documents
 			WHERE client_id = :client AND released = 1 AND state != \'draft\' AND pdf_path != \'\''. ( $project !== '' ? ' AND project = :project' : '' ). ' ORDER BY date DESC, id DESC', $params );
 		$titles = array_filter( $rows, static fn( array $row ): bool => (string) $row['project'] !== '' ) === [] ? [] : Projekte::titles( $appData );
 
 		return array_map( static fn( array $row ): array => [
 			'id' => (int) $row['id'], 'category' => (string) $row['category'], 'number' => (string) ( $row['number'] ?? '' ), 'title' => (string) $row['title'], 'state' => (string) $row['state'],
-			'expired' => self::expired( $row, $today ), 'date' => (string) $row['date'], 'valid_until' => (string) ( $row['valid_until'] ?? '' ), 'sign_id' => (string) $row['sign_id'], 'sign_state' => (string) $row['sign_state'],
+			'expired' => self::expired( $row, $today ), 'overdue' => self::overdue( $row, $today ), 'date' => (string) $row['date'], 'due_date' => (string) ( $row['due_date'] ?? '' ), 'valid_until' => (string) ( $row['valid_until'] ?? '' ),
+			'gross' => (int) $row['gross'], 'sign_id' => (string) $row['sign_id'], 'sign_state' => (string) $row['sign_state'],
 			'project' => (string) $row['project'], 'project_title' => (string) ( $titles[(string) $row['project']] ?? '' ), 'released_at' => (string) ( $row['released_at'] ?? '' ),
 			'xml' => (string) $row['xml_path'] !== '',
 		], $rows );

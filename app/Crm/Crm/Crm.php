@@ -3,8 +3,8 @@ declare(strict_types=1);
 /**
  *	Crm\Crm		The project module of the CRM. Listed in /nino/modules by the setup wizard, which finds its install unit (install/);
  *						init() registers behaviour and writes nothing: the panel CRM (adminPanels()), the
- *						components [crm-client], [crm-documents], [crm-portal-nav], [crm-portal-start], [crm-projects], [crm-uploads], [crm-client-data] and [crm-privacy], the callbacks that keep the portal's lookup true when a member signs in or
- *						out and the ones that let a document follow its request in Sign, the style sheet of the portal, the route
+ *						components [crm-portal-head], [crm-portal-door], [crm-client], [crm-documents], [crm-portal-nav], [crm-portal-start], [crm-portal-dates], [crm-projects], [crm-uploads], [crm-client-data] and [crm-privacy], the callbacks that keep the portal's lookup true when a member signs in or
+ *						out, the one that takes the portal's pages out of the menus of a visitor and the ones that let a document follow its request in Sign, the style sheet and the script of the portal, the route
  *						/.crm/pdf/<id> that answers the PDF of a finalised document, /.crm/xml/<id> that answers its electronic invoice and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/datenschutz of the page Datenschutz and POST /.crm/auftrag of the order under an offer; and the surface at /crm, one page of the project with its
  *						endpoint and assets (Surface::init()). The database is opened on first use, the portal pages come with the install unit
  *						the wizard applies, and the screen Einrichtung of the surface completes the product (see Admin::apiSetup()).
@@ -30,6 +30,49 @@ class Crm {
 	 *	@return 	void
 	 */
 	public static function init( array &$appData ): void {
+
+		\Nino\Modules\Components::addComponent( $appData, 'crm-portal-head', [ Portal::class, 'componentCrmPortalHead' ], [
+			'label'      => [ 'en_US' => 'Head of a portal page', 'de_DE' => 'Kopf einer Portalseite' ],
+			'source'     => 'none',
+			'loop'       => false,
+			'attributes' => [
+				'calendar' => [
+					'type'    => 'bool',
+					'default' => false,
+					'label'   => [ 'en_US' => 'Calendar subscription', 'de_DE' => 'Kalender-Abo' ],
+					'hint'    => [
+						'en_US' => 'The subscription of the calendar of the Events feature among the actions of the head (the page Termine).',
+						'de_DE' => 'Das Abo des Kalenders des Features Termine unter den Aktionen des Kopfes (die Seite Termine).',
+					],
+				],
+			],
+			'preview'    => 'block',
+			'draws'      => 'div .crm-head',
+			'in'         => [ 'section', 'card' ],
+			'group'      => 'global',
+		] );
+
+		\Nino\Modules\Components::addComponent( $appData, 'crm-portal-door', [ Portal::class, 'componentCrmPortalDoor' ], [
+			'label'      => [ 'en_US' => 'Door of the portal', 'de_DE' => 'Tor des Portals' ],
+			'source'     => 'none',
+			'loop'       => false,
+			'attributes' => [],
+			'preview'    => 'block',
+			'draws'      => 'div .crm-door',
+			'in'         => [ 'section', 'card' ],
+			'group'      => 'global',
+		] );
+
+		\Nino\Modules\Components::addComponent( $appData, 'crm-portal-dates', [ Portal\Dates::class, 'componentCrmPortalDates' ], [
+			'label'      => [ 'en_US' => 'Dates of the member', 'de_DE' => 'Termine des Mitglieds' ],
+			'source'     => 'none',
+			'loop'       => false,
+			'attributes' => [],
+			'preview'    => 'block',
+			'draws'      => 'div .crm-dates',
+			'in'         => [ 'section', 'card' ],
+			'group'      => 'global',
+		] );
 
 		\Nino\Modules\Components::addComponent( $appData, 'crm-client', [ Portal::class, 'componentCrmClient' ], [
 			'label'      => [ 'en_US' => 'Client of the member', 'de_DE' => 'Kunde des Mitglieds' ],
@@ -127,7 +170,7 @@ class Crm {
 			'loop'       => false,
 			'attributes' => [],
 			'preview'    => 'block',
-			'draws'      => 'form .crm-data',
+			'draws'      => 'div .crm-data',
 			'in'         => [ 'section', 'card' ],
 			'group'      => 'global',
 		] );
@@ -154,11 +197,15 @@ class Crm {
 			'group'      => 'global',
 		] );
 
-		// The list of the portal is drawn by a style sheet of the module, in the bundle of the site
+		// The portal is drawn by a style sheet of the module and wired by a script of it, both in the bundles of the site
 		\Nino\Html::addAsset( $appData, '/.cache/style.css', Portal::STYLE );
+		\Nino\Html::addAsset( $appData, '/.cache/script.js', Portal::SCRIPT );
 
 		\Nino\Callbacks::registerCallback( $appData, '/members/login', [ Portal::class, 'callbackSession' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/members/logout', [ Portal::class, 'callbackSession' ] );
+
+		// A visitor sees no page of the portal in a menu of the site (the kernel fires the callback once it has built the lines of a menu)
+		\Nino\Callbacks::registerCallback( $appData, '/nino/navigation/lines', [ Portal::class, 'callbackNavigationLines' ] );
 
 		// The start page of the site is the door of the portal: a member who is signed in goes on to /portal
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://', [ Portal::class, 'callbackDoor' ] );

@@ -1,1 +1,1 @@
-<a class="crm-files__listen" href="[[href]]#projekt-files">[[/project/crm-portal/files/listen]]</a>
+<a class="crm-files__listen crm-btn crm-btn--secondary crm-btn--small" href="[[href]]#projekt-files">[[icon:play]]<span>[[/project/crm-portal/files/listen]]</span><span class="nino-sr-only"> [[name]]</span></a>

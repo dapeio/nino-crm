@@ -1,13 +1,12 @@
 <!-- nino:template-name Portal upload -->
 [template /templates/html-header]
-<div class="nino-wrap">
+<div class="nino-wrap crm-portal">
 
-<section id="intro" class="nino-section">
+<section id="upload" class="nino-section crm-page">
 	<div class="nino-grid-row">
-		<div class="nino-grid-100">
-			[title /template/page-portal-upload/intro/title tag="h2"]
-			[text /template/page-portal-upload/intro/text]
-			[files-upload]
+		<div class="nino-grid-100 crm-page__inner">
+			[crm-portal-head]
+			[files-upload class="crm-upload"]
 			[crm-uploads]
 		</div>
 	</div>

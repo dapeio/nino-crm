@@ -1,0 +1,1 @@
+<a class="crm-documents__offer crm-btn crm-btn--ghost crm-btn--small" href="[[dir]]/portal/projekte?projekt=[[project]]&amp;tab=angebot#angebot-[[id]]">[[icon:receipt]]<span>[[/project/crm-documents/list/offer]]</span><span class="nino-sr-only"> [[number]]</span></a>

@@ -1,1 +1,0 @@
-<p class="crm-project__message">[[/project/crm-portal/projects/upload-text]] <a class="crm-project__link crm-btn crm-btn--quiet" href="[[dir]]/portal/upload">[[/project/crm-portal/projects/upload-link]]</a></p>
