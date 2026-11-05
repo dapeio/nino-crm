@@ -2,7 +2,8 @@
 	[[crumbs]]
 	<div class="crm-head__row">
 		<div class="crm-head__main">
-			<h2 class="crm-head__title"><span class="crm-head__name">[[title]]</span>[[badge]]</h2>
+			<h2 class="crm-head__title"><span class="crm-head__name">[[title]]</span></h2>
+			[[badge]]
 			[[lead]]
 		</div>
 		<div class="crm-head__actions">

@@ -4,7 +4,7 @@ declare(strict_types=1);
  *	Crm\Portal		What the portal pages read of the CRM: the client of the member who is signed in, the head of every portal page
  *								([crm-portal-head]: the breadcrumb where there is a parent, the title of the page or of the project, its lead, the member and
  *								the company, Abmelden and the actions of the page), the component [crm-client] that says the company, the component
- *								[crm-documents] that lists the documents released to that client (all of them, or those of one project) with the amount, the
+ *								[crm-documents] that lists the documents released to that client (all of them, or those of one project) with their number, the amount, the
  *								day an invoice is due, the state in the customer's words and - for an open invoice - how to pay it, the navigation
  *								[crm-portal-nav] of the areas of the portal and the door [crm-portal-door] of the site's start page. The Datenschutz
  *								([crm-privacy], Portal\Privacy), the order under an offer (Portal\Order), the offer itself (Portal\Offer), the start page
@@ -16,7 +16,7 @@ declare(strict_types=1);
  *								The look of all of it is the portal's own design, portal.css (its head comment says the system); the markup of every
  *								part is a template of templates/, read through template() and filled through render(), which also puts the icons in
  *								(Portal\Icons: a template asks for one with [[icon:<name>]]). The states a customer reads are the customer's words
- *								(customerState()): an invoice that is sent is open to the customer, one past its day is overdue since that day.
+ *								(customerState()): an invoice that is sent is open to the customer, one past its day is overdue.
  */
 namespace Crm;
 
@@ -47,6 +47,12 @@ class Portal {
 		'open' => 'info', 'overdue' => 'danger', 'paid' => 'success', 'accepted' => 'success', 'signed' => 'success', 'agreed' => 'success',
 		'expired' => 'muted', 'declined' => 'muted', 'cancelled' => 'muted', 'done' => 'muted', 'new' => 'success', 'pending' => 'warning',
 	];
+
+	// What Sign said on the way back (?sign-state=): the tone and the icon of the note over the list - the request is done, or it was declined
+	private const array SIGN = [ 'signed' => [ 'success', 'circle-check' ], 'declined' => [ 'muted', 'info' ] ];
+
+	// The id of a request of Sign, as the feature writes it
+	private const string SIGN_ID = '/^[a-f0-9]{12}$/D';
 
 	// The icon of a document, by its kind
 	private const array ICONS = [ 'offer' => 'receipt', 'invoice' => 'file-text', 'credit' => 'file-text', 'contract' => 'pen-line', 'privacy' => 'shield-check', 'information' => 'info' ];
@@ -297,7 +303,8 @@ class Portal {
 	 *	The list of documents as the portal draws it: [crm-documents] and the project page both. With a client the offers in it unfold to their
 	 *	card and the form of the order (the list of /portal/belege, where an offer without a project is ordered); without one an offer links the
 	 *	section Angebot of its project page (the section Belege of that page). The message of an order is said once at the top where it names no
-	 *	document, and in the card of the document it names
+	 *	document, and in the card of the document it names; what Sign said on the way back is said there too, with the row of its request marked.
+	 *	The number of documents stands over the list
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$documents		As Documents::released() has them
@@ -312,11 +319,15 @@ class Portal {
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 		$rows = '';
 		$orderable = false;
+		$count = 0;
+		$back = self::signReturn( $appData );
 
 		foreach( $documents as $document ) {
 
 			$orderable = $orderable === true || Documents::orderable( $document ) === true;
-			$rows .= self::documentRow( $appData, $document, $dir, $withProject, $client );
+			$row = self::documentRow( $appData, $document, $dir, $withProject, $client, $back );
+			$count += $row === '' ? 0 : 1;
+			$rows .= $row;
 		}
 
 		if( $rows === '' )
@@ -326,10 +337,29 @@ class Portal {
 			'[[classes]]' => $classes,
 			'[[privacy]]' => $client !== null && $orderable === true && Portal\Order::privacyFirst( $appData, $client ) === true ? Portal\Order::privacyHint( $dir ) : '',
 			'[[state]]'   => $client === null ? '' : Portal\Order::state( $appData ),
+			'[[sign]]'    => $client === null || $back['state'] === '' ? '' : self::render( 'sign-state', [ '[[state]]' => $back['state'], '[[tone]]' => self::SIGN[$back['state']][0], '[[icon]]' => self::SIGN[$back['state']][1] ] ),
+			'[[count]]'   => $count. ' [[/project/crm-portal/projects/document-'. ( $count === 1 ? 'one' : 'many' ). ']]',
 			'[[mode]]'    => $withProject === true ? '' : ' crm-table--project',
 			'[[column]]'  => $withProject === true ? self::template( 'documents-column' ) : '',
 			'[[rows]]'    => $rows,
 		] );
+	}
+
+	/**
+	 *	What Sign said when it sent the member back to the list (?sign=<request>&sign-state=signed|declined): the state, from the two it knows,
+	 *	and the request it is about where the query names one that has the form of an id. A word the feature does not use is no state
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											state ('' for none), id ('' for none)
+	 */
+	public static function signReturn( array &$appData ): array {
+
+		$query = self::query( $appData );
+		$state = is_string( $query['sign-state'] ?? null ) === true && isset( self::SIGN[$query['sign-state']] ) === true ? $query['sign-state'] : '';
+		$id = $state !== '' && is_string( $query['sign'] ?? null ) === true && preg_match( self::SIGN_ID, $query['sign'] ) === 1 ? $query['sign'] : '';
+
+		return [ 'state' => $state, 'id' => $id ];
 	}
 
 	/**
@@ -340,10 +370,11 @@ class Portal {
 	 *	@param		string		$dir					The directory the project is served from, escaped
 	 *	@param		bool			$withProject	Whether the row names its project
 	 *	@param		array|null	$client				The client, where an offer unfolds to its card and its form
+	 *	@param		array 		$back					What Sign said on the way back, as signReturn() has it: the row of that request is marked
 	 *
 	 *	@return 	string										'' for a document whose names the words do not know
 	 */
-	private static function documentRow( array &$appData, array $document, string $dir, bool $withProject, ?array $client ): string {
+	private static function documentRow( array &$appData, array $document, string $dir, bool $withProject, ?array $client, array $back ): string {
 
 		$state = self::customerState( $document );
 
@@ -352,7 +383,7 @@ class Portal {
 			return '';
 
 		$escape = static fn( string $value ): string => \Nino\Modules\Components::escape( $value );
-		$request = preg_match( '/^[a-f0-9]{12}$/D', $document['sign_id'] ) === 1 ? $document['sign_id'] : '';
+		$request = preg_match( self::SIGN_ID, $document['sign_id'] ) === 1 ? $document['sign_id'] : '';
 		$number = $escape( $document['number'] !== '' ? $document['number'] : $document['title'] );
 		$links = self::render( 'document-download', [ '[[dir]]' => $dir, '[[id]]' => (string) $document['id'], '[[number]]' => $number ] );
 
@@ -398,7 +429,7 @@ class Portal {
 			'[[amount]]'  => self::amount( $appData, $document ),
 			'[[due]]'     => self::dueCell( $document, $state ),
 			'[[tone]]'    => self::tone( $state ),
-			'[[word]]'    => self::stateWord( $document, $state ),
+			'[[word]]'    => self::stateWord( $state ),
 			'[[links]]'   => $links,
 			'[[toggle]]'  => $body === '' ? '' : self::render( 'document-toggle', [ '[[word]]' => $word, '[[number]]' => $number ] ),
 		] );
@@ -407,6 +438,7 @@ class Portal {
 			'[[id]]'       => (string) $document['id'],
 			'[[category]]' => $document['category'],
 			'[[state]]'    => $state,
+			'[[sign]]'     => $back['state'] !== '' && $request !== '' && $request === $back['id'] ? ' data-sign-state="'. $back['state']. '"' : '',
 			'[[inner]]'    => $body === '' ? self::render( 'document-plain', [ '[[line]]' => $line ] ) : self::render( 'document-fold', [ '[[open]]' => Portal\Order::named( $appData ) === $document['id'] ? ' open' : '', '[[line]]' => $line, '[[body]]' => $body ] ),
 		] );
 	}
@@ -459,19 +491,13 @@ class Portal {
 	}
 
 	/**
-	 *	The word of a state as the pill says it: the word of the state, and for an invoice that is overdue the day since when
+	 *	The word of a state as the pill says it: the word of the state alone - an invoice that is overdue says its day in the cell of the day it is due
 	 *
-	 *	@param		array 		$document			As Documents::released() has it
 	 *	@param		string		$state				As customerState() has it
 	 *
 	 *	@return 	string										Markup
 	 */
-	public static function stateWord( array $document, string $state ): string {
-
-		$due = (string) ( $document['due_date'] ?? '' );
-
-		if( $state === 'overdue' && Documents\Render::day( $due ) !== '' )
-			return self::render( 'document-overdue', [ '[[iso]]' => \Nino\Modules\Components::escape( $due ), '[[date]]' => \Nino\Modules\Components::escape( Documents\Render::day( $due ) ) ] );
+	public static function stateWord( string $state ): string {
 
 		return '[[/project/crm-documents/state/'. $state. ']]';
 	}
@@ -489,7 +515,20 @@ class Portal {
 		if( in_array( $document['category'], Documents::PLAIN, true ) === true || is_int( $document['gross'] ?? null ) === false )
 			return '';
 
-		return \Nino\Modules\Components::escape( Documents\Money::format( $document['gross'], \Crm\Settings::get( $appData, 'currency' ) ) );
+		return self::money( $appData, $document['gross'] );
+	}
+
+	/**
+	 *	An amount as the list writes it
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$cents				In hundredths of the currency
+	 *
+	 *	@return 	string										Escaped
+	 */
+	public static function money( array &$appData, int $cents ): string {
+
+		return \Nino\Modules\Components::escape( Documents\Money::format( $cents, \Crm\Settings::get( $appData, 'currency' ) ) );
 	}
 
 	/**

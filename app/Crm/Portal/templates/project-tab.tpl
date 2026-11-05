@@ -1,1 +1,1 @@
-<button type="button" class="crm-project__tab nino-tabs-tab[[active]]" data-tabs-target="projekt-[[name]]" data-tab="[[query]]"><span>[[/project/crm-portal/projects/section-[[name]]]]</span>[[count]]</button>
+<a class="crm-project__tab nino-tabs-tab[[active]]" href="#projekt-[[name]]" data-tabs-target="projekt-[[name]]" data-tab="[[query]]"><span>[[/project/crm-portal/projects/section-[[name]]]]</span>[[count]]</a>

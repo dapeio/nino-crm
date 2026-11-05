@@ -84,7 +84,7 @@ class Offer {
 			'[[valid]]'     => $valid === '' ? '' : Portal::render( 'offer-valid', [ '[[iso]]' => $escape( (string) $document['valid_until'] ), '[[date]]' => $escape( $valid ) ] ),
 			'[[gross]]'     => $escape( Documents\Money::format( $totals['gross'], $currency ) ),
 			'[[tone]]'      => Portal::tone( $state ),
-			'[[word]]'      => Portal::stateWord( $released, $state ),
+			'[[word]]'      => Portal::stateWord( $state ),
 			'[[dir]]'       => $dir,
 			'[[lines]]'     => $lines,
 			'[[sums]]'      => $sums,

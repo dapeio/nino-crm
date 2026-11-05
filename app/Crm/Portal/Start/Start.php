@@ -7,8 +7,10 @@ declare(strict_types=1);
  *											the list of documents), the documents released in the last NEW_DAYS days (each with its title, its amount, its kind, its number and the
  *											way to its row), the files that came into the folders of the client's projects in the last NEW_DAYS days (the count for each project and the
  *											way to its page) and the dates of the next DATES_DAYS days of the member's group and for everyone (through the feature Events; where it is off, none).
- *											Where nothing applies it is one sentence. Nothing here is stored or sent, and every value enters the markup escaped. A visitor and a
- *											member of no client get nothing.
+ *											Over the cards stands a row of key figures, each tile a link: the offers that wait for the order with their gross sum, the invoices that
+ *											are open or overdue with theirs, the files that are new and the number of projects they are in, and the next date with the days to it;
+ *											the row stands only where one of the numbers is more than nothing. Where nothing applies it is one sentence. Nothing here is stored or
+ *											sent, and every value enters the markup escaped. A visitor and a member of no client get nothing.
  */
 namespace Crm\Portal;
 
@@ -59,9 +61,19 @@ class Start {
 		$documents = Documents::released( $appData, $client['id'] );
 		$offers = [];
 		$recent = [];
+		$figures = [ 'offers' => [ 'count' => 0, 'sum' => 0 ], 'invoices' => [ 'count' => 0, 'sum' => 0 ] ];
 		$since = gmdate( 'Y-m-d\TH:i:s\Z', time() - self::NEW_DAYS * 86400 );
 
 		foreach( $documents as $document ) {
+
+			if( Documents::orderable( $document ) === true ) {
+				$figures['offers']['count']++;
+				$figures['offers']['sum'] += (int) $document['gross'];
+			}
+			elseif( $document['category'] === 'invoice' && in_array( Portal::customerState( $document ), [ 'open', 'overdue' ], true ) === true ) {
+				$figures['invoices']['count']++;
+				$figures['invoices']['sum'] += (int) $document['gross'];
+			}
 
 			$title = Portal::documentTitle( $document );
 			$kind = $document['number'] === '' ? '[[/project/crm-documents/category/'. $document['category']. ']]' : $escape( $document['number'] );
@@ -82,12 +94,14 @@ class Start {
 		if( $recent !== [] )
 			$cards['documents'] = self::list( array_slice( $recent, 0, self::ROWS ) );
 
-		$files = self::files( $appData, $client, $dir );
+		$news = self::news( $appData, $client );
+		$files = self::files( $news, $dir );
 
 		if( $files !== [] )
 			$cards['files'] = self::list( $files );
 
-		$dates = self::dates( $appData, $dir );
+		$upcoming = Dates::upcoming( $appData );
+		$dates = self::dates( $appData, $upcoming, $dir );
 
 		if( $dates !== [] )
 			$cards['dates'] = self::list( $dates );
@@ -97,19 +111,60 @@ class Start {
 		foreach( $cards as $name => $content )
 			$html .= Portal::render( 'start-card', [ '[[name]]' => $name, '[[icon]]' => self::ICONS[$name], '[[tone]]' => $name === 'privacy' ? ' crm-card--warning' : '', '[[content]]' => $content ] );
 
-		return Portal::render( 'start', [ '[[classes]]' => \Nino\Feature::classes( $args ), '[[cards]]' => $html !== '' ? $html : Portal::template( 'start-nothing' ) ] );
+		return Portal::render( 'start', [
+			'[[classes]]' => \Nino\Feature::classes( $args ),
+			'[[kpis]]'    => self::figures( $appData, $dir, $figures, $news, $upcoming[0] ?? null ),
+			'[[cards]]'   => $html !== '' ? $html : Portal::template( 'start-nothing' ),
+		] );
 	}
 
 	/**
-	 *	The files that came into the folders of the client's projects lately and that the member may see, a row for each project
+	 *	The row of key figures: the offers that wait, the invoices that are open, the new files and the next date - four tiles, each a link. Nothing
+	 *	where none of the three numbers - offers, invoices, files - is more than nothing (a date alone makes no row, a client with nothing to do
+	 *	reads no row of zeros); the tile of the date says a dash where there is no date or Events is off
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$dir					Escaped
+	 *	@param		array 		$figures			offers and invoices, each count and sum (in hundredths)
+	 *	@param		array 		$news					As news() has it
+	 *	@param		array|null	$next					The date that comes next, as Dates::upcoming() has it; null for none
+	 *
+	 *	@return 	string										Markup, '' for no row
+	 */
+	private static function figures( array &$appData, string $dir, array $figures, array $news, ?array $next ): string {
+
+		$files = array_sum( array_column( $news, 'count' ) );
+		$now = Dates::now( $appData );
+
+		if( $figures['offers']['count'] === 0 && $figures['invoices']['count'] === 0 && $files === 0 )
+			return '';
+
+		$money = static fn( array $figure ): string => $figure['count'] === 0 ? '[[/project/crm-portal/start/kpi-open-none]]' : Portal::money( $appData, $figure['sum'] ). ' [[/project/crm-portal/start/kpi-gross]]';
+		$days = $next === null || $now === null ? null : max( 0, (int) $now->setTime( 0, 0 )->diff( $next['start']->setTime( 0, 0 ) )->format( '%r%a' ) );
+		$when = $days === null ? '' : ( $days === 0 ? '[[/project/crm-portal/start/kpi-today]]' : ( $days === 1 ? '[[/project/crm-portal/start/kpi-tomorrow]]' : \Nino\Modules\Components::escape( str_replace( '{days}', (string) $days, (string) \Nino\Html::resolveTextfill( $appData, '/project/crm-portal/start/kpi-days' ) ) ) ) );
+		$tiles = [
+			[ 'offers', $dir. Order::PAGE_DOCUMENTS, (string) $figures['offers']['count'], $money( $figures['offers'] ), $figures['offers']['count'] > 0 ],
+			[ 'invoices', $dir. Order::PAGE_DOCUMENTS, (string) $figures['invoices']['count'], $money( $figures['invoices'] ), false ],
+			[ 'files', $dir. Order::PAGE_PROJECTS, (string) $files, $files === 0 ? '[[/project/crm-portal/start/kpi-files-none]]' : count( $news ). ' [[/project/crm-portal/start/kpi-project-'. ( count( $news ) === 1 ? 'one' : 'many' ). ']]', false ],
+			[ 'date', $dir. '/portal/termine', $next === null ? '–' : $next['start']->format( 'd.m.' ), $next === null ? '[[/project/crm-portal/start/kpi-date-none]]' : $when, false ],
+		];
+		$html = '';
+
+		foreach( $tiles as [ $name, $href, $value, $sub, $waits ] )
+			$html .= Portal::render( 'start-kpi', [ '[[name]]' => $name, '[[href]]' => $href, '[[tone]]' => $waits === true ? ' crm-kpi--warn' : '', '[[value]]' => \Nino\Modules\Components::escape( $value ), '[[sub]]' => $sub ] );
+
+		return Portal::render( 'start-kpis', [ '[[tiles]]' => $html ] );
+	}
+
+	/**
+	 *	The files that came into the folders of the client's projects lately and that the member may see, for each project the number
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$client
-	 *	@param		string		$dir					Escaped
 	 *
-	 *	@return 	array											Rows
+	 *	@return 	array											A list of id, title and count
 	 */
-	private static function files( array &$appData, array $client, string $dir ): array {
+	private static function news( array &$appData, array $client ): array {
 
 		$member = \Nino\Modules\Members::current( $appData );
 
@@ -118,7 +173,7 @@ class Start {
 
 		$folders = array_column( \Nino\Modules\Files::folders( $appData, $member['group'] ), 'id' );
 		$limit = time() - self::NEW_DAYS * 86400;
-		$rows = [];
+		$news = [];
 
 		foreach( Projekte::ofClient( $appData, $client['number'] ) as $project ) {
 
@@ -133,29 +188,43 @@ class Start {
 			} );
 
 			if( $new !== [] )
-				$rows[] = self::row(
-					$dir. Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $project['id'] ). '&amp;tab=dateien#projekt-files', \Nino\Modules\Components::escape( $project['title'] ),
-					count( $new ). ' [[/project/crm-portal/start/new-file-'. ( count( $new ) === 1 ? 'one' : 'many' ). ']]', ''
-				);
+				$news[] = [ 'id' => $project['id'], 'title' => $project['title'], 'count' => count( $new ) ];
 		}
 
-		return $rows;
+		return $news;
+	}
+
+	/**
+	 *	The rows of the card of the new files: a row for each project that has some
+	 *
+	 *	@param		array 		$news					As news() has it
+	 *	@param		string		$dir					Escaped
+	 *
+	 *	@return 	array											Rows
+	 */
+	private static function files( array $news, string $dir ): array {
+
+		return array_map( static fn( array $project ): string => self::row(
+			$dir. Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $project['id'] ). '&amp;tab=dateien#projekt-files', \Nino\Modules\Components::escape( $project['title'] ),
+			$project['count']. ' [[/project/crm-portal/start/new-file-'. ( $project['count'] === 1 ? 'one' : 'many' ). ']]', ''
+		), $news );
 	}
 
 	/**
 	 *	The dates of the next DATES_DAYS days that the member may see
 	 *
 	 *	@param		array 		&$appData
+	 *	@param		array 		$upcoming			As Dates::upcoming() has them
 	 *	@param		string		$dir					Escaped
 	 *
 	 *	@return 	array											Rows; none where Events is off or has no type
 	 */
-	private static function dates( array &$appData, string $dir ): array {
+	private static function dates( array &$appData, array $upcoming, string $dir ): array {
 
 		$limit = Dates::now( $appData )?->modify( '+'. self::DATES_DAYS. ' days' );
 		$rows = [];
 
-		foreach( $limit === null ? [] : Dates::upcoming( $appData ) as $date ) {
+		foreach( $limit === null ? [] : $upcoming as $date ) {
 
 			if( $date['start'] > $limit || count( $rows ) >= self::ROWS )
 				continue;

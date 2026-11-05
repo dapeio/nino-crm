@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 // The words of the customer portal's components, one file per language of the site (see Portal::words()): added as fills for the
 // duration of the request while the module is active, never written into the project's text files. The states of the documents are
-// the customer's words: open, paid, overdue since, cancelled - "sent" and "draft" are never shown to a customer
+// the customer's words: open, paid, overdue, cancelled - "sent" and "draft" are never shown to a customer
 return [
 
 	'[[/project/crm-documents/category/offer]]' => 'Offer',
@@ -13,7 +13,7 @@ return [
 	'[[/project/crm-documents/category/privacy]]' => 'Privacy',
 	'[[/project/crm-documents/category/information]]' => 'Information',
 	'[[/project/crm-documents/state/open]]' => 'open',
-	'[[/project/crm-documents/state/overdue]]' => 'overdue since',
+	'[[/project/crm-documents/state/overdue]]' => 'overdue',
 	'[[/project/crm-documents/state/paid]]' => 'paid',
 	'[[/project/crm-documents/state/cancelled]]' => 'cancelled',
 	'[[/project/crm-documents/state/accepted]]' => 'accepted',
@@ -24,7 +24,7 @@ return [
 	'[[/project/crm-documents/list/xml]]' => 'E-invoice (XML)',
 	'[[/project/crm-documents/list/sign]]' => 'Sign now',
 	'[[/project/crm-documents/list/signed]]' => 'Signed file',
-	'[[/project/crm-documents/list/due]]' => 'due on',
+	'[[/project/crm-documents/list/due]]' => 'due',
 	'[[/project/crm-documents/list/due-none]]' => 'payable at once',
 	'[[/project/crm-documents/list/offer]]' => 'To the offer',
 	'[[/project/crm-documents/list/empty]]' => 'There are no documents for you yet. As soon as we release an offer or an invoice to you, you will find it here.',
@@ -38,7 +38,6 @@ return [
 	'[[/project/crm-portal/column/project]]' => 'Project',
 	'[[/project/crm-portal/column/date]]' => 'Date',
 	'[[/project/crm-portal/column/amount]]' => 'Amount',
-	'[[/project/crm-portal/column/due]]' => 'Due',
 	'[[/project/crm-portal/column/state]]' => 'Status',
 	'[[/project/crm-portal/column/actions]]' => 'Actions',
 	'[[/project/crm-portal/column/file]]' => 'File',
@@ -61,8 +60,8 @@ return [
 	'[[/project/crm-portal/projects/document-one]]' => 'document',
 	'[[/project/crm-portal/projects/document-many]]' => 'documents',
 	'[[/project/crm-portal/projects/back]]' => 'All projects',
-	'[[/project/crm-portal/projects/state-open]]' => 'Running',
-	'[[/project/crm-portal/projects/state-done]]' => 'Completed',
+	'[[/project/crm-portal/projects/state-open]]' => 'running',
+	'[[/project/crm-portal/projects/state-done]]' => 'completed',
 	'[[/project/crm-portal/projects/section-offer]]' => 'Offer',
 	'[[/project/crm-portal/projects/section-files]]' => 'Files',
 	'[[/project/crm-portal/projects/section-documents]]' => 'Documents',
@@ -133,6 +132,8 @@ return [
 	'[[/project/crm-portal/order/state-privacy]]' => 'Please agree to the privacy policy first, then you can place the order.',
 	'[[/project/crm-portal/order/state-expired]]' => 'The page was open for too long. Please place the order once more.',
 	'[[/project/crm-portal/order/state-changed]]' => 'The offer has changed since you opened it. Below is the offer as it is now: please check it, then place the order.',
+	'[[/project/crm-portal/sign/state-signed]]' => 'Thank you, your signature is recorded. The signed file is in the row of the document.',
+	'[[/project/crm-portal/sign/state-declined]]' => 'You declined to sign. This request is closed.',
 	'[[/project/crm-portal/start/heading]]' => 'What is up right now',
 	'[[/project/crm-portal/start/card-privacy]]' => 'Privacy consent pending',
 	'[[/project/crm-portal/start/card-offers]]' => 'Offers waiting for your order',
@@ -144,6 +145,20 @@ return [
 	'[[/project/crm-portal/start/new-file-one]]' => 'new file',
 	'[[/project/crm-portal/start/new-file-many]]' => 'new files',
 	'[[/project/crm-portal/start/nothing]]' => 'Nothing is up for you right now. New offers, invoices, files and dates appear here as soon as there are any.',
+	'[[/project/crm-portal/start/kpis]]' => 'At a glance',
+	'[[/project/crm-portal/start/kpi-offers]]' => 'Offers to order',
+	'[[/project/crm-portal/start/kpi-invoices]]' => 'Open invoices',
+	'[[/project/crm-portal/start/kpi-files]]' => 'New files (14 days)',
+	'[[/project/crm-portal/start/kpi-date]]' => 'Next date',
+	'[[/project/crm-portal/start/kpi-gross]]' => 'gross',
+	'[[/project/crm-portal/start/kpi-open-none]]' => 'nothing open',
+	'[[/project/crm-portal/start/kpi-files-none]]' => 'nothing new',
+	'[[/project/crm-portal/start/kpi-project-one]]' => 'project',
+	'[[/project/crm-portal/start/kpi-project-many]]' => 'projects',
+	'[[/project/crm-portal/start/kpi-today]]' => 'today',
+	'[[/project/crm-portal/start/kpi-tomorrow]]' => 'tomorrow',
+	'[[/project/crm-portal/start/kpi-days]]' => 'in {days} days',
+	'[[/project/crm-portal/start/kpi-date-none]]' => 'no date in sight',
 	'[[/project/crm-portal/dates/empty]]' => 'No dates are coming up right now. As soon as we enter a date with you, it stands here.',
 	'[[/project/crm-portal/dates/all-day]]' => 'all day',
 ];

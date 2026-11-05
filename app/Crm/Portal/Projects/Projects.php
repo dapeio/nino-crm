@@ -9,8 +9,9 @@ declare(strict_types=1);
  *												Belege (the released documents of the project, as [crm-documents] draws them). The head of the page - the breadcrumb, the
  *												title, the state and the description - is the page head's ([crm-portal-head], which reads current()). The tab that stands
  *												open is the one of the query (?tab=angebot, dateien or belege; the first where there is none) and always Dateien where a
- *												file is asked to be played; the script of the kernel wires the buttons and the portal's own script writes the tab into the
- *												address, and without them every panel stands open one under the other. The label of a tab carries the count of what is in it.
+ *												file is asked to be played. The tabs are links to the three sections, there from the server: the script of the kernel makes
+ *												them tabs and the portal's own script writes the tab into the address, and without them the links jump to the panels, which
+ *												stand open one under the other. The label of a tab carries the count of what is in it.
  *
  *												Nothing here is stored or sent, and every value enters the markup escaped. A project of another client and an id that is none
  *												are the list with a sentence that the project is unknown. The player of Review returns to the page it stands on without the
@@ -167,7 +168,7 @@ class Projects {
 			'[[labelled]]' => $short === true ? ' aria-labelledby="crm-projects-heading"' : '',
 			'[[heading]]'  => $short === true ? Portal::render( 'projects-heading', [ '[[dir]]' => $dir ] ) : '',
 			'[[unknown]]'  => $say,
-			'[[open]]'     => $rows['open'] === '' ? '' : Portal::render( 'projects-open', [ '[[scroll]]' => $short === true ? '' : ' crm-scroll crm-scroll--cards', '[[rows]]' => $rows['open'] ] ),
+			'[[open]]'     => $rows['open'] === '' ? '' : Portal::render( 'projects-open', [ '[[rows]]' => $rows['open'] ] ),
 			'[[done]]'     => $rows['done'] === '' ? '' : Portal::render( 'projects-done', [ '[[rows]]' => $rows['done'] ] ),
 		] );
 	}

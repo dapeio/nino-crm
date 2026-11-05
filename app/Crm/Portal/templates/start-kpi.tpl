@@ -1,0 +1,1 @@
+<li class="crm-kpis__item"><a class="crm-kpi crm-card crm-card--link[[tone]]" href="[[href]]" data-kpi="[[name]]"><span class="crm-kpi__label">[[/project/crm-portal/start/kpi-[[name]]]]</span><span class="crm-kpi__value">[[value]]</span><span class="crm-kpi__sub">[[sub]]</span></a></li>

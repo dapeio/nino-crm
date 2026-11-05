@@ -11,54 +11,69 @@
  *
  *	1 Tokens		Every value is a property of :where(:root) (no specificity: a rule of the project that moves one wins by order), and every one
  *							of them is made of a role of the theme.
- *							Type scale, six steps and only those: --crm-text-xs .8125rem, -s .875rem, -m 1rem (the page's text), -l 1.125rem, -xl 1.375rem,
- *							-xxl 1.75rem. Meta is xs, secondary words and buttons s, card titles l, section titles xl, the page title xxl.
+ *							Type scale, six steps and only those: --crm-text-xs .8125rem, -s .875rem, -m 1rem (the page's text), -l 1.125rem, -xl 1.25rem,
+ *							-xxl 1.5rem. Meta is xs, secondary words and buttons s, card titles and section titles l, the page title xxl.
  *							Spacing, seven steps and only those: --crm-1 .25rem, -2 .5rem, -3 .75rem, -4 1rem, -5 1.5rem, -6 2rem, -7 3rem (4/8/12/16/24/32/48px).
+ *							The measure of the portal is its own: the site lifts its rem by 112.5% from 768px (--base-size), a page that is read, and
+ *							the portal does not follow - it is used. From 768px the steps and the spacing are divided by --crm-step (1.125, that factor),
+ *							so that they are 13/14/16/18/20/24px and 4/8/12/16/24/32/48px on the phone and on the desktop alike; --crm-touch stays 44px.
  *							Surfaces, three levels: --crm-page (the ground of a portal page), --crm-surface (a card, one step above it), --crm-surface-2
  *							(a block inside a card, the second level). A step above is lighter, in both modes: light-dark() picks the mix per the
  *							colour scheme in use, which the theme declares on :root (color-scheme: light dark) and a forced mode sets (:root
  *							[data-nino-mode], as the Modeswitch feature writes it; the two lines are repeated here so that a forced mode is right
- *							without that feature). The page is the ground with 4% ink in the light scheme and the ground itself in the dark one; a
- *							card is the ground in the light scheme and the ground with 7% ink in the dark one. Lines are the border role mixed into
- *							the ground, shadows the ink (light) or the black ground of the theme (dark) at a low alpha: the theme has no role for a
- *							shadow, so these are the portal's tokens, said here.
+ *							without that feature). Light: the page is the ground with 4% ink, a card the ground, a block 3% ink. Dark: the page is the
+ *							ground, a card the ground with 10% ink, a block with 16% - the steps are clear without a shadow. Lines are the ink mixed into
+ *							the ground (--crm-line 9%, --crm-line-strong 22%; 10% and 24% dark), not the border role: the border role is the line of a
+ *							form field, which has to stand 3:1 on its own. Depth is a shadow in the light scheme (the ink at a low alpha: the theme has
+ *							no role for a shadow, so these are the portal's tokens, said here) and a one-pixel light along the upper edge in the dark
+ *							one, where a shadow cannot be seen. Both are one value: light-dark() takes the colours inside a shadow.
  *							Ink, three strengths: --crm-ink (the ink of the ground), --crm-ink-2 (76% of it, secondary), --crm-ink-3 (62%, meta -
- *							4.5:1 on the page in both schemes). Links: --crm-link, the accent role pulled 16% towards the ink, which lifts it to AA
- *							in the dark scheme and deepens it in the light one.
+ *							4.5:1 on the page in both schemes). Links: --crm-link, the accent role pulled 16% (light) or 30% (dark) towards the ink,
+ *							which keeps it at AA on a card, a block and a note in both schemes. The accent marks what is done or is a state - a link in
+ *							a sentence, the primary button, the active tab, the tile of an icon - and the titles of the lists are ink.
  *							Tones, five: info (the accent), success, warning, danger (the theme's error) and muted (ink 3). A pill, a note and a
- *							card's edge take one through --crm-tone.
+ *							card's edge take one through --crm-tone. --crm-danger-ink is the danger as text on a surface (a due day that is past, a
+ *							field's error): the tone pulled 15% (light) or 30% (dark) towards the ink, so that it reads at AA where the tone itself does not.
+ *							Focus: --crm-focus is the theme's focus role pulled 30% towards the ink, so that the ring stands 3:1 against the page, a card
+ *							and a block in both schemes (the role alone reaches 2.5:1 on some of them); the ring is a 2px outline set off by 2px.
  *							Corners: --crm-radius for surfaces (the theme's alternative surface radius), --crm-radius-s for controls (the theme's
- *							--radius), the pill 999px (a literal on purpose: a pill, whatever the theme's corners are). Touch: --crm-touch 44px,
- *							the least height of every button, link row and control, phone or not.
+ *							--radius), the pill 999px (a literal on purpose: a pill, whatever the theme's corners are). Both are the theme's to set
+ *							(the Design feature) and never moved here. Touch: --crm-touch 44px, the least height of every button, link row and
+ *							control, phone or not.
  *	2 Page			.crm-portal on the wrap, .crm-page on the section: the page's ground, the inner column at most 80rem wide, 16px (the row's
  *							gutter below 768px) at the sides and more above. The preloader of the kernel is off on a portal page; the burger of the
  *							main menu gets a touch-sized hit area; everything else of the frame is the theme's.
- *	3 Head			.crm-head: the breadcrumb (.crm-crumbs) where there is a parent, the title as the largest text with a pill beside it where
- *							the page has a state, the lead, the actions at the right (Abmelden, the calendar) and the meta line (member · company).
- *							Section titles .crm-section__title (xl, --sub l) with .crm-section__head for a title and an action in one line.
- *	4 Surfaces	.crm-card (surface, line, soft shadow), --link (elevation on hover and focus), --nested (the second level), --warning (an
- *							edge in the warning tone). .crm-fold: a details whose summary is a ghost button and whose body is a nested block.
- *	5 Pills		.crm-pill with --info, --success, --warning, --danger, --muted: the tone at 14% behind, the tone pulled towards the ink as
- *							the text. Every state of the portal is one of them.
- *	6 Notes		.crm-note with the same tones (--error is the danger tone): an icon in the tone, a left edge of it, the tone at 10% behind.
- *							Success and error are told apart at a glance, light and dark.
- *	7 Buttons	.crm-btn, 44px high: --primary (the theme's primary ground and ink), --secondary (surface with a line), --ghost (the link
- *							alone); --small is the row size (xs words, less padding, the same height); --holds wraps a link a feature draws and
- *							stretches it over the whole button. An icon in a button sits before its words.
- *	8 Lists		.crm-table: a card whose rows are grids with a header row (sticky when the list scrolls) and column words; the amount is a
- *							--num cell, right-aligned and tabular; the actions the last column. Under 640px the header goes, and a row stacks to a
- *							card: the title first, the facts as a line, the actions last. .crm-scroll: from 768px a region of at most 60vh that
- *							scrolls inside, with a fade at its lower edge and a shadow under its header while there is more (data-edge, set by
- *							portal.js); on a phone the list flows. Documents, files, projects and the start cards are these lists.
+ *	3 Head			.crm-head: the breadcrumb (.crm-crumbs) where there is a parent, the title as the largest text (xxl, 24px) with its state -
+ *							a pill and the start - beside it as a line of its own where the page has one, the lead (s, ink 3, at most 60 characters),
+ *							the actions at the right (Abmelden, the calendar) and the meta line (member · company). A head with a lead is 54px high.
+ *							Section titles .crm-section__title (l) with .crm-section__head for a title and an action in one line.
+ *	4 Surfaces	.crm-card (surface, line, soft shadow), --link (elevation on hover and focus), --nested (the second level, no line),
+ *							--warning (an edge in the warning tone). .crm-fold: a details whose summary is a ghost button and whose body is a nested block.
+ *	5 Pills		.crm-pill with --info, --success, --warning, --danger, --muted: the tone at 16% (22% dark) behind, the tone pulled towards the
+ *							ink as the text. Every state of the portal is one of them, written in lower case.
+ *	6 Notes		.crm-note with the same tones (--error is the danger tone, --muted the grey): an icon in the tone, a left edge of 3px of it, the
+ *							tone at 10% behind, no line. Success and error are told apart at a glance, light and dark.
+ *	7 Buttons	.crm-btn, 44px high: --primary (the theme's primary ground and ink, also as a link), --secondary (surface with a line, ink),
+ *							--ghost (ink 2, quiet); --small is the row size (xs words, less padding, the same height); --holds wraps a link a feature
+ *							draws and stretches it over the whole button. An icon in a button sits before its words. A link is the accent only where
+ *							it is no button (a:where(:not(.crm-btn)), at the specificity of a class and an element: the rule of a part wins by its place).
+ *	8 Lists		.crm-table: a card whose rows are grids with a header row and column words; the amount is a --num cell, right-aligned and
+ *							tabular; the actions the last column. Under 640px the header goes, and a row stacks to a card: the title first, the facts
+ *							as a line, the actions last. From 1024px the actions of a row are quiet icon buttons, their words kept for a screen reader
+ *							and as the title. The page scrolls, a list does not: it is as long as it is. Documents, files, projects and the start cards
+ *							are these lists.
  *	9 Forms		.crm-fields, a grid of .crm-field (label above the control, two to a line from 640px, --wide for one that takes the line),
  *							.crm-field__input (44px, surface, line, the theme's focus ring), hint and error at the field; .crm-check for a box with
  *							its sentence. The forms of the features on the portal's pages (Files' upload with its drop zone, Review's comment,
  *							Members' login on the door) take the same look, scoped to the portal's own markup; their files are not touched.
- *	10 Tabs		The kernel's tabs restyled: .crm-project__tab is an underlined button with its count; the panels are plain. The
- *							address follows the tab through portal.js.
- *	11 Parts		The start cards, the projects, the offer card (a details that folds to its head line), the order, how to pay, the files,
- *							the dates, the data form, the Datenschutz, the uploads and the door - each in its own chapter, each made of 1 to 10.
+ *	10 Tabs		The kernel's tabs restyled: .crm-project__tab is an underlined link with its count, there from the server (a list of jumps
+ *							to the three sections without the kernel's script, tabs with it); the panels are plain. The address follows the tab through
+ *							portal.js.
+ *	11 Parts		The key figures and the start cards, the projects (tiles from 640px), the offer card (a details that folds to its head line),
+ *							the order, how to pay, the files, the dates, the data form, the Datenschutz, the uploads and the door - each in its own
+ *							chapter, each made of 1 to 10.
  *	12 Empty		.crm-empty: an icon, the sentence that says what happens next, and the way to the studio.
+ *	13 Print		A page of the portal on paper: the frame, the actions and the forms are left out, the folds are opened, the head is not fixed.
  *
  *	The forms of the portal carry no .nino-form on purpose: the kernel's script would post one by XHR, and these are plain posts answered by
  *	the server. The fields are the kernel's (.nino-form-input, .nino-form-select) with the look of the portal over them.
@@ -71,8 +86,8 @@
 	--crm-text-s: .875rem;
 	--crm-text-m: 1rem;
 	--crm-text-l: 1.125rem;
-	--crm-text-xl: 1.375rem;
-	--crm-text-xxl: 1.75rem;
+	--crm-text-xl: 1.25rem;
+	--crm-text-xxl: 1.5rem;
 
 	--crm-1: .25rem;
 	--crm-2: .5rem;
@@ -83,31 +98,55 @@
 	--crm-7: 3rem;
 
 	--crm-page: light-dark( color-mix(in srgb, var(--color-ground) 96%, var(--color-ink)), var(--color-ground) );
-	--crm-surface: light-dark( var(--color-ground), color-mix(in srgb, var(--color-ground) 93%, var(--color-ink)) );
-	--crm-surface-2: light-dark( color-mix(in srgb, var(--color-ground) 97%, var(--color-ink)), color-mix(in srgb, var(--color-ground) 87%, var(--color-ink)) );
-	--crm-line: color-mix(in srgb, var(--color-border) 55%, var(--color-ground));
-	--crm-line-strong: var(--color-border);
+	--crm-surface: light-dark( var(--color-ground), color-mix(in srgb, var(--color-ground) 90%, var(--color-ink)) );
+	--crm-surface-2: light-dark( color-mix(in srgb, var(--color-ground) 97%, var(--color-ink)), color-mix(in srgb, var(--color-ground) 84%, var(--color-ink)) );
+	--crm-line: light-dark( color-mix(in srgb, var(--color-ink) 9%, var(--color-ground)), color-mix(in srgb, var(--color-ink) 10%, var(--color-ground)) );
+	--crm-line-strong: light-dark( color-mix(in srgb, var(--color-ink) 22%, var(--color-ground)), color-mix(in srgb, var(--color-ink) 24%, var(--color-ground)) );
 	--crm-shadow-ink: light-dark( color-mix(in srgb, var(--color-ink) 12%, transparent), color-mix(in srgb, var(--color-section-black-bg) 70%, transparent) );
 	--crm-shadow-soft: light-dark( color-mix(in srgb, var(--color-ink) 7%, transparent), color-mix(in srgb, var(--color-section-black-bg) 45%, transparent) );
-	--crm-shadow-1: 0 1px 2px var(--crm-shadow-ink);
-	--crm-shadow-2: 0 1px 2px var(--crm-shadow-ink), 0 8px 24px var(--crm-shadow-soft);
+	--crm-shadow-1: 0 1px 2px light-dark( var(--crm-shadow-soft), transparent ), inset 0 1px 0 light-dark( transparent, color-mix(in srgb, var(--color-ink) 6%, transparent) );
+	--crm-shadow-2: 0 2px 4px light-dark( var(--crm-shadow-soft), transparent ), 0 12px 32px -8px var(--crm-shadow-ink), inset 0 1px 0 light-dark( transparent, color-mix(in srgb, var(--color-ink) 9%, transparent) );
 
 	--crm-ink: var(--color-ink);
 	--crm-ink-2: color-mix(in srgb, var(--color-ink) 76%, var(--color-ground));
 	--crm-ink-3: color-mix(in srgb, var(--color-ink) 62%, var(--color-ground));
-	--crm-link: color-mix(in srgb, var(--color-accent) 84%, var(--color-ink));
+	--crm-link: light-dark( color-mix(in srgb, var(--color-accent) 84%, var(--color-ink)), color-mix(in srgb, var(--color-accent) 70%, var(--color-ink)) );
 
 	--crm-info: var(--color-accent);
 	--crm-success: var(--color-success);
 	--crm-warning: var(--color-warning);
 	--crm-danger: var(--color-error);
 	--crm-muted: var(--crm-ink-3);
+	--crm-danger-ink: light-dark( color-mix(in srgb, var(--crm-danger) 85%, var(--crm-ink)), color-mix(in srgb, var(--crm-danger) 70%, var(--crm-ink)) );
+	--crm-focus: color-mix(in srgb, var(--color-focus) 70%, var(--crm-ink));
 
 	--crm-radius: var(--radius-surface-alt);
 	--crm-radius-s: var(--radius);
 	--crm-pill: 999px;
 	--crm-touch: 44px;
 	--crm-page-max: 80rem;
+}
+
+/*	From 768px the site lifts its rem by --crm-step; the portal gives it back, so that its text is 16px and its rhythm 4px on every width	*/
+@media (min-width: 768px) {
+
+	:where(:root) {
+		--crm-step: 1.125;
+		--crm-text-xs: calc( .8125rem / var(--crm-step) );
+		--crm-text-s: calc( .875rem / var(--crm-step) );
+		--crm-text-m: calc( 1rem / var(--crm-step) );
+		--crm-text-l: calc( 1.125rem / var(--crm-step) );
+		--crm-text-xl: calc( 1.25rem / var(--crm-step) );
+		--crm-text-xxl: calc( 1.5rem / var(--crm-step) );
+
+		--crm-1: calc( .25rem / var(--crm-step) );
+		--crm-2: calc( .5rem / var(--crm-step) );
+		--crm-3: calc( .75rem / var(--crm-step) );
+		--crm-4: calc( 1rem / var(--crm-step) );
+		--crm-5: calc( 1.5rem / var(--crm-step) );
+		--crm-6: calc( 2rem / var(--crm-step) );
+		--crm-7: calc( 3rem / var(--crm-step) );
+	}
 }
 
 /*	A forced mode says its scheme, so that light-dark() picks the right mix (what the Modeswitch feature's stylesheet says too)	*/
@@ -127,7 +166,7 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 }
 
 .crm-page.nino-section {
-	padding: var(--crm-6) 0 var(--crm-7);
+	padding: var(--crm-5) 0 var(--crm-7);
 	background-color: var(--crm-page);
 	color: var(--crm-ink);
 }
@@ -145,7 +184,7 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 	box-sizing: border-box;
 }
 
-.crm-portal a {
+.crm-portal a:where(:not(.crm-btn)) {
 	color: var(--crm-link);
 }
 
@@ -157,7 +196,7 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 }
 
 .crm-portal :focus-visible {
-	outline: 2px solid var(--color-focus);
+	outline: 2px solid var(--crm-focus);
 	outline-offset: 2px;
 }
 
@@ -178,7 +217,7 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 /*	3 Head	*/
 
 .crm-head {
-	margin: 0 0 var(--crm-6);
+	margin: 0 0 var(--crm-5);
 }
 
 .crm-crumbs {
@@ -186,21 +225,22 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--crm-1);
-	margin: 0 0 var(--crm-3);
-	font-size: var(--crm-text-s);
+	margin: 0 0 var(--crm-1);
+	font-size: var(--crm-text-xs);
 	color: var(--crm-ink-3);
 }
 
-.crm-crumbs__link {
+a.crm-crumbs__link {
 	display: inline-flex;
 	align-items: center;
 	min-height: var(--crm-touch);
-	color: var(--crm-link);
+	color: var(--crm-ink-3);
 	text-decoration: none;
-	font-weight: 600;
+	font-weight: 500;
 }
 
-.crm-crumbs__link:hover {
+a.crm-crumbs__link:hover {
+	color: var(--crm-ink);
 	text-decoration: underline;
 }
 
@@ -230,8 +270,8 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 	color: var(--crm-ink);
 	font-size: var(--crm-text-xxl);
 	font-weight: 700;
-	letter-spacing: -.01em;
-	line-height: 1.15;
+	letter-spacing: -.02em;
+	line-height: 1.2;
 	overflow-wrap: anywhere;
 }
 
@@ -247,10 +287,10 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 }
 
 .crm-head__lead {
-	max-width: 64ch;
-	margin: var(--crm-2) 0 0;
-	color: var(--crm-ink-2);
-	font-size: var(--crm-text-m);
+	max-width: 60ch;
+	margin: var(--crm-1) 0 0;
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-s);
 	line-height: 1.5;
 	overflow-wrap: anywhere;
 }
@@ -262,14 +302,19 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 	gap: var(--crm-2);
 }
 
+/*	A quiet button in the head has no inner padding at the side: its text starts where the title and the button above it start	*/
+.crm-head__actions .crm-btn--ghost {
+	padding-inline: 0;
+}
+
 .crm-head__meta {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--crm-2);
-	margin: var(--crm-4) 0 0;
+	margin: var(--crm-3) 0 0;
 	color: var(--crm-ink-2);
-	font-size: var(--crm-text-s);
+	font-size: var(--crm-text-xs);
 }
 
 .crm-head__meta .crm-icon {
@@ -288,9 +333,9 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 }
 
 .crm-section__title {
-	margin: 0 0 var(--crm-4);
+	margin: 0 0 var(--crm-3);
 	color: var(--crm-ink);
-	font-size: var(--crm-text-xl);
+	font-size: var(--crm-text-l);
 	font-weight: 700;
 	line-height: 1.25;
 }
@@ -308,7 +353,7 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--crm-2) var(--crm-4);
-	margin: 0 0 var(--crm-4);
+	margin: 0 0 var(--crm-3);
 }
 
 .crm-section__head .crm-section__title {
@@ -339,12 +384,13 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 
 .crm-card--nested {
 	--color-ground: var(--crm-surface-2);
+	border-color: transparent;
 	background-color: var(--crm-surface-2);
 	box-shadow: none;
 }
 
 .crm-card--warning {
-	box-shadow: inset 4px 0 0 var(--crm-warning), var(--crm-shadow-1);
+	box-shadow: inset 3px 0 0 var(--crm-warning), var(--crm-shadow-1);
 }
 
 .crm-fold__summary {
@@ -374,11 +420,11 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 	display: inline-flex;
 	align-items: center;
 	gap: .3em;
-	min-height: 1.5rem;
-	padding: .125rem .625rem;
+	min-height: 1.375rem;
+	padding: .125rem .5rem;
 	border-radius: var(--crm-pill);
-	background-color: color-mix(in srgb, var(--crm-tone) 16%, var(--crm-surface));
-	color: color-mix(in srgb, var(--crm-tone) 68%, var(--crm-ink));
+	background-color: light-dark( color-mix(in srgb, var(--crm-tone) 16%, var(--crm-surface)), color-mix(in srgb, var(--crm-tone) 22%, var(--crm-surface)) );
+	color: light-dark( color-mix(in srgb, var(--crm-tone) 68%, var(--crm-ink)), color-mix(in srgb, var(--crm-tone) 55%, var(--crm-ink)) );
 	font-size: var(--crm-text-xs);
 	font-weight: 600;
 	line-height: 1.2;
@@ -401,8 +447,8 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 	gap: var(--crm-3);
 	margin: 0 0 var(--crm-5);
 	padding: var(--crm-3) var(--crm-4);
-	border: 1px solid color-mix(in srgb, var(--crm-tone) 35%, var(--crm-surface));
-	border-left: 4px solid var(--crm-tone);
+	border: 1px solid transparent;
+	border-left: 3px solid var(--crm-tone);
 	border-radius: var(--crm-radius);
 	background-color: color-mix(in srgb, var(--crm-tone) 10%, var(--crm-surface));
 	color: var(--crm-ink);
@@ -420,8 +466,9 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 .crm-note--error { --crm-tone: var(--crm-danger); }
 .crm-note--warning { --crm-tone: var(--crm-warning); }
 .crm-note--info { --crm-tone: var(--crm-info); }
+.crm-note--muted { --crm-tone: var(--crm-muted); }
 
-.crm-note a {
+.crm-note a:where(:not(.crm-btn)) {
 	color: var(--crm-link);
 	font-weight: 600;
 }
@@ -464,7 +511,7 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 }
 
 .crm-btn--primary:hover {
-	box-shadow: var(--crm-shadow-2);
+	box-shadow: 0 2px 8px -2px var(--crm-shadow-ink);
 	color: var(--color-primary-text);
 }
 
@@ -472,21 +519,22 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 	background-color: var(--crm-surface);
 	border-color: var(--crm-line-strong);
 	color: var(--crm-ink);
-	box-shadow: var(--crm-shadow-1);
+	box-shadow: none;
 }
 
 .crm-btn--secondary:hover {
+	border-color: color-mix(in srgb, var(--color-ink) 35%, var(--color-ground));
 	background-color: var(--crm-surface-2);
 	color: var(--crm-ink);
 }
 
 .crm-btn--ghost {
-	color: var(--crm-link);
+	color: var(--crm-ink-2);
 }
 
 .crm-btn--ghost:hover {
-	background-color: color-mix(in srgb, var(--crm-link) 10%, transparent);
-	color: var(--crm-link);
+	background-color: color-mix(in srgb, var(--crm-ink) 6%, transparent);
+	color: var(--crm-ink);
 }
 
 .crm-btn--small {
@@ -514,7 +562,7 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 }
 
 .crm-btn--holds:focus-within {
-	outline: 2px solid var(--color-focus);
+	outline: 2px solid var(--crm-focus);
 	outline-offset: 2px;
 }
 
@@ -525,7 +573,7 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 /*	8 Lists - a row is a line of cells; a row that unfolds (an offer to its card, an open invoice to how it is paid) is a details whose summary
 	is that line and whose body follows it. Below 1024px a line stacks: the title first, the facts as a line, the actions last (from 640px at
 	the right of the facts); from 1024px the list is the grid and every line takes its columns from it (subgrid), so that a column stands in a
-	line from row to row whatever a row holds, under a header row that sticks while the list scrolls	*/
+	line from row to row whatever a row holds, under a header row. The page scrolls, the list does not	*/
 
 .crm-table {
 	--crm-cols: minmax(0, 1fr);
@@ -569,7 +617,7 @@ body:has(.crm-portal) .nino-nav-burger > button:not([hidden]) {
 }
 
 .crm-table__line:hover {
-	background-color: color-mix(in srgb, var(--crm-ink) 3%, transparent);
+	background-color: light-dark( color-mix(in srgb, var(--crm-ink) 4%, transparent), color-mix(in srgb, var(--crm-ink) 5%, transparent) );
 }
 
 summary.crm-table__line {
@@ -618,50 +666,6 @@ time.crm-table__cell {
 	}
 }
 
-@media (min-width: 768px) {
-
-	.crm-scroll {
-		position: relative;
-		max-height: 60vh;
-		overflow: auto;
-		overscroll-behavior: contain;
-	}
-
-	.crm-scroll::after {
-		content: "";
-		position: sticky;
-		bottom: 0;
-		z-index: 1;
-		display: block;
-		grid-column: 1 / -1;
-		height: 2.5rem;
-		margin-top: -2.5rem;
-		background: linear-gradient(to bottom, transparent, var(--crm-surface));
-		opacity: 0;
-		pointer-events: none;
-		transition: opacity .15s ease;
-	}
-
-	.crm-scroll[data-edge="bottom"]::after,
-	.crm-scroll[data-edge="both"]::after {
-		opacity: 1;
-	}
-
-	.crm-scroll[data-edge="top"] .crm-table__head,
-	.crm-scroll[data-edge="both"] .crm-table__head {
-		box-shadow: 0 6px 14px -6px var(--crm-shadow-ink);
-	}
-
-	.crm-scroll--cards {
-		padding: var(--crm-1);
-		margin: calc( -1 * var(--crm-1) );
-	}
-
-	.crm-scroll--cards::after {
-		background: linear-gradient(to bottom, transparent, var(--crm-page));
-	}
-}
-
 @media (min-width: 1024px) {
 
 	.crm-table__body {
@@ -682,7 +686,7 @@ time.crm-table__cell {
 		grid-column: 1 / -1;
 		grid-template-columns: subgrid;
 		gap: var(--crm-2) var(--crm-4);
-		padding: var(--crm-2) var(--crm-5);
+		padding: var(--crm-3) var(--crm-5);
 	}
 
 	.crm-table__line > .crm-table__cell:first-child,
@@ -697,18 +701,12 @@ time.crm-table__cell {
 	}
 
 	.crm-table__head {
-		position: sticky;
-		top: 0;
-		z-index: 1;
-		min-height: 2.5rem;
+		min-height: 2.25rem;
 		border-bottom: 1px solid var(--crm-line);
 		background-color: var(--crm-surface);
 		color: var(--crm-ink-3);
 		font-size: var(--crm-text-xs);
 		font-weight: 600;
-		letter-spacing: .04em;
-		text-transform: uppercase;
-		transition: box-shadow .15s ease;
 	}
 
 	.crm-table__head .crm-table__actions {
@@ -734,9 +732,11 @@ time.crm-table__cell {
 		padding: 0 var(--crm-5) var(--crm-4);
 	}
 
-	/*	In the columns the download and the fold of a document are their icons, their words staying for a screen reader: the room is the title's	*/
+	/*	In the columns the download and the fold of a document and the download of a file are quiet icons of the touch size: their words stay
+		for a screen reader and are the title of the button, the room is the title's; the signature stays a button with its words	*/
 	.crm-documents__download > span:not(.nino-sr-only),
-	.crm-table__toggle > span:not(.nino-sr-only) {
+	.crm-table__toggle > span:not(.nino-sr-only),
+	.crm-files__download > span:not(.nino-sr-only) {
 		position: absolute;
 		width: 1px;
 		height: 1px;
@@ -746,9 +746,25 @@ time.crm-table__cell {
 	}
 
 	.crm-documents__download,
-	.crm-table__toggle {
+	.crm-table__toggle,
+	.crm-files__download {
 		min-width: var(--crm-touch);
 		padding: 0;
+		border-color: transparent;
+		background-color: transparent;
+		color: var(--crm-ink-2);
+	}
+
+	.crm-documents__download:hover,
+	.crm-table__toggle:hover,
+	.crm-files__download:hover {
+		background-color: color-mix(in srgb, var(--crm-ink) 7%, transparent);
+		color: var(--crm-ink);
+	}
+
+	.crm-documents__links,
+	.crm-files__links {
+		gap: var(--crm-1);
 	}
 }
 
@@ -778,9 +794,9 @@ time.crm-table__cell {
 	min-height: var(--crm-touch);
 	margin: 0;
 	padding: 0 var(--crm-3);
-	border: 1px solid var(--crm-line-strong);
+	border: 1px solid var(--color-border);
 	border-radius: var(--crm-radius-s);
-	background-color: var(--crm-surface);
+	background-color: light-dark( var(--crm-surface), var(--crm-surface-2) );
 	color: var(--crm-ink);
 	font-family: inherit;
 	font-size: var(--crm-text-m);
@@ -814,14 +830,14 @@ time.crm-table__cell {
 	display: flex;
 	align-items: center;
 	gap: var(--crm-1);
-	color: color-mix(in srgb, var(--crm-danger) 85%, var(--crm-ink));
+	color: var(--crm-danger-ink);
 	font-size: var(--crm-text-xs);
 	font-weight: 600;
 }
 
 .crm-check {
 	display: flex;
-	align-items: flex-start;
+	align-items: center;
 	gap: var(--crm-3);
 	min-height: var(--crm-touch);
 	padding: var(--crm-2) 0;
@@ -876,10 +892,6 @@ time.crm-table__cell {
 	overflow-x: auto;
 }
 
-.crm-project__nav:not([role="tablist"]) {
-	display: none;
-}
-
 .crm-project__nav .crm-project__tab.nino-tabs-tab {
 	display: inline-flex;
 	align-items: center;
@@ -895,6 +907,7 @@ time.crm-table__cell {
 	font-family: inherit;
 	font-size: var(--crm-text-m);
 	font-weight: 600;
+	text-decoration: none;
 	white-space: nowrap;
 	cursor: pointer;
 	transition: color .15s ease, border-color .15s ease;
@@ -929,14 +942,27 @@ time.crm-table__cell {
 
 .crm-project__tab.nino-is-active .crm-project__count {
 	background-color: color-mix(in srgb, var(--crm-link) 14%, transparent);
-	color: var(--crm-link);
+	color: var(--crm-ink-2);
 }
 
+/*	A panel that is not the open one is hidden from the first paint, so that nothing moves when the kernel's script takes over; where there is
+	no script (scripting: none) every panel stands open, one under the other, and the tabs are the links that jump to them	*/
 .crm-project__section.nino-tabs-panel {
-	display: block;
+	display: none;
 	opacity: 1;
 	transform: none;
 	transition: none;
+}
+
+.crm-project__section.nino-tabs-panel.nino-is-active {
+	display: block;
+}
+
+@media (scripting: none) {
+
+	.crm-project__section.nino-tabs-panel {
+		display: block;
+	}
 }
 
 .crm-project__section.nino-tabs-panel[hidden] {
@@ -947,13 +973,18 @@ time.crm-table__cell {
 	margin-top: var(--crm-6);
 }
 
-.crm-project__section[role="tabpanel"] > .crm-project__heading {
+/*	The heading of a section is there for the page without a script, where the sections stand one under the other; a tab names its panel	*/
+.crm-project__heading {
 	display: none;
+	margin: 0 0 var(--crm-3);
+	font-size: var(--crm-text-l);
 }
 
-.crm-project__heading {
-	margin: 0 0 var(--crm-4);
-	font-size: var(--crm-text-xl);
+@media (scripting: none) {
+
+	.crm-project__heading {
+		display: block;
+	}
 }
 
 .crm-project__rest {
@@ -964,19 +995,82 @@ time.crm-table__cell {
 /*	11 Parts - the start page	*/
 
 .crm-start {
-	margin: 0 0 var(--crm-7);
+	margin: 0 0 var(--crm-6);
 }
 
+/*	The key figures: a row of tiles, each a link, over the cards; the figure that waits for the client is in the warning tone	*/
+.crm-kpis {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+	gap: var(--crm-3);
+	margin: 0 0 var(--crm-5);
+	padding: 0;
+	list-style: none;
+}
+
+.crm-kpis__item {
+	display: grid;
+	min-width: 0;
+}
+
+.crm-kpi {
+	display: grid;
+	align-content: start;
+	gap: var(--crm-1);
+	min-height: var(--crm-touch);
+	padding: var(--crm-4) var(--crm-5);
+	color: inherit;
+	text-decoration: none;
+}
+
+.crm-kpi__label {
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+	font-weight: 600;
+}
+
+.crm-kpi__value {
+	color: var(--crm-ink);
+	font-size: var(--crm-text-xxl);
+	font-weight: 600;
+	letter-spacing: -.02em;
+	line-height: 1.15;
+	font-variant-numeric: tabular-nums;
+}
+
+.crm-kpi__sub {
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-xs);
+	overflow-wrap: anywhere;
+}
+
+.crm-kpi--warn .crm-kpi__value {
+	color: color-mix(in srgb, var(--crm-warning) 80%, var(--crm-ink));
+}
+
+.crm-kpi:hover .crm-kpi__value {
+	color: var(--crm-link);
+}
+
+/*	Dense and stretched: no hole under a short card; the long card of the documents takes two rows from 1024px	*/
 .crm-start__grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
-	align-items: start;
+	grid-auto-flow: dense;
+	align-items: stretch;
 	gap: var(--crm-4);
+}
+
+@media (min-width: 1024px) {
+
+	.crm-start__card[data-card="documents"] {
+		grid-row: span 2;
+	}
 }
 
 .crm-start__card {
 	margin: 0;
-	padding: var(--crm-5) var(--crm-5) var(--crm-4);
+	padding: var(--crm-4) var(--crm-5) var(--crm-3);
 	min-width: 0;
 }
 
@@ -984,7 +1078,7 @@ time.crm-table__cell {
 	display: flex;
 	align-items: center;
 	gap: var(--crm-2);
-	margin: 0 0 var(--crm-3);
+	margin: 0 0 var(--crm-2);
 	color: var(--crm-ink-3);
 	font-size: var(--crm-text-xs);
 	font-weight: 600;
@@ -996,7 +1090,7 @@ time.crm-table__cell {
 .crm-start__title .crm-icon {
 	width: 1.25rem;
 	height: 1.25rem;
-	color: var(--crm-link);
+	color: var(--crm-ink-3);
 }
 
 .crm-card--warning .crm-start__title .crm-icon {
@@ -1037,7 +1131,7 @@ time.crm-table__cell {
 }
 
 .crm-start__link:hover .crm-start__text {
-	text-decoration: underline;
+	color: var(--crm-link);
 }
 
 .crm-start__main {
@@ -1049,10 +1143,16 @@ time.crm-table__cell {
 }
 
 .crm-start__text {
-	color: var(--crm-link);
+	color: var(--crm-ink);
 	font-weight: 600;
 	font-size: var(--crm-text-s);
 	overflow-wrap: anywhere;
+}
+
+/*	A date reads title, then its time, as two lines: the time does not squeeze the title into a column	*/
+.crm-start__card[data-card="dates"] .crm-start__main {
+	display: grid;
+	gap: 2px;
 }
 
 .crm-start__extra {
@@ -1095,7 +1195,7 @@ time.crm-table__cell {
 
 .crm-projects__list {
 	display: grid;
-	gap: var(--crm-3);
+	gap: var(--crm-2);
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -1110,8 +1210,8 @@ time.crm-table__cell {
 	grid-template-columns: auto minmax(0, 1fr) auto auto;
 	align-items: center;
 	gap: var(--crm-4);
-	min-height: 4.5rem;
-	padding: var(--crm-4) var(--crm-5);
+	min-height: 4rem;
+	padding: var(--crm-3) var(--crm-4);
 	color: inherit;
 	text-decoration: none;
 }
@@ -1122,8 +1222,8 @@ time.crm-table__cell {
 	width: 2.5rem;
 	height: 2.5rem;
 	border-radius: var(--crm-radius-s);
-	background-color: color-mix(in srgb, var(--crm-info) 12%, var(--crm-surface));
-	color: var(--crm-link);
+	background-color: light-dark( color-mix(in srgb, var(--crm-info) 12%, var(--crm-surface)), color-mix(in srgb, var(--crm-info) 24%, var(--crm-surface)) );
+	color: light-dark( var(--crm-link), color-mix(in srgb, var(--crm-link) 60%, var(--crm-ink)) );
 }
 
 .crm-projects__icon .crm-icon {
@@ -1138,14 +1238,14 @@ time.crm-table__cell {
 }
 
 .crm-projects__title {
-	color: var(--crm-link);
+	color: var(--crm-ink);
 	font-size: var(--crm-text-l);
 	font-weight: 700;
 	overflow-wrap: anywhere;
 }
 
 .crm-projects__link:hover .crm-projects__title {
-	text-decoration: underline;
+	color: var(--crm-link);
 }
 
 .crm-projects__meta {
@@ -1169,12 +1269,45 @@ time.crm-table__cell {
 	color: var(--crm-ink-3);
 }
 
-.crm-projects__list--done .crm-projects__link {
-	opacity: .85;
-}
-
 .crm-projects__heading {
 	margin-top: var(--crm-6);
+}
+
+/*	From 640px the projects are tiles: the icon and the state above, the title and its facts below	*/
+@media (min-width: 640px) {
+
+	.crm-projects__list {
+		grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+		gap: var(--crm-3);
+	}
+
+	.crm-projects__link {
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		grid-template-rows: auto auto;
+		align-items: start;
+		min-height: 0;
+		padding: var(--crm-4) var(--crm-5) var(--crm-5);
+	}
+
+	.crm-projects__icon {
+		grid-row: 1;
+		grid-column: 1;
+	}
+
+	.crm-projects__state {
+		grid-row: 1;
+		grid-column: 3;
+	}
+
+	.crm-projects__body {
+		grid-row: 2;
+		grid-column: 1 / -1;
+		margin-top: var(--crm-3);
+	}
+
+	.crm-projects__link > .crm-icon {
+		display: none;
+	}
 }
 
 @media (max-width: 479.98px) {
@@ -1200,12 +1333,22 @@ time.crm-table__cell {
 	margin: 0 0 var(--crm-7);
 }
 
+/*	The number of documents stands over the list: the list is as long as the page	*/
+.crm-documents__count {
+	margin: 0 0 var(--crm-2);
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+/*	Six columns: the document, its project, the day, the amount (with the due day under it), the state, the actions	*/
 .crm-documents .crm-table {
-	--crm-cols: minmax(12rem, 2.4fr) minmax(5rem, .9fr) 5.5rem 6.5rem 6rem auto auto;
+	--crm-cols: minmax(14rem, 2fr) minmax(6rem, 1fr) 5.5rem 7rem auto auto;
 }
 
 .crm-documents .crm-table--project {
-	--crm-cols: minmax(12rem, 2.4fr) 5.5rem 6.5rem 6rem auto auto;
+	--crm-cols: minmax(14rem, 2fr) 5.5rem 7rem auto auto;
 }
 
 .crm-documents__doc {
@@ -1218,11 +1361,11 @@ time.crm-table__cell {
 	display: grid;
 	place-items: center;
 	flex: 0 0 auto;
-	width: 2.25rem;
-	height: 2.25rem;
+	width: 2rem;
+	height: 2rem;
 	border-radius: var(--crm-radius-s);
-	background-color: var(--crm-surface-2);
-	color: var(--crm-ink-2);
+	background-color: color-mix(in srgb, var(--crm-ink) 6%, transparent);
+	color: var(--crm-ink-3);
 }
 
 .crm-documents__text {
@@ -1250,14 +1393,22 @@ a.crm-documents__project {
 	display: inline-flex;
 	align-items: center;
 	min-height: var(--crm-touch);
-	color: var(--crm-link);
-	font-weight: 600;
-	text-decoration: none;
+	color: var(--crm-ink-2);
+	font-weight: 500;
+	text-decoration: underline;
+	text-decoration-color: color-mix(in srgb, var(--crm-ink) 30%, transparent);
+	text-underline-offset: .2em;
 	overflow-wrap: anywhere;
 }
 
 a.crm-documents__project:hover {
-	text-decoration: underline;
+	color: var(--crm-link);
+	text-decoration-color: currentcolor;
+}
+
+.crm-documents__date,
+.crm-files__date {
+	color: var(--crm-ink-2);
 }
 
 .crm-documents__amount {
@@ -1271,8 +1422,30 @@ a.crm-documents__project:hover {
 	font-variant-numeric: tabular-nums;
 }
 
+/*	A row or a card that an anchor names, or that Sign has just brought back, is brought into view below the head of the site, which stands over the page	*/
+.crm-documents__row,
+.crm-offer {
+	scroll-margin-top: calc( 2 * var(--crm-7) );
+}
+
+/*	The row of the document that Sign has just brought back: a line of the state along it and a tint behind it	*/
+.crm-documents__row[data-sign-state="signed"] {
+	box-shadow: inset 3px 0 0 var(--crm-success);
+	background-color: color-mix(in srgb, var(--crm-success) 6%, transparent);
+}
+
+.crm-documents__row[data-sign-state="declined"] {
+	box-shadow: inset 3px 0 0 var(--crm-muted);
+	background-color: color-mix(in srgb, var(--crm-muted) 6%, transparent);
+}
+
+/*	An invoice that is past its day: a line of the danger along the row, the day in the danger's ink - and the pill says only that it is overdue	*/
+.crm-documents__row[data-state="overdue"] {
+	box-shadow: inset 3px 0 0 var(--crm-danger);
+}
+
 .crm-documents__row[data-state="overdue"] .crm-documents__due {
-	color: color-mix(in srgb, var(--crm-danger) 85%, var(--crm-ink));
+	color: var(--crm-danger-ink);
 	font-weight: 600;
 }
 
@@ -1284,9 +1457,10 @@ a.crm-documents__project:hover {
 	border-top: 0;
 }
 
+/*	How to pay: a block of keys and values - the amount, the payee, the bank, and the numbers in the code face of the theme, for a bank form	*/
 .crm-pay {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
 	gap: var(--crm-3) var(--crm-5);
 	margin: 0;
 	padding: var(--crm-4) var(--crm-5);
@@ -1299,9 +1473,7 @@ a.crm-documents__project:hover {
 .crm-pay__fact dt {
 	color: var(--crm-ink-3);
 	font-size: var(--crm-text-xs);
-	font-weight: 600;
-	letter-spacing: .04em;
-	text-transform: uppercase;
+	font-weight: 500;
 }
 
 .crm-pay__fact dd {
@@ -1313,27 +1485,61 @@ a.crm-documents__project:hover {
 	overflow-wrap: anywhere;
 }
 
-/*	The facts of a stacked line are one line of words with a dot between them; the first has none	*/
+.crm-pay__fact--iban dd,
+.crm-pay__fact--bic dd,
+.crm-pay__fact--purpose dd {
+	font-family: var(--fontfamily-code);
+	font-size: var(--crm-text-xs);
+	letter-spacing: .02em;
+	white-space: nowrap;
+}
+
+.crm-pay__fact--amount dd {
+	font-size: var(--crm-text-l);
+}
+
+/*	The facts of a stacked line are one line of words; a dot stands behind a fact that another follows, so that a line that breaks never
+	begins with one	*/
 @media (max-width: 1023.98px) {
 
-	.crm-documents__date::before,
-	.crm-documents__amount::before,
-	.crm-documents__due::before {
+	a.crm-documents__project::after,
+	.crm-documents__date:has(~ .crm-documents__amount:not(:empty))::after,
+	.crm-documents__date:has(~ .crm-documents__due:not(:empty))::after,
+	.crm-documents__amount:has(~ .crm-documents__due:not(:empty))::after {
 		content: "·";
-		margin-right: var(--crm-3);
+		margin-left: var(--crm-3);
 		color: var(--crm-ink-3);
+		text-decoration: none;
 	}
 
-	.crm-documents__project--none + .crm-documents__date::before,
-	.crm-table--project .crm-documents__date::before {
-		content: none;
+	.crm-files__size::after {
+		content: "·";
+		margin-left: var(--crm-3);
+		color: var(--crm-ink-3);
 	}
 }
 
+/*	From 1024px the due day is the second line of the amount's column; an invoice without one has no line	*/
 @media (min-width: 1024px) {
 
-	.crm-documents__due-word {
+	.crm-documents__due {
+		grid-column: 4;
+		grid-row: 2;
+		margin-top: calc( -1 * var(--crm-2) );
+		color: var(--crm-ink-3);
+		text-align: right;
+	}
+
+	.crm-table--project .crm-documents__due {
+		grid-column: 3;
+	}
+
+	.crm-table__line > .crm-documents__due:empty {
 		display: none;
+	}
+
+	.crm-documents__row[data-state="overdue"] .crm-documents__due {
+		color: var(--crm-danger-ink);
 	}
 }
 
@@ -1359,17 +1565,17 @@ a.crm-documents__project:hover {
 }
 
 .crm-offer__summary:hover {
-	background-color: color-mix(in srgb, var(--crm-ink) 3%, transparent);
+	background-color: light-dark( color-mix(in srgb, var(--crm-ink) 4%, transparent), color-mix(in srgb, var(--crm-ink) 5%, transparent) );
 }
 
 .crm-offer__chevron {
 	display: grid;
 	place-items: center;
-	width: 2rem;
-	height: 2rem;
+	width: 1.75rem;
+	height: 1.75rem;
 	border-radius: var(--crm-pill);
-	background-color: var(--crm-surface-2);
-	color: var(--crm-ink-2);
+	background-color: transparent;
+	color: var(--crm-ink-3);
 }
 
 .crm-offer__chevron .crm-icon {
@@ -1562,19 +1768,19 @@ a.crm-documents__project:hover {
 	scroll-margin-top: var(--crm-5);
 }
 
+.crm-order--privacy {
+	flex-wrap: wrap;
+	align-items: center;
+}
+
+.crm-order--privacy .crm-note__text {
+	flex: 1 1 14rem;
+}
+
 /*	11 Parts - the files	*/
 
 .crm-files.crm-table {
 	--crm-cols: minmax(12rem, 2fr) 5rem 6rem auto;
-}
-
-@media (max-width: 1023.98px) {
-
-	.crm-files__date::before {
-		content: "·";
-		margin-right: var(--crm-3);
-		color: var(--crm-ink-3);
-	}
 }
 
 .crm-files__file {
@@ -1587,15 +1793,15 @@ a.crm-documents__project:hover {
 	display: grid;
 	place-items: center;
 	flex: 0 0 auto;
-	width: 2.25rem;
-	height: 2.25rem;
+	width: 2rem;
+	height: 2rem;
 	border-radius: var(--crm-radius-s);
-	background-color: var(--crm-surface-2);
-	color: var(--crm-ink-2);
+	background-color: color-mix(in srgb, var(--crm-ink) 6%, transparent);
+	color: var(--crm-ink-3);
 }
 
 .crm-files__row--playing .crm-files__icon {
-	background-color: color-mix(in srgb, var(--crm-info) 14%, var(--crm-surface));
+	background-color: light-dark( color-mix(in srgb, var(--crm-info) 14%, var(--crm-surface)), color-mix(in srgb, var(--crm-info) 24%, var(--crm-surface)) );
 	color: var(--crm-link);
 }
 
@@ -1607,18 +1813,18 @@ a.crm-documents__project:hover {
 	min-width: 0;
 }
 
-.crm-files__name {
+a.crm-files__name {
 	display: inline-flex;
 	align-items: center;
 	min-height: var(--crm-touch);
-	color: var(--crm-link);
+	color: var(--crm-ink);
 	font-weight: 600;
 	text-decoration: none;
 	overflow-wrap: anywhere;
 }
 
-.crm-files__name:hover {
-	text-decoration: underline;
+a.crm-files__name:hover {
+	color: var(--crm-link);
 }
 
 .crm-files__row--playing {
@@ -1685,7 +1891,7 @@ a.crm-documents__project:hover {
 	border: 2px dashed var(--crm-line-strong);
 	border-radius: var(--crm-radius);
 	background-color: var(--crm-surface-2);
-	color: var(--crm-link);
+	color: var(--crm-ink);
 	font-size: var(--crm-text-l);
 	font-weight: 600;
 	text-align: center;
@@ -1710,7 +1916,7 @@ a.crm-documents__project:hover {
 }
 
 .files-upload.crm-upload:has(.files-upload__input:focus-visible) .files-upload__label {
-	outline: 2px solid var(--color-focus);
+	outline: 2px solid var(--crm-focus);
 	outline-offset: 2px;
 }
 
@@ -1766,7 +1972,7 @@ a.crm-documents__project:hover {
 
 .crm-dates__list {
 	display: grid;
-	gap: var(--crm-3);
+	gap: var(--crm-2);
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -1777,7 +1983,7 @@ a.crm-documents__project:hover {
 	grid-template-columns: auto minmax(0, 1fr) auto;
 	align-items: center;
 	gap: var(--crm-4) var(--crm-5);
-	padding: var(--crm-4) var(--crm-5);
+	padding: var(--crm-3) var(--crm-4);
 }
 
 .crm-dates__when {
@@ -1787,8 +1993,8 @@ a.crm-documents__project:hover {
 	width: 3.75rem;
 	padding: var(--crm-2) 0;
 	border-radius: var(--crm-radius-s);
-	background-color: color-mix(in srgb, var(--crm-info) 12%, var(--crm-surface));
-	color: var(--crm-link);
+	background-color: light-dark( color-mix(in srgb, var(--crm-info) 12%, var(--crm-surface)), color-mix(in srgb, var(--crm-info) 24%, var(--crm-surface)) );
+	color: light-dark( var(--crm-link), color-mix(in srgb, var(--crm-link) 60%, var(--crm-ink)) );
 }
 
 .crm-dates__day {
@@ -2002,9 +2208,9 @@ a.crm-documents__project:hover {
 	box-sizing: border-box;
 	min-height: var(--crm-touch);
 	padding: var(--crm-2) var(--crm-3);
-	border: 1px solid var(--crm-line-strong);
+	border: 1px solid var(--color-border);
 	border-radius: var(--crm-radius-s);
-	background-color: var(--crm-surface);
+	background-color: light-dark( var(--crm-surface), var(--crm-surface-2) );
 	color: var(--crm-ink);
 	font: inherit;
 	font-size: var(--crm-text-m);
@@ -2018,7 +2224,7 @@ a.crm-documents__project:hover {
 .crm-project .review-form__text:focus {
 	border-color: var(--crm-link);
 	box-shadow: 0 0 0 1px var(--crm-link);
-	outline: 2px solid var(--color-focus);
+	outline: 2px solid var(--crm-focus);
 	outline-offset: 2px;
 }
 
@@ -2068,23 +2274,28 @@ a.crm-documents__project:hover {
 	padding: var(--crm-4) 0;
 }
 
+/*	The door speaks as the head of a portal page does: the title at the left in the ink, at the size of a page title	*/
 .crm-page--door .nino-section-title {
-	margin-bottom: var(--crm-3);
+	margin: 0 0 var(--crm-3);
+	color: var(--crm-ink);
 	font-size: var(--crm-text-xxl);
-	text-align: center;
+	font-weight: 700;
+	letter-spacing: -.02em;
+	line-height: 1.2;
+	text-align: left;
 }
 
 .crm-page--door .nino-section-text {
-	margin-bottom: var(--crm-5);
+	margin: 0 0 var(--crm-5);
 	color: var(--crm-ink-2);
 	font-size: var(--crm-text-m);
-	text-align: center;
+	text-align: left;
 }
 
 .crm-door__card {
 	display: grid;
 	gap: var(--crm-4);
-	padding: var(--crm-6) var(--crm-5);
+	padding: var(--crm-5);
 }
 
 .crm-door__icon {
@@ -2094,8 +2305,8 @@ a.crm-documents__project:hover {
 	height: 3.5rem;
 	margin: 0 auto;
 	border-radius: var(--crm-pill);
-	background-color: color-mix(in srgb, var(--crm-info) 12%, var(--crm-surface));
-	color: var(--crm-link);
+	background-color: light-dark( color-mix(in srgb, var(--crm-info) 12%, var(--crm-surface)), color-mix(in srgb, var(--crm-info) 24%, var(--crm-surface)) );
+	color: light-dark( var(--crm-link), color-mix(in srgb, var(--crm-link) 60%, var(--crm-ink)) );
 }
 
 .crm-door__icon .crm-icon {
@@ -2116,7 +2327,6 @@ a.crm-documents__project:hover {
 	--color-ground: var(--crm-surface);
 	--color-ink: var(--crm-ink);
 	--color-accent: var(--crm-link);
-	--color-border: var(--crm-line-strong);
 	display: grid;
 	gap: var(--crm-2);
 	max-width: none;
@@ -2143,9 +2353,9 @@ a.crm-documents__project:hover {
 	min-height: var(--crm-touch);
 	margin: 0;
 	padding: 0 var(--crm-3);
-	border: 1px solid var(--crm-line-strong);
+	border: 1px solid var(--color-border);
 	border-radius: var(--crm-radius-s);
-	background-color: var(--crm-surface);
+	background-color: light-dark( var(--crm-surface), var(--crm-surface-2) );
 	color: var(--crm-ink);
 	font-size: var(--crm-text-m);
 }
@@ -2159,7 +2369,7 @@ a.crm-documents__project:hover {
 .crm-door .members-login__state {
 	margin: 0;
 	padding: var(--crm-3) var(--crm-4);
-	border-left: 4px solid var(--crm-info);
+	border-left: 3px solid var(--crm-info);
 	border-radius: var(--crm-radius);
 	background-color: color-mix(in srgb, var(--crm-info) 10%, var(--crm-surface));
 	font-size: var(--crm-text-s);
@@ -2286,4 +2496,56 @@ a.crm-documents__project:hover {
 
 .crm-project__message {
 	margin: 0;
+}
+
+/*	13 Print - a page of the portal on paper: what is for the screen is left out, the head of the site is no longer fixed over the text, the
+	cards and rows are not cut across a page, the colours of the tones are printed. A fold is opened where the engine draws a details by its
+	content box (::details-content), so that the bank details and the lines of an offer are on the paper; the list itself may break across pages.	*/
+
+@media print {
+
+	body:has(.crm-portal) header,
+	body:has(.crm-portal) footer,
+	body:has(.crm-portal) .nino-nav-burger,
+	.crm-head__actions,
+	.crm-table__toggle,
+	.crm-documents__links,
+	.crm-files__links,
+	.crm-order--form,
+	.crm-order--privacy,
+	.files-upload.crm-upload,
+	.crm-project__nav,
+	.crm-kpis {
+		display: none;
+	}
+
+	body:has(.crm-portal) .nino-frame-header {
+		position: static;
+	}
+
+	/*	What is folded is opened for the paper, where the engine draws a details by its content box	*/
+	.crm-portal details::details-content {
+		content-visibility: visible;
+	}
+
+	.crm-page.nino-section {
+		padding: 0;
+		background: none;
+	}
+
+	.crm-card:not(.crm-table),
+	.crm-table__row,
+	.crm-start__row,
+	.crm-offer {
+		break-inside: avoid;
+		box-shadow: none;
+	}
+
+	.crm-table {
+		overflow: visible;
+	}
+
+	.crm-portal {
+		print-color-adjust: exact;
+	}
 }
