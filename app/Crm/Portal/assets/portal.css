@@ -1,90 +1,286 @@
 /**
  *	Crm - Portal
- *	portal.css		What the components of the client portal need on the site itself: the navigation of the areas, the list of the
- *								released documents of a member's client, the projects with the page of one project (its offer, its files), the
- *								uploads and the form of the client's data. Bundled into the project's own /.cache/style.css by \Crm\Crm::init()
- *								(the module adds it with \Nino\Html::addAsset()) - never rendered through the fill/shortcode engine, so nothing in
- *								here is a textfill.
+ *	portal.css		What the components of the client portal need on the site itself, in the look of the surface at /crm: the cards, the rows of
+ *								the lists as the tables of the surface draw them (the lines between, the zebra, the muted meta, the links in the colour of the
+ *								site), the chips of the states, the inputs, the buttons and the notes that say what happened (the toast of the surface, in the
+ *								page). The navigation of the areas, the list of the released documents of a member's client, the projects with the page of one
+ *								project (its tabs, its offer, its files), the uploads, the start page, the Datenschutz, the order under an offer and the form
+ *								of the client's data. Bundled into the project's own /.cache/style.css by \Crm\Crm::init() (the module adds it with
+ *								\Nino\Html::addAsset()) - never rendered through the fill/shortcode engine, so nothing in here is a textfill.
  *
- *								Everything is drawn from three properties, --crm-documents-space, --crm-documents-corners and
- *								--crm-documents-border, whose defaults are the page's own roles (--space-*, --radius, --color-*), which
- *								every site has, so they look at home whatever the site's theme says. The defaults stand in :where(), which
- *								has no specificity: a rule of the project that moves a property wins over them by order.
+ *								Every colour, every corner and every space is a role of the kernel (--color-*, --radius-*, --space-*), which the theme of the
+ *								site - the Design feature's, light and dark - sets; nothing here is a colour of its own, so the portal follows the theme. The
+ *								shades (a zebra row, a chip, a muted line) are the ink of the page mixed into what is behind. The corners, the space and the
+ *								border of the cards are three properties, --crm-documents-space, --crm-documents-corners and --crm-documents-border, whose
+ *								defaults stand in :where(), which has no specificity: a rule of the project that moves a property wins over them by order.
+ *								Two literals only, both outside the roles: the 999px of a chip (a pill, whatever the theme's corners are) and the .2em that sets a
+ *								checkbox in line with the first line of its words. (The 2px of var(--forms-ring, 2px) and var(--forms-ring-offset, 2px) are the
+ *								fallbacks of a role the kernel sets; they stand in for it where it is not set.) The corners of the cards follow the theme's surface radius (--radius-surface-alt: .4rem
+ *								on the default, 0 under a theme that squares its surfaces); the kernel's own fields and buttons keep the corners the theme gives them.
+ *								The inputs are the kernel's (.nino-form-input), the forms plain posts and no .nino-form (the kernel's script would take one for a contact form), the tabs its .nino-tabs: this file adds what they
+ *								lack. It holds no script; the kernel's script wires the tabs, and without it every panel of a project stands open.
  */
 
 :where(:root) {
-	--crm-documents-space: calc( var(--space-2) * 1.5 );
-	--crm-documents-corners: var(--radius);
+	--crm-documents-space: calc( var(--space-1) * 1.5 );
+	--crm-documents-corners: var(--radius-surface-alt);
 	--crm-documents-border: var(--color-border);
+	--crm-pill: 999px; /* a literal on purpose: a pill, whatever the corners of the theme are */
+}
+
+/*	Shared: the card, the table, the chip, the note, the buttons	*/
+
+.crm-card {
+	box-sizing: border-box;
+	background-color: var(--color-ground);
+	color: var(--color-ink);
+	border: 1px solid var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+	padding: var(--crm-documents-space) calc( var(--crm-documents-space) * 1.2 );
+}
+
+.crm-table {
+	margin: 0 0 var(--space-2);
+	padding: 0;
+	list-style: none;
+	overflow: hidden;
+}
+
+.crm-table > li {
+	padding: calc( var(--space-1) * .75 ) calc( var(--crm-documents-space) * 1.2 );
+	border-top: 1px solid var(--crm-documents-border);
+}
+
+.crm-table > li:first-child {
+	border-top: 0;
+}
+
+.crm-table > li:nth-child(even) {
+	background-color: color-mix(in srgb, var(--color-ink) 4%, transparent);
+}
+
+.crm-table > li:hover {
+	background-color: color-mix(in srgb, var(--color-ink) 7%, transparent);
+}
+
+.crm-chip {
+	--crm-tone: var(--color-ink);
+
+	display: inline-flex;
+	align-items: center;
+	box-sizing: border-box;
+	min-height: 1.375rem;
+	padding: 0 calc( var(--space-1) * 1.25 );
+	border: 1px solid color-mix(in srgb, var(--crm-tone) 45%, transparent);
+	border-radius: var(--crm-pill);
+	background-color: color-mix(in srgb, var(--crm-tone) 12%, transparent);
+	color: var(--color-ink);
+	font-size: .75rem;
+	font-weight: 500;
+	line-height: 1.2;
+	white-space: nowrap;
+}
+
+.crm-chip--success,
+.crm-documents__row:is([data-state="signed"], [data-state="paid"], [data-state="accepted"]) .crm-chip,
+.crm-offer:is([data-state="accepted"]) .crm-offer__state,
+.crm-project[data-state="done"] .crm-project__state {
+	--crm-tone: var(--color-success);
+}
+
+.crm-documents__row:is([data-state="declined"], [data-state="cancelled"], [data-state="expired"]) .crm-chip,
+.crm-offer:is([data-state="declined"], [data-state="expired"]) .crm-offer__state {
+	--crm-tone: var(--color-warning);
+}
+
+.crm-documents__row[data-state="sent"] .crm-chip,
+.crm-offer[data-state="sent"] .crm-offer__state,
+.crm-project[data-state="open"] .crm-project__state {
+	--crm-tone: var(--color-accent);
+}
+
+.crm-note {
+	--crm-mark: transparent;
+
+	box-sizing: border-box;
+	margin: 0 0 var(--space-2);
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--crm-documents-corners);
+	background-color: var(--color-ink);
+	color: var(--color-ground);
+	box-shadow: inset .25rem 0 0 var(--crm-mark), 0 1px 2px color-mix(in srgb, var(--color-ink) 18%, transparent), 0 4px 16px color-mix(in srgb, var(--color-ink) 12%, transparent);
+	overflow-wrap: anywhere;
+}
+
+.crm-data__state--saved,
+.crm-privacy__state--agreed,
+.crm-order__state--ordered {
+	--crm-mark: var(--color-success);
+}
+
+.crm-note--warning,
+.crm-data__state--invalid,
+.crm-data__state--expired,
+.crm-privacy__state--expired,
+.crm-privacy__state--unchecked,
+.crm-privacy__state--invalid,
+.crm-privacy__state--changed,
+.crm-order__state--expired,
+.crm-order__state--unchecked,
+.crm-order__state--invalid,
+.crm-order__state--privacy,
+.crm-order__state--changed,
+.crm-order__state--nomail {
+	--crm-mark: var(--color-warning);
+}
+
+/*	A button: the primary one is the kernel's (.nino-btn--primary) in the size of the surface's .btn, the quiet one the link in a button's shape	*/
+
+.crm-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: calc( var(--space-1) * .75 );
+	box-sizing: border-box;
+	min-height: 2.25rem;
+	padding: 0 var(--space-2);
+	font-size: .9375rem;
+	line-height: 1.2;
+	text-decoration: none;
+}
+
+/*	On a button of the kernel .crm-btn sets the size and the padding and nothing else: its border, its corners, its weight and its case are the theme's	*/
+
+.crm-btn--quiet {
+	border: 1px solid transparent;
+	border-radius: var(--crm-documents-corners);
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.crm-btn--quiet,
+.crm-offer__download,
+.crm-files__download,
+.crm-files__listen,
+.crm-documents__download,
+.crm-documents__sign,
+.crm-documents__signed {
+	border-color: transparent;
+	background-color: transparent;
+	color: var(--color-accent);
+}
+
+.crm-btn--quiet:hover,
+.crm-offer__download:hover,
+.crm-files__download:hover,
+.crm-files__listen:hover,
+.crm-documents__download:hover,
+.crm-documents__sign:hover,
+.crm-documents__signed:hover {
+	background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+	text-decoration: none;
+}
+
+/*	The small ones, as .btn.sm: the links of a row	*/
+
+.crm-offer__download,
+.crm-files__download,
+.crm-files__listen,
+.crm-documents__download,
+.crm-documents__sign,
+.crm-documents__signed {
+	display: inline-flex;
+	align-items: center;
+	box-sizing: border-box;
+	min-height: 1.5rem;
+	padding: 0 var(--space-1);
+	border: 1px solid transparent;
+	border-radius: var(--crm-documents-corners);
+	font-size: .8125rem;
+	white-space: nowrap;
+}
+
+.crm-documents__sign {
+	border-color: var(--color-accent);
+	font-weight: 500;
+}
+
+/*	The meta of a row: muted, small	*/
+
+.crm-projects__started,
+.crm-projects__count,
+.crm-files__size,
+.crm-files__date,
+.crm-documents__kind,
+.crm-documents__date,
+.crm-documents__project,
+.crm-offer__date,
+.crm-offer__valid,
+.crm-start__meta,
+.crm-project__meta,
+.crm-project__back,
+.crm-uploads__note,
+.crm-data__hint,
+.crm-offer__note {
+	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+	font-size: .8125rem;
+}
+
+.crm-projects__number {
+	color: var(--color-ink);
+	font-weight: 600;
+}
+
+/*	A sentence where a list would be: a quiet box	*/
+
+.crm-projects__empty,
+.crm-uploads__empty,
+.crm-data__empty,
+.crm-documents__empty,
+.crm-privacy__empty,
+.crm-start__nothing,
+.crm-project__message {
+	box-sizing: border-box;
+	margin: 0 0 var(--space-2);
+	padding: var(--crm-documents-space) calc( var(--crm-documents-space) * 1.2 );
+	border: 1px dashed var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
 }
 
 .crm-documents {
 	box-sizing: border-box;
 	max-width: 48rem;
 	margin: 0 0 var(--space-2);
+	container-type: inline-size;
 }
 
 .crm-documents__list {
-	display: grid;
-	gap: var(--space-1);
-	margin: 0;
-	padding: 0;
-	list-style: none;
+	margin: 0 0 var(--space-2);
 }
 
+.crm-projects__row,
+.crm-files__row,
 .crm-documents__row {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: baseline;
-	gap: var(--space-1) var(--space-2);
-	padding: var(--crm-documents-space);
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
-}
-
-.crm-documents__kind {
-	font-size: .875em;
-	text-transform: uppercase;
-	letter-spacing: .04em;
+	align-items: center;
+	gap: calc( var(--space-1) * .5 ) var(--space-2);
 }
 
 .crm-documents__title {
 	flex: 1 1 12rem;
-	font-weight: 600;
+	font-weight: 500;
 	overflow-wrap: anywhere;
 }
 
-.crm-documents__state {
-	padding: 0 .5em;
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
-	font-size: .875em;
-}
-
-.crm-documents__row[data-state="signed"] .crm-documents__state,
-.crm-documents__row[data-state="paid"] .crm-documents__state,
-.crm-documents__row[data-state="accepted"] .crm-documents__state {
-	border-color: var(--color-success);
-}
-
-.crm-documents__row[data-state="declined"] .crm-documents__state,
-.crm-documents__row[data-state="cancelled"] .crm-documents__state,
-.crm-documents__row[data-state="expired"] .crm-documents__state {
-	border-color: var(--color-warning);
-}
-
-.crm-documents__download,
-.crm-documents__sign,
-.crm-documents__signed {
-	color: var(--color-accent);
-}
-
-.crm-documents__empty {
-	margin: 0;
+.crm-documents__kind {
+	text-transform: uppercase;
+	letter-spacing: .04em;
+	font-size: .75rem;
 }
 
 .crm-documents__project {
-	font-size: .875em;
 	overflow-wrap: anywhere;
 }
 
@@ -96,7 +292,7 @@ a.crm-documents__project {
 	color: var(--color-accent);
 }
 
-/*	The navigation of the areas: a row of links that wraps, the area the request is in marked	*/
+/*	The navigation of the areas (a component the pages may use): a row of links that wraps, the area the request is in marked	*/
 
 .crm-nav {
 	margin: 0 0 var(--space-3);
@@ -144,88 +340,45 @@ a.crm-documents__project {
 	margin: 0 0 var(--space-2);
 }
 
-.crm-projects__list,
-.crm-files__list {
-	display: grid;
-	gap: var(--space-1);
-	margin: 0 0 var(--space-2);
-	padding: 0;
-	list-style: none;
-}
-
 .crm-projects__heading,
 .crm-uploads__heading {
 	margin: var(--space-3) 0 var(--space-1);
-	font-size: 1em;
+	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+	font-size: .75rem;
+	font-weight: 600;
+	letter-spacing: .06em;
 	text-transform: uppercase;
-	letter-spacing: .04em;
-}
-
-.crm-projects__row,
-.crm-files__row {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
-	gap: var(--space-1) var(--space-2);
-	padding: var(--crm-documents-space);
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
 }
 
 .crm-projects__title,
 .crm-files__name {
 	flex: 1 1 12rem;
-	font-weight: 600;
+	font-weight: 500;
 	color: var(--color-accent);
 	overflow-wrap: anywhere;
-}
-
-.crm-projects__started,
-.crm-projects__count,
-.crm-files__size,
-.crm-files__date {
-	font-size: .875em;
 }
 
 .crm-projects__list--done .crm-projects__row {
 	opacity: .75;
 }
 
-.crm-projects__unknown,
-.crm-projects__empty,
-.crm-uploads__empty,
-.crm-data__empty,
-.crm-files__empty,
-.crm-project__message {
-	margin: 0 0 var(--space-2);
-}
-
 .crm-projects__unknown {
-	padding: var(--crm-documents-space);
-	border: 1px solid var(--color-warning);
-	border-radius: var(--crm-documents-corners);
+	max-width: 48rem;
 }
 
-.crm-files__new {
-	padding: 0 .5em;
-	border: 1px solid var(--color-success);
-	border-radius: var(--crm-documents-corners);
-	font-size: .875em;
+.crm-files__empty {
+	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
 }
 
-.crm-files__download,
-.crm-files__listen,
-.crm-offer__download,
 .crm-start__link,
 .crm-order__link,
 .crm-data__link,
-.crm-project__link {
+.crm-project__back a {
 	color: var(--color-accent);
 }
 
 .crm-project__back {
 	margin: 0 0 var(--space-1);
-	font-size: .875em;
 }
 
 .crm-project__title {
@@ -236,19 +389,9 @@ a.crm-documents__project {
 .crm-project__meta {
 	display: flex;
 	flex-wrap: wrap;
+	align-items: center;
 	gap: var(--space-1) var(--space-2);
 	margin: 0 0 var(--space-1);
-	font-size: .875em;
-}
-
-.crm-project__state {
-	padding: 0 .5em;
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
-}
-
-.crm-project[data-state="done"] .crm-project__state {
-	border-color: var(--color-success);
 }
 
 .crm-project__description {
@@ -256,29 +399,89 @@ a.crm-documents__project {
 	overflow-wrap: anywhere;
 }
 
-.crm-project__section {
-	margin: var(--space-3) 0 0;
-	padding-top: var(--space-2);
-	border-top: 1px solid var(--crm-documents-border);
+/*	The tabs of a project, in the look of the tabs of the surface; the kernel's script wires the buttons to the panels (the roles and the keys). Without it
+	no panel is hidden: every one stands open, under its heading, and the buttons are inert	*/
+
+.crm-project__nav.nino-tabs-nav {
+	flex-wrap: nowrap;
+	gap: calc( var(--space-1) * .25 );
+	margin: var(--space-2) 0 var(--space-2);
+	border-bottom-color: var(--crm-documents-border);
+	overflow-x: auto;
+}
+
+.crm-project__nav .crm-project__tab.nino-tabs-tab {
+	display: inline-flex;
+	align-items: center;
+	margin-bottom: -1px;
+	padding: var(--space-1) calc( var(--space-1) * 1.5 );
+	border-bottom: 2px solid transparent;
+	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+	white-space: nowrap;
+}
+
+.crm-project__nav:not([role="tablist"]) {
+	display: none;
+}
+
+.crm-project__nav .crm-project__tab.nino-tabs-tab:focus-visible {
+	outline-offset: -2px;
+}
+
+.crm-project__nav .crm-project__tab.nino-tabs-tab:hover {
+	color: var(--color-ink);
+}
+
+.crm-project__nav .crm-project__tab.nino-tabs-tab.nino-is-active {
+	border-bottom-color: var(--color-accent);
+	color: var(--color-ink);
+	font-weight: 600;
+}
+
+.crm-project__count {
+	margin-left: calc( var(--space-1) * .5 );
+	padding: 0 calc( var(--space-1) * .75 );
+	border-radius: var(--crm-pill);
+	background-color: color-mix(in srgb, var(--color-ink) 9%, transparent);
+	color: color-mix(in srgb, var(--color-ink) 80%, transparent);
+	font-size: .6875rem;
+	font-weight: 500;
+}
+
+.crm-project__section.nino-tabs-panel {
+	display: block;
+	opacity: 1;
+	transform: none;
+	transition: none;
+}
+
+.crm-project__section.nino-tabs-panel[hidden] {
+	display: none;
+}
+
+.crm-project__section + .crm-project__section {
+	margin-top: var(--space-3);
+}
+
+.crm-project__section[role="tabpanel"] > .crm-project__heading {
+	display: none;
 }
 
 .crm-project__heading {
 	margin: 0 0 var(--space-1);
+	font-size: 1rem;
 }
 
-/*	The offer: its lines as a list that stacks at a narrow width, its sums as a list of terms	*/
+/*	The offer: a card, its lines as the rows of a table that stack at a narrow width, its sums as a list of terms	*/
 
 .crm-offer {
 	margin: 0 0 var(--space-2);
-	padding: var(--crm-documents-space);
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
 }
 
 .crm-offer__head {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: baseline;
+	align-items: center;
 	gap: var(--space-1) var(--space-2);
 	margin: 0 0 var(--space-1);
 }
@@ -286,28 +489,8 @@ a.crm-documents__project {
 .crm-offer__title {
 	flex: 1 1 12rem;
 	margin: 0;
+	font-size: 1rem;
 	overflow-wrap: anywhere;
-}
-
-.crm-offer__date,
-.crm-offer__valid {
-	font-size: .875em;
-}
-
-.crm-offer__state {
-	padding: 0 .5em;
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
-	font-size: .875em;
-}
-
-.crm-offer[data-state="accepted"] .crm-offer__state {
-	border-color: var(--color-success);
-}
-
-.crm-offer[data-state="declined"] .crm-offer__state,
-.crm-offer[data-state="expired"] .crm-offer__state {
-	border-color: var(--color-warning);
 }
 
 .crm-offer__lines {
@@ -321,13 +504,13 @@ a.crm-documents__project {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
 	gap: 0 var(--space-2);
-	padding: var(--space-1) 0;
+	padding: calc( var(--space-1) * .75 ) 0;
 	border-top: 1px solid var(--crm-documents-border);
 }
 
 .crm-offer__line-title {
 	grid-column: 1;
-	font-weight: 600;
+	font-weight: 500;
 	overflow-wrap: anywhere;
 }
 
@@ -341,7 +524,8 @@ a.crm-documents__project {
 .crm-offer__line-description,
 .crm-offer__line-meta {
 	grid-column: 1 / -1;
-	font-size: .875em;
+	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+	font-size: .8125rem;
 	overflow-wrap: anywhere;
 }
 
@@ -361,6 +545,7 @@ a.crm-documents__project {
 	display: flex;
 	justify-content: space-between;
 	gap: var(--space-2);
+	padding: calc( var(--space-1) * .25 ) 0;
 }
 
 .crm-offer__sum dt,
@@ -373,30 +558,32 @@ a.crm-documents__project {
 }
 
 .crm-offer__sum--gross {
+	margin-top: calc( var(--space-1) * .5 );
+	padding-top: var(--space-1);
+	border-top: 1px solid var(--crm-documents-border);
+	font-size: 1.0625rem;
 	font-weight: 600;
 }
 
 .crm-offer__note {
 	margin: var(--space-1) 0 0;
-	font-size: .875em;
 }
 
 .crm-offer__actions {
 	margin: var(--space-1) 0 0;
 }
 
-/*	The uploads	*/
+/*	The files: the rows of the table; the player of Review stands above it	*/
 
-.crm-uploads__note {
-	margin: 0 0 var(--space-1);
-	font-size: .875em;
+.crm-files__row {
+	column-gap: var(--space-2);
 }
 
-/*	The form of the client's data	*/
+/*	The form of the client's data: a card of rows, a label and its field beside it, one under the other at a narrow width	*/
 
 .crm-data {
 	box-sizing: border-box;
-	max-width: 36rem;
+	max-width: 40rem;
 	margin: 0 0 var(--space-2);
 }
 
@@ -408,58 +595,88 @@ a.crm-documents__project {
 
 .crm-data__field {
 	display: grid;
-	gap: .25em;
+	grid-template-columns: minmax(0, 11rem) minmax(0, 1fr);
+	gap: calc( var(--space-1) * .5 ) var(--space-2);
+	align-items: center;
 	margin: 0;
 }
 
 .crm-data__label {
-	font-weight: 600;
+	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+	font-size: .875rem;
 }
 
-.crm-data__input {
+.crm-data__hint,
+.crm-data__error {
+	grid-column: 2;
+}
+
+.crm-data__field .nino-form-input {
 	box-sizing: border-box;
 	width: 100%;
 	max-width: 100%;
+	min-height: 2.5rem;
+	margin: 0;
+	padding: calc( var(--space-1) * .75 ) calc( var(--space-1) * 1.5 );
 }
 
 .crm-data__input[readonly] {
-	opacity: .75;
-}
-
-.crm-data__hint {
-	font-size: .875em;
+	background-color: color-mix(in srgb, var(--color-ink) 5%, transparent);
+	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+	cursor: default;
 }
 
 .crm-data__field--invalid .crm-data__input {
 	border-color: var(--color-error);
+	box-shadow: 0 0 0 1px var(--color-error);
 }
 
 .crm-data__error {
 	color: var(--color-error);
-	font-size: .875em;
-}
-
-.crm-data__state {
-	margin: 0 0 var(--space-2);
-	padding: var(--crm-documents-space);
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
-}
-
-.crm-data__state--saved {
-	border-color: var(--color-success);
-}
-
-.crm-data__state--invalid,
-.crm-data__state--expired {
-	border-color: var(--color-warning);
+	font-size: .8125rem;
 }
 
 .crm-data__actions {
 	margin: 0;
 }
 
-/*	The Datenschutz: the text, where the client stands, the form	*/
+.crm-data__privacy {
+	margin: 0 0 var(--space-2);
+	font-size: .875rem;
+}
+
+@media (max-width: 40rem) {
+
+	.crm-data__field {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.crm-data__hint,
+	.crm-data__error {
+		grid-column: 1;
+	}
+
+	.crm-start {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.crm-project__nav.nino-tabs-nav {
+		gap: 0;
+	}
+
+	.crm-project__nav .crm-project__tab.nino-tabs-tab {
+		padding-left: calc( var(--space-1) * .5 );
+		padding-right: calc( var(--space-1) * .5 );
+		font-size: .9375rem;
+	}
+
+	.crm-project__count {
+		margin-left: calc( var(--space-1) * .25 );
+		padding: 0 calc( var(--space-1) * .5 );
+	}
+}
+
+/*	The Datenschutz: the text in a card, where the client stands, the form	*/
 
 .crm-privacy {
 	box-sizing: border-box;
@@ -469,33 +686,7 @@ a.crm-documents__project {
 
 .crm-privacy__text {
 	margin: 0 0 var(--space-2);
-	padding: var(--crm-documents-space);
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
 	overflow-wrap: anywhere;
-}
-
-.crm-privacy__state,
-.crm-order__state {
-	margin: 0 0 var(--space-2);
-	padding: var(--crm-documents-space);
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
-}
-
-.crm-privacy__state--agreed,
-.crm-order__state--ordered {
-	border-color: var(--color-success);
-}
-
-.crm-privacy__state--expired,
-.crm-privacy__state--unchecked,
-.crm-privacy__state--invalid,
-.crm-order__state--expired,
-.crm-order__state--unchecked,
-.crm-order__state--invalid,
-.crm-order__state--privacy {
-	border-color: var(--color-warning);
 }
 
 .crm-privacy__standing {
@@ -507,6 +698,17 @@ a.crm-documents__project {
 	display: flex;
 	align-items: flex-start;
 	gap: var(--space-1);
+	letter-spacing: normal;
+	text-transform: none;
+}
+
+.crm-privacy__check input,
+.crm-order__check input {
+	flex: 0 0 auto;
+	width: 1.125rem;
+	height: 1.125rem;
+	margin-top: .2em; /* a literal on purpose: the nudge that sets the box in line with the first line of the words */
+	accent-color: var(--color-primary);
 }
 
 .crm-privacy__field,
@@ -516,65 +718,260 @@ a.crm-documents__project {
 	margin: 0 0 var(--space-1);
 }
 
-.crm-data__privacy {
-	margin: 0 0 var(--space-2);
-}
-
-/*	The order under an offer	*/
+/*	The order under an offer: a panel inside the card of the offer, or under the row of the document	*/
 
 .crm-order {
 	flex-basis: 100%;
 	box-sizing: border-box;
 	margin: var(--space-2) 0 0;
-	padding: var(--crm-documents-space);
+	padding: var(--crm-documents-space) calc( var(--crm-documents-space) * 1.2 );
 	border: 1px solid var(--crm-documents-border);
 	border-radius: var(--crm-documents-corners);
+	background-color: color-mix(in srgb, var(--color-ink) 4%, transparent);
 }
 
 .crm-order--done {
-	border-color: var(--color-success);
+	box-shadow: inset .25rem 0 0 var(--color-success);
 }
 
 .crm-order--privacy {
-	border-color: var(--color-warning);
+	box-shadow: inset .25rem 0 0 var(--color-warning);
 }
 
 .crm-order__sentence {
 	overflow-wrap: anywhere;
 }
 
-/*	What is pending: the cards of the start page	*/
+.crm-order__actions {
+	margin-bottom: 0;
+}
+
+/*	What is pending: the cards of the start page, two to a line where there is room	*/
 
 .crm-start {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+	gap: var(--space-2);
 	box-sizing: border-box;
 	max-width: 48rem;
 	margin: 0 0 var(--space-2);
 }
 
+.crm-start__heading,
+.crm-start__nothing {
+	grid-column: 1 / -1;
+}
+
+.crm-start__heading {
+	margin: 0;
+}
+
+.crm-start__nothing {
+	margin: 0;
+}
+
 .crm-start__card {
-	margin: 0 0 var(--space-1);
-	padding: var(--crm-documents-space);
-	border: 1px solid var(--crm-documents-border);
-	border-radius: var(--crm-documents-corners);
+	margin: 0;
+	min-width: 0;
 }
 
 .crm-start__title {
 	margin: 0 0 var(--space-1);
+	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+	font-size: .75rem;
+	font-weight: 600;
+	letter-spacing: .06em;
+	text-transform: uppercase;
 }
 
 .crm-start__list {
-	display: grid;
-	gap: var(--space-1);
 	margin: 0;
 	padding: 0;
 	list-style: none;
 }
 
-.crm-start__meta {
-	font-size: .875em;
+.crm-start__row {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding: calc( var(--space-1) * .75 ) 0;
+	border-top: 1px solid var(--crm-documents-border);
 }
 
-.crm-start__text,
-.crm-start__nothing {
+.crm-start__row:first-child {
+	border-top: 0;
+}
+
+.crm-start__row > :first-child {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.crm-start__meta {
+	text-align: right;
+}
+
+.crm-start__text {
 	margin: 0;
+}
+
+/*	The rows of the documents as one grid where the list itself is 46rem wide (a container query, not the width of the window: the list stands in a column of any
+	width): the list is the grid and each row takes its columns (kind, title, project, day, state, links), so the day and
+	the chip stand in a line from row to row; the order under a row takes the whole of it. Narrower, the rows wrap as above. Title and project keep 6rem at least, so no
+	column collapses	*/
+
+@container (min-width: 46rem) {
+
+	.crm-documents__list {
+		display: grid;
+		grid-template-columns: auto minmax(6rem, 1fr) minmax(6rem, 1fr) auto auto auto;
+		column-gap: var(--space-2);
+	}
+
+	.crm-documents__row {
+		display: grid;
+		grid-column: 1 / -1;
+		grid-template-columns: subgrid;
+		align-items: center;
+	}
+
+	.crm-documents__kind {
+		grid-column: 1;
+	}
+
+	.crm-documents__title {
+		grid-column: 2;
+	}
+
+	.crm-documents__project {
+		grid-column: 3;
+	}
+
+	.crm-documents__date {
+		grid-column: 4;
+	}
+
+	.crm-documents__state {
+		grid-column: 5;
+	}
+
+	.crm-documents__links {
+		grid-column: 6;
+		justify-self: end;
+	}
+
+	.crm-documents__row > .crm-order {
+		grid-column: 1 / -1;
+	}
+}
+
+.crm-documents__links {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: calc( var(--space-1) * .5 );
+}
+
+/*	The upload form of the feature Files on the page Upload (it stands before .crm-uploads there) and the form of the comment in the player of Review on
+	the page of a project: the look of the portal for what the features draw, scoped to the portal's own pages; the files of the features are not touched	*/
+
+.files-upload:has(~ .crm-uploads) {
+	max-width: 48rem;
+	padding: var(--crm-documents-space) calc( var(--crm-documents-space) * 1.2 );
+	border-color: var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+}
+
+.files-upload:has(~ .crm-uploads) .files-upload__label {
+	font-size: .875rem;
+	color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+}
+
+.files-upload:has(~ .crm-uploads) .files-upload__input {
+	box-sizing: border-box;
+	width: 100%;
+	padding: calc( var(--space-1) * .5 );
+	border: 1px dashed var(--crm-documents-border);
+	border-radius: var(--crm-documents-corners);
+	color: var(--color-ink);
+}
+
+.files-upload:has(~ .crm-uploads) .files-upload__input::file-selector-button {
+	min-height: 2.25rem;
+	margin-right: var(--space-2);
+	padding: 0 var(--space-2);
+	border: 1px solid transparent;
+	border-radius: var(--crm-documents-corners);
+	background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+	color: var(--color-accent);
+	font: inherit;
+	font-size: .9375rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.files-upload:has(~ .crm-uploads) .files-upload__input::file-selector-button:hover {
+	background-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.files-upload:has(~ .crm-uploads) .nino-btn {
+	min-height: 2.25rem;
+	padding: 0 var(--space-2);
+	font-size: .9375rem;
+}
+
+.crm-project .review-form__at,
+.crm-project .review-form__text {
+	box-sizing: border-box;
+	padding: calc( var(--space-1) * .75 ) calc( var(--space-1) * 1.5 );
+	border: 1px solid var(--forms-edge, var(--crm-documents-border));
+	border-radius: var(--forms-corners, var(--radius-small));
+	background-color: var(--color-ground);
+	color: var(--color-ink);
+	font: inherit;
+}
+
+.crm-project .review-form__at {
+	min-height: 2.5rem;
+}
+
+.crm-project .review-form__at:focus,
+.crm-project .review-form__text:focus {
+	outline: var(--forms-ring, 2px) solid var(--color-focus);
+	outline-offset: var(--forms-ring-offset, 2px);
+}
+
+.crm-project .review-comment__reply,
+.crm-project .review-form__cancel {
+	min-height: 1.5rem;
+	padding: 0 var(--space-1);
+	border: 1px solid transparent;
+	border-radius: var(--crm-documents-corners);
+	background-color: transparent;
+	color: var(--color-accent);
+	font-size: .8125rem;
+}
+
+.crm-project .review-comment__reply:hover,
+.crm-project .review-form__cancel:hover {
+	background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.crm-project .review-form .nino-btn {
+	min-height: 2.25rem;
+	padding: 0 var(--space-2);
+	font-size: .9375rem;
+}
+
+.crm-project .review-form__now {
+	min-height: 1.5rem;
+	padding: 0 var(--space-1);
+	border: 1px solid transparent;
+	border-radius: var(--crm-documents-corners);
+	background-color: transparent;
+	color: var(--color-accent);
+	font-size: .8125rem;
+}
+
+.crm-project .review-form__now:hover {
+	background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }

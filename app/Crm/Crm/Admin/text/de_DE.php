@@ -15,6 +15,7 @@ return [
 	'[[/_admin/crm/manual/intro]]' => 'Das CRM arbeitet in einer eigenen Oberfläche unter /crm: Kunden, Belege, Positionen und Einstellungen. Hier in der Workbench stehen nur der Weg dorthin, der Status des Moduls und der Knopf für das Portal.',
 
 	'[[/_admin/crm/setup/done]]' => 'Eingerichtet. Neu: Features %s, Routen %s, Menüeinträge %s, Vorlagen %s, Elementtypen %s, Worte %s, PDF-Vorlagen %s. Schon da: %s.',
+	'[[/_admin/crm/setup/cap]]' => 'Der Mail-Deckel steht jetzt auf %s Aufrufe je Stunde; ändern kannst Du ihn im Panel Config.',
 	'[[/_admin/crm/setup/home-new]]' => 'Die Startseite ist jetzt das Tor des Portals.',
 	'[[/_admin/crm/setup/home-starter]]' => 'Die Startseite ist jetzt das Tor des Portals; die Seite /home des Assistenten ist nicht mehr verlinkt.',
 	'[[/_admin/crm/setup/home-own]]' => 'Deine Startseite bleibt; das Tor des Portals liegt unter /portal.',
@@ -31,6 +32,8 @@ return [
 	'[[/_admin/crm/status/lacks-start]]' => 'die Startseite des Features Mitglieder',
 	'[[/_admin/crm/status/pdf-templates-none]]' => 'Die PDF-Vorlagen fehlen noch. Das Einrichten legt sie an.',
 	'[[/_admin/crm/status/pdf-templates-partial]]' => 'Es fehlen PDF-Vorlagen: %s. Das Einrichten legt sie an, Deine eigenen bleiben.',
+	'[[/_admin/crm/status/mail-cap-ok]]' => '%s Aufrufe je Stunde (0 heißt: kein Deckel).',
+	'[[/_admin/crm/status/mail-cap-default]]' => 'Es gilt der Kernel-Standard von %s Aufrufen je Stunde, das ist für ein Portal zu knapp. Das Einrichten setzt ihn auf 100.',
 	'[[/_admin/crm/status/home-other]]' => 'Die Startseite der Website ist noch nicht das Tor des Portals. Das Einrichten macht sie dazu.',
 	'[[/_admin/crm/status/home-own]]' => 'Startseite: eigene Seite, nicht das Tor.',
 	'[[/_admin/crm/status/lacks-paths]]' => 'der geschützte Pfad /portal',

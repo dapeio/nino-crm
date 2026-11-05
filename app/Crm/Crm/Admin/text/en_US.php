@@ -15,6 +15,7 @@ return [
 	'[[/_admin/crm/manual/intro]]' => 'The CRM works in a surface of its own at /crm: clients, documents, items and settings. Here in the workbench there is only the way there, the state of the module and the button for the portal.',
 
 	'[[/_admin/crm/setup/done]]' => 'Set up. New: features %s, routes %s, menu entries %s, templates %s, element types %s, words %s, PDF templates %s. There already: %s.',
+	'[[/_admin/crm/setup/cap]]' => 'The mail cap is now %s calls an hour; you change it in the Config panel.',
 	'[[/_admin/crm/setup/home-new]]' => 'The start page is now the door of the portal.',
 	'[[/_admin/crm/setup/home-starter]]' => 'The start page is now the door of the portal; the wizard\'s page /home is no longer linked.',
 	'[[/_admin/crm/setup/home-own]]' => 'Your start page stays; the door of the portal is at /portal.',
@@ -31,6 +32,8 @@ return [
 	'[[/_admin/crm/status/lacks-start]]' => 'the start page of the Members feature',
 	'[[/_admin/crm/status/pdf-templates-none]]' => 'The PDF templates are missing. Setting up creates them.',
 	'[[/_admin/crm/status/pdf-templates-partial]]' => 'PDF templates are missing: %s. Setting up creates them, yours stay.',
+	'[[/_admin/crm/status/mail-cap-ok]]' => '%s calls an hour (0 means no cap).',
+	'[[/_admin/crm/status/mail-cap-default]]' => 'The kernel default of %s calls an hour stands, which is too tight for a portal. The setup sets it to 100.',
 	'[[/_admin/crm/status/home-other]]' => 'The start page of the site is not the door of the portal yet. Setting up makes it so.',
 	'[[/_admin/crm/status/home-own]]' => 'Start page: your own page, not the door.',
 	'[[/_admin/crm/status/lacks-paths]]' => 'the protected path /portal',

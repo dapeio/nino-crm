@@ -3,9 +3,12 @@ declare(strict_types=1);
 /**
  *	Crm\Portal\Projects		The component [crm-projects] of the portal: the projects of the client of the member signed in. Without a project in the
  *												query it is the list - the open projects first, the done ones under their own heading - and with ?projekt=<id> the page of
- *												one project: its head, then the sections Angebot (the released offers of the project with their lines and sums), Dateien (the
- *												files of the project's folder in the feature Files that the member may see, with the player of Review for an audio or video
- *												file), Belege (the released documents of the project, as [crm-documents] draws them) and Upload (the way to the page Upload).
+ *												one project: its head, then the kernel's tabs Angebot (the released offers of the project with their lines and sums), Dateien
+ *												(the files of the project's folder in the feature Files that the member may see, with the player of Review for an audio or
+ *												video file), Belege (the released documents of the project, as [crm-documents] draws them) and Upload (the way to the page
+ *												Upload). The tab that stands open is the one of the query (?tab=angebot, dateien, belege or upload; the first where there is
+ *												none) and always Dateien where a file is asked to be played; the script of the kernel wires the buttons, and without it every
+ *												panel stands open one under the other. The label of a tab carries the count of what is in it.
  *
  *												Nothing here is stored or sent, and every value enters the markup escaped. A project of another client and an id that is none
  *												are the list with a sentence that the project is unknown. The player of Review returns to the page it stands on without the
@@ -26,6 +29,9 @@ class Projects {
 
 	// The page the component stands on, from the directory the project is served from
 	private const string PAGE = '/portal/projekte';
+
+	// The tabs of the page of a project in their order: the value of ?tab= and the name of the section (its id is projekt-<name>) it opens
+	public const array TABS = [ 'angebot' => 'offer', 'dateien' => 'files', 'belege' => 'documents', 'upload' => 'upload' ];
 
 	/**
 	 *	[crm-projects]
@@ -64,7 +70,7 @@ class Projects {
 				$project = self::ofFile( $appData, $client, $review );
 
 			if( $project !== null && $unknown === false )
-				return self::page( $appData, $client, $project, $review, $classes );
+				return self::page( $appData, $client, $project, $review, is_string( $query['tab'] ?? null ) ? $query['tab'] : '', $classes );
 		}
 
 		return self::list( $appData, $client, $open, $short, $unknown, $classes );
@@ -172,36 +178,55 @@ class Projects {
 	 *	@param		array 		$client
 	 *	@param		array 		$project			As Projekte::get() has it, one of the client's
 	 *	@param		string		$review				The file asked to be played, as the query has it
+	 *	@param		string		$tab					The tab asked for, as the query has it
 	 *	@param		string		$classes
 	 *
 	 *	@return 	string
 	 */
-	private static function page( array &$appData, array $client, array $project, string $review, string $classes ): string {
+	private static function page( array &$appData, array $client, array $project, string $review, string $tab, string $classes ): string {
 
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 		$documents = Documents::released( $appData, $client['id'], $project['id'] );
 		$offers = '';
+		$offered = 0;
 
 		foreach( $documents as $document )
-			if( $document['category'] === 'offer' )
-				$offers .= self::offer( $appData, $client, $document, $dir );
+			if( $document['category'] === 'offer' ) {
+
+				$one = self::offer( $appData, $client, $document, $dir );
+				$offers .= $one;
+				$offered += $one === '' ? 0 : 1;
+			}
 
 		$day = Documents\Render::day( $project['started'] );
 		$text = str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $project['description'] ) );
 
+		$files = self::files( $appData, $project, $review, $dir );
 		$sections = [
-			'offer'     => Order::state( $appData ). ( $offers !== '' ? $offers : self::template( 'project-offer-none' ) ),
-			'files'     => self::files( $appData, $project, $review, $dir ),
-			'documents' => Portal::documentList( $appData, $documents, '', false ),
-			'upload'    => str_replace( '[[dir]]', $dir, self::template( 'project-upload' ) ),
+			'offer'     => [ Order::state( $appData ). ( $offers !== '' ? $offers : self::template( 'project-offer-none' ) ), $offered ],
+			'files'     => $files,
+			'documents' => [ Portal::documentList( $appData, $documents, '', false ), count( $documents ) ],
+			'upload'    => [ str_replace( '[[dir]]', $dir, self::template( 'project-upload' ) ), null ],
 		];
+
+		// A file asked to be played is played in Dateien; else the tab of the query, and the first where it names none
+		$open = $review !== '' ? 'files' : ( self::TABS[$tab] ?? 'offer' );
+		$tabs = '';
 		$html = '';
 
-		foreach( $sections as $name => $content )
-			$html .= str_replace( [ '[[name]]', '[[content]]' ], [ $name, $content ], self::template( 'project-section' ) );
+		foreach( $sections as $name => $section ) {
+
+			$active = $name === $open ? ' nino-is-active' : '';
+			$tabs .= str_replace(
+				[ '[[name]]', '[[active]]', '[[count]]' ],
+				[ $name, $active, $section[1] === null ? '' : str_replace( '[[number]]', (string) $section[1], self::template( 'project-tab-count' ) ) ],
+				self::template( 'project-tab' )
+			);
+			$html .= str_replace( [ '[[name]]', '[[active]]', '[[content]]' ], [ $name, $active, $section[0] ], self::template( 'project-section' ) );
+		}
 
 		return str_replace(
-			[ '[[classes]]', '[[id]]', '[[state]]', '[[dir]]', '[[title]]', '[[started]]', '[[description]]', '[[sections]]' ],
+			[ '[[classes]]', '[[id]]', '[[state]]', '[[dir]]', '[[title]]', '[[started]]', '[[description]]', '[[tabs]]', '[[sections]]' ],
 			[
 				$classes,
 				\Nino\Modules\Components::escape( $project['id'] ),
@@ -210,6 +235,7 @@ class Projects {
 				\Nino\Modules\Components::escape( $project['title'] ),
 				$day === '' ? '' : str_replace( [ '[[iso]]', '[[date]]' ], [ \Nino\Modules\Components::escape( $project['started'] ), \Nino\Modules\Components::escape( $day ) ], self::template( 'project-started' ) ),
 				$text === '' ? '' : str_replace( '[[text]]', $text, self::template( 'project-description' ) ),
+				$tabs,
 				$html,
 			],
 			self::template( 'project' )
@@ -303,22 +329,22 @@ class Projects {
 	 *	@param		string		$review				The file asked to be played
 	 *	@param		string		$dir					Escaped
 	 *
-	 *	@return 	string
+	 *	@return 	array											The markup and the count of files the member may see (null where there is no folder to count)
 	 */
-	private static function files( array &$appData, array $project, string $review, string $dir ): string {
+	private static function files( array &$appData, array $project, string $review, string $dir ): array {
 
 		if( Crm::featureOn( $appData, 'files' ) === false )
-			return self::message( 'files-off', '', 'project-message' );
+			return [ self::message( 'files-off', '', 'project-message' ), null ];
 
 		$folder = self::folder( $appData, $project );
 
 		if( $folder === null )
-			return self::message( 'files-none', '', 'project-message' );
+			return [ self::message( 'files-none', '', 'project-message' ), null ];
 
 		$files = Files::visible( $appData, $folder['id'] );
 
 		if( $files === [] )
-			return self::message( 'files-empty', '', 'project-message' );
+			return [ self::message( 'files-empty', '', 'project-message' ), 0 ];
 
 		$player = '';
 
@@ -327,11 +353,11 @@ class Projects {
 				if( $file['id'] === $review && \Nino\Modules\Review::kind( $file['mime'] ) !== '' && \Nino\Modules\Files::path( $appData, $file['id'] ) !== null )
 					$player = \Nino\Modules\Review::componentReviewPlayer( $appData, [] );
 
-		return str_replace(
+		return [ str_replace(
 			[ '[[player]]', '[[rows]]' ],
 			[ $player, Files::rows( $appData, $files, \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) ). self::PAGE. '?projekt='. rawurlencode( $project['id'] ). '&review=' ) ],
 			self::template( 'project-files' )
-		);
+		), count( $files ) ];
 	}
 
 	/**

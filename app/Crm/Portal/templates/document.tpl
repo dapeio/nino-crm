@@ -3,8 +3,7 @@
 	<span class="crm-documents__title">[[title]]</span>
 	[[project]]
 	<time class="crm-documents__date" datetime="[[iso]]">[[date]]</time>
-	<span class="crm-documents__state">[[/project/crm-documents/state/[[state]]]]</span>
-	<a class="crm-documents__download" href="[[dir]]/.crm/pdf/[[id]]?download=1">[[/project/crm-documents/list/download]]</a>
-	[[sign]]
+	<span class="crm-documents__state crm-chip">[[/project/crm-documents/state/[[state]]]]</span>
+	<span class="crm-documents__links"><a class="crm-documents__download" href="[[dir]]/.crm/pdf/[[id]]?download=1">[[/project/crm-documents/list/download]]</a>[[sign]]</span>
 	[[order]]
 </li>

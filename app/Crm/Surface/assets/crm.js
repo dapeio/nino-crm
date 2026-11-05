@@ -5471,7 +5471,7 @@
 				const word = 'einrichtung.row-'+ item.key;
 
 				return el( 'li', { 'data-key': item.key, 'data-state': complete( item ) ? 'ok' : 'todo' },
-					el( 'span', {}, el( 'b', { text: typeof state.texts[word] === 'string' ? t( word ) : item.key } ), item.state === 'ok' ? null : el( 'span', { class: 'state-note block', text: statusLine( item ) } ) ),
+					el( 'span', {}, el( 'b', { text: typeof state.texts[word] === 'string' ? t( word ) : item.key } ), item.state === 'ok' && item.key !== 'mail-cap' ? null : el( 'span', { class: 'state-note block', text: statusLine( item ) } ) ),
 					badge( complete( item ) ? 'signed' : 'portal', t( complete( item ) ? 'einrichtung.state-ok' : 'einrichtung.state-todo' ) ) );
 			} ) ),
 			el( 'div', { class: 'actions top' }, run ),
@@ -5578,7 +5578,8 @@
 		if( item.state === 'partial' && Array.isArray( item.lacks ) === true )
 			return t( key, item.lacks.map( function( kind ) { return item.key === 'pdf-templates' ? kind : t( 'status.lacks-'+ kind ) } ).join( ', ' ) );
 
-		return t( key );
+		// The mail cap is said with the number in force
+		return item.key === 'mail-cap' ? t( key, item.value ) : t( key );
 	};
 
 	/**
@@ -5590,11 +5591,12 @@
 	 */
 	const setupSentence = function( answer ) {
 
-		const none = { features : [], routes : [], navs : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false };
+		const none = { features : [], routes : [], navs : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false, cap : false };
 		const added = Object.assign( {}, none, answer.added );
 		const existed = Object.assign( {}, none, answer.existed );
 		const there = existed.features.length+ existed.routes.length+ existed.templates.length+ existed.types.length+ existed.pdf.templates.length;
-		const sentence = t( 'setup.done', added.features.length, added.routes.length, added.navs.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
+		const done = t( 'setup.done', added.features.length, added.routes.length, added.navs.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
+		const sentence = typeof added.cap === 'number' ? done+ ' '+ t( 'setup.cap', added.cap ) : done;
 
 		// What became of the start page, said in the answer: made the door where there was none or the wizard's page, or kept where it is the owner's
 		return typeof added.home === 'string' ? sentence+ ' '+ t( 'setup.home-'+ added.home ) : ( existed.home === 'own' ? sentence+ ' '+ t( 'setup.home-own' ) : sentence );
@@ -5639,11 +5641,12 @@
 			[ t( 'settings.portal-address' ), portal.address === '' ? el( 'span', { class: 'bad', text: t( 'settings.portal-no-address' ) } ) : portal.address ],
 			[ t( 'settings.portal-pages' ), pages ],
 			[ t( 'settings.portal-members' ), portal.members.length === 0 ? '' : el( 'span', {}, portal.members.map( function( one, index ) { return [ index === 0 ? null : el( 'br' ), one.label+ ': '+ one.value+ ( typeof state.texts['unit.'+ one.unit] === 'string' ? ' '+ t( 'unit.'+ one.unit ) : '' ) ] } ) ) ],
-			[ t( 'settings.portal-cap' ), portal.mail_cap === null ? '' : ( portal.mail_cap === 0 ? t( 'settings.portal-cap-none' ) : t( 'settings.portal-cap-value', portal.mail_cap ) ) ],
+			[ t( 'settings.portal-cap' ), portal.mail_cap === null ? '' : el( 'span', { id: 'portal-cap' }, portal.mail_cap === 0 ? t( 'settings.portal-cap-none' ) : t( 'settings.portal-cap-value', portal.mail_cap ), ' ', link( state.links.workbench+ '#config', t( 'settings.portal-cap-link' ), { target : '_blank', rel : 'noopener' } ) ) ],
 		] ),
 		el( 'p', { class: 'state-note', text: t( 'settings.portal-members-note' ) } ),
+		portal.mail_cap === null ? null : el( 'p', { class: 'state-note', id: 'portal-cap-note', text: t( 'settings.portal-cap-note' ) } ),
 		el( 'h4', { text: t( 'settings.portal-status' ) } ),
-		missing.length === 0 ? el( 'p', { class: 'state-note', id: 'status-ok', text: t( 'status.allok' ) } ) : el( 'ul', { class: 'list-mini', id: 'status-missing' }, missing.map( function( item ) { return el( 'li', { text: statusLine( item ) } ) } ) ),
+		missing.length === 0 ? el( 'p', { class: 'state-note', id: 'status-ok', text: t( 'status.allok' ) } ) : el( 'ul', { class: 'list-mini', id: 'status-missing' }, missing.map( function( item ) { return el( 'li', { text: ( item.key === 'mail-cap' ? t( 'einrichtung.row-mail-cap' )+ ': ' : '' )+ statusLine( item ) } ) } ) ),
 		el( 'div', { class: 'actions' }, setup ), el( 'p', { class: 'state-note', id: 'setup-said', role: 'status', text: said } ) );
 
 		return card;

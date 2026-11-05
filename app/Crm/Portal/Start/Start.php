@@ -130,7 +130,7 @@ class Start {
 
 			if( $new !== [] )
 				$rows[] = self::row(
-					$dir. Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $project['id'] ). '#projekt-files', \Nino\Modules\Components::escape( $project['title'] ),
+					$dir. Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $project['id'] ). '&amp;tab=dateien#projekt-files', \Nino\Modules\Components::escape( $project['title'] ),
 					count( $new ). ' [[/project/crm-portal/start/new-file-'. ( count( $new ) === 1 ? 'one' : 'many' ). ']]'
 				);
 		}
@@ -188,7 +188,7 @@ class Start {
 	 */
 	private static function projectHref( string $project, string $dir ): string {
 
-		return preg_match( Projekte::ID, $project ) === 1 ? $dir. Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $project ) : $dir. Order::PAGE_DOCUMENTS;
+		return preg_match( Projekte::ID, $project ) === 1 ? $dir. Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $project ). '&amp;tab=angebot' : $dir. Order::PAGE_DOCUMENTS;
 	}
 
 	/**

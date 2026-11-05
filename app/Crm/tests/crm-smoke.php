@@ -459,7 +459,7 @@ $stateOf = static function( array $body, string $key ): string {
 };
 
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/status' );
-check( 'status names the module, the data directory, the six features, the portal, the PDF templates and the start page', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home' ] );
+check( 'status names the module, the data directory, the six features, the portal, the PDF templates, the start page and the cap of mails', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap' ] );
 check( 'the module and the features are ok, the portal is not set up yet', $stateOf( $body, 'module' ) === 'ok' && $stateOf( $body, 'data' ) === 'ok' && $stateOf( $body, 'members' ) === 'ok' && $stateOf( $body, 'sign' ) === 'ok' && $stateOf( $body, 'portal' ) === 'none' );
 
 $modulesNow = $appData['/nino/modules'];
@@ -481,6 +481,8 @@ check( 'init registers the callback of the door and writes no route: the start p
 $manifest = \Nino\Features::readUnitManifest( $root. '/app/Crm/Crm/install' );
 check( 'setup applies the unit and says what it added', $status === 200 && count( $body['added']['routes'] ) === 7 && count( $body['added']['templates'] ) === 8 && $body['added']['texts'] > 20 && $body['added']['paths'] === true
 	&& $body['existed']['routes'] === [] && $body['existed']['templates'] === [] );
+check( '...the cap of mails is 100 then (config.php and the live data); the suite goes on at the kernel\'s default of 5, where the cap is tested', $body['added']['cap'] === 100 && \Nino\AppData::stored( $appData, '/nino/mail/cap', null ) === 100 && $appData['/nino/mail/cap'] === 100 );
+$appData['/nino/mail/cap'] = \Nino\AppData::DEFAULTS['/nino/mail/cap'];
 check( '...and the element type of the items: it is among what was added, the file is there, and the unit names it', $body['added']['types'] === [ 'positionen.php', 'projekte.php' ] && $body['existed']['types'] === [] && \Crm\Positionen::missing( $appData ) === false && \Crm\Projekte::missing( $appData ) === false
 	&& ( $manifest['elementTypes'] ?? [] ) === [ 'positionen.php', 'projekte.php' ] && is_file( $root. '/app/Crm/Crm/install/positionen.php' ) === true && is_file( $root. '/app/Crm/Crm/install/projekte.php' ) === true );
 check( 'the routes are in the persisted routes and in the live ones', array_diff( array_keys( $manifest['routes'] ), array_keys( \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) ) ) === [] && array_diff( array_keys( $manifest['routes'] ), array_keys( $appData['/nino/http/routes'] ) ) === [] );
@@ -1170,6 +1172,8 @@ check( 'right after the wizard the product is not whole: the status says whole f
 	&& array_slice( $items, 2, 6 ) === [ 'members' => 'off', 'files' => 'off', 'review' => 'off', 'sign' => 'off', 'pdf' => 'off', 'events' => 'off' ] && $items['module'] === 'ok' && $items['portal'] === 'partial' && array_column( $body['items'], 'lacks', 'key' )['portal'] === [ 'paths', 'start' ]
 	&& $items['pdf-templates'] === 'none' && array_column( $body['items'], 'lacks', 'key' )['pdf-templates'] === [ 'Angebot', 'Rechnung', 'Stornorechnung', 'Vertrag', 'Datenschutz', 'Information' ] && $items['home'] === 'other' );
 check( '...the PDF templates that are missing are named by their titles, not by their keys; and a product never set up is a first run', $body['first_run'] === true && \Crm\Settings::setupDone( $fresh ) === '' );
+$capItem = static fn( array $body ): array => array_column( $body['items'], null, 'key' )['mail-cap'] ?? [];
+check( '...the cap of mails is a line of the checklist of its own and is lacking: config.php has no value, the kernel\'s default of 5 stands (state default, value 5)', $capItem( $body )['state'] === 'default' && $capItem( $body )['value'] === \Nino\AppData::DEFAULTS['/nino/mail/cap'] && array_key_exists( '/nino/mail/cap', (array) \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] ) ) === false );
 
 [ $status, $body ] = $run( 'crm/setup' );
 $keys = [ 'angebot', 'rechnung', 'stornorechnung', 'vertrag', 'datenschutz', 'information' ];
@@ -1177,6 +1181,10 @@ check( 'the setup does it all in one press: the six features on (the one that wa
 	&& $body['added']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['features'] === [] && $body['added']['paths'] === true && $body['added']['start'] === true && $body['added']['home'] === 'starter'
 	&& $body['added']['pdf']['templates'] === $keys && $body['added']['pdf']['blocks'] === [ 'zahlungsbedingungen', 'gueltigkeit', 'unterschrift', 'kontakt' ] && $body['added']['pdf']['layout'] === [ 'header', 'footer' ]
 	&& $body['added']['routes'] === [] && $body['existed']['routes'] !== [] && $body['existed']['types'] === [ 'positionen.php', 'projekte.php' ] );
+$storedCap = static fn(): mixed => \Nino\AppData::stored( $fresh, '/nino/mail/cap', 'none' );
+check( '...and the cap of mails is set to 100 where config.php had none: in config.php (the key the Config panel writes), in the live data, and the answer says so - added.cap 100, existed.cap false', $body['added']['cap'] === 100 && $body['existed']['cap'] === false && $storedCap() === \Crm\Crm\Admin::CAP && $fresh['/nino/mail/cap'] === 100 );
+$modulesWritten = (array) \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/modules'];
+check( '...config.php keeps its other keys: the modules are listed as they were', in_array( '\\Crm\\Crm', $modulesWritten, true ) === true && $modulesWritten === $fresh['/nino/modules'] );
 check( '...every feature is on and listed, Members protects /portal and sends a member there', array_map( static fn( string $key ): bool => \Crm\Crm::featureOn( $fresh, $key ), [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] ) === [ true, true, true, true, true, true ]
 	&& \Nino\Features::setting( $fresh, 'members', 'paths', [] ) === [ '/portal' ] && \Nino\Features::setting( $fresh, 'members', 'start', '' ) === '/portal' );
 $seeded = (array) \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] );
@@ -1213,7 +1221,8 @@ check( '...the footer of a new install carries the particulars of the owner as o
 
 [ $status, $body ] = $run( 'crm/status' );
 check( 'after the run the product is whole, and the run is written down: first_run false, the day in the setting setup_done - which is no setting of the screen Einstellungen', $status === 200 && $body['whole'] === true && $body['first_run'] === false && preg_match( '/^\d{4}-\d{2}-\d{2}$/D', \Crm\Settings::setupDone( $fresh ) ) === 1 && isset( \Crm\Settings::all( $fresh )[\Crm\Settings::SETUP_KEY] ) === false );
-check( 'after the run the product is whole: every item ok, whole true', $status === 200 && $body['whole'] === true && array_unique( array_values( $itemsOf( $body ) ) ) === [ 'ok' ] && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home' ] );
+check( 'after the run the product is whole: every item ok, whole true', $status === 200 && $body['whole'] === true && array_unique( array_values( $itemsOf( $body ) ) ) === [ 'ok' ] && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap' ] );
+check( '...and the cap line is ok, with the cap that is in force: 100', $capItem( $body )['state'] === 'ok' && $capItem( $body )['value'] === 100 );
 
 // A second press adds nothing; what the owner changed stays
 $own = \Nino\Modules\Pdf::template( $fresh, 'rechnung' );
@@ -1222,10 +1231,40 @@ $own['name'] = 'Meine Rechnung';
 \Nino\Filesystem::putFileContent( $fresh, '/data/pdf/layout.php', array_merge( \Nino\Modules\Pdf::layout( $fresh ), [ 'header' => '<p>Mein Kopf</p>' ] ) );
 $routesBeforeTwice = \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'];
 [ $status, $body ] = $run( 'crm/setup' );
-check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'routes' => [], 'navs' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false ]
+check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'routes' => [], 'navs' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false ]
 	&& $body['existed']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['pdf']['templates'] === $keys && $body['existed']['home'] === 'door' && count( $body['existed']['routes'] ) === 7 );
 check( '...the template the owner changed is the owner\'s still, so is the header; the routes are as they were', ( \Nino\Modules\Pdf::template( $fresh, 'rechnung' )['name'] ?? '' ) === 'Meine Rechnung' && \Nino\Modules\Pdf::layout( $fresh )['header'] === '<p>Mein Kopf</p>' && \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'] === $routesBeforeTwice );
 check( '...and the status is still whole', $run( 'crm/status' )[1]['whole'] === true );
+check( '...the cap is not set twice: added.cap false, existed.cap 100', $body['added']['cap'] === false && $body['existed']['cap'] === 100 && $storedCap() === 100 );
+
+// A cap the owner set stays, whatever it is - 0, no cap, among them; a cap that is gone is set again
+$setCap = static function( ?int $cap ) use ( &$fresh ): void {
+	\Nino\Filesystem::mutate( $fresh, '/config.php', static function( array $content ) use ( $cap ): array {
+		if( $cap === null )
+			unset( $content['/nino/mail/cap'] );
+		else
+			$content['/nino/mail/cap'] = $cap;
+		return $content;
+	} );
+	unset( $fresh['/nino/mail/cap'] );
+	$fresh['/nino/mail/cap'] = $cap ?? \Nino\AppData::DEFAULTS['/nino/mail/cap'];
+};
+
+foreach( [ 20, 0, 5 ] as $own ) {
+	$setCap( $own );
+	[ , $body ] = $run( 'crm/status' );
+	$before = $capItem( $body );
+	[ $status, $body ] = $run( 'crm/setup' );
+	check( 'a cap of '. $own. ' that config.php carries is the owner\'s: the status calls it ok with that value, the setup leaves it - added.cap false, existed.cap '. $own, $before['state'] === 'ok' && $before['value'] === $own && $status === 200 && $body['added']['cap'] === false && $body['existed']['cap'] === $own && $storedCap() === $own && $fresh['/nino/mail/cap'] === $own && $capItem( $run( 'crm/status' )[1] )['value'] === $own );
+}
+
+$setCap( null );
+[ , $body ] = $run( 'crm/status' );
+check( 'a cap that is not in config.php (the owner took it out, or never had one) is the lacking line again, and the product is not whole', $capItem( $body )['state'] === 'default' && $capItem( $body )['value'] === 5 && $body['whole'] === false );
+[ $status, $body ] = $run( 'crm/setup' );
+check( '...and a press sets it to 100 again, nothing else', $status === 200 && $body['added']['cap'] === 100 && $storedCap() === 100 && $run( 'crm/status' )[1]['whole'] === true && array_filter( $body['added'], static fn( mixed $one ): bool => $one !== false && $one !== [] && $one !== 0 && $one !== [ 'blocks' => [], 'templates' => [], 'layout' => [] ] ) === [ 'cap' => 100 ] );
+$panelTexts = [ 'de_DE' => (array) require $root. '/app/Crm/Crm/Admin/text/de_DE.php', 'en_US' => (array) require $root. '/app/Crm/Crm/Admin/text/en_US.php' ];
+check( '...the words of the line are in both languages of the panel, with the cap as the one %s: ok and default, and the sentence of the setup', array_filter( $panelTexts, static fn( array $words ): bool => substr_count( (string) ( $words['[[/_admin/crm/status/mail-cap-ok]]'] ?? '' ), '%s' ) !== 1 || substr_count( (string) ( $words['[[/_admin/crm/status/mail-cap-default]]'] ?? '' ), '%s' ) !== 1 || substr_count( (string) ( $words['[[/_admin/crm/setup/cap]]'] ?? '' ), '%s' ) !== 1 ) === [] );
 
 // A word the owner took away is brought back as a missing word, the template he edited is not touched
 $wording = (array) \Nino\Filesystem::getFileContent( $fresh, '/text/de_DE.php', [] );
