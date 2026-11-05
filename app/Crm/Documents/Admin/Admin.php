@@ -206,7 +206,7 @@ class Admin {
 	}
 
 	/**
-	 *	Remind the accounts of the client of an overdue invoice to pay it: the release mail again, in the words of a reminder - unless notify says false,
+	 *	Remind the accounts of the client of an invoice that is open or sent and released to the portal - overdue or not - to pay it: the release mail again, in the words of a reminder - unless notify says false,
 	 *	when nothing is sent and the reminder is noted all the same. Answers the document and how many mails were delivered
 	 */
 	public static function apiRemind( array &$appData, array &$request ): void {

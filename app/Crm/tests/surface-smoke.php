@@ -465,6 +465,21 @@ check( 'with nothing to do the list is empty', Documents::needs( $appData ) === 
 $restore();
 check( '...and it is full again when the books are as they were', count( Documents::needs( $appData ) ) === 8 );
 
+// a document with no second date is neither overdue nor expiring: the books and the list of what needs the owner leave it out
+$dueWas = Db::row( $appData, 'SELECT due_date FROM documents WHERE id = :id', [ 'id' => $late2['id'] ] )['due_date'];
+$validWas = Db::row( $appData, 'SELECT valid_until FROM documents WHERE id = :id', [ 'id' => $expiring['id'] ] )['valid_until'];
+Db::exec( $appData, 'UPDATE documents SET due_date = NULL WHERE id = :id', [ 'id' => $late2['id'] ] );
+Db::exec( $appData, 'UPDATE documents SET valid_until = NULL WHERE id = :id', [ 'id' => $expiring['id'] ] );
+$undated = Documents::summary( $appData );
+$undatedNeeds = Documents::needs( $appData );
+check( 'an invoice without a due date is open but never overdue: the books count it among the open ones and not among the late ones, and the oldest due day is the next one', $undated['count'] === $sum['count'] && $undated['overdue_count'] === $sum['overdue_count'] - 1 && $undated['overdue_gross'] < $sum['overdue_gross'] && $undated['overdue_oldest'] === $day( -46 ) );
+check( '...what needs the owner leaves it out, and an offer without a day does not run out: neither is asked for, and the list holds the other six', in_array( $late2['id'], array_column( $undatedNeeds, 'id' ), true ) === false && in_array( $expiring['id'], array_column( $undatedNeeds, 'id' ), true ) === false && count( $undatedNeeds ) === 6 );
+check( '...a document read says so: not overdue, not expired - and the offer without a day can be ordered while it is open or sent', Documents::get( $appData, $late2['id'] )['overdue'] === false && Documents::get( $appData, $expiring['id'] )['expired'] === false
+	&& Documents::orderable( (array) Documents::get( $appData, $expiring['id'] ) ) === true );
+check( '...the rule itself, on a row that is none: no day, no lapse, in both', Documents::expired( [ 'category' => 'offer', 'state' => 'sent', 'valid_until' => null ], '2099-01-01' ) === false && Documents::overdue( [ 'category' => 'invoice', 'state' => 'sent', 'due_date' => null ], '2099-01-01' ) === false );
+Db::exec( $appData, 'UPDATE documents SET due_date = :day WHERE id = :id', [ 'day' => $dueWas, 'id' => $late2['id'] ] );
+Db::exec( $appData, 'UPDATE documents SET valid_until = :day WHERE id = :id', [ 'day' => $validWas, 'id' => $expiring['id'] ] );
+
 // an offer that is valid until today runs out today, and is asked for; the day after it is gone
 Db::exec( $appData, 'UPDATE documents SET valid_until = :day WHERE id = :id', [ 'day' => $today, 'id' => $farOffer['id'] ] );
 $edge = array_values( array_filter( Documents::needs( $appData ), static fn( array $need ): bool => $need['id'] === $farOffer['id'] ) );
@@ -546,6 +561,8 @@ echo "\nremind()\n";
 
 $reset();
 Documents::release( $appData, $late1['id'], false );
+// a reminder is for an invoice that was sent: the owner moved this one to sent
+Db::exec( $appData, 'UPDATE documents SET state = \'sent\' WHERE id = :id', [ 'id' => $late1['id'] ] );
 $before = count( $mails );
 $reminded = Documents::remind( $appData, $late1['id'] );
 $sent = surfaceMailsFrom( $before );
@@ -554,12 +571,21 @@ check( 'an overdue invoice that is released reminds the accounts of its client: 
 check( '...in the words of a reminder: the subject, the due day, the link to the page Belege, no attachment, nothing left unfilled', $sent[0]['subject'] === 'Zahlungserinnerung: Rechnung: '. $late1['number'] && str_contains( $sent[0]['body'], 'Eine Rechnung ist noch offen' ) === true
 	&& str_contains( $sent[0]['body'], 'Fällig war sie am '. \Crm\Documents\Render::day( $day( -46 ) ). ':' ) === true && str_contains( $sent[0]['body'], 'href="https://example.org/club/portal/belege"' ) === true
 	&& str_contains( $sent[0]['body'], '>Rechnung ansehen</a>' ) === true && str_contains( $sent[0]['body'], '[[' ) === false && str_contains( $sent[0]['body'], '.pdf' ) === false && str_contains( $sent[0]['body'], 'Hallo Anna Nord,' ) === true );
-check( '...it changes nothing of the invoice: not its state, not its release, not its dates', Documents::get( $appData, $late1['id'] ) === array_merge( $reminded['document'], [] ) && $reminded['document']['state'] === 'open' && $reminded['document']['released'] === true );
+check( '...it changes nothing of the invoice: not its state, not its release, not its dates', Documents::get( $appData, $late1['id'] ) === array_merge( $reminded['document'], [] ) && $reminded['document']['state'] === 'sent' && $reminded['document']['released'] === true );
+$undatedRemind = \Crm\Documents\Mail::compose( $appData, array_merge( (array) Documents::get( $appData, $late1['id'] ), [ 'due_date' => null ] ), 'remind' );
+check( 'a reminder for an invoice without a due date goes out all the same, with the sentence that names no day: nothing left unfilled, and not the sentence of the day', count( $undatedRemind ) === 2 && str_contains( (string) $undatedRemind[0]['body'], \Crm\Documents\Mail::text( 'remind.intro-undated' ) ) === true
+	&& str_contains( (string) $undatedRemind[0]['body'], 'Fällig war sie' ) === false && str_contains( (string) $undatedRemind[0]['body'], '[[' ) === false && str_contains( $remindedBody, 'Fällig war sie' ) === true );
+$dueMail = \Crm\Documents\Mail::compose( $appData, array_merge( (array) Documents::get( $appData, $late1['id'] ), [ 'due_date' => $day( 20 ) ] ), 'remind' );
+$todayMail = \Crm\Documents\Mail::compose( $appData, array_merge( (array) Documents::get( $appData, $late1['id'] ), [ 'due_date' => $today ] ), 'remind' );
+check( 'the reminder has three first sentences: a day that is past (was due), a day ahead or today (is due), and no day - each only with its own', str_contains( (string) $dueMail[0]['body'], \Crm\Documents\Mail::text( 'remind.intro-due', \Crm\Documents\Render::day( $day( 20 ) ) ) ) === true && str_contains( (string) $dueMail[0]['body'], 'Fällig war sie' ) === false
+	&& str_contains( (string) $todayMail[0]['body'], \Crm\Documents\Mail::text( 'remind.intro-due', \Crm\Documents\Render::day( $today ) ) ) === true && str_contains( $remindedBody, \Crm\Documents\Mail::text( 'remind.intro', \Crm\Documents\Render::day( $day( -46 ) ) ) ) === true && str_contains( $remindedBody, 'Fällig ist sie' ) === false
+	&& str_contains( (string) $undatedRemind[0]['body'], 'Fällig ist sie' ) === false );
 $releaseMail = \Crm\Documents\Mail::compose( $appData, (array) Documents::get( $appData, $late1['id'] ) );
 check( 'the release mail is still the release mail: its words are not the reminder\'s, and its button has its words - a [[button]] in the template was read as the shortcode and left the text "[]"', str_contains( (string) $releaseMail[0]['body'], 'Ein Dokument liegt für Dich bereit' ) === true
 	&& str_contains( (string) $releaseMail[0]['body'], '>Belege ansehen</a>' ) === true && str_contains( (string) $remindedBody, '>Rechnung ansehen</a>' ) === true && str_contains( (string) $releaseMail[0]['body'], '[]' ) === false );
 
-check( 'an invoice that is not overdue is "state": one due today, one paid, an offer, a draft', Documents::remind( $appData, $duetoday['id'] ) === 'state' && Documents::remind( $appData, $paidThisYear['id'] ) === 'state' && Documents::remind( $appData, $expiring['id'] ) === 'state' && Documents::remind( $appData, $copy['id'] ) === 'state' );
+check( 'an invoice that is paid is "state", and so are an offer and a draft', Documents::remind( $appData, $paidThisYear['id'] ) === 'state' && Documents::remind( $appData, $expiring['id'] ) === 'state' && Documents::remind( $appData, $copy['id'] ) === 'state' );
+Db::exec( $appData, 'UPDATE documents SET state = \'sent\' WHERE id = :id', [ 'id' => $late2['id'] ] );
 check( '...one that is not released is "released", and nobody is mailed; a document nobody has is "unknown"', Documents::remind( $appData, $late2['id'] ) === 'released' && Documents::remind( $appData, 99999 ) === 'unknown' && count( $mails ) === $before + 2 );
 Documents::release( $appData, $sentLate['id'], false );
 $nobody = Documents::remind( $appData, $sentLate['id'] );
@@ -574,8 +600,9 @@ $quiet = Documents::remind( $appData, $late1['id'], false );
 $noted = Documents::get( $appData, $late1['id'] );
 check( 'a reminder with $mail false sends no mail and says so - mailed 0 - and is noted on the invoice: reminded_at is a time, and reminded_mail false', is_array( $quiet ) && $quiet['mailed'] === 0 && count( $mails ) === $before
 	&& preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $noted['reminded_at'] ) === 1 && $noted['reminded_mail'] === false && $quiet['document']['reminded_at'] === $noted['reminded_at'] );
-check( '...it still asks what a reminder asks: an invoice that is not overdue is state, one that is not released is released - and neither is noted', Documents::remind( $appData, $duetoday['id'], false ) === 'state' && Documents::remind( $appData, $late2['id'], false ) === 'released'
-	&& Documents::get( $appData, $late2['id'] )['reminded_at'] === '' && Documents::get( $appData, $duetoday['id'] )['reminded_at'] === '' );
+check( '...it still asks what a reminder asks: a paid invoice is state, one that is not released is released - and neither is noted', Documents::remind( $appData, $paidThisYear['id'], false ) === 'state' && Documents::remind( $appData, $late2['id'], false ) === 'released'
+	&& Documents::get( $appData, $late2['id'] )['reminded_at'] === '' && Documents::get( $appData, $paidThisYear['id'] )['reminded_at'] === '' );
+Db::exec( $appData, 'UPDATE documents SET state = \'open\' WHERE id = :id', [ 'id' => $late2['id'] ] );
 $loud = Documents::remind( $appData, $late1['id'] );
 check( '...and one with the mail notes it as sent by mail', is_array( $loud ) && $loud['mailed'] === 2 && $loud['document']['reminded_mail'] === true && count( $mails ) === $before + 2 );
 $reset();
@@ -589,6 +616,28 @@ check( 'the mails of a reminder are one call of the cap of mails an hour: five f
 $reset();
 Documents::unrelease( $appData, $late1['id'] );
 Documents::unrelease( $appData, $sentLate['id'] );
+
+// a reminder is the owner's call: every invoice that was sent and is not paid can be reminded - due or not, with a due date or without
+$reset();
+Documents::release( $appData, $late1['id'], false );
+Db::exec( $appData, 'UPDATE documents SET due_date = NULL WHERE id = :id', [ 'id' => $late1['id'] ] );
+$before = count( $mails );
+$noDay = Documents::remind( $appData, $late1['id'] );
+$noDayMails = surfaceMailsFrom( $before );
+check( 'an invoice that was sent and has no due date can be reminded: one mail each, with the sentence that names no day', is_array( $noDay ) && $noDay['mailed'] === 2 && count( $noDayMails ) === 2 && str_contains( (string) $noDayMails[0]['body'], \Crm\Documents\Mail::text( 'remind.intro-undated' ) ) === true
+	&& str_contains( (string) $noDayMails[0]['body'], 'Fällig war sie' ) === false && is_array( $noDay['document'] ) && $noDay['document']['reminded_at'] !== '' && $noDay['document']['reminded_mail'] === true );
+Db::exec( $appData, 'UPDATE documents SET due_date = :day WHERE id = :id', [ 'day' => $day( 20 ), 'id' => $late1['id'] ] );
+$before = count( $mails );
+$notDue = Documents::remind( $appData, $late1['id'] );
+$notDueMails = surfaceMailsFrom( $before );
+check( '...and so can one that is not due yet, with the day it is due - the owner decides when', is_array( $notDue ) && $notDue['document']['overdue'] === false && $notDue['mailed'] === 2 && str_contains( (string) $notDueMails[0]['body'], \Crm\Documents\Render::day( $day( 20 ) ) ) === true
+	&& str_contains( (string) $notDueMails[0]['body'], \Crm\Documents\Mail::text( 'remind.intro-undated' ) ) === false );
+Db::exec( $appData, 'UPDATE documents SET state = \'open\' WHERE id = :id', [ 'id' => $late1['id'] ] );
+check( '...an invoice that is open and not marked as sent can be reminded as well; a paid one, an offer, a credit note and a draft are "state"', is_array( Documents::remind( $appData, $late1['id'] ) ) && Documents::remind( $appData, $paidThisYear['id'] ) === 'state' && Documents::remind( $appData, $expiring['id'] ) === 'state' && Documents::remind( $appData, $draft['id'] ) === 'state'
+	&& Documents::remindable( [ 'category' => 'invoice', 'state' => 'sent' ] ) === true && Documents::remindable( [ 'category' => 'invoice', 'state' => 'open' ] ) === true && Documents::remindable( [ 'category' => 'invoice', 'state' => 'paid' ] ) === false && Documents::remindable( [ 'category' => 'invoice', 'state' => 'draft' ] ) === false && Documents::remindable( [ 'category' => 'invoice', 'state' => 'cancelled' ] ) === false && Documents::remindable( [ 'category' => 'credit', 'state' => 'sent' ] ) === false );
+Db::exec( $appData, 'UPDATE documents SET due_date = :day WHERE id = :id', [ 'day' => $day( -46 ), 'id' => $late1['id'] ] );
+Documents::unrelease( $appData, $late1['id'] );
+$reset();
 
 // the signature again and taken back
 echo "\nThe signature again and taken back\n";
@@ -741,6 +790,7 @@ check( '...404 crm_documents_unknown', $status === 404 && $answer['code'] === 'c
 check( '...a line that is wrong has its params and its field: 400 crm_documents_line_empty, [2], lines.1.title', $status === 400 && $answer['code'] === 'crm_documents_line_empty' && $answer['params'] === [ 2 ] && $answer['field'] === 'lines.1.title' );
 [ $status, $answer ] = surfaceApi( $appData, 'crm-documents/save', [ 'id' => (string) $late1['id'], 'title' => 'x' ] );
 check( '...a finalised document is 409 crm_documents_fixed', $status === 409 && $answer['code'] === 'crm_documents_fixed' );
+Db::exec( $appData, 'UPDATE documents SET state = \'sent\' WHERE id IN ( :a, :b )', [ 'a' => $late1['id'], 'b' => $late2['id'] ] );
 [ $status, $answer ] = surfaceApi( $appData, 'crm-documents/remind', [ 'id' => (string) $late2['id'] ] );
 check( '...and the new refusals: a reminder for a document that is not released is 409 crm_documents_released', $status === 409 && $answer['code'] === 'crm_documents_released' && isset( Surface::texts()['error.crm_documents_released'] ) === true );
 
@@ -769,6 +819,13 @@ check( '...with notify false it sends none and says so: mailed 0, notify false, 
 $reset();
 $loudAnswers = [ surfaceApi( $appData, 'crm-documents/remind', [ 'id' => (string) $late1['id'], 'notify' => 'false' ] ), surfaceApi( $appData, 'crm-documents/remind', [ 'id' => (string) $late1['id'] ] ) ];
 check( '...and anything that is no false mails as before', array_column( array_column( $loudAnswers, 1 ), 'mailed' ) === [ 2, 2 ] );
+[ $status, $answer ] = surfaceApi( $appData, 'crm-documents/remind', [ 'id' => (string) $paidThisYear['id'] ] );
+check( '...the endpoint refuses a paid invoice and a draft - 409 crm_documents_state - and takes an invoice that is open, as it takes one that is sent', $status === 409 && $answer['code'] === 'crm_documents_state' && surfaceApi( $appData, 'crm-documents/remind', [ 'id' => (string) $draft['id'] ] )[1]['code'] === 'crm_documents_state' && ( static function() use ( &$appData, $late1 ): bool {
+	Db::exec( $appData, 'UPDATE documents SET state = \'open\' WHERE id = :id', [ 'id' => $late1['id'] ] );
+	[ $openStatus, $openAnswer ] = surfaceApi( $appData, 'crm-documents/remind', [ 'id' => (string) $late1['id'] ] );
+	return $openStatus === 200 && $openAnswer['mailed'] === 2;
+} )() === true );
+Db::exec( $appData, 'UPDATE documents SET state = \'open\' WHERE id IN ( :a, :b )', [ 'a' => $late1['id'], 'b' => $late2['id'] ] );
 $reset();
 $asLinker();
 $beforeApi = count( $mails );
@@ -1782,7 +1839,7 @@ $asCrm();
 // The vocabulary the menu offers is the vocabulary the documents hand a template
 $script = (string) file_get_contents( $root. '/app/Crm/Surface/assets/crm.js' );
 preg_match( '~const PDF_TOKENS = \[(.*?)\n\t\];~s', $script, $tokenBlock );
-preg_match_all( "~'(/[a-z]+/[a-z]+)'~", $tokenBlock[1] ?? '', $menuTokens );
+preg_match_all( "~'(/[a-z]+/[a-z-]+)'~", $tokenBlock[1] ?? '', $menuTokens );
 $handed = [];
 foreach( [ $late1, $sentLate ] as $document ) {
 	$full = Documents::get( $appData, $document['id'] );
@@ -1796,7 +1853,7 @@ $menu = array_values( array_unique( $menuTokens[1] ) );
 sort( $menu );
 $handed = array_values( array_unique( $handed ) );
 sort( $handed );
-check( 'the placeholders of the menu - Beleg, Rechnung, Angebot, Kunde, Portal - are exactly the tokens Render::data() hands a template for an invoice and an offer', $menu === $handed && count( $menu ) === 30 );
+check( 'the placeholders of the menu - Beleg, Rechnung, Angebot, Kunde, Portal - are exactly the tokens Render::data() hands a template for an invoice and an offer', $menu === $handed && count( $menu ) === 32 );
 
 
 // --- The script of the surface ---------------------------------------------------------------------------------------

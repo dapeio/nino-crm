@@ -201,6 +201,18 @@
 	};
 
 	/**
+	 *	The day a setting of days comes to after a day: the prefill of the second date of an offer or an invoice
+	 *
+	 *	@param		{string}	day							Y-m-d
+	 *	@param		{string}	days						The setting: whole days, '0' or '' for none
+	 *
+	 *	@return		{string}									Y-m-d; '' where the setting is none
+	 */
+	const daysAfter = function( day, days ) {
+		return Number( days ) > 0 ? addDays( day, Number( days ) ) : '';
+	};
+
+	/**
 	 *	@param		{string}	iso							Y-m-d, or a time that begins with it
 	 *
 	 *	@return		{string}									d.m.Y; '' for none
@@ -380,7 +392,7 @@
 
 		return {
 			id : 0, category : category, vat_mode : settings.vat_mode, client_id : '', parent_id : offer || '', date : day,
-			due_date : category === 'invoice' ? addDays( day, Number( settings.payment_days ) ) : '', valid_until : category === 'offer' ? addDays( day, Number( settings.offer_days ) ) : '',
+			due_date : category === 'invoice' ? daysAfter( day, settings.payment_days ) : '', valid_until : category === 'offer' ? daysAfter( day, settings.offer_days ) : '',
 			period_from : '', period_to : '', template_key : '', inputs : {}, reverse_charge : false, title : '', notes : '', project : '',
 			lines : [], updated : '', dirty : false, templates : [],
 		};
@@ -1689,7 +1701,7 @@
 
 		items.push( { label : t( 'menu.copy' ), run : function() { derive( 'crm-documents/copy', view, 'error.copy', 'copy.done' ) } } );
 
-		if( doc.overdue === true && doc.released === true )
+		if( doc.category === 'invoice' && [ 'open', 'sent' ].includes( doc.state ) === true && doc.released === true )
 			items.push( { label : t( 'menu.remind' ), run : function() { remind( view ) } } );
 
 		if( SIGNABLE.includes( doc.category ) === true && [ 'open', 'sent' ].includes( doc.state ) === true ) {
@@ -2061,7 +2073,7 @@
 			state.main.appendChild( el( 'p', { class: 'state-note', id: 'order-head' }, badge( 'portal', t( 'order.badge' ) ), ' '+ t( 'order.head', dmy( view.order.at ), recordWho( view.order ) ) ) );
 
 		if( doc.overdue === true )
-			state.main.appendChild( note( '', t( 'overdue.note', dmy( doc.due_date ) ), ' ', doc.released === true ? el( 'button', { type: 'button', class: 'btn sm', id: 'remind', text: t( 'menu.remind' ), on: { click: function() { remind( view ) } } } ) : t( 'overdue.release' ) ) );
+			state.main.appendChild( note( '', t( 'overdue.note', dmy( doc.due_date ) ), ' ', doc.released === true && [ 'open', 'sent' ].includes( doc.state ) === true ? el( 'button', { type: 'button', class: 'btn sm', id: 'remind', text: t( 'menu.remind' ), on: { click: function() { remind( view ) } } } ) : t( 'overdue.release' ) ) );
 
 		if( doc.expired === true )
 			state.main.appendChild( note( '', t( 'expired.note', dmy( doc.valid_until ) ) ) );
@@ -2577,12 +2589,12 @@
 		}
 		else {
 			if( draft.category === 'invoice' ) {
-				dl.appendChild( el( 'dt', {}, el( 'label', { for: 'f-due_date', text: t( 'field.due' ) } ) ) );
+				dl.appendChild( el( 'dt', {}, el( 'label', { for: 'f-due_date', text: t( 'field.due' )+ ' ('+ t( 'form.optional' )+ ')' } ) ) );
 				dl.appendChild( el( 'dd', {}, bind( 'due_date', 'due_date', el( 'input', { id: 'f-due_date', type: 'date', value: draft.due_date } ) ) ) );
 			}
 
 			if( draft.category === 'offer' ) {
-				dl.appendChild( el( 'dt', {}, el( 'label', { for: 'f-valid_until', text: t( 'field.valid' ) } ) ) );
+				dl.appendChild( el( 'dt', {}, el( 'label', { for: 'f-valid_until', text: t( 'field.valid' )+ ' ('+ t( 'form.optional' )+ ')' } ) ) );
 				dl.appendChild( el( 'dd', {}, bind( 'valid_until', 'valid_until', el( 'input', { id: 'f-valid_until', type: 'date', value: draft.valid_until } ) ) ) );
 			}
 
@@ -6031,8 +6043,8 @@
 		const taxes = formList( [
 			{ name : 'vat_mode', label : t( 'settings.vat-mode' ), control : select, hint : t( 'settings.vat-mode-hint' ) },
 			{ name : 'vat_rates_percent', label : t( 'settings.vat-rates' ), control : el( 'input', { id: 'f-vat_rates_percent', type: 'text', value: ratesText( settings.vat_rates ), maxlength: '40', autocomplete: 'off' } ), hint : t( 'settings.vat-rates-hint' ) },
-			{ name : 'payment_days', label : t( 'settings.payment-days' ), control : day( 'f-payment_days', settings.payment_days ) },
-			{ name : 'offer_days', label : t( 'settings.offer-days' ), control : day( 'f-offer_days', settings.offer_days ) },
+			{ name : 'payment_days', label : t( 'settings.payment-days' ), control : day( 'f-payment_days', settings.payment_days ), hint : t( 'settings.days-hint' ) },
+			{ name : 'offer_days', label : t( 'settings.offer-days' ), control : day( 'f-offer_days', settings.offer_days ), hint : t( 'settings.days-hint' ) },
 			{ name : 'currency', label : t( 'settings.currency' ), control : el( 'input', { id: 'f-currency', type: 'text', value: settings.currency, maxlength: '5', autocomplete: 'off', class: 'short' } ) },
 		], form );
 
@@ -6119,8 +6131,8 @@
 	// The placeholders a template may use, by group: the vocabulary of \Crm\Documents\Render::data(). The word of each is tok.<group>-<name>
 	const PDF_TOKENS = [
 		[ 'document', [ '/document/number', '/document/title', '/document/date', '/document/parent', '/document/vatnote', '/document/net', '/document/vat', '/document/gross' ] ],
-		[ 'invoice', [ '/invoice/due', '/invoice/period', '/site/tax', '/site/bank', '/site/iban', '/site/bic' ] ],
-		[ 'offer', [ '/offer/number', '/offer/date', '/offer/valid', '/offer/gross', '/offer/period' ] ],
+		[ 'invoice', [ '/invoice/due', '/invoice/due-sentence', '/invoice/period', '/site/tax', '/site/bank', '/site/iban', '/site/bic' ] ],
+		[ 'offer', [ '/offer/number', '/offer/date', '/offer/valid', '/offer/valid-sentence', '/offer/gross', '/offer/period' ] ],
 		[ 'customer', [ '/customer/number', '/customer/company', '/customer/name', '/customer/street', '/customer/zip', '/customer/city', '/customer/country', '/customer/email', '/customer/vat' ] ],
 		[ 'portal', [ '/site/portal', '/site/login' ] ],
 	];

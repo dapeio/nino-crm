@@ -41,11 +41,27 @@ class Mail {
 	}
 
 	/**
+	 *	The first sentence of a reminder: the day the invoice was due, the day it is due, or no day
+	 *
+	 *	@param		array 		$document			due_date
+	 *	@param		string		$due					The due day as d.m.Y, '' for none
+	 *
+	 *	@return 	string
+	 */
+	private static function remindIntro( array $document, string $due ): string {
+
+		if( $due === '' )
+			return self::text( 'remind.intro-undated' );
+
+		return (string) $document['due_date'] >= date( 'Y-m-d' ) ? self::text( 'remind.intro-due', $due ) : self::text( 'remind.intro', $due );
+	}
+
+	/**
 	 *	The mails for a document: one for each active account of its client that has an address
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document			As Documents::get() has it
-	 *	@param		string		$kind					release (a document is there for the client) or remind (an invoice is overdue)
+	 *	@param		string		$kind					release (a document is there for the client) or remind (an invoice that is open or sent, released to the portal)
 	 *
 	 *	@return 	array											[ { to, subject, body, replyTo }, ... ]; none for a client without an account that can be written to, or where the site has no address
 	 */
@@ -85,7 +101,7 @@ class Mail {
 			$values = [
 				'[[heading]]'  => self::text( $prefix. 'title' ),
 				'[[greeting]]' => self::text( 'greeting', $account['name'] !== '' ? $account['name'] : $account['email'] ),
-				'[[intro]]'    => $kind === 'remind' ? self::text( 'remind.intro', $due ) : self::text( 'intro' ),
+				'[[intro]]'    => $kind === 'remind' ? self::remindIntro( $document, $due ) : self::text( 'intro' ),
 				'[[document]]' => $about,
 				'[[link]]'     => $link,
 				'[[cta]]'      => self::text( $prefix. 'button' ),

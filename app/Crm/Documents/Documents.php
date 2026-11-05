@@ -251,7 +251,7 @@ class Documents {
 
 		if( is_string( $date ) === true && self::validDate( $date ) === true && in_array( $category, self::PLAIN, true ) === false ) {
 			$key = $category === 'offer' ? 'valid_until' : 'due_date';
-			$base[$key] = self::addDays( $date, (int) Settings::get( $appData, $category === 'offer' ? 'offer_days' : 'payment_days' ) );
+			$base[$key] = self::dayAfter( $appData, $date, $category === 'offer' ? 'offer_days' : 'payment_days' );
 		}
 
 		$values = self::clean( $appData, $input, $base );
@@ -844,15 +844,27 @@ class Documents {
 	}
 
 	/**
-	 *	A reminder to pay: the release mail again, in the words of a reminder, to each active account of the client of an invoice that is open or
-	 *	sent, overdue and released to the portal. The reminder is noted on the invoice (reminded_at, and whether it went by mail) - with the mail or
+	 *	Whether an invoice may be reminded: it is an invoice that is open or sent - with a due date or without one, late or not yet: the owner decides when
+	 *
+	 *	@param		array 		$row					category and state
+	 *
+	 *	@return 	bool
+	 */
+	public static function remindable( array $row ): bool {
+
+		return ( $row['category'] ?? '' ) === 'invoice' && in_array( $row['state'] ?? '', [ 'open', 'sent' ], true );
+	}
+
+	/**
+	 *	A reminder to pay: the release mail again, in the words of a reminder, to each active account of the client of an invoice that is
+	 *	open or sent, whether it is overdue or not, and released to the portal. The reminder is noted on the invoice (reminded_at, and whether it went by mail) - with the mail or
 	 *	without it, so that the owner who phoned notes it as well; without the mail nothing is sent. Nothing else changes. The activity log names the number
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		int				$id
 	 *	@param		bool			$mail					Whether the accounts of the client are mailed
 	 *
-	 *	@return 	array|string							document (as get() has it) and mailed (how many mails were delivered); or unknown; state (it is no invoice that is overdue);
+	 *	@return 	array|string							document (as get() has it) and mailed (how many mails were delivered); or unknown; state (it is no invoice that is open or sent);
 	 *																		released (the client could not find it in the portal); address, limit as release() has them
 	 */
 	public static function remind( array &$appData, int $id, bool $mail = true ): array|string {
@@ -862,7 +874,7 @@ class Documents {
 		if( $document === null )
 			return 'unknown';
 
-		if( self::overdue( $document, date( 'Y-m-d' ) ) === false )
+		if( self::remindable( $document ) === false )
 			return 'state';
 
 		if( $document['released'] === false )
@@ -1262,6 +1274,22 @@ class Documents {
 	}
 
 	/**
+	 *	The day a setting of days after a date comes to: the prefill of a due date and of a validity day. A setting of 0 days is none, and the document has no such day
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$date					Y-m-d
+	 *	@param		string		$setting			payment_days or offer_days
+	 *
+	 *	@return 	string|null								Y-m-d; null where the setting is 0
+	 */
+	private static function dayAfter( array &$appData, string $date, string $setting ): ?string {
+
+		$days = (int) Settings::get( $appData, $setting );
+
+		return $days === 0 ? null : self::addDays( $date, $days );
+	}
+
+	/**
 	 *	@param		string		$date					Y-m-d
 	 *	@param		int				$days
 	 *
@@ -1558,7 +1586,7 @@ class Documents {
 
 		$values = [
 			'category' => $category, 'client_id' => $source['client_id'], 'parent_id' => $source['id'], 'title' => '', 'vat_mode' => $vatMode, 'reverse_charge' => $reverse,
-			'date' => $date, 'due_date' => $category === 'invoice' ? self::addDays( $date, (int) Settings::get( $appData, 'payment_days' ) ) : null, 'valid_until' => null, 'period_from' => $source['period_from'], 'period_to' => $source['period_to'],
+			'date' => $date, 'due_date' => $category === 'invoice' ? self::dayAfter( $appData, $date, 'payment_days' ) : null, 'valid_until' => null, 'period_from' => $source['period_from'], 'period_to' => $source['period_to'],
 			'template_key' => '', 'inputs' => [], 'notes' => '', 'lines' => $lines, 'amounts' => $totals['amounts'], 'project' => self::projectKept( $appData, (string) $source['project'], $source['client_id'] ),
 		] + $totals;
 

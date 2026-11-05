@@ -12,8 +12,10 @@ declare(strict_types=1);
  *													'...'), and a template writes them as [[/customer/name]]. A template of the tags offer and invoice
  *													may use:
  *													  /document/number, /title, /date, /net, /vat, /gross, /vatnote, /parent
- *													  /invoice/due, /period (an invoice and a credit note)
- *													  /offer/number, /date, /valid, /gross, /period (an offer: its own; /period says "nach Absprache" where it has none, as an invoice's says its own sentence)
+ *													  /invoice/due, /due-sentence, /period (an invoice and a credit note; the day of /due is empty where the document has none, and /due-sentence says
+ *													  "Zahlbar ohne Abzug bis zum <day> unter Angabe der Rechnungsnummer <number>." or, without a day, "Zahlbar sofort ohne Abzug unter Angabe der Rechnungsnummer <number>.")
+ *													  /offer/number, /date, /valid, /valid-sentence, /gross, /period (an offer: /valid is empty where the offer has no day, /valid-sentence says "Dieses Angebot ist gültig bis zum <day>."
+ *													  or "Dieses Angebot ist freibleibend."; /period says "nach Absprache" where it has none, as an invoice's says its own sentence)
  *													  /customer/number, /company, /name, /street, /zip, /city, /country, /email, /vat
  *													  /site/portal, /site/login (the absolute addresses of /portal and of the site, whose start page is the login; empty where the site has none)
  *													  /site/tax, /site/bank, /site/iban, /site/bic (the invoice particulars of the settings: tax number, bank, IBAN, BIC; empty where unset)
@@ -22,7 +24,7 @@ declare(strict_types=1);
  *													A template of the tags contract, privacy and information (a document without lines and without a
  *													number) has /document/title (the title of the document itself), /document/date, /document/parent
  *													(a contract: the number of its offer), /customer/*, /site/* and the slot address. A contract also has
- *													/offer/number, /date, /valid, /gross, /period and the slots lines and totals of its offer, so
+ *													/offer/number, /date, /valid, /valid-sentence, /gross, /period and the slots lines and totals of its offer, so
  *													that it can quote what it is about.
  */
 namespace Crm\Documents;
@@ -172,6 +174,7 @@ class Render {
 				$data['tokens']['/offer/number'] = (string) $offer['number'];
 				$data['tokens']['/offer/date'] = self::day( (string) $offer['date'] );
 				$data['tokens']['/offer/valid'] = self::day( (string) ( $offer['valid_until'] ?? '' ) );
+				$data['tokens']['/offer/valid-sentence'] = self::validSentence( (string) ( $offer['valid_until'] ?? '' ) );
 				$data['tokens']['/offer/gross'] = Money::format( $totals['gross'], $currency );
 				$offerPeriod = self::period( (string) ( $offer['period_from'] ?? '' ), (string) ( $offer['period_to'] ?? '' ) );
 				$data['tokens']['/offer/period'] = $offerPeriod === '' ? self::text( 'period.none-offer' ) : $offerPeriod;
@@ -211,11 +214,13 @@ class Render {
 			$data['tokens']['/offer/number'] = (string) $document['number'];
 			$data['tokens']['/offer/date'] = self::day( (string) $document['date'] );
 			$data['tokens']['/offer/valid'] = self::day( (string) ( $document['valid_until'] ?? '' ) );
+			$data['tokens']['/offer/valid-sentence'] = self::validSentence( (string) ( $document['valid_until'] ?? '' ) );
 			$data['tokens']['/offer/gross'] = Money::format( $totals['gross'], $currency );
 			$data['tokens']['/offer/period'] = $period;
 		}
 		else {
 			$data['tokens']['/invoice/due'] = self::day( (string) ( $document['due_date'] ?? '' ) );
+			$data['tokens']['/invoice/due-sentence'] = self::dueSentence( (string) ( $document['due_date'] ?? '' ), (string) $document['number'] );
 			$data['tokens']['/invoice/period'] = $period;
 		}
 		$data['slots']['lines'] = self::lines( $lines, $totals, $regular, $currency );
@@ -499,6 +504,35 @@ class Render {
 	public static function day( string $date ): string {
 
 		return preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/D', $date, $found ) === 1 ? $found[3]. '.'. $found[2]. '.'. $found[1] : '';
+	}
+
+	/**
+	 *	The sentence of the payment terms: with the day the invoice is due, or without one
+	 *
+	 *	@param		string		$date					Y-m-d, or '' for an invoice with no due date
+	 *	@param		string		$number				The number of the invoice
+	 *
+	 *	@return 	string
+	 */
+	public static function dueSentence( string $date, string $number ): string {
+
+		$day = self::day( $date );
+
+		return $day === '' ? self::text( 'due.sentence-none', $number ) : self::text( 'due.sentence', $day, $number );
+	}
+
+	/**
+	 *	The sentence of the validity of an offer: with the day it is good until, or without one
+	 *
+	 *	@param		string		$date					Y-m-d, or '' for an offer with no day
+	 *
+	 *	@return 	string
+	 */
+	public static function validSentence( string $date ): string {
+
+		$day = self::day( $date );
+
+		return $day === '' ? self::text( 'valid.sentence-none' ) : self::text( 'valid.sentence', $day );
 	}
 
 	/**

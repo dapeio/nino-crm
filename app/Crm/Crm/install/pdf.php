@@ -14,8 +14,8 @@ declare(strict_types=1);
 return [
 
 	'blocks' => [
-		'zahlungsbedingungen' => [ 'title' => 'Zahlungsbedingungen', 'html' => '<p>Zahlbar ohne Abzug bis zum [[/invoice/due]] unter Angabe der Rechnungsnummer [[/document/number]].</p>' ],
-		'gueltigkeit'         => [ 'title' => 'Gültigkeit', 'html' => '<p>Dieses Angebot ist gültig bis zum [[/offer/valid]].</p>' ],
+		'zahlungsbedingungen' => [ 'title' => 'Zahlungsbedingungen', 'html' => '<p>[[/invoice/due-sentence]]</p>' ],
+		'gueltigkeit'         => [ 'title' => 'Gültigkeit', 'html' => '<p>[[/offer/valid-sentence]]</p>' ],
 		'unterschrift'        => [ 'title' => 'Unterschrift', 'html' => '<p>Mit ihrer Unterschrift bestätigen die Parteien den Inhalt dieses Dokuments.</p>' ],
 		'kontakt'             => [ 'title' => 'Kontakt', 'html' => '<p><strong>[[/project/company/general/name]]</strong><br>[[/project/company/contact/address]]<br>[[/project/company/contact/email]] · [[/project/company/contact/phone]]</p>' ],
 	],

@@ -765,7 +765,7 @@ $offerTokens = Render::data( $appData, $offerFinal, $offerFinal['lines'], $offer
 check( 'an offer has its own number, day, validity and sum under /offer and no due date: an invoice has no validity', $offerTokens['/document/title'] === 'Angebot' && $offerTokens['/offer/valid'] === '09.04.2026' && $offerTokens['/offer/number'] === $offerTokens['/document/number'] && $offerTokens['/offer/gross'] === $offerTokens['/document/gross']
 	&& $offerTokens['/offer/date'] === $offerTokens['/document/date'] && isset( $offerTokens['/invoice/due'] ) === false && isset( $tokens['/offer/valid'] ) === false );
 check( 'the vocabulary is the slash form and nothing else: an invoice has the document, invoice, customer and site keys - and none of the dotted names of before', array_keys( $tokens ) === [ '/site/portal', '/site/login', '/site/tax', '/site/bank', '/site/iban', '/site/bic', '/customer/number', '/customer/company', '/customer/name', '/customer/street', '/customer/zip', '/customer/city', '/customer/country', '/customer/email', '/customer/vat',
-	'/document/title', '/document/number', '/document/date', '/document/parent', '/document/vatnote', '/document/net', '/document/vat', '/document/gross', '/invoice/due', '/invoice/period' ] );
+	'/document/title', '/document/number', '/document/date', '/document/parent', '/document/vatnote', '/document/net', '/document/vat', '/document/gross', '/invoice/due', '/invoice/due-sentence', '/invoice/period' ] );
 check( '...and the old dotted names fill nothing any more, while the slash keys fill what they stand for', \Nino\Modules\Pdf\Layout\Tokens::fill( $appData, '[[document.number]]|[[client.company]]|[[site.portal]]|[[/document/number]]|[[/customer/company]]', $tokens ) === '|||'. $secondInvoice['number']. '|Studio Nord GmbH' );
 check( 'the inputs are the document\'s own', $data['inputs'] === $secondInvoice['inputs'] );
 
@@ -918,6 +918,58 @@ check( 'a declined offer gives no invoice; an accepted one does', Documents::fro
 check( 'the client must be active', Documents::fromOffer( $appData, $offerFinal['id'] ) === 'inactive' && Documents::creditOf( $appData, $secondInvoice['id'] ) === 'inactive' );
 \Crm\Clients::setActive( $appData, $first['id'], true );
 
+// --- The second date is optional ---------------------------------------------------------------------------------------
+
+echo "\nThe second date is optional\n";
+
+$dated = Documents::add( $appData, 'invoice', $first['id'], [ 'date' => '2026-03-01', 'lines' => $lines, 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+$datedOffer = Documents::add( $appData, 'offer', $first['id'], [ 'date' => '2026-03-01', 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
+check( 'a new invoice and a new offer carry the day of the settings: 14 days and 30', $dated['due_date'] === '2026-03-15' && $datedOffer['valid_until'] === '2026-03-31' );
+$clearedInvoice = Documents::change( $appData, $dated['id'], [ 'due_date' => '' ] );
+$clearedOffer = Documents::change( $appData, $datedOffer['id'], [ 'valid_until' => '' ] );
+check( 'an empty second date is saved as none, in an invoice and in an offer - and read back as none', is_array( $clearedInvoice ) && $clearedInvoice['due_date'] === null && Documents::get( $appData, $dated['id'] )['due_date'] === null
+	&& is_array( $clearedOffer ) && $clearedOffer['valid_until'] === null && Documents::get( $appData, $datedOffer['id'] )['valid_until'] === null );
+check( '...a change that does not name the date keeps it none, and a date can be given again', Documents::change( $appData, $dated['id'], [ 'notes' => 'n' ] )['due_date'] === null && Documents::change( $appData, $dated['id'], [ 'due_date' => '2026-03-20' ] )['due_date'] === '2026-03-20'
+	&& Documents::change( $appData, $dated['id'], [ 'due_date' => '' ] )['due_date'] === null );
+check( '...the first date stays required, whatever the second says', Documents::change( $appData, $dated['id'], [ 'date' => '', 'due_date' => '' ] ) === 'date:date' );
+
+Settings::set( $appData, 'payment_days', '0' );
+Settings::set( $appData, 'offer_days', '0' );
+$noPay = Documents::add( $appData, 'invoice', $first['id'], [ 'date' => '2026-03-01' ] );
+$noOffer = Documents::add( $appData, 'offer', $first['id'], [ 'date' => '2026-03-01' ] );
+check( 'a setting of 0 days prefills nothing: a new invoice has no due date and a new offer no validity', $noPay['due_date'] === null && $noOffer['valid_until'] === null );
+check( '...a date that is given with the draft is kept all the same', Documents::add( $appData, 'invoice', $first['id'], [ 'date' => '2026-03-01', 'due_date' => '2026-04-01' ] )['due_date'] === '2026-04-01' );
+$offerForInvoice = Documents::add( $appData, 'offer', $first['id'], [ 'date' => '2026-03-01', 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
+Documents::finalise( $appData, $offerForInvoice['id'] );
+$derived = Documents::fromOffer( $appData, $offerForInvoice['id'] );
+check( '...an invoice made from an offer has none either, where the setting is 0', is_array( $derived ) && $derived['due_date'] === null );
+Settings::set( $appData, 'payment_days', '14' );
+Settings::set( $appData, 'offer_days', '30' );
+$derivedDated = Documents::fromOffer( $appData, $offerForInvoice['id'] );
+check( '...and the day of the setting where it is not', is_array( $derivedDated ) && $derivedDated['due_date'] === date( 'Y-m-d', strtotime( '+14 days' ) ) );
+
+check( 'an offer without a validity day is never expired, an invoice without a due day never overdue - whatever the day is', Documents::expired( [ 'category' => 'offer', 'state' => 'open', 'valid_until' => null ], '2099-01-01' ) === false
+	&& Documents::expired( [ 'category' => 'offer', 'state' => 'sent' ], '2099-01-01' ) === false && Documents::overdue( [ 'category' => 'invoice', 'state' => 'open', 'due_date' => null ], '2099-01-01' ) === false && Documents::overdue( [ 'category' => 'invoice', 'state' => 'sent' ], '2099-01-01' ) === false );
+
+Documents::finalise( $appData, $dated['id'] );
+Documents::finalise( $appData, $datedOffer['id'] );
+$undatedInvoice = Documents::get( $appData, $dated['id'] );
+$undatedOffer = Documents::get( $appData, $datedOffer['id'] );
+check( 'a finalised document without a second date is read as neither overdue nor expired, and the offer can be ordered while it is open', $undatedInvoice['due_date'] === null && $undatedInvoice['overdue'] === false && $undatedOffer['valid_until'] === null && $undatedOffer['expired'] === false && Documents::orderable( $undatedOffer ) === true );
+$noDay = Render::data( $appData, $undatedInvoice, $undatedInvoice['lines'], $undatedInvoice['client_frozen'] )['tokens'];
+$noValid = Render::data( $appData, $undatedOffer, $undatedOffer['lines'], $undatedOffer['client_frozen'] )['tokens'];
+check( 'without a date the tokens of the day are empty strings and the sentences say the other thing: payment at once with the number of the invoice, an offer that is freibleibend', $noDay['/invoice/due'] === '' && $noValid['/offer/valid'] === ''
+	&& $noDay['/invoice/due-sentence'] === Render::text( 'due.sentence-none', $undatedInvoice['number'] ) && $noValid['/offer/valid-sentence'] === Render::text( 'valid.sentence-none' ) && str_contains( $noDay['/invoice/due-sentence'], $undatedInvoice['number'] ) === true );
+Documents::change( $appData, $derivedDated['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ], 'lines' => $lines ] );
+$datedFinal = Documents::finalise( $appData, $derivedDated['id'] );
+$withDay = Render::data( $appData, $datedFinal, $datedFinal['lines'], $datedFinal['client_frozen'] )['tokens'];
+check( 'with a date the sentence names the day and the number, and the token of the day is the day', $withDay['/invoice/due'] === Render::day( $datedFinal['due_date'] ) && $withDay['/invoice/due-sentence'] === Render::text( 'due.sentence', Render::day( $datedFinal['due_date'] ), $datedFinal['number'] )
+	&& str_contains( $withDay['/invoice/due-sentence'], Render::day( $datedFinal['due_date'] ) ) === true && $withDay['/invoice/due-sentence'] !== $noDay['/invoice/due-sentence'] );
+check( '...an offer with a day: its sentence names the day, and is none of the sentences without one', $offerTokens['/offer/valid-sentence'] === Render::text( 'valid.sentence', '09.04.2026' ) && $offerTokens['/offer/valid-sentence'] !== $noValid['/offer/valid-sentence'] );
+check( '...the two sentences are tokens of the invoice and of the offer only: an invoice has no validity sentence, an offer no payment sentence', isset( $withDay['/offer/valid-sentence'] ) === false && isset( $offerTokens['/invoice/due-sentence'] ) === false );
+$filled = \Nino\Modules\Pdf\Layout\Tokens::fill( $appData, '[[/invoice/due-sentence]]|[[/offer/valid-sentence]]', $noDay + $noValid );
+check( '...a template that writes them gets the words and nothing of the brackets', $filled === $noDay['/invoice/due-sentence']. '|'. $noValid['/offer/valid-sentence'] );
+
 // --- A credit note -----------------------------------------------------------------------------------------------------
 
 echo "\nA credit note\n";
@@ -935,6 +987,7 @@ $partialFinal = Documents::finalise( $appData, $credit['id'] );
 check( 'a credit note that takes a part back leaves the state of the invoice, and has its own number G-<year>-...', is_array( $partialFinal ) && $partialFinal['gross'] === -9000 && str_starts_with( $partialFinal['number'], 'G-' ) && $state( $secondInvoice['id'] ) === 'sent' );
 $creditTokens = Render::data( $appData, $partialFinal, $partialFinal['lines'], $partialFinal['client_frozen'] )['tokens'];
 check( 'the tokens of a credit note: its title, the number of the invoice it refers to, no due date, the period of that invoice', $creditTokens['/document/title'] === 'Stornorechnung' && $creditTokens['/document/parent'] === $secondInvoice['number'] && $creditTokens['/invoice/due'] === '' && isset( $creditTokens['/offer/valid'] ) === false && $creditTokens['/invoice/period'] === '01.01.2026 - 31.01.2026' );
+check( '...and the sentence of the payment terms too, without a day (the README promises it): its own number, no day', ( $creditTokens['/invoice/due-sentence'] ?? null) === Render::text( 'due.sentence-none', $partialFinal['number'] ) );
 $over = Documents::creditOf( $appData, $secondInvoice['id'] );
 Documents::change( $appData, $over['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ], 'lines' => [ [ 'title' => 'Mehr', 'qty' => '-3', 'price' => '200', 'vat_rate' => 0 ] ] ] );
 Documents::finalise( $appData, $over['id'] );
@@ -1747,7 +1800,7 @@ check( 'a document without a number moves one step: sent; paid, accepted and dec
 $contractFull = (array) Documents::get( $appData, $contract['id'] );
 $contractData = Documents::dataOf( $appData, $contractFull );
 check( 'the tokens of a contract: its own title, date and the number of its offer; the client as it was frozen', array_intersect_key( $contractData['tokens'], array_flip( preg_grep( '~^/document/~', array_keys( $contractData['tokens'] ) ) ) ) === [ '/document/title' => 'Vertrag neu', '/document/date' => Render::day( $today ), '/document/parent' => $offerFinal['number'] ] && $contractData['tokens']['/customer/company'] === 'Studio Nord GmbH' );
-check( '...and the offer\'s number, day, validity and totals with the currency', array_intersect_key( $contractData['tokens'], array_flip( preg_grep( '~^/offer/~', array_keys( $contractData['tokens'] ) ) ) ) === [ '/offer/number' => $offerNow['number'], '/offer/date' => Render::day( $offerNow['date'] ), '/offer/valid' => Render::day( (string) $offerNow['valid_until'] ),
+check( '...and the offer\'s number, day, validity and totals with the currency', array_intersect_key( $contractData['tokens'], array_flip( preg_grep( '~^/offer/~', array_keys( $contractData['tokens'] ) ) ) ) === [ '/offer/number' => $offerNow['number'], '/offer/date' => Render::day( $offerNow['date'] ), '/offer/valid' => Render::day( (string) $offerNow['valid_until'] ), '/offer/valid-sentence' => Render::validSentence( (string) $offerNow['valid_until'] ),
 	'/offer/gross' => Money::format( $offerNow['gross'], '€' ), '/offer/period' => Render::text( 'period.none-offer' ) ] && $offerNow['gross'] > 0 );
 check( '...the slots address, lines (the offer\'s lines) and totals (the offer\'s) so that a contract can quote them', array_keys( $contractData['slots'] ) === [ 'address', 'lines', 'totals' ] && $contractData['slots']['lines'] === Render::lines( $offerNow['lines'], Money::totals( $offerNow['lines'], $offerNow['vat_mode'], $offerNow['reverse_charge'] ), $offerNow['vat_mode'] === 'regular', '€' )
 	&& str_contains( $contractData['slots']['lines'], 'Webdesign' ) === true && str_contains( $contractData['slots']['totals'], 'Gesamtbetrag' ) === true && $contractData['inputs'] === [ 'zusatz' => 'Laufzeit ein Jahr' ] );

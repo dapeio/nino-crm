@@ -21,6 +21,8 @@ return [
 	'line' => '%s: %s',
 	'remind.subject' => 'Zahlungserinnerung: %s',
 	'remind.title' => 'Eine Rechnung ist noch offen',
+	'remind.intro-due' => 'für diese Rechnung haben wir noch keine Zahlung gesehen. Fällig ist sie am %s:',
+	'remind.intro-undated' => 'für diese Rechnung haben wir noch keine Zahlung gesehen:',
 	'remind.intro' => 'für diese Rechnung haben wir noch keine Zahlung gesehen. Fällig war sie am %s:',
 	'remind.button' => 'Rechnung ansehen',
 	'remind.notice' => 'Die Rechnung hängt dieser Mail nicht an. Melde Dich im Kundenportal an, dort kannst Du sie ansehen und herunterladen. Ist die Zahlung schon unterwegs, kannst Du diese Mail vergessen.',

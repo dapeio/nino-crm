@@ -1830,6 +1830,20 @@ $offerTitles = array_map( static fn( \DOMElement $row ): string => portalText( $
 sort( $offerTitles );
 check( 'Angebote, die auf Deine Beauftragung warten: each offer that can be ordered - not those that were ordered, ran out or are not released - with its number', count( $offerRows ) === 3 && $offerTitles === $expectedTitles );
 check( '...the day it is valid until and the way to its project page, or to the list of documents for an offer without a project', in_array( '/portal/projekte?projekt='. $p1. '&tab=angebot', $offerLinks, true ) === true && in_array( '/portal/belege', $offerLinks, true ) === true && str_contains( portalText( $start, '//div[@data-card="offers"]' ), \Crm\Documents\Render::day( $valid( 20 ) ) ) === true );
+
+// an offer with no validity day: it never runs out, says no "gültig bis", is on the card with no day and can be ordered
+$openValid = Db::row( $appData, 'SELECT valid_until FROM documents WHERE id = :id', [ 'id' => $orderOpen['id'] ] )['valid_until'];
+Db::exec( $appData, 'UPDATE documents SET valid_until = NULL WHERE id = :id', [ 'id' => $orderOpen['id'] ] );
+$undatedStart = portalPage( $appData, '/portal' )[1];
+$undatedRow = array_values( array_filter( portalFind( $undatedStart, '//div[@data-card="offers"]//li' ), static fn( \DOMElement $row ): bool => portalText( $row->ownerDocument->saveHTML( $row ), '//a' ) === $orderOpen['number'] ) );
+$undatedProject = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
+check( 'an offer without a validity day can be ordered while it is open or sent, and is not expired', Documents::orderable( (array) Documents::get( $appData, $orderOpen['id'] ) ) === true && Documents::get( $appData, $orderOpen['id'] )['expired'] === false
+	&& array_column( Documents::released( $appData, $a['id'] ), 'expired', 'id' )[$orderOpen['id']] === false );
+check( '...the card of the start page has its row all the same, with no day behind it - and the other rows keep theirs', count( $undatedRow ) === 1 && portalText( $undatedRow[0]->ownerDocument->saveHTML( $undatedRow[0] ), '//span[@class="crm-start__meta"]' ) === ''
+	&& count( portalFind( $undatedStart, '//div[@data-card="offers"]//li' ) ) === 3 && count( array_filter( portalFind( $undatedStart, '//div[@data-card="offers"]//span[@class="crm-start__meta"]' ), static fn( \DOMElement $meta ): bool => trim( $meta->textContent ) !== '' ) ) === 2 );
+check( '...its offer on the page of the project has no line "gültig bis" and no time element for it, has the form of the order, and the others have their lines', portalFind( $undatedProject, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderOpen['id']. '"]//span[@class="crm-offer__valid"]' ) === []
+	&& portalFind( $undatedProject, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderOpen['id']. '"]//form[contains(@class, "crm-order")]' ) !== [] && portalFind( $undatedProject, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")][@data-document="'. $orderOne['id']. '"]//span[@class="crm-offer__valid"]' ) !== [] );
+Db::exec( $appData, 'UPDATE documents SET valid_until = :v WHERE id = :id', [ 'v' => $openValid, 'id' => $orderOpen['id'] ] );
 Db::exec( $appData, 'UPDATE documents SET title = :t WHERE id = :id', [ 't' => '<b>Neu</b> [members-name]', 'id' => $orderOpenPlain['id'] ] );
 $markupStart = portalPage( $appData, '/portal' )[1];
 check( 'the title of an offer in the card is text: markup and a shortcode in it are shown as typed', str_contains( $markupStart, '&lt;b&gt;Neu&lt;/b&gt; &#91;members-name]' ) === true && str_contains( $markupStart, '<b>Neu</b>' ) === false && portalFind( $markupStart, '//div[@data-card="offers"]//b' ) === [] );

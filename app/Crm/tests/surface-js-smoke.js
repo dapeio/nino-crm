@@ -721,7 +721,26 @@ function press( w, key, target, mods ) {
 	check( 'the head of a document: its number, the state, the mark of the portal, the client, the day, the due day, the gross in large and the primary action', textOf( headNode.children[0] ) === 'R-2026-0007' && textOf( headNode ).indexOf( 'überfällig' ) !== -1 && textOf( headNode ).indexOf( 'Portal' ) !== -1
 		&& textOf( headNode ).indexOf( 'Nordlicht Records GmbH · 02.10.2026 · fällig 16.10.2026' ) !== -1 && textOf( all( invoice.main, '#gross' )[0] ) === '1.190,00'+ NBSP+ '€' );
 	check( '...the client is a link to the card of the client, in the surface', all( headNode, 'a' )[0].getAttribute( 'href' ) === '#kunde-1' );
+	// a document without its second date says nothing of it: the head ends with the day, the block has no row for it, the box of sums no terms
+	const undatedInvoice = await opened( { id : 11, state : 'open', overdue : false, due_date : null, valid_until : null } );
+	const undatedOffer = await opened( { id : 13, category : 'offer', state : 'open', due_date : null, valid_until : null, expired : false } );
+	check( 'an invoice without a due date: the head ends with the day of the document - no dot, no word of the due day', textOf( all( all( undatedInvoice.main, '.head' )[0], '.sub' )[0] ) === 'Nordlicht Records GmbH · 02.10.2026' && all( undatedInvoice.main, '.note' ).length === 0 && all( undatedInvoice.main, '#remind' ).length === 0 );
+	check( '...an offer without a validity day too, and neither block of the document has a row for the date that is none', textOf( all( all( undatedOffer.main, '.head' )[0], '.sub' )[0] ).indexOf( ' · ' ) === textOf( all( all( undatedOffer.main, '.head' )[0], '.sub' )[0] ).lastIndexOf( ' · ' ) && textOf( all( all( undatedOffer.main, '.head' )[0], '.sub' )[0] ).slice( -4 ) === '2026'
+		&& textOf( all( undatedInvoice.main, '.card.pad' )[1] ).indexOf( texts['document.due'] ) === -1 && textOf( all( undatedOffer.main, '.card.pad' )[1] ).indexOf( texts['document.valid'] ) === -1 );
+	check( '...and the sums box does not say a term in days: only the kind of VAT', textOf( all( all( undatedInvoice.main, '.totals' )[0], '.state-note' )[0] ) === texts['vat.regular'] && textOf( all( all( invoice.main, '.totals' )[0], '.state-note' )[0] ).indexOf( ' · ' ) !== -1 );
+	const undatedDocs = [ row( { id : 31, number : 'R-2026-0031', client_title : 'Nordlicht Records GmbH', date : '2026-11-01', due_date : null, valid_until : null, state : 'open', gross : 11900 } ),
+		row( { id : 32, category : 'offer', number : 'A-2026-0032', client_title : 'Podcast Süd', date : '2026-11-01', due_date : null, valid_until : null, state : 'open', gross : 11900 } ),
+		row( { id : 33, number : 'R-2026-0033', client_title : 'Podcast Süd', date : '2026-11-01', due_date : '2026-11-10', valid_until : null, state : 'open', gross : 11900 } ) ];
+	const undatedList = world( { hash : '#belege', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+		'crm-documents/list' : function() { return [ 200, { documents : undatedDocs, years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+	undatedList.boot();
+	await settle();
+	const undatedCells = all( all( undatedList.main, 'tbody' )[0], 'tr' ).map( function( r ) { return r.children } ).sort( function( x, y ) { return textOf( x[0] ) < textOf( y[0] ) ? -1 : 1 } );
+	check( 'the list has an empty cell where a document has neither day, and the day where it has one - the empty cell is not the colour of a late one', undatedCells.length === 3 && undatedCells.slice( 0, 2 ).every( function( c ) { return textOf( c[5] ) === '' && c[5].classList.contains( 'bad' ) === false } ) && textOf( undatedCells[2][5] ) === '10.11.2026' );
 	check( '...an overdue invoice says since when and offers the reminder', textOf( all( invoice.main, '.note' )[0] ).indexOf( 'Fällig seit 16.10.2026.' ) === 0 && all( invoice.main, '#remind' ).length === 1 );
+	const openLate = await opened( { id : 11, state : 'open', overdue : true, released : true } );
+	const paidLate = await opened( { id : 11, state : 'paid', overdue : true, released : true } );
+	check( '...an overdue invoice that is open has the button of the reminder in its note as a sent one has; a paid one has none', textOf( all( openLate.main, '.note' )[0] ).indexOf( 'Fällig seit 16.10.2026.' ) === 0 && all( openLate.main, '#remind' ).length === 1 && all( paidLate.main, '#remind' ).length === 0 );
 	const blocks = all( invoice.main, '.card.pad' );
 	check( 'the blocks Kunde and Beleg: the company and the name, the address on two lines, the mail, the VAT id, the number; the kind, the days, the period, the PDF', textOf( blocks[0] ).indexOf( 'Nordlicht Records GmbHLena Brandt' ) !== -1 && textOf( blocks[0] ).indexOf( 'Hafenstraße 1220457 Hamburg' ) !== -1 && textOf( blocks[0] ).indexOf( 'lena@nordlicht.example' ) !== -1 && textOf( blocks[0] ).indexOf( 'DE123456789' ) !== -1
 		&& textOf( blocks[1] ).indexOf( 'RechnungVorlageRechnung StandardDatum02.10.2026Fällig16.10.2026Leistung14.09.2026 – 30.09.2026' ) !== -1 && all( blocks[1], 'a' )[0].getAttribute( 'href' ) === '/.crm/pdf/11' );
@@ -981,6 +1000,12 @@ function press( w, key, target, mods ) {
 	check( '...the menu has the preview and the delete', all( all( edit.main, '.menu' )[0], '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'PDF-Vorschau|Entwurf löschen' );
 	check( 'the block Beleg: the kind (fixed), the client of the active clients, the day, the due day, the period, the template; the template\'s own fields below', textOf( all( edit.main, 'dl' )[0] ).indexOf( 'ArtRechnung' ) === 0 && all( field( edit, 'f-client_id' ), 'option' ).map( textOf ).join( '|' ) === 'Kunde wählen|K-0001 · Nordlicht Records GmbH|K-0002 · Jonas Richter' && field( edit, 'f-client_id' ).value === '1'
 		&& field( edit, 'f-date' ).value === '2026-11-03' && field( edit, 'f-due_date' ).value === '2026-11-17' && field( edit, 'f-period_from' ).type === 'date' && field( edit, 'f-template_key' ).value === 'rechnung' && field( edit, 'f-inputs.intro' ).value === 'Vielen Dank.' );
+	type( field( edit, 'f-due_date' ), '', true );
+	await settle();
+	check( 'clearing the due day saves it empty - the server keeps none - and the field stays empty; the date can be typed again', edit.saves.length > 0 && edit.saves[edit.saves.length - 1].due_date === '' && field( edit, 'f-due_date' ).value === '' && edit.app.state.draft.due_date === '' );
+	type( field( edit, 'f-due_date' ), '2026-11-17', true );
+	await settle();
+	check( '...and typing it again saves the day', edit.saves[edit.saves.length - 1].due_date === '2026-11-17' );
 	check( '...the regular mode has the rate per line and the reverse charge', field( edit, 'f-reverse_charge' ) !== undefined && all( lineRows( edit )[0], 'select' ).length === 1 && all( lineRows( edit )[0], 'select' )[0].value === '1900' && all( all( lineRows( edit )[0], 'select' )[0], 'option' ).map( textOf ).join() === '19 %,7 %,0 %' );
 	check( 'the block Kunde: the name, the number, the way to the accounts, and the open sum of the client over all years - sent and open invoices, not the paid and not the offers', textOf( field( edit, 'client-box' ) ).indexOf( 'Nordlicht Records GmbH' ) !== -1 && textOf( field( edit, 'client-open' ) ) === '1.582,70'+ NBSP+ '€' && edit.last( 'crm-documents/list' ).data.client === '1' );
 
@@ -1160,6 +1185,17 @@ function press( w, key, target, mods ) {
 	await settle();
 	check( '...the next save carries the id', fresh.saves[1].id === '77' && fresh.saves[1].category === undefined );
 	const offerNew = await editing( {}, {}, '#neu-offer' );
+	const labelOf = function( w, id ) { return findAll( w.main, function( node ) { return node.tagName === 'LABEL' && node.getAttribute( 'for' ) === id } )[0] };
+	check( 'the second date says it is optional: the label of the due day and of the validity day is the word and the word optional in brackets - and the first date does not', textOf( labelOf( fresh, 'f-due_date' ) ) === texts['field.due']+ ' ('+ texts['form.optional']+ ')'
+		&& textOf( labelOf( offerNew, 'f-valid_until' ) ) === texts['field.valid']+ ' ('+ texts['form.optional']+ ')' && textOf( labelOf( fresh, 'f-date' ) ) === texts['field.date'] );
+	const noDays = { 'crm-documents/list' : function() { return [ 200, { documents : [], years : [ 2026 ], clients : clients, settings : Object.assign( {}, settings, { payment_days : '0', offer_days : '0' } ), items : items, offers : offers } ] } };
+	const invoiceNoDays = await editing( {}, noDays, '#neu-invoice' );
+	const offerNoDays = await editing( {}, noDays, '#neu-offer' );
+	check( 'a setting of 0 days prefills nothing: the new invoice has no due day and the new offer no validity day - while the settings of 14 and 30 do', field( invoiceNoDays, 'f-due_date' ).value === '' && field( offerNoDays, 'f-valid_until' ).value === '' && field( fresh, 'f-due_date' ).value !== '' && field( offerNew, 'f-valid_until' ).value !== ''
+		&& invoiceNoDays.app.state.draft.due_date === '' && offerNoDays.app.state.draft.valid_until === '' );
+	type( field( invoiceNoDays, 'f-client_id' ), '1', true );
+	await settle();
+	check( '...and the first save posts the empty day as it is: the server reads it as none', invoiceNoDays.saves.length === 1 && invoiceNoDays.saves[0].due_date === '' );
 	check( 'a new offer has the valid-until day and no due day', field( offerNew, 'f-valid_until' ) !== undefined && field( offerNew, 'f-due_date' ) === undefined );
 
 	// a contract
@@ -1328,8 +1364,10 @@ function press( w, key, target, mods ) {
 	// === fix round 1: the menu by state, released or not
 	const moreMenus = [
 		[ 'an invoice that is overdue and not in the portal: no reminder, no way back', { state : 'sent', overdue : true, released : false }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Projekt ändern|Notizen' ],
-		[ 'an invoice that is in the portal and not overdue: no reminder, the way back', { state : 'sent', overdue : false, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
-		[ 'an open invoice that is overdue and in the portal: marked as sent, the reminder', { state : 'open', overdue : true, released : true }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'a sent invoice in the portal that is not due yet: the reminder is offered, the owner decides when', { state : 'sent', overdue : false, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'an open invoice that is overdue and in the portal: marked as sent, and the reminder all the same', { state : 'open', overdue : true, released : true }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'a sent invoice in the portal with no due date: the reminder is offered', { state : 'sent', overdue : false, due_date : null, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'a paid invoice in the portal: no reminder', { state : 'paid', overdue : false, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
 		[ 'a declined offer: no invoice, a contract is still possible', { id : 13, category : 'offer', state : 'declined', due_date : null }, 'PDF ansehen|PDF herunterladen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 		[ 'a sent offer', { id : 13, category : 'offer', state : 'sent', due_date : null }, 'PDF ansehen|PDF herunterladen|Als angenommen markieren|Als abgelehnt markieren|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 		[ 'a cancelled invoice that is in the portal', { state : 'cancelled', released : true }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
@@ -2268,6 +2306,8 @@ function press( w, key, target, mods ) {
 		&& all( all( es.main, '#templates' )[0], 'a' )[0].getAttribute( 'href' ) === '/_admin/#pdf' && all( all( es.main, '#templates' )[0], 'input' ).length === 0 );
 	check( '...the portal, read only: the address, the pages with the ones the site has no route for marked, the settings of Members and the cap of mails of the kernel', all( all( es.main, '#portal' )[0], 'dt' ).map( textOf ).join( '|' ) === 'Adresse|Seiten|Mitglieder|Mail-Deckel' && all( all( es.main, '#portal' )[0], 'dd' ).map( textOf ).join( '|' ) === 'https://studio.example/portal|/portal · /portal/dokumente (fehlt)|Geschützte Pfade: /portalLogin-Link gültig für: 15 MinutenEinladung gültig für: 7 TageAnforderungen: 5 je Stunde|'+ texts['settings.portal-cap-value'].replace( '%s', '50' )+ ' '+ texts['settings.portal-cap-link']
 		&& all( all( es.main, '#portal' )[0], 'input' ).length === 0 );
+	check( '...the two settings of days say beside their field that 0 enters no date - the hint is under both', findAll( es.main, function( node ) { return node.tagName === 'SPAN' && textOf( node ) === texts['settings.days-hint'] } ).length === 2
+		&& textOf( efield( es, 'payment_days' ).parentNode ).indexOf( texts['settings.days-hint'] ) !== -1 && textOf( efield( es, 'offer_days' ).parentNode ).indexOf( texts['settings.days-hint'] ) !== -1 );
 	check( '...the cap is shown with the way to the Config panel of the workbench, where it is changed (a link of its own, in a new tab), and the sentence under the block says that it is changed there and what the setup does', all( all( es.main, '#portal-cap' )[0], 'a' ).length === 1 && all( all( es.main, '#portal-cap' )[0], 'a' )[0].getAttribute( 'href' ) === '/_admin/#config' && all( all( es.main, '#portal-cap' )[0], 'a' )[0].getAttribute( 'target' ) === '_blank'
 		&& textOf( all( es.main, '#portal-cap-note' )[0] ) === texts['settings.portal-cap-note'] && texts['settings.portal-cap-note'] !== '' && all( all( es.main, '#portal' )[0], 'input' ).length === 0 );
 	check( '...the status of the module says that all is well and the button that sets the portal up is hidden; the access block names the permission and links the panel of the users', textOf( all( es.main, '#status-ok' )[0] ) === 'Alles ist bereit: Das Portal ist eingerichtet und die Features laufen.' && all( es.main, '#portal-setup' )[0].hidden === true
@@ -2753,7 +2793,7 @@ function press( w, key, target, mods ) {
 	const ph = menuOf( cards( pe )[2], 'Platzhalter ▾' );
 	check( 'the placeholder menu offers the vocabulary of the CRM by group - Beleg, Rechnung, Angebot, Kunde, Portal - and then the texts of the site', all( ph, '.heading' ).map( textOf ).join( '|' ) === 'Beleg|Rechnung|Angebot|Kunde|Portal|Texte der Website'
 		&& itemOf( ph, 'Nummer des Belegs  [[/document/number]]' ) !== undefined && itemOf( ph, 'Steuernummer oder USt-IdNr.  [[/site/tax]]' ) !== undefined && itemOf( ph, 'E-Mail der Firma  [[/project/company/contact/email]]' ) !== undefined && itemOf( ph, 'Firmenname  [[/project/company/general/name]]' ) !== undefined
-		&& itemOf( ph, 'general/legal  [[/project/company/general/legal]]' ) !== undefined && all( ph, '[role="menuitem"]' ).length === 30 + 3 );
+		&& itemOf( ph, 'general/legal  [[/project/company/general/legal]]' ) !== undefined && all( ph, '[role="menuitem"]' ).length === 32 + 3 );
 	click( pe, all( ph, 'button' )[0] );
 	click( pe, itemOf( ph, 'Nummer des Belegs  [[/document/number]]' ) );
 	check( '...a choice goes in where the caret is, and the caret stands behind it', area.value === 'Hallo [[/document/number]]Welt' && area.selectionStart === 6+ '[[/document/number]]'.length && area.selectionEnd === area.selectionStart && area.focused === true );
@@ -2913,7 +2953,7 @@ function press( w, key, target, mods ) {
 		&& Array.from( all( all( pb.main, '#pdf-blocks' )[0], 'tbody' )[0].children ).map( function( tr ) { return Array.from( tr.children ).map( textOf ).join( '|' ) } ).join( '\n' ) === 'zahlung|ZahlungZahlbar sofort .|2\nkontakt|KontaktWir|–'
 		&& all( pb.main, '#new-block' )[0].getAttribute( 'href' ) === '#pdf-neuer-baustein' && all( pb.main, '#pdf-tabs a' )[1].classList.contains( 'on' ) === true );
 	const legend = all( pb.main, '#legend' )[0];
-	check( '...beside it the legend Platzhalter: the vocabulary by group and the texts of the site in one card, each with its token', all( legend, 'h4' ).map( textOf ).join( '|' ) === 'Beleg|Rechnung|Angebot|Kunde|Portal|Texte der Website|Seite' && all( legend, '.num' ).length === 30 + 3 + 2 && textOf( all( legend, '.num' )[0] ) === '[[/document/number]]' && all( legend, 'tr' ).some( function( tr ) { return textOf( tr ) === '[[/project/company/general/name]]Firmenname' } ) );
+	check( '...beside it the legend Platzhalter: the vocabulary by group and the texts of the site in one card, each with its token', all( legend, 'h4' ).map( textOf ).join( '|' ) === 'Beleg|Rechnung|Angebot|Kunde|Portal|Texte der Website|Seite' && all( legend, '.num' ).length === 32 + 3 + 2 && textOf( all( legend, '.num' )[0] ) === '[[/document/number]]' && all( legend, 'tr' ).some( function( tr ) { return textOf( tr ) === '[[/project/company/general/name]]Firmenname' } ) );
 	click( pb, all( all( pb.main, '#pdf-blocks' )[0], 'tbody' )[0].children[0] );
 	check( '...a click on a row opens the editor of the block', pb.location.hash === '#pdf-baustein-zahlung' );
 	await settle();
@@ -3079,7 +3119,7 @@ function press( w, key, target, mods ) {
 		'pdf.group-' : [ 'document', 'invoice', 'offer', 'customer', 'portal', 'site', 'page' ], 'pdf.tab-' : [ 'vorlagen', 'bausteine', 'layout', 'design' ], 'pdf.slot-' : [ 'address', 'lines', 'totals' ], 'pdf.slot-note-' : [ 'address', 'lines', 'totals' ], 'pdf.paper-' : [ 'a4', 'letter' ], 'pdf.font-' : [ 'helvetica', 'times', 'courier' ],
 		'pdf.margin-' : [ 'top', 'right', 'bottom', 'left' ], 'pdf.upload-' : [ 'logo', 'signature' ], 'pdf.picture-hint-' : [ 'logo', 'signature' ], 'pdf.party-' : [ 'owner', 'member' ], 'pdf.kind-' : [ 'html', 'ref', 'slot', 'input', 'signature', 'pagebreak' ],
 		'pdf.' : [ 'logo', 'signature' ], 'site.' : [ 'general-name', 'contact-address', 'contact-email', 'contact-phone' ],
-		'tok.' : [ 'page', 'pages' ].concat( [ 'document-number', 'document-title', 'document-date', 'document-parent', 'document-vatnote', 'document-net', 'document-vat', 'document-gross', 'invoice-due', 'invoice-period', 'site-tax', 'site-bank', 'site-iban', 'site-bic', 'offer-number', 'offer-date', 'offer-valid', 'offer-gross', 'offer-period',
+		'tok.' : [ 'page', 'pages' ].concat( [ 'document-number', 'document-title', 'document-date', 'document-parent', 'document-vatnote', 'document-net', 'document-vat', 'document-gross', 'invoice-due', 'invoice-due-sentence', 'invoice-period', 'site-tax', 'site-bank', 'site-iban', 'site-bic', 'offer-number', 'offer-date', 'offer-valid', 'offer-valid-sentence', 'offer-gross', 'offer-period',
 			'customer-number', 'customer-company', 'customer-name', 'customer-street', 'customer-zip', 'customer-city', 'customer-country', 'customer-email', 'customer-vat', 'site-portal', 'site-login' ] ),
 	};
 	const pdfWords = new Set( [ ...script.matchAll( /\bt\( '(pdf\.[a-z0-9.-]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return /[.-]$/.test( key ) === false } ).concat(
@@ -3095,7 +3135,7 @@ function press( w, key, target, mods ) {
 
 	check( 'every word the screens of PDF-Vorlagen ask for is a word of the page, the families they build with it - the groups of the placeholders, the vocabulary, the slots, the papers, the fonts - and the sentences of the Pdf panel\'s codes the script names', pdfMissing.length === 0 && pdfWords.size > 120
 		&& typeof texts['error.pdf_block_missing'] === 'string' && typeof texts['error.pdf_block_used'] === 'string' && typeof texts['error.pdf_off'] === 'string' && typeof texts['error.upload_too_large'] === 'string' );
-	check( '...and the vocabulary the menu has is the one the script lists: 30 placeholders of the CRM, the page numbers apart', [ ...script.matchAll( /\n\t\t\[ '[a-z]+', \[ ([^\]]*) \] \],/g ) ].reduce( function( sum, found ) { return sum+ found[1].split( ',' ).length }, 0 ) === 30 );
+	check( '...and the vocabulary the menu has is the one the script lists: 32 placeholders of the CRM, the page numbers apart', [ ...script.matchAll( /\n\t\t\[ '[a-z]+', \[ ([^\]]*) \] \],/g ) ].reduce( function( sum, found ) { return sum+ found[1].split( ',' ).length }, 0 ) === 32 );
 
 	// --- C13: Strg+S on the editors of PDF-Vorlagen
 	const pkey = function( w, mods ) { return press( w, 's', null, mods || { ctrlKey : true } ) };
