@@ -509,17 +509,25 @@ check( 'Members sends a member who signs in to /portal', $body['added']['start']
 check( 'Members protects /portal afterwards', \Nino\Features::setting( $appData, 'members', 'paths', [] ) === [ '/portal' ] && \Nino\Modules\Members::protects( $appData, '/portal/projekte' ) === true );
 check( 'the other routes of the project survive', isset( $routesBefore['GET://own'] ) && array_diff_key( $routesBefore, \Nino\AppData::stored( $appData, '/nino/http/routes', [] ) ) === [] );
 // The Builder reads every page of the unit: each is a list of sections, none an html block it cannot take apart
-$registry = \Nino\Modules\Builder\Document::schemas( $appData );
-$unread = [];
+// (a catalogue feature a checkout may not carry: its methods are called through reflection, so that PHPStan has no class to look for)
+$builderReader = '\\Nino\\Modules\\Builder\\Reader';
 
-foreach( $manifest['templates'] as $file ) {
-	$blocks = \Nino\Modules\Builder\Reader::read( (string) file_get_contents( $root. '/app/Crm/Crm/install/templates/'. $file ), $registry )['blocks'];
+if( class_exists( $builderReader ) === false )
+	echo "  note - the Builder is not installed, the pages of the unit are not read\n";
+else {
+	$registry = ( new \ReflectionMethod( '\\Nino\\Modules\\Builder\\Document', 'schemas' ) )->invokeArgs( null, [ &$appData ] );
+	$unread = [];
 
-	if( $blocks === [] || array_unique( array_column( $blocks, 'kind' ) ) !== [ 'section' ] )
-		$unread[] = $file;
+	foreach( $manifest['templates'] as $file ) {
+		$blocks = ( new \ReflectionMethod( $builderReader, 'read' ) )->invoke( null, (string) file_get_contents( $root. '/app/Crm/Crm/install/templates/'. $file ), $registry )['blocks'];
+
+		if( $blocks === [] || array_unique( array_column( $blocks, 'kind' ) ) !== [ 'section' ] )
+			$unread[] = $file;
+	}
+
+	check( 'the Builder reads every page of the unit as sections: '. implode( ', ', $unread ), $unread === [] && count( $manifest['templates'] ) === 8 );
 }
 
-check( 'the Builder reads every page of the unit as sections: '. implode( ', ', $unread ), $unread === [] && count( $manifest['templates'] ) === 8 );
 $styles = (string) file_get_contents( $root. '/_nino/Nino.css' ). (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' );
 $classes = [];
 
