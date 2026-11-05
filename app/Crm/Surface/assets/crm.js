@@ -54,7 +54,7 @@
 		Object.keys( state ).forEach( function( key ) { delete state[key] } );
 
 		Object.assign( state, {
-			base : '', csrf : '', perm : '', perms : { crm : true, pdf : false, elements : false, text : false, files : false }, user : '', texts : {}, links : {},
+			base : '', csrf : '', perm : '', perms : { crm : true, pdf : false, elements : false, text : false, files : false, members : false, sign : false }, user : '', texts : {}, links : {},
 			settings : { currency : '', vat_mode : 'small_business', rates : [], payment_days : '14', offer_days : '30' },
 			clients : [], items : [], offers : [], years : [], docs : [], summary : null, people : [], owed : {},
 			filter : { chip : 'all', q : '', sort : 'date', dir : -1, year : 0, page : 1 },
@@ -525,9 +525,38 @@
 	};
 
 	/**
+	 *	The block of a link that is shown once: a field that cannot be typed in, the button that copies it (where the browser has a clipboard; else the field is
+	 *	selected for the person to copy) and the sentence that it is shown now and kept nowhere
+	 *
+	 *	@param		{Object}	spec						label, value, note
+	 *
+	 *	@return		{Object}									node and field
+	 */
+	const shownLink = function( spec ) {
+
+		const field = el( 'input', { id: 'dlg-link', type: 'text', readonly: 'readonly', 'aria-label': spec.label, value: spec.value } );
+		const line = el( 'span', { class: 'state-note', id: 'dlg-link-state', role: 'status' } );
+		const copy = el( 'button', { type: 'button', class: 'btn sm', id: 'dlg-link-copy', text: t( 'shown.copy' ), on: { click: function() {
+
+			field.focus();
+			field.select();
+
+			if( wn.navigator !== undefined && wn.navigator.clipboard !== undefined && typeof wn.navigator.clipboard.writeText === 'function' )
+				wn.navigator.clipboard.writeText( field.value ).then( function() { line.textContent = t( 'shown.copied' ) }, function() { line.textContent = t( 'shown.selected' ) } );
+			else
+				line.textContent = t( 'shown.selected' );
+		} } } );
+
+		field.readOnly = true;
+
+		return { field : field, node : el( 'div', { class: 'secret' }, el( 'label', { class: 'field' }, el( 'span', { text: spec.label } ), field ), el( 'div', { class: 'actions' }, copy, line ), el( 'p', { class: 'state-note', text: spec.note } ) ) };
+	};
+
+	/**
 	 *	A dialog with one question: the text, optionally fields, and two buttons. Escape and the second button are the no
 	 *
-	 *	@param		{Object}	spec						title, text, yes, no, danger, fields ([ { name, label, type, value, options } ]), link ({ href, text } instead of the buttons)
+	 *	@param		{Object}	spec						title, text, yes, no, danger, fields ([ { name, label, type, value, options } ]; the type checkbox is a box, ticked where the value is true, and its value is a boolean), link ({ href, text } instead of the buttons),
+	 *														secret ({ label, value, note }: a link shown once, in a field nobody can type in, with a button that copies it - and the dialog closes with a button)
 	 *
 	 *	@return		{Promise}									The values of the fields (an empty object without fields) for the yes; null for the no
 	 */
@@ -555,11 +584,20 @@
 
 				const values = {};
 
-				Object.keys( controls ).forEach( function( name ) { values[name] = controls[name].value } );
+				Object.keys( controls ).forEach( function( name ) { values[name] = controls[name].type === 'checkbox' ? controls[name].checked === true : controls[name].value } );
 				finish( values );
 			};
 
 			const fields = ( spec.fields || [] ).map( function( field ) {
+
+				if( field.type === 'checkbox' ) {
+
+					const box = el( 'input', { id: 'dlg-'+ field.name, type: 'checkbox', checked: field.value === true } );
+
+					controls[field.name] = box;
+
+					return el( 'label', { class: 'check' }, box, ' '+ field.label );
+				}
 
 				const control = field.options !== undefined
 					? el( 'select', { id: 'dlg-'+ field.name }, field.options.map( function( option ) { return el( 'option', { value: option.value, selected: option.value === field.value, text: option.label } ) } ) )
@@ -570,12 +608,18 @@
 				return el( 'label', { class: 'field' }, el( 'span', { text: field.label } ), control );
 			} );
 
+			const secret = spec.secret === undefined ? null : shownLink( spec.secret );
+
 			box.addEventListener( 'close', function() {
 
 				if( closed === true )
 					return;
 
 				closed = true;
+
+				// A link that was shown is gone with the dialog: not the field, nor the text of it
+				if( secret !== null )
+					secret.field.value = '';
 
 				if( box.parentNode !== null )
 					box.parentNode.removeChild( box );
@@ -587,6 +631,7 @@
 				spec.title ? el( 'h2', { text: spec.title } ) : null,
 				spec.text === undefined ? null : el( 'p', { text: spec.text } ),
 				spec.pre === undefined ? null : el( 'pre', { class: 'sheet', text: spec.pre } ),
+				secret === null ? null : secret.node,
 				fields,
 				el( 'div', { class: 'actions end' },
 					spec.link !== undefined
@@ -614,6 +659,49 @@
 	 */
 	const ask = function( spec ) {
 		return dialog( spec ).then( function( values ) { return values !== null } );
+	};
+
+	/**
+	 *	The box of a link that may be shown instead of mailed: only for an account that holds the permission of the feature that makes the link (kind: members
+	 *	or sign). A link without the mail signs in, or signs, as the customer's account, so the CRM's permission alone does not offer it
+	 *
+	 *	@param		{string}	kind
+	 *	@param		{string}	label					The key of the words of the box
+	 *
+	 *	@return		{Array}										The fields of a dialog: the box, or none
+	 */
+	const quietField = function( kind, label ) {
+		return state.perms[kind] === true ? [ { name : 'notify', label : t( label ), type : 'checkbox', value : true } ] : [];
+	};
+
+	/**
+	 *	The sentence of a dialog: its own where there is a box, and where there is none the sentence without the word of the box and the one that says why the link
+	 *	goes by mail only
+	 *
+	 *	@param		{string}	kind
+	 *	@param		{string}	key						The key of the sentence; the one without the box is the key with -plain
+	 *
+	 *	@return		{string}
+	 */
+	const quietText = function( kind, key ) {
+		return state.perms[kind] === true ? t( key ) : t( key+ '-plain' )+ ' '+ t( 'notify.noperm-'+ kind );
+	};
+
+	/**
+	 *	Show a link the server made without a mail, once, in a dialog of its own: it is in no screen and in no list, and the dialog takes it along when it closes
+	 *
+	 *	@param		{string}	kind						sign, invite or login
+	 *	@param		{string}	link
+	 *
+	 *	@return		{Promise}
+	 */
+	const showLink = function( kind, link ) {
+
+		// A link that is not there is no dialog
+		if( typeof link !== 'string' || link === '' )
+			return Promise.resolve( null );
+
+		return dialog( { title: t( 'shown.title-'+ kind ), text: t( 'shown.text-'+ kind ), secret: { label: t( 'shown.field' ), value: link, note: t( 'shown.once' ) }, close: true } );
 	};
 
 	/**
@@ -1553,15 +1641,23 @@
 			return;
 		}
 
-		dialog( { title : t( 'sign.ask-title' ), text : t( 'sign.ask-text' ), yes : t( 'sign.ask' ), fields : [
+		dialog( { title : t( 'sign.ask-title' ), text : quietText( 'sign', 'sign.ask-text' ), yes : t( 'sign.ask' ), fields : [
 			{ name : 'account', label : t( 'sign.account' ), options : accounts.map( function( account ) { return { value : account.id, label : account.name !== '' ? account.name+ ' <'+ account.email+ '>' : account.email } } ), value : accounts[0].id },
 			{ name : 'days', label : t( 'sign.days' ), type : 'number', value : String( view.sign_days ), min : '1', max : '90' },
-		] } ).then( function( values ) {
+		].concat( quietField( 'sign', 'notify.link' ) ) } ).then( function( values ) {
 
 			if( values === null )
 				return;
 
-			move( view, 'crm-documents/sign', { account : values.account, days : values.days }, 'error.sign', function( body ) { return body.mailed === true ? t( 'sign.asked' ) : t( 'sign.asked-unmailed' ) } );
+			move( view, 'crm-documents/sign', { account : values.account, days : values.days, notify : values.notify !== false }, 'error.sign', function( body ) {
+
+				if( typeof body.link === 'string' ) {
+					showLink( 'sign', body.link );
+					return t( 'sign.asked-quiet' );
+				}
+
+				return body.mailed === true ? t( 'sign.asked' ) : t( 'sign.asked-unmailed' );
+			} );
 		} );
 	};
 
@@ -1638,14 +1734,55 @@
 		} );
 	};
 
+	/**
+	 *	The payment reminder: the box says whether the accounts are mailed (it is, at first); without the mail the reminder is noted all the same
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{void}
+	 */
 	const remind = function( view ) {
 
-		return move( view, 'crm-documents/remind', {}, 'error.remind', function( body ) { return body.mailed > 0 ? t( 'remind.done', body.mailed ) : t( 'remind.none' ) } );
+		dialog( { title : t( 'remind.title' ), text : t( 'remind.text' ), yes : t( 'remind.yes' ), fields : [ { name : 'notify', label : t( 'remind.notify' ), type : 'checkbox', value : true } ] } ).then( function( values ) {
+
+			if( values === null )
+				return;
+
+			move( view, 'crm-documents/remind', { notify : values.notify }, 'error.remind', function( body ) {
+
+				if( body.notify === false )
+					return t( 'remind.noted' );
+
+				return body.mailed > 0 ? t( 'remind.done', body.mailed ) : t( 'remind.none' );
+			} );
+		} );
 	};
 
+	/**
+	 *	The link of a signature request again, with a new token: the old link is dead. The box says whether the account is mailed (it is, at first); without the
+	 *	mail the new link is shown, once
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{void}
+	 */
 	const signRemind = function( view ) {
 
-		return move( view, 'crm-documents/sign-remind', {}, 'error.sign-remind', function() { return t( 'sign.reminded' ) } );
+		dialog( { title : t( 'sign.remind-title' ), text : quietText( 'sign', 'sign.remind-text' ), yes : t( 'sign.remind-yes' ), fields : quietField( 'sign', 'notify.link' ) } ).then( function( values ) {
+
+			if( values === null )
+				return;
+
+			move( view, 'crm-documents/sign-remind', { notify : values.notify !== false }, 'error.sign-remind', function( body ) {
+
+				if( typeof body.link === 'string' ) {
+					showLink( 'sign', body.link );
+					return t( 'sign.reminded-quiet' );
+				}
+
+				return t( 'sign.reminded' );
+			} );
+		} );
 	};
 
 	const signCancel = function( view ) {
@@ -1874,6 +2011,7 @@
 			[ doc.finalised, doc.number !== '' ? t( 'history.finalised', doc.number ) : t( 'history.finalised-plain' ) ],
 			[ doc.released_at, t( 'history.released' ) ],
 			[ doc.sent_at, t( 'history.sent' ) ],
+			[ doc.reminded_at, t( doc.reminded_mail === true ? 'history.reminded-mail' : 'history.reminded-quiet' ) ],
 			[ doc.paid_at, t( 'history.paid' ) ],
 			[ doc.signed_at, t( 'history.signed' ) ],
 			[ view.order ? view.order.at : '', view.order ? t( 'history.ordered', recordWho( view.order ) ) : '' ],
@@ -3103,9 +3241,27 @@
 
 			if( account.active === true && client.active === true )
 				items.push( { label : t( account.login === null ? 'acc.resend-invite' : 'acc.resend-login' ), run : function() {
-					call( 'crm-clients/account-resend', post(), 'error.account-resend' ).then( function( answer ) {
-						if( answer.ok === true )
+
+					// The box says whether the account is mailed (it is, at first); without the mail the link is shown, once
+					dialog( { title : t( account.login === null ? 'acc.resend-invite' : 'acc.resend-login' ), text : quietText( 'members', account.login === null ? 'acc.resend-invite-text' : 'acc.resend-login-text' ), yes : t( 'acc.resend-yes' ),
+						fields : quietField( 'members', 'notify.invite' ) } ).then( function( values ) {
+
+						if( values === null )
+							return;
+
+						call( 'crm-clients/account-resend', Object.assign( post(), { notify : values.notify !== false } ), 'error.account-resend' ).then( function( answer ) {
+
+							if( answer.ok !== true )
+								return;
+
+							if( typeof answer.body.link === 'string' ) {
+								showLink( answer.body.kind === 'invite' ? 'invite' : 'login', answer.body.link );
+								toast( t( answer.body.kind === 'invite' ? 'acc.resent-invite-quiet' : 'acc.resent-login-quiet' ) );
+								return;
+							}
+
 							toast( t( answer.body.kind === 'invite' ? 'acc.resent-invite' : 'acc.resent-login' ) );
+						} );
 					} );
 				} } );
 
@@ -3190,13 +3346,14 @@
 			{ name : 'name', label : t( 'invite.name' ), control : el( 'input', { id : 'f-invite-name', type : 'text', maxlength : '120', autocomplete : 'off' } ) },
 		];
 		const send = el( 'button', { type: 'submit', class: 'btn sm primary', id: 'invite-send', title: t( 'save.shortcut' ), text: t( 'invite.send' ) } );
+		const notify = state.perms.members === true ? el( 'input', { type: 'checkbox', id: 'f-invite-notify', checked: true } ) : null;
 
 		const box = el( 'form', { id : 'invite', novalidate : 'novalidate', on : { submit : function( event ) {
 
 			event.preventDefault();
 			send.disabled = true;
 
-			api( 'crm-clients/invite', { id : String( view.client.id ), email : form.controls.email.value, name : form.controls.name.value } ).then( function( answer ) {
+			api( 'crm-clients/invite', { id : String( view.client.id ), email : form.controls.email.value, name : form.controls.name.value, notify : notify === null || notify.checked === true } ).then( function( answer ) {
 
 				send.disabled = false;
 
@@ -3213,9 +3370,16 @@
 				dropGuard( form );
 				view.accounts = view.accounts.concat( [ answer.body.account ] );
 				replaceAccounts( view );
+
+				if( typeof answer.body.link === 'string' ) {
+					showLink( 'invite', answer.body.link );
+					toast( t( 'invite.sent-quiet' ) );
+					return;
+				}
+
 				toast( t( answer.body.mailed === true ? 'invite.sent' : 'invite.not-mailed' ), answer.body.mailed !== true );
 			} );
-		} } }, formList( rows, form ), el( 'div', { class: 'actions top' }, send,
+		} } }, formList( rows, form ), notify === null ? el( 'p', { class: 'state-note', id: 'invite-noquiet', text: t( 'notify.noperm-members' ) } ) : el( 'label', { class: 'check' }, notify, ' '+ t( 'notify.invite' ) ), el( 'div', { class: 'actions top' }, send,
 			el( 'button', { type: 'button', class: 'btn sm', id: 'invite-cancel', text: t( 'form.cancel' ), on: { click: function() { view.inviting = false; view.invite = null; dropGuard( form ); replaceAccounts( view ) } } } ) ) );
 
 		// What is typed in it is unsaved input like that of any form: the guard of the page asks before the screen is left - unless a form that holds changes is the guard's already
@@ -3524,6 +3688,7 @@
 			{ name : 'account_name', label : t( 'clientfield.account_name' ), control : el( 'input', { id : 'f-account_name', type : 'text', maxlength : '120', autocomplete : 'off', placeholder : t( 'form.optional' ) } ) },
 		];
 		const create = el( 'button', { type: 'submit', class: 'btn primary', id: 'client-create', title: t( 'save.shortcut' ), text: t( 'newclient.create' ) } );
+		const notify = state.perms.members === true ? el( 'input', { type: 'checkbox', id: 'f-account_notify', checked: true } ) : null;
 		const master = formList( rows, form );
 		const account = formList( first, form );
 
@@ -3537,7 +3702,7 @@
 			event.preventDefault();
 			create.disabled = true;
 
-			api( 'crm-clients/save', valuesOfForm( form ) ).then( function( answer ) {
+			api( 'crm-clients/save', Object.assign( valuesOfForm( form ), { notify : notify === null || notify.checked === true } ) ).then( function( answer ) {
 
 				create.disabled = false;
 
@@ -3559,6 +3724,10 @@
 					toast( t( 'newclient.done', made.number ) );
 				else if( asked.refused !== null )
 					toast( t( 'newclient.refused', made.number, errorText( { status : 400, body : asked.refused }, 'error.account-invite' ) ), true );
+				else if( typeof asked.link === 'string' ) {
+					showLink( 'invite', asked.link );
+					toast( t( 'newclient.done-invited-quiet', made.number ) );
+				}
 				else
 					toast( t( asked.mailed === true ? 'newclient.done-invited' : 'newclient.done-unmailed', made.number ), asked.mailed !== true );
 
@@ -3573,7 +3742,7 @@
 			head( t( 'newclient.title' ), el( 'span', { class: 'grow' } ), link( '#kunden', t( 'form.cancel' ), { class: 'btn', id: 'client-abort' } ), create ),
 			el( 'div', { class: 'cols' },
 				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'newclient.master' ) } ), master ),
-				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'newclient.first' ) } ), el( 'p', { class: 'state-note', text: t( 'newclient.first-text' ) } ), account ) ),
+				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'newclient.first' ) } ), el( 'p', { class: 'state-note', text: t( 'newclient.first-text' ) } ), account, notify === null ? el( 'p', { class: 'state-note', id: 'account-noquiet', text: t( 'notify.noperm-members' ) } ) : el( 'label', { class: 'check' }, notify, ' '+ t( 'notify.invite' ) ) ) ),
 			el( 'datalist', { id: 'countries' }, [ 'DE', 'AT', 'CH' ].map( function( code ) { return el( 'option', { value: code } ) } ) ) );
 
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#kunden', t( 'clients.title' ) ), ' › '+ t( 'newclient.title' ).toLowerCase() ) );
@@ -4631,7 +4800,7 @@
 				return;
 			}
 
-			drawProjekt( Object.assign( {}, answer.body, { documents : view.documents, limits : view.limits, editing : false, info : null, mine : mine } ) );
+			drawProjekt( Object.assign( {}, answer.body, { documents : view.documents, limits : view.limits, editing : false, info : null, mine : mine, notifyChoice : view.notifyChoice } ) );
 		} );
 	};
 
@@ -4814,6 +4983,7 @@
 		const mine = state.view;
 		const limits = view.limits;
 		let sent = 0;
+		let mailed = false;
 
 		button.disabled = true;
 		list.hidden = false;
@@ -4827,7 +4997,8 @@
 			if( sent === 0 )
 				return;
 
-			toast( t( sent === 1 ? 'projects.uploaded-one' : 'projects.uploaded', sent ) );
+			// What the toast says of the mail is what the server says: the members are informed where a mail was delivered, not where the box was ticked
+			toast( t( sent === 1 ? 'projects.uploaded-one' : 'projects.uploaded', sent )+ ' '+ t( mailed === true ? 'projects.informed' : 'projects.not-informed' ) );
 
 			if( state.view !== mine )
 				return;
@@ -4888,7 +5059,7 @@
 
 			const next = function( index ) {
 
-				upload( 'files/upload', { folder : view.folder.id, name : file.name, size : file.size, upload : id, index : index, count : parts.length, visible : true }, file.slice( parts[index][0], parts[index][1] ), 'chunk' ).then( function( answer ) {
+				upload( 'files/upload', { folder : view.folder.id, name : file.name, size : file.size, upload : id, index : index, count : parts.length, visible : true, notify : wantsNotify( view ) }, file.slice( parts[index][0], parts[index][1] ), 'chunk' ).then( function( answer ) {
 
 					if( answer.status === 413 ) {
 
@@ -4923,6 +5094,10 @@
 					line.row.dataset.state = 'done';
 					line.status.textContent = t( 'projects.up-done' );
 					sent++;
+
+					if( answer.body !== null && typeof answer.body === 'object' && answer.body.mailed > 0 )
+						mailed = true;
+
 					go( at + 1 );
 				} );
 			};
@@ -4931,6 +5106,18 @@
 		};
 
 		go( 0 );
+	};
+
+	/**
+	 *	Whether the box of the tab Dateien is ticked: the customer is mailed for every file that is uploaded or made visible while it stands. Without the box
+	 *	(the tab is not drawn) nobody is
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{boolean}
+	 */
+	const wantsNotify = function( view ) {
+		return view.notifyBox !== undefined && view.notifyBox !== null && view.notifyBox.checked === true;
 	};
 
 	/**
@@ -5019,6 +5206,15 @@
 
 		const tableBox = el( 'div', { id: 'project-file-box' } );
 
+		// One box for the tab: it says whether the customer is mailed for each upload and each switch of "Sichtbar" while it stands. It starts at the setting of Dateien
+		view.notifyBox = null;
+
+		if( editable === true ) {
+			// The owner's choice stays on the view while the screen stands - a deleted file, a redrawn table, another tab of the card do not give the box back to the setting
+			view.notifyBox = el( 'input', { type: 'checkbox', id: 'project-notify', checked: typeof view.notifyChoice === 'boolean' ? view.notifyChoice : view.notify === true, on: { change: function( event ) { view.notifyChoice = event.target.checked === true } } } );
+			holder.appendChild( el( 'label', { class: 'check', id: 'project-notify-label' }, view.notifyBox, ' '+ t( 'notify.files' ) ) );
+		}
+
 		holder.appendChild( tableBox );
 
 		const filesTable = function() {
@@ -5039,12 +5235,16 @@
 
 							box.disabled = true;
 
-							call( 'files/save', { id : file.id, visible : wanted }, 'projects.error-file' ).then( function( answer ) {
+							call( 'files/save', { id : file.id, visible : wanted, notify : wantsNotify( view ) }, 'projects.error-file' ).then( function( answer ) {
 
 								box.disabled = false;
 
-								if( answer.ok === true )
+								if( answer.ok === true ) {
 									file.visible = wanted;
+
+									if( wanted === true )
+										toast( t( answer.body !== null && typeof answer.body === 'object' && answer.body.mailed > 0 ? 'projects.shown-informed' : 'projects.shown-not-informed' ) );
+								}
 								else
 									box.checked = file.visible;
 							} );
@@ -7332,7 +7532,7 @@
 		state.base = data.base;
 		state.csrf = data.csrf;
 		state.perm = data.perm;
-		state.perms = Object.assign( { crm : true, pdf : false, elements : false, text : false, files : false }, data.perms );
+		state.perms = Object.assign( { crm : true, pdf : false, elements : false, text : false, files : false, members : false, sign : false }, data.perms );
 		state.pdfAvailable = data.pdf_available !== false;
 		state.user = data.user.name;
 		state.texts = data.texts;

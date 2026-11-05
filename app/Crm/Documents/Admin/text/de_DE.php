@@ -56,4 +56,5 @@ return [
 	'[[/_admin/error/crm_documents_sign_mail]]' => 'Die Mail kam nicht an. Der Link ist so, wie er war.',
 	'[[/_admin/error/crm_project]]' => 'Dieses Projekt gibt es nicht.',
 	'[[/_admin/error/crm_project_client]]' => 'Das Projekt gehört zu einem anderen Kunden. Wähle ein Projekt dieses Kunden oder keins.',
+	'[[/_admin/error/crm_documents_link_perm]]' => 'Einen Link ohne Mail darf nur sehen, wer das Panel Unterschriften verwalten darf. Sende die Mail oder bitte jemanden mit dieser Berechtigung.',
 ];

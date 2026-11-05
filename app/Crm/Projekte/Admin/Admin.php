@@ -91,7 +91,7 @@ class Admin {
 
 	/**
 	 *	One project: id. Answers the project as list has it, its client, its folder (id and name; null where it has none or the folder is gone from Files) and
-	 *	its files with the address each is downloaded at - null where the feature Files is off
+	 *	its files with the address each is downloaded at - null where the feature Files is off - and notify, the setting of Files that mails the members of a file that is made visible
 	 */
 	public static function apiGet( array &$appData, array &$request ): void {
 
@@ -134,6 +134,8 @@ class Admin {
 				'allowed' => \Crm\Surface\Files::allowed( $appData ),
 				'folder'  => $folder,
 				'list'    => $list,
+				// The setting of the feature Files that mails the members of a file made visible: what the box of the tab starts at
+				'notify'  => self::filesOn( $appData ) === true && \Nino\Features::setting( $appData, 'files', 'notifyMembers', false ) === true,
 			] );
 		} );
 	}

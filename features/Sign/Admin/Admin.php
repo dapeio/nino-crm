@@ -108,10 +108,10 @@ namespace Nino\Modules\Sign {
 			$of = $id === '' ? '' : ' '. $id;
 
 			return match( $action ) {
-				'sign/request'	=> 'Asked for a signature'. ( self::$_made[$action] ?? '' ),
-				'sign/remind'		=> 'Reminded of signature request'. $of,
+				'sign/request'	=> 'Asked for a signature'. ( self::$_made[$action] ?? '' ). self::_how( $data ),
+				'sign/remind'		=> 'Reminded of signature request'. $of. self::_how( $data ),
 				'sign/cancel'		=> 'Cancelled signature request'. $of,
-				'sign/again'		=> 'Asked again for signature request'. $of. ( isset( self::$_made[$action] ) === true ? ', new request'. self::$_made[$action] : '' ),
+				'sign/again'		=> 'Asked again for signature request'. $of. ( isset( self::$_made[$action] ) === true ? ', new request'. self::$_made[$action] : '' ). self::_how( $data ),
 				'sign/delete'		=> 'Deleted signature request'. $of,
 				default					=> '',
 			};
@@ -252,7 +252,7 @@ namespace Nino\Modules\Sign {
 				$inputs[ $input['name'] ] = $text;
 			}
 
-			$made = \Nino\Modules\Sign::request( $appData, $template, [ 'inputs' => $inputs ], \Nino\Admin\Admin::postString( $data, 'account' ), $title === '' ? [] : [ 'title' => $title ] );
+			$made = \Nino\Modules\Sign::request( $appData, $template, [ 'inputs' => $inputs ], \Nino\Admin\Admin::postString( $data, 'account' ), ( $title === '' ? [] : [ 'title' => $title ] ) + [ 'notify' => self::_notify( $data ) ] );
 
 			self::_answerMade( $appData, $request, $made, 'sign/request' );
 		}
@@ -272,7 +272,8 @@ namespace Nino\Modules\Sign {
 			if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
 				return;
 
-			$id = self::_id( \Nino\Admin\Admin::postData() );
+			$data = \Nino\Admin\Admin::postData();
+			$id = self::_id( $data );
 			$found = $id === '' ? null : ( \Nino\Modules\Sign\Store::read( $appData )[$id] ?? null );
 
 			if( $found === null ) {
@@ -285,7 +286,7 @@ namespace Nino\Modules\Sign {
 				return;
 			}
 
-			self::_answerMade( $appData, $request, \Nino\Modules\Sign::request( $appData, $found['template'], $found['data'], $found['account'], [ 'title' => $found['title'], 'page' => $found['page'] ] ), 'sign/again' );
+			self::_answerMade( $appData, $request, \Nino\Modules\Sign::request( $appData, $found['template'], $found['data'], $found['account'], [ 'title' => $found['title'], 'page' => $found['page'], 'notify' => self::_notify( $data ) ] ), 'sign/again' );
 		}
 
 		/**
@@ -309,6 +310,7 @@ namespace Nino\Modules\Sign {
 					'member'		=> \Nino\Http::fail( $request, 400, 'the template has no field for a member', 'sign_member', [], 'template' ),
 					'account'		=> \Nino\Http::fail( $request, 400, 'there is no such member, or the account is switched off', 'sign_account', [], 'account' ),
 					'input'			=> \Nino\Http::fail( $request, 400, 'a free text of the template is empty', 'sign_input', [ '', self::INPUT_LENGTH ], 'template' ),
+					'ratelimit'	=> \Nino\Http::fail( $request, 429, 'the kernel\'s cap of mails an hour from one address is reached', 'sign_ratelimit' ),
 					default			=> \Nino\Http::fail( $request, 500, 'could not make the request' ),
 				};
 
@@ -316,6 +318,12 @@ namespace Nino\Modules\Sign {
 			}
 
 			self::$_made[$action] = ' '. $made['id'];
+
+			// Asked not to mail: the link is the answer, to the account that asked and to nobody else - and no line of the log holds it
+			if( isset( $made['link'] ) === true ) {
+				\Nino\Http::ok( $request, [ 'id' => $made['id'], 'link' => $made['link'] ] );
+				return;
+			}
 
 			if( $made['mailed'] === false ) {
 
@@ -347,7 +355,8 @@ namespace Nino\Modules\Sign {
 			if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
 				return;
 
-			$id = self::_id( \Nino\Admin\Admin::postData() );
+			$data = \Nino\Admin\Admin::postData();
+			$id = self::_id( $data );
 			$found = $id === '' ? null : \Nino\Modules\Sign\Store::get( $appData, $id );
 
 			if( $found === null ) {
@@ -360,12 +369,21 @@ namespace Nino\Modules\Sign {
 				return;
 			}
 
-			if( \Nino\Modules\Sign::remind( $appData, $id ) === false ) {
-				self::_unsent( $appData, $request, 'the reminder could not be sent' );
+			$notify = self::_notify( $data );
+			$link = \Nino\Modules\Sign::remind( $appData, $id, $notify );
+
+			if( $link === false ) {
+
+				// A refused link is a refused mail to the caller: the cap speaks first, whatever was asked
+				if( $notify === false && \Nino\Mail::rateLimited( $appData ) === false )
+					\Nino\Http::fail( $request, 500, 'the request could not be given a new link' );
+				else
+					self::_unsent( $appData, $request, 'the reminder could not be sent' );
+
 				return;
 			}
 
-			\Nino\Http::ok( $request, [ 'sent' => true ] );
+			\Nino\Http::ok( $request, $notify === false ? [ 'sent' => false, 'link' => (string) $link ] : [ 'sent' => true ] );
 		}
 
 		/**
@@ -462,6 +480,30 @@ namespace Nino\Modules\Sign {
 			}
 
 			\Nino\Http::fail( $request, 500, $error, 'sign_mail' );
+		}
+
+		/**
+		 *	What the line of the log says of the mail: nothing where it was sent, that it was not where the owner chose so. Never the link
+		 *
+		 *	@param		array 		$data					What the action was posted
+		 *
+		 *	@return 	string
+		 */
+		private static function _how( array $data ): string {
+
+			return self::_notify( $data ) === true ? '' : ', without mail';
+		}
+
+		/**
+		 *	Whether the member is mailed for this action: true unless the post says false
+		 *
+		 *	@param		array 		$data					What the action was posted
+		 *
+		 *	@return 	bool
+		 */
+		private static function _notify( array $data ): bool {
+
+			return ( $data['notify'] ?? true ) !== false;
 		}
 
 		/**

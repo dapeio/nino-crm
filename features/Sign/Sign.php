@@ -123,7 +123,10 @@ namespace Nino\Modules {
 		 *	the signing - kept on the request, so that a reminder and the panel's "Ask again" use it - which
 		 *	has to be one by the rules of a return path of the Members feature: it starts with a single
 		 *	slash, is no endpoint of a module and holds no whitespace, and its query goes; any other is
-		 *	left out
+		 *	left out - and notify, true unless it says false: with false the request is made and nobody is
+		 *	mailed, and the answer carries the link as the mail would have carried it, as 'link'. The index
+		 *	keeps the sha256 of the token only, so the link is there in this answer and nowhere else; it is as
+		 *	good as a mailed one, for the same days, and whoever has it signs as the account
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$template			The key of a template of the Pdf feature
@@ -131,7 +134,7 @@ namespace Nino\Modules {
 		 *	@param		string		$account			The id of an account of the Members feature
 		 *	@param		array 		$options
 		 *
-		 *	@return 	array|string							The request as get() has it, and 'mailed' - whether the mail was delivered; or why not: 'template' (no such template), 'member' (it has no field for a member), 'account' (no such account, or one that is switched off), 'input' (a free text it asks for is not given), 'render' (the PDF could not be made) or 'write' (the request could not be kept)
+		 *	@return 	array|string							The request as get() has it, and 'mailed' - whether the mail was delivered - and, with notify false, 'link'; or why not: 'template' (no such template), 'member' (it has no field for a member), 'account' (no such account, or one that is switched off), 'input' (a free text it asks for is not given), 'render' (the PDF could not be made), 'write' (the request could not be kept) or 'ratelimit' (notify false, and the cap of mails an hour is spent: the link is charged to it as a mail is)
 		 */
 		public static function request( array &$appData, string $template, array $data, string $account, array $options = [] ): array|string {
 
@@ -154,6 +157,10 @@ namespace Nino\Modules {
 			foreach( \Nino\Modules\Pdf::inputs( $appData, $template ) as $input )
 				if( $input['required'] === true && trim( (string) ( $data['inputs'][ $input['name'] ] ?? '' ) ) === '' )
 					return 'input';
+
+			// A request whose link is shown and not mailed is charged to the cap of mails as a mail would be
+			if( ( $options['notify'] ?? true ) === false && self::_charge( $appData ) === false )
+				return 'ratelimit';
 
 			$title = self::_title( is_string( $options['title'] ?? null ) === true ? $options['title'] : '' );
 			$title = $title === '' ? self::_title( $templates[$template]['name'] ) : $title;
@@ -196,6 +203,9 @@ namespace Nino\Modules {
 				\Nino\Modules\Sign\Store::drop( $appData, $id );
 				return 'write';
 			}
+
+			if( ( $options['notify'] ?? true ) === false )
+				return \Nino\Modules\Sign\Store::view( $id, $entry ) + [ 'mailed' => false, 'link' => self::_link( $appData, $token, $page ) ];
 
 			$mailed = self::_mailRequest( $appData, $member, \Nino\Modules\Sign\Store::view( $id, $entry ), $token, $page, $days );
 
@@ -252,14 +262,19 @@ namespace Nino\Modules {
 		 *	Send the link of a request again, with a new token and the time the setting days gives from now: the
 		 *	old link is dead. The mail goes first and the new token is kept only once it was delivered, so that a
 		 *	mail that is not leaves the link the member has as it was. The link takes the member back to the page the
-		 *	request named. A request that is over - signed, declined, cancelled or changed - is not reminded; one whose time is up is, and is good again
+		 *	request named. A request that is over - signed, declined, cancelled or changed - is not reminded; one whose time is up is, and is good again.
+		 *	With $notify false nobody is mailed: the request gets the new token all the same - the link the member has is dead - and
+		 *	the new link, as the mail would have carried it, is the answer, once, since the index keeps the sha256 of the token only
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$id
+		 *	@param		bool			$notify				Whether the member is mailed
 		 *
-		 *	@return 	bool										Whether the member was mailed and the request holds the new token
+		 *	@return 	bool|string							Whether the member was mailed and the request holds the new token; with $notify false the new link, or false where the request could not be given one
 		 */
-		public static function remind( array &$appData, string $id ): bool {
+		public static function remind( array &$appData, string $id, bool $notify = true ): bool|string {
+
+			$link = '';
 
 			$request = \Nino\Modules\Sign\Store::get( $appData, $id );
 
@@ -271,21 +286,32 @@ namespace Nino\Modules {
 			if( $member === null || $member['active'] !== true )
 				return false;
 
+			if( $notify === false && self::_charge( $appData ) === false )
+				return false;
+
 			$days = self::_days( $appData );
 			$token = \Nino\Modules\Sign\Store::newToken();
 
-			if( self::_mailRequest( $appData, $member, $request, $token, $request['page'], $days ) === false )
+			if( $notify === false )
+				$link = self::_link( $appData, $token, $request['page'] );
+			else if( self::_mailRequest( $appData, $member, $request, $token, $request['page'], $days ) === false )
 				return false;
 
 			$until = time() + $days * 86400;
 
-			return is_array( \Nino\Modules\Sign\Store::change( $appData, $id, static function( array $entry ) use ( $token, $until ): ?array {
+			$kept = is_array( \Nino\Modules\Sign\Store::change( $appData, $id, static function( array $entry ) use ( $token, $until ): ?array {
 
 				if( in_array( $entry['status'], [ 'requested', 'viewed' ], true ) === false )
 					return null;
 
 				return [ 'token' => hash( 'sha256', $token ), 'expires' => $until ] + $entry;
 			} ) );
+
+			if( $kept === false )
+				return false;
+
+			// A link of a token the request does not hold is no link to give: it is given only here, once the token is kept
+			return $notify === false ? $link : true;
 		}
 
 		/**
@@ -960,6 +986,44 @@ namespace Nino\Modules {
 			$sentence = html_entity_decode( strip_tags( (string) \Nino\Html::resolveTextfill( $appData, '/feature/sign/form/consent' ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 
 			return mb_substr( trim( (string) preg_replace( '/\s+/u', ' ', $sentence ) ), 0, \Nino\Modules\Sign\Store::CONSENT_LENGTH );
+		}
+
+		/**
+		 *	A link that is made without a mail is charged to the same counter a mail would be: the kernel's cap of mails an hour from one address, the configured one ('/nino/mail/cap', five by default, no cap at 0). Over it
+		 *	the call is refused and flagged in './nino/mail/ratelimited', as a refused mail is, so that the callers answer with the codes of the cap
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *
+		 *	@return 	bool										Whether the link may be made
+		 */
+		private static function _charge( array &$appData ): bool {
+
+			$appData['./nino/mail/ratelimited'] = false;
+
+			if( \Nino\Feature::count( $appData, 'ratelimit', \Nino\Http::getClientIp( $appData ), (int) ( $appData['/nino/mail/cap'] ?? \Nino\AppData::DEFAULTS['/nino/mail/cap'] ), 3600 ) === true )
+				return true;
+
+			$appData['./nino/mail/ratelimited'] = true;
+
+			return false;
+		}
+
+		/**
+		 *	The link of a request as the mail carries it: the address of the site, /.sign with the token and the page to return to. Where the
+		 *	site has no address of its own the path alone - a link that works on the site it is opened on
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$token
+		 *	@param		string		$page					The path the link takes the member back to after the signing, '' for none
+		 *
+		 *	@return 	string
+		 */
+		private static function _link( array &$appData, string $token, string $page ): string {
+
+			$path = '/.sign?t='. rawurlencode( $token ). ( $page !== '' ? '&return='. rawurlencode( $page ) : '' );
+			$url = \Nino\Html::absoluteUrl( $appData, $path );
+
+			return $url === '' ? $path : $url;
 		}
 
 		/**

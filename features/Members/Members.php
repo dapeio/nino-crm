@@ -423,17 +423,22 @@ namespace Nino\Modules {
 		 *	valid for inviteDays). The mail is absolute (the website's address is
 		 *	needed) and goes out in the language of the request, or - for the panel,
 		 *	which writes to somebody who is not in the room - in the site's native one.
-		 *	A token the mail never carried is good for nobody: it is not found
+		 *	A token the mail never carried is good for nobody: it is not found.
+		 *	With $notify false nobody is mailed: the token is kept all the same and the link, as the
+		 *	mail would have carried it, is the answer - once, since the index keeps the sha256 of the
+		 *	token only. It is as good as a mailed one, for the same time, and whoever has it signs in
+		 *	as the account: the owner who asks for it hands it over himself
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		$account			As account() has it
 		 *	@param		string		$kind					'login' or 'invite'
 		 *	@param		string		$target				The path the member asked for, '' for none - where the link leads after the sign-in
 		 *	@param		bool			$native				Write in the site's native language
+		 *	@param		bool			$notify				Whether the account is mailed the link
 		 *
-		 *	@return 	bool										Whether the mail was delivered - false, with a warning that names no address, where there is no website address to build the link on, the token could not be stored or the mail was not taken
+		 *	@return 	bool|string							Whether the mail was delivered - false, with a warning that names no address, where there is no website address to build the link on, the token could not be stored or the mail was not taken; with $notify false the link, or false where it could not be made
 		 */
-		public static function link( array &$appData, array $account, string $kind, string $target = '', bool $native = false ): bool {
+		public static function link( array &$appData, array $account, string $kind, string $target = '', bool $native = false, bool $notify = true ): bool|string {
 
 			if( in_array( $kind, self::KINDS, true ) === false || is_string( $account['id'] ?? null ) === false || is_string( $account['email'] ?? null ) === false )
 				return false;
@@ -445,6 +450,17 @@ namespace Nino\Modules {
 				return false;
 			}
 
+			// A link that is shown and not mailed is charged to the cap of mails as a mail would be - the configured one, '/nino/mail/cap', five by default, none at 0 - and refused over it as a mail is
+			if( $notify === false ) {
+
+				$appData['./nino/mail/ratelimited'] = false;
+
+				if( \Nino\Feature::count( $appData, 'ratelimit', \Nino\Http::getClientIp( $appData ), (int) ( $appData['/nino/mail/cap'] ?? \Nino\AppData::DEFAULTS['/nino/mail/cap'] ), 3600 ) === false ) {
+					$appData['./nino/mail/ratelimited'] = true;
+					return false;
+				}
+			}
+
 			$seconds = $kind === 'invite' ? self::_days( $appData ) * 86400 : self::_minutes( $appData ) * 60;
 			$token = self::_issue( $appData, $account['id'], $kind, $seconds, $target );
 
@@ -452,6 +468,9 @@ namespace Nino\Modules {
 				trigger_error( 'Members: a link could not be stored', E_USER_WARNING );
 				return false;
 			}
+
+			if( $notify === false )
+				return \Nino\Html::absoluteUrl( $appData, '/.members/login?t='. rawurlencode( $token ) );
 
 			if( self::_mail( $appData, $account['email'], $kind, $token, $native ) === false ) {
 				trigger_error( 'Members: a link could not be mailed', E_USER_WARNING );

@@ -22,4 +22,6 @@ return [
 	'[[/_admin/error/crm_clients_write]]' => 'The account could not be written.',
 	'[[/_admin/error/crm_clients_taken]]' => 'There is an account for this email address already.',
 	'[[/_admin/error/crm_clients_unknown]]' => 'There is no such client.',
+	'[[/_admin/error/crm_clients_link_perm]]' => 'Only an account that may manage the Members panel can have a link shown without the mail. Send the mail or ask somebody who holds that permission.',
+	'[[/_admin/error/crm_clients_link]]' => 'The link could not be made. The account is there; ask for the link again from the menu of the account.',
 ];

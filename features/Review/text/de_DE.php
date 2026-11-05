@@ -51,6 +51,7 @@ return [
 	'[[/_admin/review/label/text]]'					=> 'Kommentar',
 	'[[/_admin/review/label/at]]'					=> 'Zeit im Stück (m:ss, darf leer bleiben)',
 	'[[/_admin/review/label/now]]'					=> 'An der Stelle des Players',
+	'[[/_admin/review/label/notify]]'				=> 'Mitglied per E-Mail informieren',
 	'[[/_admin/review/label/send]]'					=> 'Senden',
 	'[[/_admin/review/error/empty]]'				=> 'Schreibe zuerst einen Kommentar.',
 

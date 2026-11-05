@@ -102,10 +102,10 @@ namespace Nino\Modules\Members {
 			$of = $id === '' ? '' : ' '. $id;
 
 			return match( $action ) {
-				'members/add'			=> 'Added a member',
+				'members/add'			=> 'Added a member'. ( ( $data['invite'] ?? false ) === true && self::_notify( $data ) === false ? ', invited without mail' : '' ),
 				'members/save'		=> 'Changed member'. $of,
 				'members/delete'	=> 'Deleted member'. $of,
-				'members/link'		=> 'Sent a login link to member'. $of,
+				'members/link'		=> ( self::_notify( $data ) === true ? 'Sent a login link to member' : 'Made a link without mail for member' ). $of,
 				'members/signout'	=> 'Signed every member out',
 				default						=> '',
 			};
@@ -135,7 +135,8 @@ namespace Nino\Modules\Members {
 		 *	the code members_mail, or a 429 with members_ratelimit where the kernel's cap
 		 *	of mails refused it (see _unsent()) - the account is there all the same, and
 		 *	the screen asks for the list again, since sending the link again is one press
-		 *	on its row
+		 *	on its row. With notify false, and invite, the invitation is made and nobody is
+		 *	mailed: the answer carries the link, once (see Members::link())
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		&$request			(reference) Current server request
@@ -156,13 +157,21 @@ namespace Nino\Modules\Members {
 			}
 
 			$invite = ( $data['invite'] ?? false ) === true;
+			$notify = self::_notify( $data );
+			$made = $invite === true ? \Nino\Modules\Members::link( $appData, $added, 'invite', '', true, $notify ) : true;
 
-			if( $invite === true && \Nino\Modules\Members::link( $appData, $added, 'invite', '', true ) === false ) {
-				self::_unsent( $appData, $request, 'the member was added, but the invitation could not be sent' );
+			if( $made === false ) {
+
+				if( $notify === false && \Nino\Mail::rateLimited( $appData ) === false )
+					\Nino\Http::fail( $request, 500, 'the member was added, but the invitation could not be made' );
+				else
+					self::_unsent( $appData, $request, 'the member was added, but the invitation could not be sent' );
+
 				return;
 			}
 
-			\Nino\Http::ok( $request, [ 'account' => $added, 'invited' => $invite ] );
+			// Asked not to mail: the link is the answer, to the account that asked and to nobody else - and no line of the log holds it
+			\Nino\Http::ok( $request, [ 'account' => $added, 'invited' => $invite ] + ( $invite === true && $notify === false ? [ 'link' => (string) $made ] : [] ) );
 		}
 
 		/**
@@ -226,7 +235,8 @@ namespace Nino\Modules\Members {
 		 *	Send an account a link to sign in. An account that is switched off has
 		 *	nothing to sign in to: it is a 400 with the code members_inactive, and
 		 *	a mail that did not go out is a 500 with members_mail - a 429 with
-		 *	members_ratelimit where the kernel's cap of mails refused it
+		 *	members_ratelimit where the kernel's cap of mails refused it. With notify false
+		 *	nobody is mailed: the answer carries the link, once (see Members::link())
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		&$request			(reference) Current server request
@@ -238,7 +248,8 @@ namespace Nino\Modules\Members {
 			if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
 				return;
 
-			$account = \Nino\Modules\Members::account( $appData, self::_id( \Nino\Admin\Admin::postData() ) );
+			$data = \Nino\Admin\Admin::postData();
+			$account = \Nino\Modules\Members::account( $appData, self::_id( $data ) );
 
 			if( $account === null ) {
 				self::_failed( $request, 'unknown' );
@@ -250,12 +261,20 @@ namespace Nino\Modules\Members {
 				return;
 			}
 
-			if( \Nino\Modules\Members::link( $appData, $account, 'login', '', true ) === false ) {
-				self::_unsent( $appData, $request, 'the link could not be sent' );
+			$notify = self::_notify( $data );
+			$made = \Nino\Modules\Members::link( $appData, $account, 'login', '', true, $notify );
+
+			if( $made === false ) {
+
+				if( $notify === false && \Nino\Mail::rateLimited( $appData ) === false )
+					\Nino\Http::fail( $request, 500, 'the link could not be made' );
+				else
+					self::_unsent( $appData, $request, 'the link could not be sent' );
+
 				return;
 			}
 
-			\Nino\Http::ok( $request, [ 'sent' => true ] );
+			\Nino\Http::ok( $request, $notify === false ? [ 'sent' => false, 'link' => (string) $made ] : [ 'sent' => true ] );
 		}
 
 		/**
@@ -277,6 +296,18 @@ namespace Nino\Modules\Members {
 			}
 
 			\Nino\Http::ok( $request, [ 'signedOut' => true ] );
+		}
+
+		/**
+		 *	Whether the account is mailed for this action: true unless the post says false
+		 *
+		 *	@param		array 		$data					What the action was posted
+		 *
+		 *	@return 	bool
+		 */
+		private static function _notify( array $data ): bool {
+
+			return ( $data['notify'] ?? true ) !== false;
 		}
 
 		/**

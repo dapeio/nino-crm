@@ -678,6 +678,102 @@ check( 'link sends the member a link to sign in: one mail to the address, a toke
 	&& preg_match( '/(?<![\d.])15(?![\d.])/', strip_tags( (string) $mails[0]['body'] ) ) === 1 );
 check( '...and the links that were out stay good', array_diff_key( membersFile( $appData, 'tokens' ), [ hash( 'sha256', $token ) => 1 ] ) === $tokensBefore );
 
+// ...asked not to mail: the token is kept, the link is the answer, once
+membersFresh( $appData );
+$mails = [];
+$tokensBefore = membersFile( $appData, 'tokens' );
+$before = time();
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'id' => $id, 'notify' => false ], 'members/link' );
+$quietToken = preg_match( '~^https://example\.org/club/\.members/login\?t=([A-Za-z0-9_-]+)$~D', (string) ( $body['link'] ?? '' ), $found ) === 1 ? $found[1] : '';
+$quietEntry = membersFile( $appData, 'tokens' )[ hash( 'sha256', $quietToken ) ] ?? [];
+check( 'link with notify false mails nobody and answers the link as the mail would have carried it; the token is kept for the account as a mailed one is - the kind login, the minutes of the setting - and as its sha256 only',
+	$status === 200 && $body['sent'] === false && $quietToken !== '' && $mails === [] && ( $quietEntry['kind'] ?? '' ) === 'login' && ( $quietEntry['account'] ?? '' ) === $id && ( $quietEntry['expires'] ?? 0 ) >= $before + 900 - 2 && ( $quietEntry['expires'] ?? 0 ) <= time() + 900 + 2
+	&& str_contains( (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/members-tokens.php' ) ), $quietToken ) === false && count( membersFile( $appData, 'tokens' ) ) === count( $tokensBefore ) + 1 );
+membersVisitor();
+$signedIn = membersConfirm( $appData, $quietToken );
+check( '...and the link signs the account in, as a link of a mail does - once: the next use of it is the page of a link that is spent', $signedIn[0] < 400 && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $id
+	&& membersAnswer( membersServe( $appData, '/.members/login?t='. $quietToken ) )[0] !== 200 );
+membersVisitor();
+check( '...while notify true, absent, or anything that is no false mails and answers no link', ( static function() use ( &$appData, $panel, $id ): bool {
+	global $mails;
+	$mails = [];
+	$answers = [ ninoCall( $appData, $panel, [ 'id' => $id, 'notify' => true ], 'members/link' ), ninoCall( $appData, $panel, [ 'id' => $id, 'notify' => 'false' ], 'members/link' ), ninoCall( $appData, $panel, [ 'id' => $id, 'notify' => 0 ], 'members/link' ) ];
+	return count( $mails ) === 3 && array_filter( $answers, static fn( array $each ): bool => $each[0] !== 200 || isset( $each[1]['link'] ) || $each[1] !== [ 'sent' => true ] ) === [];
+} )() );
+$logged = \Nino\Modules\Members\Admin::log( 'members/link', [ 'id' => $id, 'notify' => false ] );
+check( '...the line of the activity log says that no mail was sent, and holds nothing of a link', str_contains( $logged, 'without mail' ) === true && str_contains( $logged, $quietToken ) === false && str_contains( \Nino\Modules\Members\Admin::log( 'members/link', [ 'id' => $id ] ), 'without mail' ) === false
+	&& str_contains( \Nino\Modules\Members\Admin::log( 'members/add', [ 'invite' => true, 'notify' => false ] ), 'without mail' ) === true && str_contains( \Nino\Modules\Members\Admin::log( 'members/add', [ 'invite' => true ] ), 'without mail' ) === false
+	&& str_contains( \Nino\Modules\Members\Admin::log( 'members/add', [ 'invite' => false, 'notify' => false ] ), 'without mail' ) === false );
+
+// ...a link without the mail is charged to the cap of mails an hour as a mail is: the sixth is refused, with the code of the cap, and so is a mail after five
+membersFresh( $appData );
+$mails = [];
+$quietRuns = [];
+$tokensKept = [];
+for( $each = 0; $each < 6; $each++ ) {
+	$quietRuns[] = ninoCall( $appData, $panel, [ 'id' => $id, 'notify' => false ], 'members/link' );
+	$tokensKept[] = count( membersFile( $appData, 'tokens' ) );
+}
+$mailedAfter = ninoCall( $appData, $panel, [ 'id' => $id ], 'members/link' );
+check( 'the sixth link in an hour without a mail is a 429 with members_ratelimit and makes no token - as the sixth mail is - and a mail after five links is refused by the same counter',
+	array_column( $quietRuns, 0 ) === [ 200, 200, 200, 200, 200, 429 ] && ( $quietRuns[5][1]['code'] ?? '' ) === 'members_ratelimit' && isset( $quietRuns[5][1]['link'] ) === false
+	&& $mailedAfter[0] === 429 && $mails === [] && \Nino\Mail::rateLimited( $appData ) === true && $tokensKept[5] === $tokensKept[4] && $tokensKept[4] === $tokensKept[0] + 4 );
+$asked = \Nino\Modules\Members::link( $appData, \Nino\Modules\Members::account( $appData, $id ), 'login', '', true, false );
+check( '...and Members::link() with $notify false answers false over the cap, with the flag of a refused mail', $asked === false && \Nino\Mail::rateLimited( $appData ) === true );
+membersFresh( $appData );
+
+// ...the cap is the configured one, '/nino/mail/cap': at 2 the third link is refused, at 100 and at 0 (no cap) the sixth goes through
+$capRuns = [];
+foreach( [ 2 => 3, 100 => 6, 0 => 6 ] as $cap => $times ) {
+	membersFresh( $appData );
+	$appData['/nino/mail/cap'] = $cap;
+	$statuses = [];
+	for( $each = 0; $each < $times; $each++ )
+		$statuses[] = ninoCall( $appData, $panel, [ 'id' => $id, 'notify' => false ], 'members/link' )[0];
+	$capRuns[$cap] = $statuses;
+}
+unset( $appData['/nino/mail/cap'] );
+membersFresh( $appData );
+check( 'a link without the mail is charged against the configured cap: at 2 the third is a 429 and the two before are links, at 100 and at 0 (no cap) six pass',
+	$capRuns === [ 2 => [ 200, 200, 429 ], 100 => [ 200, 200, 200, 200, 200, 200 ], 0 => [ 200, 200, 200, 200, 200, 200 ] ] );
+$mails = [];
+membersFresh( $appData );
+for( $each = 0; $each < 5; $each++ )
+	\Nino\Feature::count( $appData, 'ratelimit', \Nino\Http::getClientIp( $appData ), 5, 3600 );
+$beforeAdd = count( membersFile( $appData, 'accounts' )['accounts'] );
+[ $capStatus, $capBody ] = ninoCall( $appData, $panel, [ 'email' => 'capped-quiet@example.org', 'name' => 'Capped', 'invite' => true, 'notify' => false ], 'members/add' );
+check( 'members/add with an invitation whose link is not mailed, at the cap, answers the cap - a 429 members_ratelimit and not a 500 - and the link is not in the answer', $capStatus === 429 && ( $capBody['code'] ?? '' ) === 'members_ratelimit' && isset( $capBody['link'] ) === false );
+ninoCall( $appData, $panel, [ 'id' => membersIdOf( $appData, 'capped-quiet@example.org' ) ], 'members/delete' );
+membersFresh( $appData );
+
+membersFresh( $appData );
+$mails = [];
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'email' => 'quiet-invite@example.org', 'name' => 'Quiet', 'invite' => true, 'notify' => false ], 'members/add' );
+$inviteToken = preg_match( '~^https://example\.org/club/\.members/login\?t=([A-Za-z0-9_-]+)$~D', (string) ( $body['link'] ?? '' ), $found ) === 1 ? $found[1] : '';
+$inviteEntry = membersFile( $appData, 'tokens' )[ hash( 'sha256', $inviteToken ) ] ?? [];
+check( 'add with an invitation and notify false adds the account, mails nobody and answers the link of the invitation: the kind invite, the days of the setting',
+	$status === 200 && $body['invited'] === true && $mails === [] && $inviteToken !== '' && ( $inviteEntry['kind'] ?? '' ) === 'invite' && ( $inviteEntry['account'] ?? '' ) === ( $body['account']['id'] ?? '-' ) && ( $inviteEntry['expires'] ?? 0 ) >= time() + 7 * 86400 - 5 );
+[ $status, $body ] = ninoCall( $appData, $panel, [ 'email' => 'no-invite@example.org', 'invite' => false, 'notify' => false ], 'members/add' );
+check( '...and without an invitation notify has nothing to do: no link, no mail', $status === 200 && $body['invited'] === false && isset( $body['link'] ) === false && $mails === [] );
+ninoCall( $appData, $panel, [ 'id' => membersIdOf( $appData, 'quiet-invite@example.org' ) ], 'members/delete' );
+ninoCall( $appData, $panel, [ 'id' => membersIdOf( $appData, 'no-invite@example.org' ) ], 'members/delete' );
+
+$mails = [];
+membersFresh( $appData );
+$account = \Nino\Modules\Members::account( $appData, $id );
+$asLogin = \Nino\Modules\Members::link( $appData, $account, 'login', '/portal', true, false );
+$asInvite = \Nino\Modules\Members::link( $appData, $account, 'invite', '', false, false );
+$asMail = \Nino\Modules\Members::link( $appData, $account, 'login', '', true );
+check( 'Members::link() with $notify false answers the link and sends nothing - for both kinds; with the default it answers true and mails',
+	is_string( $asLogin ) === true && is_string( $asInvite ) === true && str_starts_with( $asLogin, 'https://example.org/club/.members/login?t=' ) === true && $asLogin !== $asInvite && $asMail === true && count( $mails ) === 1 );
+$noAddress = '';
+\Nino\Html::addFills( $appData, [ '[[/project/website/general/url]]' => '' ], '*' );
+ninoWarnings();
+$noAddress = \Nino\Modules\Members::link( $appData, $account, 'login', '', true, false );
+\Nino\Html::addFills( $appData, [ '[[/project/website/general/url]]' => 'example.org/club' ], '*' );
+check( '...and a site with no address of its own has no link to give: false, with a warning, and no token kept', $noAddress === false && count( ninoWarnings() ) >= 1 );
+membersFresh( $appData );
+
 membersFresh( $appData );
 $delivery = false;
 [ $status, $body ] = ninoCall( $appData, $panel, [ 'id' => $id ], 'members/link' );

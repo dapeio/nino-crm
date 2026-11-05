@@ -102,7 +102,7 @@ namespace Nino\Modules\Review {
 			$on = $file === '' ? '' : ' of file '. $file;
 
 			return match( $action ) {
-				'review/answer'	=> ( self::$_made[$action] ?? '' ) === '' ? '' : 'Wrote comment '. self::$_made[$action],
+				'review/answer'	=> ( self::$_made[$action] ?? '' ) === '' ? '' : 'Wrote comment '. self::$_made[$action]. ( ( $data['notify'] ?? null ) === false ? ', member not mailed' : '' ),
 				'review/done'		=> 'Marked comment '. $comment. $on. ( self::$_made[$action] ?? '' ),
 				'review/delete'	=> 'Deleted comment '. $comment. $on,
 				default					=> '',
@@ -188,6 +188,7 @@ namespace Nino\Modules\Review {
 				],
 				'comments'	=> $comments,
 				'length'		=> \Nino\Modules\Review::length( $appData ),
+				'notify'		=> \Nino\Features::setting( $appData, 'review', 'notifyMembers', false ) === true,
 				'files'			=> \Nino\Auth::checkPermission( $appData, \Nino\Modules\Files\Admin::MANAGE_PERM ),
 			] );
 		}
@@ -195,8 +196,8 @@ namespace Nino\Modules\Review {
 		/**
 		 *	The owner's comment on a file, or the owner's answer to a comment (the posted parent), with a time or without one
 		 *	(at: empty, seconds, m:ss or h:mm:ss). The rules of the API hold: the text is at most the setting length and not empty,
-		 *	the parent is a comment of the file. The callback '/review/comment' is told of it and, where the setting notifyMembers is
-		 *	on, the member who is answered - or, for a comment of its own on a file that is visible, the group - is mailed
+		 *	the parent is a comment of the file; notify, a bool, says whether the member is mailed (absent: the setting decides). The callback '/review/comment' is told of it and, where the setting notifyMembers is
+		 *	on - or notify says true; false mails nobody - the member who is answered - or, for a comment of its own on a file that is visible, the group - is mailed
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		&$request			(reference) Current server request
@@ -239,7 +240,7 @@ namespace Nino\Modules\Review {
 			self::$_made['review/answer'] = $made['id']. ' of file '. $entry['id'];
 
 			\Nino\Callbacks::doCallbacks( $appData, '/review/comment', $made );
-			\Nino\Modules\Review::notifyMembers( $appData, $entry, $made, $answered );
+			\Nino\Modules\Review::notifyMembers( $appData, $entry, $made, $answered, is_bool( $data['notify'] ?? null ) === true ? $data['notify'] : null );
 
 			\Nino\Http::ok( $request, [ 'comment' => $made ] );
 		}

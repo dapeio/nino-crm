@@ -1764,6 +1764,115 @@ check( '...and its line in the activity log names the old request and the new on
 	&& str_contains( \Nino\Modules\Sign\Admin::log( 'sign/again', [ 'id' => $forAgain['id'], 'account' => $ada['id'] ] ), $ada['id'] ) === false );
 \Nino\Modules\Sign::remove( $appData, $made['id'] );
 
+// Asked not to mail: the request is made, nobody is mailed, the link is the answer - once
+signFresh( $appData );
+$mailsBefore = count( $mails );
+$quiet = $call( 'sign/request', [ 'account' => $ada['id'], 'template' => 'two-fields', 'title' => 'Quiet ask', 'notify' => false ] );
+$quietLink = (string) ( $quiet[1]['link'] ?? '' );
+$quietToken = preg_match( '~^https://example\.org/club/\.sign\?t=([A-Za-z0-9_-]{43})$~D', $quietLink, $quietFound ) === 1 ? $quietFound[1] : '';
+$quietEntry = signIndex( $appData )[ $quiet[1]['id'] ?? '' ] ?? [];
+check( 'sign/request with notify false makes the request, mails nobody and answers the id with the link as the mail would have carried it: the address of the site, /.sign and a token of 43 characters',
+	$quiet[0] === 200 && array_keys( $quiet[1] ) === [ 'id', 'link' ] && $quietToken !== '' && count( $mails ) === $mailsBefore && ( $quietEntry['status'] ?? '' ) === 'requested' && ( $quietEntry['title'] ?? '' ) === 'Quiet ask' );
+check( '...the index keeps the sha256 of that token and not the token, and the link opens the page for the same days as a mailed one',
+	( $quietEntry['token'] ?? '' ) === hash( 'sha256', $quietToken ) && str_contains( (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/sign/requests.php' ) ), $quietToken ) === false
+	&& abs( ( $quietEntry['expires'] ?? 0 ) - ( time() + 14 * 86400 ) ) < 5 && signServe( $appData, '/.sign?t='. $quietToken )['/nino/http/response']['statusCode'] === 200 );
+$listed = $call( 'sign/list' );
+$logged = \Nino\Modules\Sign\Admin::log( 'sign/request', [ 'account' => $ada['id'], 'template' => 'two-fields', 'notify' => false ] );
+check( '...the link is in that answer and nowhere else: not in the list of requests, not in the line of the activity log - which says that no mail was sent', str_contains( json_encode( $listed ), $quietToken ) === false && str_contains( $logged, $quietToken ) === false
+	&& str_contains( $logged, 'without mail' ) === true && str_contains( \Nino\Modules\Sign\Admin::log( 'sign/request', [ 'account' => $ada['id'] ] ), 'without mail' ) === false );
+
+$loud = [ $call( 'sign/request', [ 'account' => $ada['id'], 'template' => 'two-fields', 'notify' => true ] ), $call( 'sign/request', [ 'account' => $ada['id'], 'template' => 'two-fields', 'notify' => 'false' ] ), $call( 'sign/request', [ 'account' => $ada['id'], 'template' => 'two-fields', 'notify' => 0 ] ) ];
+check( '...while true, absent, and anything that is no false mail as before and answer no link', array_map( static fn( array $answer ): bool => $answer[0] === 200 && isset( $answer[1]['link'] ) === false, $loud ) === [ true, true, true ] && count( $mails ) === $mailsBefore + 3 );
+
+$mailsBefore = count( $mails );
+$quietRemind = $call( 'sign/remind', [ 'id' => $quiet[1]['id'], 'notify' => false ] );
+$remindToken = preg_match( '~^https://example\.org/club/\.sign\?t=([A-Za-z0-9_-]{43})$~D', (string) ( $quietRemind[1]['link'] ?? '' ), $remindFound ) === 1 ? $remindFound[1] : '';
+check( 'sign/remind with notify false mails nobody and answers the new link: the request holds the new token, whose sha256 is in the index, the old link is dead and the new one opens',
+	$quietRemind[0] === 200 && $quietRemind[1]['sent'] === false && $remindToken !== '' && $remindToken !== $quietToken && count( $mails ) === $mailsBefore && ( signIndex( $appData )[ $quiet[1]['id'] ]['token'] ?? '' ) === hash( 'sha256', $remindToken )
+	&& signServe( $appData, '/.sign?t='. $quietToken )['/nino/http/response']['statusCode'] === 404 && signServe( $appData, '/.sign?t='. $remindToken )['/nino/http/response']['statusCode'] === 200 );
+$quietGone = $call( 'sign/cancel', [ 'id' => $quiet[1]['id'] ] );
+check( '...a request that is over is refused without a link (409, sign_state), and the line of the log says that no mail was sent', $quietGone[0] === 200 && $call( 'sign/remind', [ 'id' => $quiet[1]['id'], 'notify' => false ] )[0] === 409
+	&& str_contains( \Nino\Modules\Sign\Admin::log( 'sign/remind', [ 'id' => $quiet[1]['id'], 'notify' => false ] ), 'without mail' ) === true && str_contains( \Nino\Modules\Sign\Admin::log( 'sign/again', [ 'id' => $quiet[1]['id'], 'notify' => false ] ), 'without mail' ) === true );
+
+signFresh( $appData );
+$mailsBefore = count( $mails );
+$viaClass = \Nino\Modules\Sign::request( $appData, 'two-fields', [], $bob['id'], [ 'notify' => false, 'page' => '/club/documents' ] );
+$classToken = preg_match( '~^https://example\.org/club/\.sign\?t=([A-Za-z0-9_-]{43})&return=%2Fclub%2Fdocuments$~D', (string) ( $viaClass['link'] ?? '' ), $classFound ) === 1 ? $classFound[1] : '';
+$linkOut = \Nino\Modules\Sign::remind( $appData, $viaClass['id'], false );
+$classLoud = \Nino\Modules\Sign::remind( $appData, $viaClass['id'], true );
+check( 'Sign::request() with the option notify false is the request, mailed false and the link - with the page to return to, as the mail has it; Sign::remind() with false answers the new link, the same way, and with true answers true',
+	is_array( $viaClass ) && $viaClass['mailed'] === false && $classToken !== '' && is_string( $linkOut ) === true && str_ends_with( $linkOut, '&return=%2Fclub%2Fdocuments' ) === true && str_contains( $linkOut, $classToken ) === false
+	&& $classLoud === true && count( $mails ) === $mailsBefore + 1 );
+\Nino\Modules\Sign::remove( $appData, $viaClass['id'] );
+
+// ...a link without the mail is charged to the cap of mails an hour as a mail is: the sixth is refused, the flag of a refused mail is set, and nothing is made
+signFresh( $appData );
+$requestsBefore = count( signIndex( $appData ) );
+$quiets = [];
+for( $each = 0; $each < 6; $each++ )
+	$quiets[] = \Nino\Modules\Sign::request( $appData, 'two-fields', [], $bob['id'], [ 'notify' => false ] );
+check( 'the sixth request in an hour whose link is not mailed is refused with "ratelimit" as the sixth mail is, makes no request, and flags the refusal like a refused mail', array_map( static fn( array|string $each ): string => is_array( $each ) === true ? 'made' : $each, $quiets ) === [ 'made', 'made', 'made', 'made', 'made', 'ratelimit' ]
+	&& count( signIndex( $appData ) ) === $requestsBefore + 5 && \Nino\Mail::rateLimited( $appData ) === true );
+$mailsBefore = count( $mails );
+$mailedAfterFive = \Nino\Modules\Sign::request( $appData, 'two-fields', [], $bob['id'] );
+check( '...the same counter: a request that is mailed after five links is refused by it too', is_array( $mailedAfterFive ) && $mailedAfterFive['mailed'] === false && count( $mails ) === $mailsBefore );
+signFresh( $appData );
+foreach( $quiets as $each )
+	if( is_array( $each ) === true )
+		\Nino\Modules\Sign::remove( $appData, $each['id'] );
+$kept = \Nino\Modules\Sign::request( $appData, 'two-fields', [], $bob['id'] );
+signFresh( $appData );
+$reminds = [];
+for( $each = 0; $each < 6; $each++ )
+	$reminds[] = \Nino\Modules\Sign::remind( $appData, $kept['id'], false );
+check( '...and the sixth link made again without a mail is false and the request keeps the token of the fifth', array_map( static fn( bool|string $each ): string => is_string( $each ) === true ? 'link' : 'false', $reminds ) === [ 'link', 'link', 'link', 'link', 'link', 'false' ] && \Nino\Mail::rateLimited( $appData ) === true
+	&& \Nino\Modules\Sign\Store::read( $appData )[ $kept['id'] ]['token'] === hash( 'sha256', preg_match( '~t=([A-Za-z0-9_-]{43})~', $reminds[4], $found ) === 1 ? $found[1] : '' ) );
+$panelQuiet = [];
+signFresh( $appData );
+signWorkbench( 'admin' );
+for( $each = 0; $each < 6; $each++ )
+	$panelQuiet[] = ninoCall( $appData, $panel, [ 'account' => $bob['id'], 'template' => 'two-fields', 'notify' => false ], 'sign/request' );
+check( '...through the panel the sixth is a 429 with sign_ratelimit', array_column( $panelQuiet, 0 ) === [ 200, 200, 200, 200, 200, 429 ] && ( $panelQuiet[5][1]['code'] ?? '' ) === 'sign_ratelimit' );
+$remindQuiet = ninoCall( $appData, $panel, [ 'id' => $kept['id'], 'notify' => false ], 'sign/remind' );
+check( '...and the link made again through the panel is refused by the cap the same way', $remindQuiet[0] === 429 && ( $remindQuiet[1]['code'] ?? '' ) === 'sign_ratelimit' );
+signFresh( $appData );
+
+// ...the cap is the configured one: at 2 the third request is refused, at 100 and at 0 (no cap) the sixth goes through
+$signCaps = [];
+foreach( [ 2 => 3, 100 => 6, 0 => 6 ] as $cap => $times ) {
+	signFresh( $appData );
+	$appData['/nino/mail/cap'] = $cap;
+	$made = [];
+	for( $each = 0; $each < $times; $each++ )
+		$made[] = \Nino\Modules\Sign::request( $appData, 'two-fields', [], $bob['id'], [ 'notify' => false ] );
+	$signCaps[$cap] = array_map( static fn( array|string $one ): string => is_array( $one ) === true ? 'made' : $one, $made );
+	foreach( $made as $one )
+		if( is_array( $one ) === true )
+			\Nino\Modules\Sign::remove( $appData, $one['id'] );
+}
+unset( $appData['/nino/mail/cap'] );
+signFresh( $appData );
+check( 'a request whose link is not mailed is charged against the configured cap: at 2 the third is refused with "ratelimit", at 100 and at 0 (no cap) six are made',
+	$signCaps === [ 2 => [ 'made', 'made', 'ratelimit' ], 100 => array_fill( 0, 6, 'made' ), 0 => array_fill( 0, 6, 'made' ) ] );
+$forRemind = \Nino\Modules\Sign::request( $appData, 'two-fields', [], $bob['id'] );
+$appData['/nino/mail/cap'] = 2;
+signFresh( $appData );
+$remindRuns = array_map( static fn( bool|string $one ): string => is_string( $one ) === true ? 'link' : 'false', [ \Nino\Modules\Sign::remind( $appData, $forRemind['id'], false ), \Nino\Modules\Sign::remind( $appData, $forRemind['id'], false ), \Nino\Modules\Sign::remind( $appData, $forRemind['id'], false ) ] );
+unset( $appData['/nino/mail/cap'] );
+signFresh( $appData );
+check( '...and so is the link made again: at cap 2 the third is false', $remindRuns === [ 'link', 'link', 'false' ] );
+\Nino\Modules\Sign::remove( $appData, $forRemind['id'] );
+
+// ...and a request asked again: the same option
+signFresh( $appData );
+$tryToSign( 'for the quiet again', fn() => $saveTemplate( '<h1>Service contract</h1><p>Between the club and [[client]]. Changed quietly.</p>' ), fn() => $saveTemplate( $plainText ), [ 'title' => 'Asked again quietly' ] );
+$forQuiet = $spoilt['for the quiet again'];
+$mailsBefore = count( $mails );
+signFresh( $appData );
+$quietAgain = $call( 'sign/again', [ 'id' => $forQuiet['id'], 'notify' => false ] );
+check( 'sign/again takes notify the same way: a new request, no mail, and its link in the answer', $quietAgain[0] === 200 && preg_match( '~^https://example\.org/club/\.sign\?t=[A-Za-z0-9_-]{43}~', (string) ( $quietAgain[1]['link'] ?? '' ) ) === 1 && count( $mails ) === $mailsBefore
+	&& ( \Nino\Modules\Sign::get( $appData, (string) ( $quietAgain[1]['id'] ?? '' ) )['status'] ?? '' ) === 'requested' );
+
 // The sentences of the codes, and the words of the script, in both languages
 $codes = [];
 preg_match_all( "/'(sign_[a-z]+)'/", (string) file_get_contents( $dir. '/Admin/Admin.php' ), $inCode );

@@ -122,7 +122,7 @@ $thirdFile->exec( 'INSERT INTO client_accounts ( client_id, member_id ) VALUES (
 $thirdFile = null;
 $migrated = \Crm\Db::pdo( $third );
 $rows = \Crm\Db::rows( $third, 'SELECT client_id, member_id FROM client_accounts ORDER BY rowid' );
-check( 'migrations 0004 to 0007 on a database of the third schema run once: version 7, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 4 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 7
+check( 'migrations 0004 to 0008 on a database of the third schema run once: version 8, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 5 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 8
 	&& array_map( 'json_encode', $rows ) === [ '{"client_id":2,"member_id":"aaaaaaaaaaaa"}', '{"client_id":1,"member_id":"bbbbbbbbbbbb"}' ] );
 check( '...migration 0006 gave the documents the column project, empty for every row there is, and the index on it', in_array( 'project', array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( documents )' ), 'name' ), true ) === true
 	&& (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'documents_project\' AND tbl_name = \'documents\'' )['n'] === 1 && \Crm\Db::rows( $third, 'SELECT id FROM documents WHERE project <> \'\'' ) === [] );
@@ -783,6 +783,35 @@ $neuToken = $found[1] ?? '';
 check( '...the client is counted with one account, one of them active', ( \Crm\Clients::get( $appData, (int) $kg['id'] )['accounts'] ?? 0 ) === 1 && ( \Crm\Clients::get( $appData, (int) $kg['id'] )['active_accounts'] ?? 0 ) === 1 );
 check( '...the log line names the client and no address', \Crm\Clients\Admin::log( 'crm-clients/save', [ 'account_email' => 'neu@example.org' ] ) === 'Added client K-0006' );
 
+$keptMails = $mails->getArrayCopy();
+$mailsNow = count( $keptMails );
+[ $status, $body ] = $call( 'crm-clients/save', [ 'company' => 'Stille GmbH', 'account_email' => 'stille@example.org', 'notify' => false ] );
+$stilleLog = \Crm\Clients\Admin::log( 'crm-clients/save', [] );
+$stilleLink = (string) ( $body['first']['link'] ?? '' );
+check( 'save with a first account and notify false makes both and mails nobody: the answer has the link of the invitation, mailed false, and the log line says so', $status === 200 && ( $body['first']['mailed'] ?? null ) === false && preg_match( '~^https://example\.org/club/\.members/login\?t=[A-Za-z0-9_-]+$~D', $stilleLink ) === 1
+	&& count( $mails ) === $mailsNow && ( $lastToken()['kind'] ?? '' ) === 'invite' && str_contains( $stilleLog, 'without mail' ) === true );
+check( '...without an account notify has nothing to say: no first in the answer', array_key_exists( 'first', $call( 'crm-clients/save', [ 'company' => 'Still Allein GmbH', 'notify' => false ] )[1] ) === false );
+$resetCap();
+for( $each = 0; $each < 5; $each++ )
+	\Nino\Feature::count( $appData, 'ratelimit', '127.0.0.1', 5, 3600 );
+
+$membersAtCap = count( \Nino\Modules\Members::accounts( $appData ) );
+[ $status, $body ] = $call( 'crm-clients/save', [ 'company' => 'Am Limit GmbH', 'account_email' => 'am-limit@example.org', 'notify' => false ] );
+$limitLog = \Crm\Clients\Admin::log( 'crm-clients/save', [] );
+check( 'a client made with a first account whose link is not mailed, at the cap, is made and the account is refused with the code of the cap - no account is made, no link is in the answer, and the line of the log does not say that an account was invited without mail',
+	$status === 200 && ( $body['first']['refused']['code'] ?? '' ) === 'crm_clients_ratelimit' && $body['first']['account'] === null && isset( $body['first']['link'] ) === false && count( \Nino\Modules\Members::accounts( $appData ) ) === $membersAtCap && str_contains( $limitLog, 'without mail' ) === false );
+$resetCap();
+$stilleClient = (array) \Crm\Clients::byNumber( $appData, 'K-0007' );
+[ $status, $body ] = $call( 'crm-clients/invite', [ 'id' => (string) ( $stilleClient['id'] ?? 0 ), 'email' => 'stiller@example.org', 'notify' => false ] );
+check( 'invite with notify false makes the account and the link and mails nobody - the link is the answer, once', $status === 200 && $body['mailed'] === false && is_string( $body['link'] ?? null ) === true && count( $mails ) === $mailsNow
+	&& str_contains( \Crm\Clients\Admin::log( 'crm-clients/invite', [ 'id' => '1' ] ), 'without mail' ) === true );
+$mails->exchangeArray( $keptMails );
+foreach( \Nino\Modules\Members::accounts( $appData ) as $each )
+	if( in_array( $each['email'], [ 'stille@example.org', 'stiller@example.org' ], true ) === true ) {
+		\Crm\Db::exec( $appData, 'DELETE FROM client_accounts WHERE member_id = :member', [ 'member' => $each['id'] ] );
+		\Nino\Modules\Members::remove( $appData, $each['id'] );
+	}
+
 [ $status, $body ] = $call( 'crm-clients/save', [ 'company' => 'Allein GmbH' ] );
 check( 'without an address the client is made alone: no first in the answer, no account, no mail', $status === 200 && array_key_exists( 'first', $body ) === false && \Crm\Clients::accounts( $appData, (int) $body['client']['id'] ) === [] && count( $mails ) === 1 );
 [ $status, $body ] = $call( 'crm-clients/save', [ 'company' => 'Leer GmbH', 'account_email' => '  ', 'account_name' => 'Nur Name' ] );
@@ -873,6 +902,27 @@ $resetCap();
 [ $status, $body ] = $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'] ] );
 check( 'one that did gets a link to sign in: kind login, to the portal', $status === 200 && $body === [ 'sent' => true, 'kind' => 'login' ] && count( $mails ) === 2 && ( $lastToken()['kind'] ?? '' ) === 'login' && ( $lastToken()['target'] ?? '' ) === '/portal' );
 check( '...and the card of the client has it as signed in', ( \Crm\Clients::accountOf( $appData, (int) $kg['id'], (string) $neu['id'] )['state'] ?? '' ) === 'signed' );
+
+// ...without the mail: the link is the answer, once
+$resetCap();
+$mails->exchangeArray( [] );
+$tokensBefore = count( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) );
+[ $status, $body ] = $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'], 'notify' => false ] );
+$quietLogin = preg_match( '~^https://example\.org/club/\.members/login\?t=([A-Za-z0-9_-]+)$~D', (string) ( $body['link'] ?? '' ), $found ) === 1 ? $found[1] : '';
+$quietLog = \Crm\Clients\Admin::log( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'], 'notify' => false ] );
+$quietEntry = (array) ( \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] )[ hash( 'sha256', $quietLogin ) ] ?? [] );
+check( 'with notify false the link to sign in is made and nobody is mailed: the answer has the link, sent false and the kind, and the token is kept for the account - kind login, to the portal - as its hash',
+	$status === 200 && $body['sent'] === false && $body['kind'] === 'login' && $quietLogin !== '' && count( $mails ) === 0 && ( $quietEntry['kind'] ?? '' ) === 'login' && ( $quietEntry['target'] ?? '' ) === '/portal'
+	&& ( $quietEntry['account'] ?? '' ) === $neu['id'] && count( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) ) === $tokensBefore + 1 );
+crmConfirm( $appData, $quietLogin );
+check( '...the link is as good as a mailed one: the page signs the account in with it and the token is spent', array_key_exists( hash( 'sha256', $quietLogin ), (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) ) === false );
+check( '...and the line of the log says that no mail was sent and holds no link', str_contains( $quietLog, 'without mail' ) === true && str_contains( $quietLog, $quietLogin ) === false && str_contains( $quietLog, 'Sent a link' ) === false );
+$resetCap();
+foreach( [ true, 'false', 0 ] as $loud )
+	$call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'], 'notify' => $loud ] );
+check( '...while true, anything that is no false, mails as before', count( $mails ) === 3 );
+$resetCap();
+$mails->exchangeArray( [] );
 
 $resetCap();
 $delivery = false;
@@ -1404,6 +1454,8 @@ check( 'the fourth step and the sentence under Fertig. point at the block Rechnu
 	&& array_filter( [ '/site/tax', '/site/bank', '/site/iban', '/site/bic', '#pdf-bausteine', '#pdf-layout', '#pdf-design', '#pdf-vorlage-<Schlüssel>', 'crm_pdf_template_used', 'multipart/form-data' ], static fn( string $needle ): bool => str_contains( $readme, $needle ) === false ) === [] );
 check( 'the README has the section on the Datenschutz and the order: the record (the table, the hash, what it is and is not - a simple electronic declaration in text form, Sign stays for a signature on a PDF), the setting and its day, the page and its route, the order with its transaction and its two mails, the difference between the owner\'s acceptance and an order, the start page, and the settings block', str_contains( $readme, '## Datenschutz und Auftrag online' ) === true
 	&& array_filter( [ '`records`', 'SHA-256', 'einfache elektronische Erklärung in Textform', '**Sign**', '`privacy_text`', '`privacy_changed`', '/portal/datenschutz', '`POST /.crm/datenschutz`', '`POST /.crm/auftrag`', '**Auftrag erteilen**', '`Documents::order()`', '*Was liegt an*', '`[crm-portal-start]`', '`[crm-privacy]`', '`?state=changed`', '`?state=nomail`', 'Prüfsumme des Textes', 'Rängen 1 bis 6', 'importiere die Vorlage noch einmal', '**Das Hauptmenü.**', "'navs' => [ 'main' => 5 ]", 'added.navs', 'keine Zeile `order`', 'ändert und löscht keine Zeile', 'Block **Datenschutz**' ], static fn( string $needle ): bool => str_contains( $readme, $needle ) === false ) === [] );
+check( 'the README has the section on the mails to customers: every action with the box and its default, the link shown once with what that means (as good as a mailed one, whoever has it acts as the account, the owner hands it over himself, only the hash is kept) and what is not touched',
+	str_contains( $readme, '## Mails an Kunden: mit oder ohne' ) === true && array_filter( [ '`notify`', '`reminded_at`', '`0008-reminders.php`', 'SHA-256 des Tokens', 'so gültig wie einer mit Mail', 'wer ihn hat, unterschreibt oder meldet sich an als dieses Konto', 'Du gibst ihn selbst weiter', 'nur jetzt zu sehen', 'Link erneut senden', 'Nicht betroffen', '/_admin/members/manage', '/_admin/sign/manage', '`crm_clients_link_perm`', '`perms.members`', 'fünf in der Stunde', 'die Obergrenze aus der Konfiguration, Standard fünf', '`crm_clients_link`', 'eine Zeile im Verlauf', 'mailed' ], static fn( string $needle ): bool => str_contains( $readme, $needle ) === false ) === [] );
 check( 'the screens say Status and not Zustand, in the words of the surface and of the panel', array_filter( [ 'Clients/Admin', 'Documents/Admin', 'Crm/Admin', 'Surface' ], static fn( string $dir ): bool => str_contains( (string) file_get_contents( $root. '/app/Crm/'. $dir. '/text/de_DE.php' ), 'Zustand' ) === true ) === [] );
 
 ninoDone( $appData );

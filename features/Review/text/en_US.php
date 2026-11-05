@@ -51,6 +51,7 @@ return [
 	'[[/_admin/review/label/text]]'					=> 'Comment',
 	'[[/_admin/review/label/at]]'					=> 'Time in the track (m:ss, may stay empty)',
 	'[[/_admin/review/label/now]]'					=> 'At the position of the player',
+	'[[/_admin/review/label/notify]]'				=> 'Inform the member by e-mail',
 	'[[/_admin/review/label/send]]'					=> 'Send',
 	'[[/_admin/review/error/empty]]'				=> 'Write a comment first.',
 

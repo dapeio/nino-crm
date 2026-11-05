@@ -155,11 +155,16 @@ ninoUser( $appData, 'admin@example.com' );
 \Nino\Auth::insertUser( $appData, 'old@example.com', 'old password', [ '/_admin/crm-clients/manage', '/_admin/crm-documents/manage' ] );
 \Nino\Auth::insertUser( $appData, 'pdf@example.com', 'pdf password', [ '/_admin/crm/manage', '/_admin/pdf/manage' ] );
 \Nino\Auth::insertUser( $appData, 'pdfonly@example.com', 'pdfonly password', [ '/_admin/pdf/manage' ] );
+\Nino\Auth::insertUser( $appData, 'linker@example.com', 'linker password', [ '/_admin/crm/manage', '/_admin/members/manage', '/_admin/sign/manage' ] );
+\Nino\Auth::insertUser( $appData, 'onlysign@example.com', 'onlysign password', [ '/_admin/crm/manage', '/_admin/sign/manage' ] );
+\Nino\Auth::insertUser( $appData, 'onlymembers@example.com', 'onlymembers password', [ '/_admin/crm/manage', '/_admin/members/manage' ] );
 \Nino\Auth::insertUser( $appData, 'items@example.com', 'items password', [ '/_admin/crm/manage', '/_admin/elements/manage' ] );
 \Nino\Auth::insertUser( $appData, 'itemsonly@example.com', 'itemsonly password', [ '/_admin/elements/manage' ] );
 \Nino\Auth::insertUser( $appData, 'itemtitle@example.com', 'itemtitle password', [ '/_admin/crm/manage', '/_admin/elements/manage', '/_admin/elements/positionen/update/title' ] );
 $asAdmin = static function() use ( $asUser ): void { $asUser( 'admin@example.com', 'correct horse battery staple' ); };
 $asCrm = static function() use ( $asUser ): void { $asUser( 'crm@example.com', 'crm password' ); };
+// The account that may have a link shown instead of mailed: the CRM's permission and those of Members and Sign
+$asLinker = static function() use ( $asUser ): void { $asUser( 'linker@example.com', 'linker password' ); };
 
 // --- The routes ------------------------------------------------------------------------------------------------------
 
@@ -562,6 +567,17 @@ check( 'a client with no account is mailed to nobody: mailed 0, and the reminder
 $noAddress = $appData;
 \Nino\Html::addFills( $noAddress, [ '[[/project/website/general/url]]' => '' ], '*' );
 check( 'a site with no address cannot link: "address", nothing mailed', Documents::remind( $noAddress, $late1['id'] ) === 'address' && count( $mails ) === $before + 2 );
+// ...without the mail: nothing is sent, the reminder is noted all the same
+$reset();
+$before = count( $mails );
+$quiet = Documents::remind( $appData, $late1['id'], false );
+$noted = Documents::get( $appData, $late1['id'] );
+check( 'a reminder with $mail false sends no mail and says so - mailed 0 - and is noted on the invoice: reminded_at is a time, and reminded_mail false', is_array( $quiet ) && $quiet['mailed'] === 0 && count( $mails ) === $before
+	&& preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $noted['reminded_at'] ) === 1 && $noted['reminded_mail'] === false && $quiet['document']['reminded_at'] === $noted['reminded_at'] );
+check( '...it still asks what a reminder asks: an invoice that is not overdue is state, one that is not released is released - and neither is noted', Documents::remind( $appData, $duetoday['id'], false ) === 'state' && Documents::remind( $appData, $late2['id'], false ) === 'released'
+	&& Documents::get( $appData, $late2['id'] )['reminded_at'] === '' && Documents::get( $appData, $duetoday['id'] )['reminded_at'] === '' );
+$loud = Documents::remind( $appData, $late1['id'] );
+check( '...and one with the mail notes it as sent by mail', is_array( $loud ) && $loud['mailed'] === 2 && $loud['document']['reminded_mail'] === true && count( $mails ) === $before + 2 );
 $reset();
 
 for( $n = 0; $n < 4; $n++ )
@@ -599,6 +615,22 @@ check( '...with Sign off both are "sign"', Documents::remindSignature( $appData,
 $cancelled = Documents::cancelSignature( $appData, $contractOk['id'] );
 check( 'the request is taken back: Sign says cancelled, the document reads so and stays open, and it is asked for again afterwards', is_array( $cancelled ) && $cancelled['sign_state'] === 'cancelled' && $cancelled['state'] === 'open' && \Nino\Modules\Sign::get( $appData, $asked['document']['sign_id'] )['status'] === 'cancelled'
 	&& Documents::cancelSignature( $appData, $contractOk['id'] ) === 'state' && Documents::remindSignature( $appData, $contractOk['id'] ) === 'state' && is_array( Documents::requestSignature( $appData, $contractOk['id'], $accounts['carl']['id'] ) ) );
+\Nino\Modules\Sign::cancel( $appData, Documents::get( $appData, $contractOk['id'] )['sign_id'] );
+Documents::get( $appData, $contractOk['id'] );
+
+// ...asked without the mail: the request is made, nobody is mailed, the link is the answer
+$reset();
+$before = count( $mails );
+$quietAsk = Documents::requestSignature( $appData, $contractOk['id'], $accounts['anna']['id'], 7, false );
+$askToken = is_array( $quietAsk ) && preg_match( '~^https://example\.org/club/\.sign\?t=([A-Za-z0-9_-]{43})&return=%2Fportal%2Fbelege$~D', (string) ( $quietAsk['link'] ?? '' ), $found ) === 1 ? $found[1] : '';
+$kept = \Nino\Modules\Sign\Store::read( $appData )[ $quietAsk['document']['sign_id'] ?? '' ] ?? [];
+check( 'a signature asked for with $notify false is a request that waits, with no mail: the answer has mailed false and the link as the mail would carry it - and the index holds the hash of its token', is_array( $quietAsk ) && $quietAsk['mailed'] === false && $quietAsk['document']['sign_state'] === 'requested'
+	&& $askToken !== '' && count( $mails ) === $before && ( $kept['token'] ?? '' ) === hash( 'sha256', $askToken ) );
+$quietAgain = Documents::remindSignature( $appData, $contractOk['id'], false );
+$againToken = is_array( $quietAgain ) && preg_match( '~\?t=([A-Za-z0-9_-]{43})~', (string) ( $quietAgain['link'] ?? '' ), $found ) === 1 ? $found[1] : '';
+$keptAgain = \Nino\Modules\Sign\Store::read( $appData )[ $quietAsk['document']['sign_id'] ?? '' ] ?? [];
+check( 'the link sent again without the mail is a new one: the request holds the hash of the new token, the old link is dead, and nobody is mailed', $againToken !== '' && $againToken !== $askToken && ( $keptAgain['token'] ?? '' ) === hash( 'sha256', $againToken ) && count( $mails ) === $before );
+check( '...with the mail the document has no link in it: the answer is the document alone', array_key_exists( 'link', (array) Documents::remindSignature( $appData, $contractOk['id'] ) ) === false && count( $mails ) === $before + 1 );
 \Nino\Modules\Sign::cancel( $appData, Documents::get( $appData, $contractOk['id'] )['sign_id'] );
 Documents::get( $appData, $contractOk['id'] );
 
@@ -728,15 +760,140 @@ $reset();
 Documents::release( $appData, $late1['id'], false );
 [ $status, $answer ] = surfaceApi( $appData, 'crm-documents/remind', [ 'id' => (string) $late1['id'] ] );
 check( '...a reminder says how many accounts were mailed', $status === 200 && $answer['mailed'] === 2 && $answer['document']['id'] === $late1['id'] );
+$reset();
+$beforeApi = count( $mails );
+[ $status, $answer ] = surfaceApi( $appData, 'crm-documents/remind', [ 'id' => (string) $late1['id'], 'notify' => false ] );
+$noteLog = \Crm\Documents\Admin::log( 'crm-documents/remind', [] );
+check( '...with notify false it sends none and says so: mailed 0, notify false, the reminder noted on the document - and the line of the log says it was noted without mail', $status === 200 && $answer['mailed'] === 0 && $answer['notify'] === false && $answer['document']['reminded_mail'] === false
+	&& $answer['document']['reminded_at'] !== '' && count( $mails ) === $beforeApi && str_contains( $noteLog, 'without mail' ) === true && str_contains( $noteLog, 'Sent' ) === false );
+$reset();
+$loudAnswers = [ surfaceApi( $appData, 'crm-documents/remind', [ 'id' => (string) $late1['id'], 'notify' => 'false' ] ), surfaceApi( $appData, 'crm-documents/remind', [ 'id' => (string) $late1['id'] ] ) ];
+check( '...and anything that is no false mails as before', array_column( array_column( $loudAnswers, 1 ), 'mailed' ) === [ 2, 2 ] );
+$reset();
+$asLinker();
+$beforeApi = count( $mails );
+[ $status, $answer ] = surfaceApi( $appData, 'crm-documents/sign', [ 'id' => (string) $contractOk['id'], 'account' => $accounts['anna']['id'], 'days' => '7', 'notify' => false ] );
+$signLog = \Crm\Documents\Admin::log( 'crm-documents/sign', [] );
+$apiToken = preg_match( '~^https://example\.org/club/\.sign\?t=([A-Za-z0-9_-]{43})~', (string) ( $answer['link'] ?? '' ), $found ) === 1 ? $found[1] : '';
+check( 'the signature asked for through the endpoint with notify false: 200, mailed false, the link in the answer, no mail - the document in the answer holds no link, and the line of the log says without mail and holds no token',
+	$status === 200 && $answer['mailed'] === false && $apiToken !== '' && count( $mails ) === $beforeApi && array_key_exists( 'link', $answer['document'] ) === false && str_contains( $signLog, 'without mail' ) === true && str_contains( $signLog, $apiToken ) === false );
+[ $status, $answer ] = surfaceApi( $appData, 'crm-documents/sign-remind', [ 'id' => (string) $contractOk['id'], 'notify' => false ] );
+$signRemindLog = \Crm\Documents\Admin::log( 'crm-documents/sign-remind', [] );
+check( 'the link again with notify false: a new link in the answer, none in the document, no mail, and the line of the log says so', $status === 200 && preg_match( '~\?t=([A-Za-z0-9_-]{43})~', (string) ( $answer['link'] ?? '' ), $again ) === 1 && $again[1] !== $apiToken
+	&& array_key_exists( 'link', $answer['document'] ) === false && count( $mails ) === $beforeApi && str_contains( $signRemindLog, 'without mail' ) === true );
+[ $status, $answer ] = surfaceApi( $appData, 'crm-documents/sign-remind', [ 'id' => (string) $contractOk['id'] ] );
+check( '...and without it, as before: the member is mailed and the answer has no link', $status === 200 && array_key_exists( 'link', $answer ) === false && count( $mails ) === $beforeApi + 1 );
+\Nino\Modules\Sign::cancel( $appData, Documents::get( $appData, $contractOk['id'] )['sign_id'] );
+Documents::get( $appData, $contractOk['id'] );
+
+// A link that is shown and not mailed signs in or signs as the account: it takes the permission of the feature that makes it, which the CRM's alone is not
+$reset();
+$asCrm();
+$membersBefore = count( \Nino\Modules\Members::accounts( $appData ) );
+$clientsBefore = count( \Crm\Clients::list( $appData ) );
+$requestsBefore = count( \Nino\Modules\Sign::requests( $appData ) );
+$mailsBefore = count( $mails );
+$denied = [
+	'sign'        => surfaceApi( $appData, 'crm-documents/sign', [ 'id' => (string) $contractOk['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] ),
+	'invite'      => surfaceApi( $appData, 'crm-clients/invite', [ 'id' => (string) $a['id'], 'email' => 'noperm@example.org', 'notify' => false ] ),
+	'resend'      => surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] ),
+	'first'       => surfaceApi( $appData, 'crm-clients/save', [ 'company' => 'Ohne Recht GmbH', 'account_email' => 'first-noperm@example.org', 'notify' => false ] ),
+];
+check( 'an account with the permission of the CRM alone is refused a link without the mail: 403 crm_documents_link_perm for a signature, 403 crm_clients_link_perm for an invitation, a link to sign in and a first account - and nothing is made',
+	array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $denied ) === [ 'sign' => '403 crm_documents_link_perm', 'invite' => '403 crm_clients_link_perm', 'resend' => '403 crm_clients_link_perm', 'first' => '403 crm_clients_link_perm' ]
+	&& array_filter( $denied, static fn( array $answer ): bool => isset( $answer[1]['link'] ) ) === [] && count( \Nino\Modules\Members::accounts( $appData ) ) === $membersBefore && count( \Crm\Clients::list( $appData ) ) === $clientsBefore
+	&& count( \Nino\Modules\Sign::requests( $appData ) ) === $requestsBefore && count( $mails ) === $mailsBefore );
+[ $status, $answer ] = surfaceApi( $appData, 'crm-documents/sign', [ 'id' => (string) $contractOk['id'], 'account' => $accounts['anna']['id'] ] );
+$denyRemind = surfaceApi( $appData, 'crm-documents/sign-remind', [ 'id' => (string) $contractOk['id'], 'notify' => false ] );
+check( '...the same account has all of it with the mail: the signature is asked for and mailed, and the link again without the mail is refused by the permission of Sign, and its token is as it was', $status === 200 && $answer['mailed'] === true && $denyRemind[0] === 403 && ( $denyRemind[1]['code'] ?? '' ) === 'crm_documents_link_perm' && isset( $denyRemind[1]['link'] ) === false );
+$sentRemind = surfaceApi( $appData, 'crm-documents/sign-remind', [ 'id' => (string) $contractOk['id'] ] );
+check( '...and the mail again goes through for it', $sentRemind[0] === 200 && array_key_exists( 'link', $sentRemind[1] ) === false );
+$asLinker();
+$allowed = [
+	'invite' => surfaceApi( $appData, 'crm-clients/invite', [ 'id' => (string) $a['id'], 'email' => 'linker-invite@example.org', 'notify' => false ] ),
+	'resend' => surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] ),
+	'remind' => surfaceApi( $appData, 'crm-documents/sign-remind', [ 'id' => (string) $contractOk['id'], 'notify' => false ] ),
+];
+check( 'with the permissions of Members and of Sign the same actions answer the link: 200 and a link in each', array_map( static fn( array $answer ): bool => $answer[0] === 200 && preg_match( '~^https://example\.org/club/\.(members/login|sign)\?t=[A-Za-z0-9_-]+~', (string) ( $answer[1]['link'] ?? '' ) ) === 1, $allowed ) === [ 'invite' => true, 'resend' => true, 'remind' => true ] );
+$reset();
+$asUser( 'onlymembers@example.com', 'onlymembers password' );
+$split = [ surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] )[0], surfaceApi( $appData, 'crm-documents/sign-remind', [ 'id' => (string) $contractOk['id'], 'notify' => false ] )[0] ];
+$reset();
+$splitSign = [ surfaceApi( $appData, 'crm-documents/sign', [ 'id' => (string) $contractOk['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] ) ];
+$reset();
+$asUser( 'onlysign@example.com', 'onlysign password' );
+$splitSign[] = surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] );
+$splitSign[] = surfaceApi( $appData, 'crm-clients/invite', [ 'id' => (string) $a['id'], 'email' => 'split-sign@example.org', 'notify' => false ] );
+check( '...and each permission is its own: the account that holds the one of Members has the links of Members and not those of Sign, and the account that holds Sign\'s has the signature (asked for here) and no link of Members',
+	$split === [ 200, 403 ] && array_map( static fn( array $answer ): int => $answer[0], $splitSign ) === [ 403, 403, 403 ] && $splitSign[0][1]['code'] === 'crm_documents_link_perm' );
+$reset();
+\Nino\Modules\Sign::cancel( $appData, Documents::get( $appData, $contractOk['id'] )['sign_id'] );
+$asUser( 'onlysign@example.com', 'onlysign password' );
+$signOnly = surfaceApi( $appData, 'crm-documents/sign', [ 'id' => (string) $contractOk['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] );
+check( '...the account with the permission of Sign alone is given the link of a signature', $signOnly[0] === 200 && isset( $signOnly[1]['link'] ) === true );
+$reset();
+
+// ...and a link without the mail is charged to the cap of mails an hour like a mail: the sixth is refused with the code of the cap
+$asLinker();
+$reset();
+$sixth = [];
+for( $each = 0; $each < 6; $each++ )
+	$sixth[] = surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] );
+check( 'the sixth link to sign in in an hour without a mail is 429 crm_clients_ratelimit, as the sixth mail is', array_column( $sixth, 0 ) === [ 200, 200, 200, 200, 200, 429 ] && ( $sixth[5][1]['code'] ?? '' ) === 'crm_clients_ratelimit' && isset( $sixth[5][1]['link'] ) === false );
+$membersAtCap = count( \Nino\Modules\Members::accounts( $appData ) );
+$invited = surfaceApi( $appData, 'crm-clients/invite', [ 'id' => (string) $a['id'], 'email' => 'at-the-cap@example.org', 'notify' => false ] );
+check( '...an invitation at the cap is refused too, 429, and never answers a link - empty or not; nothing is made: no account, nothing linked, so the retry is no 409 "taken"', $invited[0] === 429 && ( $invited[1]['code'] ?? '' ) === 'crm_clients_ratelimit' && array_key_exists( 'link', $invited[1] ) === false
+	&& \Crm\Clients::invite( $appData, $a, 'at-the-cap-two@example.org', '', false ) === 'ratelimit' && count( \Nino\Modules\Members::accounts( $appData ) ) === $membersAtCap );
+$reset();
+$retried = surfaceApi( $appData, 'crm-clients/invite', [ 'id' => (string) $a['id'], 'email' => 'at-the-cap@example.org', 'notify' => false ] );
+check( '...and once the cap lets go the same address is invited: 200, a link - not a 409 taken', $retried[0] === 200 && isset( $retried[1]['link'] ) === true );
+$reset();
+$reset();
+$fromSign = [];
+for( $each = 0; $each < 6; $each++ )
+	$fromSign[] = surfaceApi( $appData, 'crm-documents/sign-remind', [ 'id' => (string) $contractOk['id'], 'notify' => false ] );
+check( '...and so is the link of a signature made again: the sixth is 429 crm_documents_limit', array_column( $fromSign, 0 ) === [ 200, 200, 200, 200, 200, 429 ] && ( $fromSign[5][1]['code'] ?? '' ) === 'crm_documents_limit' );
+$reset();
+\Nino\Modules\Sign::cancel( $appData, Documents::get( $appData, $contractOk['id'] )['sign_id'] );
+
+for( $each = 0; $each < 5; $each++ )
+	\Nino\Feature::count( $appData, 'ratelimit', '127.0.0.1', 5, 3600 );
+
+$atCap = Documents::requestSignature( $appData, $contractOk['id'], $accounts['anna']['id'], null, false );
+check( 'a signature asked for without the mail at the cap is "limit" - the cap of mails, not a failure of Sign - and no request is made', $atCap === 'limit' && Documents::get( $appData, $contractOk['id'] )['sign_state'] === 'cancelled' );
+$reset();
+Documents::requestSignature( $appData, $contractOk['id'], $accounts['anna']['id'] );
+for( $each = 0; $each < 5; $each++ )
+	\Nino\Feature::count( $appData, 'ratelimit', '127.0.0.1', 5, 3600 );
+
+$mailedAtCap = Documents::remindSignature( $appData, $contractOk['id'] );
+$asLinker();
+$apiAtCap = surfaceApi( $appData, 'crm-documents/sign-remind', [ 'id' => (string) $contractOk['id'] ] );
+check( 'the link of a signature sent again by mail at the cap answers the cap - "limit" and 429 crm_documents_limit - and not the failure of the mail', $mailedAtCap === 'limit' && $apiAtCap[0] === 429 && ( $apiAtCap[1]['code'] ?? '' ) === 'crm_documents_limit' );
+$reset();
+\Nino\Modules\Sign::cancel( $appData, Documents::get( $appData, $contractOk['id'] )['sign_id'] );
+$reset();
+$reset();
+foreach( [ 'linker-invite@example.org', 'at-the-cap@example.org', 'at-the-cap-two@example.org' ] as $address )
+	foreach( \Nino\Modules\Members::accounts( $appData ) as $each )
+		if( $each['email'] === $address ) {
+			Db::exec( $appData, 'DELETE FROM client_accounts WHERE member_id = :member', [ 'member' => $each['id'] ] );
+			\Nino\Modules\Members::remove( $appData, $each['id'] );
+		}
+$linkLog = \Crm\Clients\Admin::log( 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] );
+check( 'the line of the log for a link made without a mail names the account and the client once and says without mail once - no sent, no link', str_contains( $linkLog, 'Made a link without mail for account' ) === true && substr_count( $linkLog, 'without mail' ) === 1 && str_contains( $linkLog, 'Sent' ) === false && str_contains( $linkLog, 'https' ) === false );
+\Nino\Modules\Sign::cancel( $appData, Documents::get( $appData, $contractOk['id'] )['sign_id'] );
+Documents::get( $appData, $contractOk['id'] );
+$asCrm();
 [ $status, $answer ] = surfaceApi( $appData, 'crm-documents/sign-cancel', [ 'id' => (string) $late1['id'] ] );
 check( '...and the signature actions refuse a document they do not fit: 409 crm_documents_state for a contract without request, 400 crm_documents_category for an invoice', $status === 400 && $answer['code'] === 'crm_documents_category'
 	&& surfaceApi( $appData, 'crm-documents/sign-remind', [ 'id' => (string) $contractOk['id'] ] )[1]['code'] === 'crm_documents_state' );
 
 // the activity log gets the line, with the account that did it and no address, no name and no amount
-$lines = \Nino\Modules\Logs\Admin::recentLines( $appData, 12 );
+$lines = \Nino\Modules\Logs\Admin::recentLines( $appData, 80 );
 $mine = array_values( array_filter( $lines, static fn( string $entry ): bool => str_contains( $entry, 'crm@example.com' ) === true ) );
 check( 'the activity log has a line for what was written through the endpoint, by the account that did it: the draft saved, the copy, the reminder', count( array_filter( $mine, static fn( string $entry ): bool => str_contains( $entry, 'Added draft ' ) ) ) >= 1 && count( array_filter( $mine, static fn( string $entry ): bool => str_contains( $entry, 'Copied document '. $late1['number']. ' to a draft' ) ) ) === 1
-	&& count( array_filter( $mine, static fn( string $entry ): bool => str_contains( $entry, 'Sent a payment reminder for document '. $late1['number'] ) ) ) === 1 );
+	&& count( array_filter( $mine, static fn( string $entry ): bool => str_contains( $entry, 'Sent a payment reminder for document '. $late1['number'] ) ) ) >= 1 );
 check( '...a read leaves none, and no line holds an address, a name or an amount', count( array_filter( $lines, static fn( string $entry ): bool => str_contains( $entry, 'Listed' ) || str_contains( $entry, 'overview' ) ) ) === 0 && array_filter( $lines, static fn( string $entry ): bool => preg_match( '/@example\.org|Studio|Nord|Hafen|€|\d,\d\d/', $entry ) === 1 ) === [] );
 check( '...the lines of the new actions name the number, or the category and the id', \Crm\Documents\Admin::log( 'crm-documents/sign-remind', [] ) !== '' && \Crm\Documents\Admin::log( 'crm-documents/overview', [] ) === '' );
 
@@ -973,7 +1130,7 @@ $perms = static function( string $mail, string $password ) use ( $asUser, &$appD
 	$asUser( $mail, $password );
 	return surfaceData( (string) surfaceServe( $appData, 'GET', '/crm' )['body'] )['perms'] ?? [];
 };
-check( 'the data block carries which permissions the account has: crm, pdf, elements, text and files - the account of the CRM alone has the first only, the account with both has both', $perms( 'crm@example.com', 'crm password' ) === [ 'crm' => true, 'pdf' => false, 'elements' => false, 'text' => false, 'files' => false ] && $perms( 'pdf@example.com', 'pdf password' ) === [ 'crm' => true, 'pdf' => true, 'elements' => false, 'text' => false, 'files' => false ] && $perms( 'admin@example.com', 'correct horse battery staple' )['pdf'] === true );
+check( 'the data block carries which permissions the account has: crm, pdf, elements, text, files, members and sign - the account of the CRM alone has the first only, the account with both has both', $perms( 'crm@example.com', 'crm password' ) === [ 'crm' => true, 'pdf' => false, 'elements' => false, 'text' => false, 'files' => false, 'members' => false, 'sign' => false ] && $perms( 'pdf@example.com', 'pdf password' ) === [ 'crm' => true, 'pdf' => true, 'elements' => false, 'text' => false, 'files' => false, 'members' => false, 'sign' => false ] && $perms( 'linker@example.com', 'linker password' )['members'] === true && $perms( 'linker@example.com', 'linker password' )['sign'] === true && array_intersect_key( $perms( 'onlysign@example.com', 'onlysign password' ), [ 'members' => 1, 'sign' => 1 ] ) === [ 'members' => false, 'sign' => true ] && array_intersect_key( $perms( 'onlymembers@example.com', 'onlymembers password' ), [ 'members' => 1, 'sign' => 1 ] ) === [ 'members' => true, 'sign' => false ] && $perms( 'admin@example.com', 'correct horse battery staple' )['pdf'] === true );
 $asPdf();
 $html = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
 check( '...the rail has the entry PDF-Vorlagen at #pdf, hidden in the markup (the script shows it for the permission), between Positionen and Einstellungen', preg_match( '~<a href="#pdf" data-r="pdf" id="nav-pdf" hidden>PDF-Vorlagen</a>~', $html ) === 1
@@ -1457,6 +1614,37 @@ $asFiles();
 $fileId = $stored[0]['id'];
 [ $status, $saved ] = surfaceApi( $appData, 'files/save', [ 'id' => $fileId, 'visible' => false ] );
 check( 'files/save switches a file of the project\'s folder: 200, the file as it is now; the files of a folder of another group are not touched - 404 crm_files_group', $status === 200 && $saved['file']['visible'] === false && \Nino\Modules\Files::file( $appData, $fileId )['visible'] === false );
+
+// The customer's mail is the owner's choice for each action: notify true mails whatever the setting says, false mails nobody, absent is the setting
+$listener = \Nino\Modules\Members::add( $appData, 'files-notify@example.org', 'Files Notify', $group );
+$mailed = static function( callable $do ) use ( &$appData ): int {
+	global $mails;
+	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+	$before = count( $mails );
+	$do();
+	return count( array_filter( array_slice( $mails->getArrayCopy(), $before ), static fn( array $mail ): bool => $mail['to'] === 'files-notify@example.org' ) );
+};
+$switchOn = static fn( ?bool $notify ): int => $mailed( static function() use ( &$appData, $fileId, $notify ): void {
+	surfaceApi( $appData, 'files/save', [ 'id' => $fileId, 'visible' => false ] );
+	surfaceApi( $appData, 'files/save', [ 'id' => $fileId, 'visible' => true ] + ( $notify === null ? [] : [ 'notify' => $notify ] ) );
+} );
+\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => false ] );
+$offSetting = [ $switchOn( true ), $switchOn( null ), $switchOn( false ) ];
+check( 'files/save through the endpoint takes notify: with the setting off, true mails the account of the group and absent and false do not (the setting on is the smoke of the feature)', $offSetting === [ 1, 0, 0 ] );
+$oneFile = static fn( ?bool $notify ): int => $mailed( static function() use ( $sendChunk, $folderId, $notify ): void {
+	$sendChunk( [ 'folder' => $folderId, 'name' => 'Kurz.txt', 'size' => 3, 'count' => 1, 'index' => 0, 'upload' => '', 'visible' => true ] + ( $notify === null ? [] : [ 'notify' => $notify ] ), 'abc' );
+} );
+check( '...and so does the upload through the endpoint, mailed once for its last chunk', [ $oneFile( false ), $oneFile( true ), $oneFile( null ) ] === [ 0, 1, 0 ] );
+$uploadLog = \Nino\Modules\Files\Admin::log( 'files/upload', [ 'notify' => false ] );
+check( '...the line of the log for an upload or a switch that was not mailed says so, and holds no address', str_contains( \Nino\Modules\Files\Admin::log( 'files/save', [ 'id' => $fileId, 'visible' => true, 'notify' => false ] ), 'not mailed' ) === true
+	&& str_contains( \Nino\Modules\Files\Admin::log( 'files/save', [ 'id' => $fileId, 'visible' => true ] ), 'not mailed' ) === false && str_contains( $uploadLog, '@' ) === false );
+\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => false ] );
+\Nino\Modules\Members::remove( $appData, $listener['id'] );
+foreach( \Nino\Modules\Files::files( $appData, $folderId ) as $extra )
+	if( $extra['id'] !== $fileId )
+		\Nino\Modules\Files\Store::deleteFile( $appData, $extra['id'] );
+
+surfaceApi( $appData, 'files/save', [ 'id' => $fileId, 'visible' => false ] );
 $strangeFile = \Nino\Modules\Files\Store::addFile( $appData, 'bbbbbbbbbbbb', [ 'folder' => $stranger['id'], 'name' => 'f.txt', 'ext' => 'txt', 'size' => 1, 'mime' => 'text/plain', 'sha256' => str_repeat( 'a', 64 ), 'by' => [ 'kind' => 'owner', 'id' => '' ], 'visible' => true, 'created' => gmdate( 'Y-m-d\TH:i:s\Z' ) ], 0 );
 check( '...a file of another group is neither switched nor deleted: 404 crm_files_group for both', is_array( $strangeFile ) && ( $r = surfaceApi( $appData, 'files/save', [ 'id' => 'bbbbbbbbbbbb', 'visible' => false ] ) )[0] === 404 && $r[1]['code'] === 'crm_files_group' && surfaceApi( $appData, 'files/delete', [ 'id' => 'bbbbbbbbbbbb' ] )[1]['code'] === 'crm_files_group'
 	&& \Nino\Modules\Files::file( $appData, 'bbbbbbbbbbbb' ) !== null && \Nino\Modules\Files::file( $appData, 'bbbbbbbbbbbb' )['visible'] === true );
@@ -1466,6 +1654,10 @@ check( '...a file nobody has is the panel\'s own 404 files_unknown, which touche
 $asItems();
 surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'folder' => $folderId ] ] + $project );
 $asCrm();
+\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => true ] );
+$notifyOn = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['notify'] ?? null;
+\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => false ] );
+check( 'the card of a project says the setting of Dateien that mails the members as notify, for the box of the tab to start from', $notifyOn === true && ( surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['notify'] ?? null ) === false );
 [ , $list ] = surfaceApi( $appData, 'crm-projekte/list' );
 check( 'with a folder the list counts the files of the project and the card lists them with the address each is downloaded at, who put it there and whether the members see it - for the account of the CRM alone', array_column( $list['projects'], 'files', 'id' )['00001'] === 1 && array_column( $list['projects'], 'files', 'id' )['00003'] === 0
 	&& ( $got = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1] )['folder'] === [ 'id' => $folderId, 'name' => 'Album 2027' ] && count( $got['list'] ) === 1 && $got['list'][0] === [ 'id' => $fileId, 'name' => 'Notizen.txt', 'ext' => 'txt', 'size' => $total, 'mime' => 'text/plain', 'created' => $stored[0]['created'], 'visible' => false, 'by' => [ 'kind' => 'owner', 'label' => '' ], 'url' => '/.files/'. $fileId ] );

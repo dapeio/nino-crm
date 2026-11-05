@@ -523,14 +523,14 @@ console.log( '\nNino.admin.files - the files\n' );
 
 	toggle.checked = true;
 	fire( toggle, 'change' );
-	check( 'the visible switch posts files/save with the id and the flag', w.last().action === 'files/save' && JSON.stringify( w.last().payload ) === JSON.stringify( { id : HIDDEN.id, visible : true } ) );
+	check( 'the visible switch posts files/save with the id and the flag', w.last().action === 'files/save' && JSON.stringify( w.last().payload ) === JSON.stringify( { id : HIDDEN.id, visible : true, notify : false } ) );
 	w.answer( 200, { file : Object.assign( {}, HIDDEN, { visible : true } ) } );
 	check( '...and no list is asked for again: the row is the answer', w.requests.length === 2 && w.panel._data.files[1].visible === true );
 
 	const on = w.find( track, function( el ) { return el.tagName === 'INPUT' && el.type === 'checkbox' } );
 	on.checked = false;
 	fire( on, 'change' );
-	check( 'turned off, the switch posts files/save with the id and visible false', w.last().action === 'files/save' && JSON.stringify( w.last().payload ) === JSON.stringify( { id : TRACK.id, visible : false } ) );
+	check( 'turned off, the switch posts files/save with the id and visible false', w.last().action === 'files/save' && JSON.stringify( w.last().payload ) === JSON.stringify( { id : TRACK.id, visible : false, notify : false } ) );
 	w.answer( 403, { error : 'x', code : 'files_unknown' } );
 	check( 'a switch that was refused goes back to where it was, and says why in the sentence of the code', on.checked === true && w.has('/_admin/error/files_unknown') === true && w.all( track, function( el ) { return el.textContent === w.word('/_admin/error/files_unknown') } ).length > 0 && w.requests.length === 3 );
 }
@@ -599,14 +599,14 @@ console.log( '\nNino.admin.files - the owner\'s upload\n' );
 	send.click();
 	const first = w.last();
 	check( 'the first chunk of the first file is posted through files/upload with the folder, the name, the whole size, no upload id yet, the index, the count of three and whether the members see it - and the bytes of the first chunk as the file part chunk',
-		first.action === 'files/upload' && JSON.stringify( first.payload ) === JSON.stringify( { folder : ROOM.id, name : 'One.mp3', size : 2500000, upload : '', index : 0, count : 3, visible : true } ) && first.extra.chunk.from === 0 && first.extra.chunk.to === 1048576
+		first.action === 'files/upload' && JSON.stringify( first.payload ) === JSON.stringify( { folder : ROOM.id, name : 'One.mp3', size : 2500000, upload : '', index : 0, count : 3, visible : true, notify : false } ) && first.extra.chunk.from === 0 && first.extra.chunk.to === 1048576
 		&& send.disabled === true && list.hidden === false );
 
 	send.click();
 	check( 'a second press while the upload runs sends nothing', w.requests.length === 2 );
 
 	w.answer( 200, { upload : '0123456789abcdef', index : 0 } );
-	check( 'the next chunk is posted when the answer of the one before has come, with the upload id it brought and the next index', JSON.stringify( w.last().payload ) === JSON.stringify( { folder : ROOM.id, name : 'One.mp3', size : 2500000, upload : '0123456789abcdef', index : 1, count : 3, visible : true } )
+	check( 'the next chunk is posted when the answer of the one before has come, with the upload id it brought and the next index', JSON.stringify( w.last().payload ) === JSON.stringify( { folder : ROOM.id, name : 'One.mp3', size : 2500000, upload : '0123456789abcdef', index : 1, count : 3, visible : true, notify : false } )
 		&& w.last().extra.chunk.from === 1048576 && w.last().extra.chunk.to === 2097152 );
 	w.answer( 200, { upload : '0123456789abcdef', index : 1 } );
 	check( '...and the third is the rest of the file', w.last().payload.index === 2 && w.last().extra.chunk.from === 2097152 && w.last().extra.chunk.to === 2500000 );
@@ -624,6 +624,67 @@ console.log( '\nNino.admin.files - the owner\'s upload\n' );
 	const after = w.all( list, function( el ) { return el.tagName === 'LI' } );
 	check( 'a refused chunk shows the sentence of its code in the row of the file and that row is failed - the file before it stays done', after[1].dataset.state === 'failed' && copyOf( w, after[1] )[1] === w.word('/_admin/error/files_type') && after[0].dataset.state === 'done' );
 	check( '...and when all are over the form is given back, the input emptied, and - since one file is in - the list is asked for again, with the number said', send.disabled === false && input.value === '' && w.last().action === 'files/list' );
+}
+
+console.log( '\nNino.admin.files - whether the members are mailed\n' );
+
+{
+	const w = drawn('en_US');
+	const notify = w.find( w.mount, function( el ) { return el.id === 'files-notify' } );
+	const tick = w.find( notify, function( el ) { return el.tagName === 'INPUT' && el.type === 'checkbox' } );
+	const [ , hidden ] = w.rows('files-file-row');
+	const toggle = w.find( hidden, function( el ) { return el.tagName === 'INPUT' && el.type === 'checkbox' } );
+	const box = w.find( w.mount, function( el ) { return el.id === 'files-upload' } );
+	const input = w.find( box, function( el ) { return el.id === 'files-upload-input' } );
+	const send = w.find( box, function( el ) { return el.id === 'files-upload-send' } );
+
+	check( 'the screen has one box for the mail to the members, a real checkbox with its label - outside the form of the upload and above the files, so that it stands for both', notify !== null && tick !== null && tick.dataset.key === 'notify'
+		&& w.has('/_admin/files/label/notify') === true && w.all( notify, function( el ) { return el.textContent === w.word('/_admin/files/label/notify') } ).length > 0
+		&& w.all( box, function( el ) { return el.id === 'files-notify' } ).length === 0 && w.rows('files-file-row').every( function( row ) { return w.all( row, function( el ) { return el.id === 'files-notify' } ).length === 0 } ) );
+	check( '...it starts at the setting, which files/list says: off here', tick.checked === false );
+
+	tick.checked = true;
+	fire( tick, 'change' );
+	toggle.checked = true;
+	fire( toggle, 'change' );
+	check( 'with it ticked the switch of visibility posts notify true', w.last().action === 'files/save' && w.last().payload.notify === true );
+	w.answer( 200, { file : Object.assign( {}, HIDDEN, { visible : true } ) } );
+
+	input.files = [ stood( 'Mailed.mp3', 10 ) ];
+	send.click();
+	check( '...and the upload posts it too', w.last().action === 'files/upload' && w.last().payload.notify === true );
+	w.answer( 200, { id : 'ffffffffffff', name : 'Mailed.mp3', size : 10 } );
+	w.answer( 200, LIST );
+
+	const again = w.find( w.mount, function( el ) { return el.id === 'files-notify' } );
+	check( '...and the choice stands when the list is drawn again after the upload', w.find( again, function( el ) { return el.tagName === 'INPUT' } ).checked === true );
+}
+
+{
+	const w = drawn('en_US');
+	const tick = w.find( w.find( w.mount, function( el ) { return el.id === 'files-notify' } ), function( el ) { return el.tagName === 'INPUT' } );
+
+	tick.checked = true;
+	fire( tick, 'change' );
+	check( 'a screen that is shown again starts at the setting: the box ticked on the screen before is unticked again - and the list is not asked for again', w.panel._notify === true && ( w.panel.showCurrent(), tick.checked === false && w.panel._notify === null && w.requests.length === 1 ) );
+}
+
+{
+	const w = drawn( 'en_US', Object.assign( {}, LIST, { notify : true } ) );
+	const tick = w.find( w.find( w.mount, function( el ) { return el.id === 'files-notify' } ), function( el ) { return el.tagName === 'INPUT' } );
+	const [ , hidden ] = w.rows('files-file-row');
+	const toggle = w.find( hidden, function( el ) { return el.tagName === 'INPUT' && el.type === 'checkbox' } );
+
+	check( 'where the setting is on the box starts ticked and the switch posts notify true without it being touched', tick.checked === true );
+	toggle.checked = true;
+	fire( toggle, 'change' );
+	check( '...and the switch posts notify true', w.last().payload.notify === true );
+	w.answer( 200, { file : Object.assign( {}, HIDDEN, { visible : true } ) } );
+	tick.checked = false;
+	fire( tick, 'change' );
+	toggle.checked = false;
+	fire( toggle, 'change' );
+	check( '...unticked, the next switch posts notify false', w.last().payload.notify === false );
 }
 
 {

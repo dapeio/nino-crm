@@ -47,11 +47,13 @@
 	Object.assign( Nino.admin.files, {
 
 		// What files/list answered: the groups, the group the screen is on, its folders and their files, the limits and the types
-		_data		: { groups : [], group : '', folders : [], files : [], types : [], limits : { chunk : 0, max : 0, php : 0, quota : 0, used : 0 } },
+		_data		: { groups : [], group : '', folders : [], files : [], types : [], notify : false, limits : { chunk : 0, max : 0, php : 0, quota : 0, used : 0 } },
 		// The group the select is on, the folder whose files are shown, the folder whose name is being changed - '' for none
 		_group		: '',
 		_folder		: '',
 		_editing	: '',
+		// The owner's choice for the members' mail of this screen; null until he made one - then the setting of the feature (what files/list says as notify) stands
+		_notify		: null,
 		// Whether an upload is under way: a second press of the button does nothing while it is
 		_busy		: false,
 		// The chunk an upload of this session found the web server takes, in bytes - 0 while no request was refused with 413
@@ -77,6 +79,7 @@
 				folders	: Array.isArray( data.folders ) === true ? data.folders : [],
 				files		: Array.isArray( data.files ) === true ? data.files : [],
 				types		: Array.isArray( data.types ) === true ? data.types : [],
+				notify	: data.notify === true,
 				limits	: Object.assign( {}, files._data.limits, data.limits ),
 			};
 
@@ -257,6 +260,7 @@
 			const open = files._data.folders.find( function( folder ) { return folder.id === files._folder } );
 
 			if( open !== undefined ) {
+				mount.appendChild( files._renderNotify() );
 				mount.appendChild( files._renderFiles( open ) );
 				mount.appendChild( files._renderUpload( open ) );
 			}
@@ -649,6 +653,34 @@
 		},
 
 		/**
+		 *	Whether the members are mailed for what the owner does on this screen: his choice where he made one, else the setting
+		 *
+		 *	@return		{boolean}
+		 */
+		_wantsNotify : function() {
+
+			const files = Nino.admin.files;
+
+			return files._notify === null ? files._data.notify === true : files._notify === true;
+		},
+
+		/**
+		 *	The box that says whether the members are mailed - for every upload and every switch of visibility on this screen
+		 *
+		 *	@return		{Element}
+		 */
+		_renderNotify : function() {
+
+			const files = Nino.admin.files;
+			const box = Nino.adminUi.switchField( { key : 'notify', checked : files._wantsNotify(), label : Nino.content.getText('/_admin/files/label/notify'), hint : Nino.content.getText('/_admin/files/hint/notify') } );
+
+			box.id = 'files-notify';
+			box.querySelector('input').addEventListener( 'change', function( event ) { files._notify = event.target.checked === true } );
+
+			return box;
+		},
+
+		/**
 		 *	One file: its name, its size, who put it there and the day, whether the members see it, and what is done to it
 		 *
 		 *	@param		{Object}	file
@@ -682,7 +714,7 @@
 
 				line.saving();
 
-				files.call( 'save', { id : file.id, visible : wanted }, function( status, response ) {
+				files.call( 'save', { id : file.id, visible : wanted, notify : files._wantsNotify() }, function( status, response ) {
 
 					if( status !== 200 ) {
 						reverting = true;
@@ -916,7 +948,7 @@
 
 				const next = function( index ) {
 
-					files.call( 'upload', { folder : folder.id, name : file.name, size : file.size, upload : upload, index : index, count : parts.length, visible : visible }, function( answered, response ) {
+					files.call( 'upload', { folder : folder.id, name : file.name, size : file.size, upload : upload, index : index, count : parts.length, visible : visible, notify : files._wantsNotify() }, function( answered, response ) {
 
 						if( answered === 413 ) {
 
@@ -1028,5 +1060,29 @@
 			files._render();
 		},
 	} );
+
+	// Showing the panel again - the shell shows it without asking for the list again - is a new screen: the box for the mail is back at the setting
+	( function() {
+
+		const shown = Nino.admin.files.showCurrent;
+
+		Nino.admin.files.showCurrent = function() {
+
+			const files = Nino.admin.files;
+			const mount = files.mount();
+			const label = mount === null ? null : mount.querySelector('#files-notify');
+			const box = label === null ? null : label.querySelector('input');
+
+			files._notify = null;
+
+			if( box !== null ) {
+				box.checked = files._wantsNotify();
+				box.dispatchEvent( new Event( 'change' ) );
+				files._notify = null;
+			}
+
+			shown();
+		};
+	} )();
 
 } )(window);

@@ -1182,7 +1182,7 @@ check( '...a file whose folder belongs to a group with no member is listed too, 
 $view = ninoCall( $appData, $panel, [ 'file' => $track['id'] ], 'review/comments' );
 $body = (array) $view[1];
 check( 'the comments on a file come with the file - its id, name, kind, the address the Files feature plays it at and whether its bytes are there -, the comments in the order of the track with their answers, the longest comment and whether the account may play files',
-	$view[0] === 200 && array_keys( $body ) === [ 'file', 'comments', 'length', 'files' ] && $body['files'] === true && $body['file'] === [ 'id' => $track['id'], 'name' => 'Demo.mp3', 'kind' => 'audio', 'url' => '/.files/'. $track['id'], 'playable' => true ] && $body['length'] === 2000
+	$view[0] === 200 && array_keys( $body ) === [ 'file', 'comments', 'length', 'notify', 'files' ] && $body['files'] === true && $body['file'] === [ 'id' => $track['id'], 'name' => 'Demo.mp3', 'kind' => 'audio', 'url' => '/.files/'. $track['id'], 'playable' => true ] && $body['length'] === 2000
 	&& array_column( $body['comments'], 'id' ) === [ $c1['id'], $c2['id'] ] && array_column( $body['comments'][0]['answers'], 'id' ) === [ $a1['id'] ] && $body['comments'][0]['text'] === "Snare\nis late" );
 $clipView = ninoCall( $appData, $panel, [ 'file' => $clip['id'] ], 'review/comments' );
 
@@ -1661,6 +1661,37 @@ $warnedNoAddress = ninoWarnings();
 \Nino\Html::addFills( $appData, [ '[[/project/website/general/url]]' => 'example.org/club' ], '*' );
 check( 'a site without an address has no link to put in a mail: none is sent, the comment is in, and a warning says so without naming a member', $noAddress[0] === 200 && $mails === [] && count( $warnedNoAddress ) >= 1 && array_filter( $warnedNoAddress, static fn( string $warning ): bool => str_contains( $warning, '@' ) ) === [] );
 \Nino\Features::saveSettings( $appData, 'review', [ 'notifyMembers' => false ] );
+
+// The owner's choice for one answer: notify true mails whatever the setting says, false mails nobody whatever it says, absent - or anything but a bool - is the setting
+$choice = static function( bool $setting, array $extra ) use ( $track, $m1, &$mails ): int {
+
+	\Nino\Features::saveSettings( $GLOBALS['appData'], 'review', [ 'notifyMembers' => $setting ] );
+	$mails = [];
+	reviewOwnerWrites( $extra + [ 'file' => $track['id'], 'text' => 'Choice', 'parent' => $m1['id'] ] );
+
+	return count( $mails );
+};
+check( 'the answer takes notify: true mails the member with the setting off, false mails nobody with it on, absent is the setting either way',
+	$choice( false, [ 'notify' => true ] ) === 1 && $choice( true, [ 'notify' => false ] ) === 0 && $choice( false, [] ) === 0 && $choice( true, [] ) === 1 );
+check( '...and a notify that is no bool is the setting', $choice( false, [ 'notify' => 'true' ] ) === 0 && $choice( true, [ 'notify' => 'false' ] ) === 1 && $choice( true, [ 'notify' => 0 ] ) === 1 );
+$groupMails = $choice( false, [ 'notify' => true, 'parent' => '' ] );
+check( '...a comment of its own for the group takes it the same way', $groupMails >= 7 && $choice( true, [ 'notify' => false, 'parent' => '' ] ) === 0 );
+check( '...and the answer is stored whether the member is mailed or not', count( array_filter( reviewData( $GLOBALS['appData'] )[$track['id']], static fn( array $comment ): bool => $comment['text'] === 'Choice' ) ) >= 8 );
+
+$quietOne = reviewOwnerWrites( [ 'file' => $track['id'], 'text' => 'Logged quietly', 'parent' => $m1['id'], 'notify' => false ] );
+$quietLine = \Nino\Modules\Review\Admin::log( 'review/answer', [ 'file' => $track['id'], 'text' => 'x', 'notify' => false ] );
+$loudOne = reviewOwnerWrites( [ 'file' => $track['id'], 'text' => 'Logged loudly', 'parent' => $m1['id'] ] );
+$loudLine = \Nino\Modules\Review\Admin::log( 'review/answer', [ 'file' => $track['id'], 'text' => 'x' ] );
+check( 'the line of the log for an answer that was not mailed says so, and holds no address; one that was left to the setting does not', $quietOne[0] === 200 && $loudOne[0] === 200 && str_contains( $quietLine, 'not mailed' ) === true && str_contains( $loudLine, 'not mailed' ) === false && str_contains( $quietLine, '@' ) === false );
+
+\Nino\Features::saveSettings( $appData, 'review', [ 'notifyMembers' => true ] );
+reviewWorkbench( 'admin' );
+reviewFresh( $appData );
+$seen = ninoCall( $appData, $panel, [ 'file' => $track['id'] ], 'review/comments' );
+\Nino\Features::saveSettings( $appData, 'review', [ 'notifyMembers' => false ] );
+reviewFresh( $appData );
+$seenOff = ninoCall( $appData, $panel, [ 'file' => $track['id'] ], 'review/comments' );
+check( 'the comments of a file say the setting as notify, for the box of the form to start from', ( $seen[1]['notify'] ?? null ) === true && ( $seenOff[1]['notify'] ?? null ) === false );
 reviewVisitor();
 
 echo "\n";

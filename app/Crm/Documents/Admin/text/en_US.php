@@ -56,4 +56,5 @@ return [
 	'[[/_admin/error/crm_documents_sign_mail]]' => 'The mail was not delivered. The link is as it was.',
 	'[[/_admin/error/crm_project]]' => 'There is no such project.',
 	'[[/_admin/error/crm_project_client]]' => 'The project belongs to another client. Choose a project of this client, or none.',
+	'[[/_admin/error/crm_documents_link_perm]]' => 'Only an account that may manage the Signatures panel can have a link shown without the mail. Send the mail or ask somebody who holds that permission.',
 ];

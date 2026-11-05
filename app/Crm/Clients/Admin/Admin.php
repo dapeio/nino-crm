@@ -32,6 +32,9 @@ class Admin {
 		'held'     => [ 409, 'a client holds the account already', 'crm_clients_held', [], 'account' ],
 		'inactive' => [ 409, 'the client is not active', 'crm_clients_inactive', [], '' ],
 		'write'    => [ 500, 'the account could not be written', 'crm_clients_write', [], '' ],
+		'link'     => [ 500, 'no link could be made', 'crm_clients_link', [], '' ],
+		'ratelimit' => [ 429, 'the mail cap of the kernel for one address is reached', 'crm_clients_ratelimit', [], '' ],
+		'link_perm' => [ 403, 'a link without the mail needs the permission of Members', 'crm_clients_link_perm', [], '' ],
 		'database' => [ 500, 'the database failed', 'crm_clients_database', [], '' ],
 	];
 
@@ -75,7 +78,7 @@ class Admin {
 			'crm-clients/active'         => 'Switched client'. $of,
 			'crm-clients/invite'         => 'Invited an account for client'. $of,
 			'crm-clients/account-link'   => 'Linked account'. $id. ' to client'. $of,
-			'crm-clients/account-resend' => 'Sent a link to account'. $id. ' of client'. $of,
+			'crm-clients/account-resend' => str_contains( $of, ', without mail' ) === true ? 'Made a link without mail for account'. $id. ' of client'. str_replace( ', without mail', '', $of ) : 'Sent a link to account'. $id. ' of client'. $of,
 			'crm-clients/account-active' => 'Switched account'. $id. ' of client'. $of,
 			'crm-clients/account-name'   => 'Renamed account'. $id. ' of client'. $of,
 			'crm-clients/account-remove' => 'Deleted account'. $id. ' of client'. $of,
@@ -147,6 +150,12 @@ class Admin {
 
 			$first = null;
 
+			// A first account whose link is shown and not mailed: the permission of Members, before anything is made
+			if( \Nino\Admin\Admin::postString( $data, 'id' ) === '' && trim( \Nino\Admin\Admin::postString( $data, 'account_email' ) ) !== '' && ( $data['notify'] ?? true ) === false && \Crm\Crm::mayLink( $appData, 'members' ) === false ) {
+				self::_refuse( $request, 'link_perm' );
+				return;
+			}
+
 			if( \Nino\Admin\Admin::postString( $data, 'id' ) === '' ) {
 
 				if( trim( \Nino\Admin\Admin::postString( $data, 'account_email' ) ) !== '' ) {
@@ -154,7 +163,7 @@ class Admin {
 					if( self::_members( $appData, $request ) === false )
 						return;
 
-					$first = [ 'email' => trim( \Nino\Admin\Admin::postString( $data, 'account_email' ) ), 'name' => \Nino\Admin\Admin::postString( $data, 'account_name' ) ];
+					$first = [ 'email' => trim( \Nino\Admin\Admin::postString( $data, 'account_email' ) ), 'name' => \Nino\Admin\Admin::postString( $data, 'account_name' ), 'notify' => ( $data['notify'] ?? true ) !== false ];
 				}
 
 				$client = \Crm\Clients::add( $appData, $input, $first );
@@ -173,7 +182,7 @@ class Admin {
 				return;
 			}
 
-			self::$_made['crm-clients/save'] = $client['number'];
+			self::$_made['crm-clients/save'] = $client['number']. ( $first !== null && $first['notify'] === false && is_array( $client['first'] ?? null ) === true && isset( $client['first']['link'] ) === true ? ', first account invited without mail' : '' );
 
 			$made = $client['first'] ?? null;
 			unset( $client['first'] );
@@ -182,7 +191,7 @@ class Admin {
 
 			// A client made with an account that was refused is made all the same: the answer says so, with the code of the refusal
 			if( $first !== null )
-				$answer['first'] = is_string( $made ) === true ? [ 'account' => null, 'mailed' => false, 'refused' => self::_account( $made ) ] : [ 'account' => $made['account'] ?? null, 'mailed' => $made['mailed'] ?? false, 'refused' => null ];
+				$answer['first'] = is_string( $made ) === true ? [ 'account' => null, 'mailed' => false, 'refused' => self::_account( $made ) ] : [ 'account' => $made['account'] ?? null, 'mailed' => $made['mailed'] ?? false, 'refused' => null ] + ( $first['notify'] === false && isset( $made['link'] ) === true ? [ 'link' => (string) $made['link'] ] : [] );
 
 			\Nino\Http::ok( $request, $answer );
 		} );
@@ -247,14 +256,21 @@ class Admin {
 			if( self::_members( $appData, $request ) === false )
 				return;
 
-			$made = \Crm\Clients::invite( $appData, $client, trim( \Nino\Admin\Admin::postString( $data, 'email' ) ), \Nino\Admin\Admin::postString( $data, 'name' ) );
+			$notify = ( $data['notify'] ?? true ) !== false;
+
+			if( $notify === false && \Crm\Crm::mayLink( $appData, 'members' ) === false ) {
+				self::_refuse( $request, 'link_perm' );
+				return;
+			}
+
+			$made = \Crm\Clients::invite( $appData, $client, trim( \Nino\Admin\Admin::postString( $data, 'email' ) ), \Nino\Admin\Admin::postString( $data, 'name' ), $notify );
 
 			if( is_string( $made ) === true ) {
 				self::_refuse( $request, $made );
 				return;
 			}
 
-			self::$_made['crm-clients/invite'] = $client['number'];
+			self::$_made['crm-clients/invite'] = $client['number']. ( $notify === true ? '' : ', without mail' );
 
 			\Nino\Http::ok( $request, $made );
 		} );
@@ -574,7 +590,8 @@ class Admin {
 
 		self::_run( $request, static function() use ( &$appData, &$request ): void {
 
-			$target = self::_target( $appData, $request, \Nino\Admin\Admin::postData(), true, true );
+			$data = \Nino\Admin\Admin::postData();
+			$target = self::_target( $appData, $request, $data, true, true );
 
 			if( $target === null )
 				return;
@@ -586,9 +603,20 @@ class Admin {
 				return;
 			}
 
-			if( \Crm\Clients::resend( $appData, $account ) === false ) {
+			$notify = ( $data['notify'] ?? true ) !== false;
 
-				if( \Nino\Mail::rateLimited( $appData ) === true )
+			if( $notify === false && \Crm\Crm::mayLink( $appData, 'members' ) === false ) {
+				self::_refuse( $request, 'link_perm' );
+				return;
+			}
+
+			$sent = \Crm\Clients::resend( $appData, $account, $notify );
+
+			if( $sent === false ) {
+
+				if( $notify === false && \Nino\Mail::rateLimited( $appData ) === false )
+					\Nino\Http::fail( $request, 500, 'the link could not be made', 'crm_clients_link' );
+				else if( \Nino\Mail::rateLimited( $appData ) === true )
 					\Nino\Http::fail( $request, 429, 'the mail cap of the kernel for one address is reached', 'crm_clients_ratelimit' );
 				else
 					\Nino\Http::fail( $request, 500, 'the link could not be sent', 'crm_clients_mail' );
@@ -596,9 +624,9 @@ class Admin {
 				return;
 			}
 
-			self::$_made['crm-clients/account-resend'] = $client['number'];
+			self::$_made['crm-clients/account-resend'] = $client['number']. ( $notify === true ? '' : ', without mail' );
 
-			\Nino\Http::ok( $request, [ 'sent' => true, 'kind' => $account['login'] === null ? 'invite' : 'login' ] );
+			\Nino\Http::ok( $request, [ 'sent' => $notify, 'kind' => $account['login'] === null ? 'invite' : 'login' ] + ( $notify === false ? [ 'link' => (string) $sent ] : [] ) );
 		} );
 	}
 

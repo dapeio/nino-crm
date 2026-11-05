@@ -48,6 +48,7 @@ class Admin {
 		'sign'     => [ 409, 'crm_documents_sign', '' ],
 		'released' => [ 409, 'crm_documents_released', '' ],
 		'mail'     => [ 409, 'crm_documents_sign_mail', '' ],
+		'link_perm' => [ 403, 'crm_documents_link_perm', '' ],
 		'project'  => [ 400, 'crm_project', 'project' ],
 		'project_client' => [ 409, 'crm_project_client', 'project' ],
 	];
@@ -120,8 +121,8 @@ class Admin {
 			'crm-documents/unrelease'     => 'Took back document '. $of,
 			'crm-documents/sign'          => 'Asked for a signature on document '. $of,
 			'crm-documents/copy'          => 'Copied document '. $of. ' to a draft',
-			'crm-documents/remind'        => 'Sent a payment reminder for document '. $of,
-			'crm-documents/sign-remind'   => 'Sent the link of the signature on document '. $of. ' again',
+			'crm-documents/remind'        => str_contains( $of, ', without mail' ) === true ? 'Noted a payment reminder for document '. $of : 'Sent a payment reminder for document '. $of,
+			'crm-documents/sign-remind'   => str_contains( $of, ', without mail' ) === true ? 'Made a new link of the signature on document '. $of : 'Sent the link of the signature on document '. $of. ' again',
 			'crm-documents/sign-cancel'   => 'Took back the signature request on document '. $of,
 			'crm-documents/settings-save' => 'Saved the settings of the documents',
 			default                       => '',
@@ -205,8 +206,8 @@ class Admin {
 	}
 
 	/**
-	 *	Remind the accounts of the client of an overdue invoice to pay it: the release mail again, in the words of a reminder. Answers the document and
-	 *	how many mails were delivered
+	 *	Remind the accounts of the client of an overdue invoice to pay it: the release mail again, in the words of a reminder - unless notify says false,
+	 *	when nothing is sent and the reminder is noted all the same. Answers the document and how many mails were delivered
 	 */
 	public static function apiRemind( array &$appData, array &$request ): void {
 
@@ -215,29 +216,65 @@ class Admin {
 
 		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
 
-			$document = self::_document( $appData, $request, \Nino\Admin\Admin::postData() );
+			$data = \Nino\Admin\Admin::postData();
+			$document = self::_document( $appData, $request, $data );
 
 			if( $document === null )
 				return;
 
-			$reminded = Documents::remind( $appData, $document['id'] );
+			$notify = ( $data['notify'] ?? true ) !== false;
+			$reminded = Documents::remind( $appData, $document['id'], $notify );
 
 			if( is_string( $reminded ) === true ) {
 				self::_refused( $request, $reminded );
 				return;
 			}
 
-			self::$_made['crm-documents/remind'] = Render::name( $document );
+			self::$_made['crm-documents/remind'] = Render::name( $document ). ( $notify === true ? ', by mail' : ', without mail' );
 
-			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $reminded['document'] ), 'mailed' => $reminded['mailed'] ] );
+			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $reminded['document'] ), 'mailed' => $reminded['mailed'], 'notify' => $notify ] );
 		} );
 	}
 
 	/**
-	 *	Send the link of a signature request again
+	 *	Send the link of a signature request again - or, with notify false, make the new link and send nothing: the answer carries it, once
 	 */
 	public static function apiSignRemind( array &$appData, array &$request ): void {
-		self::_derived( $appData, $request, 'crm-documents/sign-remind', [ Documents::class, 'remindSignature' ] );
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
+
+			$data = \Nino\Admin\Admin::postData();
+			$source = self::_document( $appData, $request, $data );
+
+			if( $source === null )
+				return;
+
+			$notify = ( $data['notify'] ?? true ) !== false;
+
+			// A link that is shown is the link of the account: it takes the permission of Sign, which the CRM's alone is not
+			if( $notify === false && \Crm\Crm::mayLink( $appData, 'sign' ) === false ) {
+				self::_refused( $request, 'link_perm' );
+				return;
+			}
+
+			$reminded = Documents::remindSignature( $appData, $source['id'], $notify );
+
+			if( is_string( $reminded ) === true ) {
+				self::_refused( $request, $reminded );
+				return;
+			}
+
+			// The link is the answer's and nothing else's: it is taken off the document before the document is shown, and no line of the log holds it
+			$link = (string) ( $reminded['link'] ?? '' );
+			unset( $reminded['link'] );
+
+			self::$_made['crm-documents/sign-remind'] = Render::name( $source ). ( $notify === true ? '' : ', without mail' );
+
+			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $reminded ) ] + ( $notify === false ? [ 'link' => $link ] : [] ) );
+		} );
 	}
 
 	/**
@@ -519,7 +556,8 @@ class Admin {
 
 	/**
 	 *	Ask an account of the client of a contract or a privacy document for a signature through Sign: account is the id of the account,
-	 *	days how long the link is good for (1 to 90; none is the setting of Sign)
+	 *	days how long the link is good for (1 to 90; none is the setting of Sign), notify (a bool, true unless it says false): with false the request is
+	 *	made, nobody is mailed and the answer carries the link, once
 	 */
 	public static function apiSign( array &$appData, array &$request ): void {
 
@@ -547,16 +585,23 @@ class Admin {
 			if( $document === null )
 				return;
 
-			$asked = Documents::requestSignature( $appData, $document['id'], $account, $days === '' ? null : (int) $days );
+			$notify = ( $data['notify'] ?? true ) !== false;
+
+			if( $notify === false && \Crm\Crm::mayLink( $appData, 'sign' ) === false ) {
+				self::_refused( $request, 'link_perm' );
+				return;
+			}
+
+			$asked = Documents::requestSignature( $appData, $document['id'], $account, $days === '' ? null : (int) $days, $notify );
 
 			if( is_string( $asked ) === true ) {
 				self::_refused( $request, $asked );
 				return;
 			}
 
-			self::$_made['crm-documents/sign'] = Render::name( $document );
+			self::$_made['crm-documents/sign'] = Render::name( $document ). ( $notify === true ? '' : ', without mail' );
 
-			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $asked['document'] ), 'mailed' => $asked['mailed'] ] );
+			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $asked['document'] ), 'mailed' => $asked['mailed'] ] + ( $notify === false ? [ 'link' => (string) $asked['link'] ] : [] ) );
 		} );
 	}
 

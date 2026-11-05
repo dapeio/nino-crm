@@ -58,6 +58,8 @@
 		_editing	: '',
 		// Whether the list is to be asked for again once the answer that is out has come back
 		_again		: false,
+		// The box that says whether the account is mailed the link, for the new member and for the rows; null until drawn
+		_notify		: null,
 		// The form for a new member - its fields and its live line - and the open
 		// form of a change, drawn with the screen and thrown away with it
 		_add			: null,
@@ -189,6 +191,7 @@
 				} );
 
 				members._signout = null;
+				members._notify = null;
 				members._add = null;
 			}
 
@@ -198,6 +201,7 @@
 
 			if( members._signout === null ) {
 				tools.appendChild( members._renderSignout() );
+				tools.appendChild( members._renderMail() );
 				form.appendChild( members._renderAdd() );
 			}
 
@@ -209,6 +213,107 @@
 			people.appendChild( rows );
 
 			members._renderRows();
+		},
+
+		/**
+		 *	Whether the account is mailed the link for what the owner does now: yes, unless the box is there and not ticked
+		 *
+		 *	@return		{boolean}
+		 */
+		_wantsMail : function() {
+
+			const members = Nino.admin.members;
+
+			return members._notify === null || members._notify.checked === true;
+		},
+
+		/**
+		 *	The box for the mail of an invitation and of a link to sign in - a real checkbox, ticked - and the region the link is shown
+		 *	in when the owner chose to send none
+		 *
+		 *	@return		{Element}
+		 */
+		_renderMail : function() {
+
+			const members = Nino.admin.members;
+			const region = Nino.adminUi.el( 'div', 'members-mail' );
+			const box = Nino.adminUi.switchField( { key : 'notify', checked : true, label : Nino.content.getText('/_admin/members/label/notify'), hint : Nino.content.getText('/_admin/members/hint/notify') } );
+			const link = Nino.adminUi.el( 'div', 'members-link' );
+
+			region.id = 'members-mail';
+			link.id = 'members-link';
+			link.hidden = true;
+			members._notify = box.querySelector('input');
+			region.appendChild( box );
+			region.appendChild( link );
+
+			return region;
+		},
+
+		/**
+		 *	Show the link the server gave for an invitation or a sign-in made without a mail - once: in a read-only field with a button
+		 *	that copies it, and the sentence that it is not shown again. It is a field of this screen and nothing else holds it
+		 *
+		 *	@param		{string}	link
+		 *
+		 *	@return		void
+		 */
+		_showLink : function( link ) {
+
+			const members = Nino.admin.members;
+			const region = dc.getElementById('members-link');
+
+			if( region === null )
+				return;
+
+			const field = Nino.adminUi.el( 'input', 'nino-admin-input' );
+			const line = members._line();
+			const copy = Nino.adminUi.button( Nino.content.getText('/_admin/members/label/copy'), function() {
+
+				field.focus();
+				field.select();
+
+				if( typeof wn.navigator === 'object' && wn.navigator.clipboard !== undefined && typeof wn.navigator.clipboard.writeText === 'function' )
+					wn.navigator.clipboard.writeText( link ).then( function() { line.idle( Nino.content.getText('/_admin/members/msg/copied') ) }, function() { line.idle( Nino.content.getText('/_admin/members/msg/selected') ) } );
+				else
+					line.idle( Nino.content.getText('/_admin/members/msg/selected') );
+			}, { className : 'nino-admin-btn-secondary nino-admin-btn--small', id : 'members-link-copy' } );
+			const close = Nino.adminUi.button( Nino.content.getText('/_admin/members/label/close-link'), function() { members._hideLink() }, { className : 'nino-admin-btn-secondary nino-admin-btn--small', id : 'members-link-close' } );
+
+			field.type = 'text';
+			field.readOnly = true;
+			field.value = link;
+			field.id = 'members-link-field';
+			field.setAttribute( 'aria-label', Nino.content.getText('/_admin/members/label/the-link') );
+
+			while( region.firstChild !== null )
+				region.removeChild( region.firstChild );
+
+			region.appendChild( Nino.adminUi.el( 'strong', '', Nino.content.getText('/_admin/members/label/the-link') ) );
+			region.appendChild( field );
+			region.appendChild( Nino.adminUi.hint( Nino.content.getText('/_admin/members/hint/link-once') ) );
+			region.appendChild( copy );
+			region.appendChild( close );
+			region.appendChild( line.element );
+			region.hidden = false;
+		},
+
+		/**
+		 *	Take the link away: the field and the sentence, and the text of the link with them
+		 *
+		 *	@return		void
+		 */
+		_hideLink : function() {
+
+			const region = dc.getElementById('members-link');
+
+			if( region === null )
+				return;
+
+			while( region.firstChild !== null )
+				region.removeChild( region.firstChild );
+
+			region.hidden = true;
 		},
 
 		/**
@@ -345,8 +450,9 @@
 
 			add.submit.disabled = true;
 			add.line.saving();
+			members._hideLink();
 
-			members.call( 'add', { email : add.inputs.email.value, name : add.inputs.name.value, group : add.inputs.group.value, invite : add.invite.checked }, function( status, response ) {
+			members.call( 'add', { email : add.inputs.email.value, name : add.inputs.name.value, group : add.inputs.group.value, invite : add.invite.checked, notify : members._wantsMail() }, function( status, response ) {
 
 				add.submit.disabled = false;
 
@@ -363,7 +469,10 @@
 				}
 
 				Object.keys( add.inputs ).forEach( function( name ) { add.inputs[name].value = '' } );
-				add.line.idle( Nino.content.getText( response.invited === true ? '/_admin/members/msg/invited' : '/_admin/members/msg/added' ) );
+				add.line.idle( Nino.content.getText( typeof response.link === 'string' ? '/_admin/members/msg/invited-quiet' : ( response.invited === true ? '/_admin/members/msg/invited' : '/_admin/members/msg/added' ) ) );
+
+				if( typeof response.link === 'string' )
+					members._showLink( response.link );
 
 				if( typeof Nino.admin.dirty === 'object' )
 					Nino.admin.dirty.refresh();
@@ -481,13 +590,17 @@
 			actions.appendChild( Nino.adminUi.button( Nino.content.getText('/_admin/members/label/link'), function() {
 
 				line.saving();
+				members._hideLink();
 
-				members.call( 'link', { id : account.id }, function( status, response ) {
+				members.call( 'link', { id : account.id, notify : members._wantsMail() }, function( status, response ) {
 
 					if( status !== 200 )
 						return line.error( status, response, '/_admin/members/error/link' );
 
-					line.idle( Nino.content.getText('/_admin/members/msg/sent') );
+					line.idle( Nino.content.getText( typeof response.link === 'string' ? '/_admin/members/msg/sent-quiet' : '/_admin/members/msg/sent' ) );
+
+					if( typeof response.link === 'string' )
+						members._showLink( response.link );
 				} );
 			}, { className : 'nino-admin-btn-secondary nino-admin-btn--small', disabled : account.active !== true } ) );
 
@@ -702,5 +815,24 @@
 			members._editing = '';
 		},
 	} );
+
+	// Showing the panel again is a new screen: the box for the mail is ticked again and a link that was shown is gone
+	( function() {
+
+		const shown = Nino.admin.members.showCurrent;
+
+		Nino.admin.members.showCurrent = function() {
+
+			const members = Nino.admin.members;
+
+			if( members._notify !== null ) {
+				members._notify.checked = true;
+				members._notify.dispatchEvent( new Event( 'change' ) );
+			}
+
+			members._hideLink();
+			shown();
+		};
+	} )();
 
 } )(window,document);

@@ -119,8 +119,8 @@ namespace Nino\Modules\Files {
 				'files/folder/save'					=> 'Renamed folder'. $of,
 				'files/folder/delete'				=> 'Deleted folder'. $of,
 				'files/folder/upload-target'	=> ( ( $data['on'] ?? true ) === false ? 'Took the upload mark off folder' : 'Marked as upload folder the folder' ). $of,
-				'files/upload'							=> ( self::$_made[$action] ?? '' ) === '' ? '' : 'Uploaded file '. self::$_made[$action],
-				'files/save'								=> 'Changed file'. $of,
+				'files/upload'							=> ( self::$_made[$action] ?? '' ) === '' ? '' : 'Uploaded file '. self::$_made[$action]. ( ( $data['notify'] ?? null ) === false ? ', members not mailed' : '' ),
+				'files/save'								=> 'Changed file'. $of. ( ( $data['notify'] ?? null ) === false && ( $data['visible'] ?? null ) === true ? ', members not mailed' : '' ),
 				'files/delete'							=> 'Deleted file'. $of,
 				default											=> '',
 			};
@@ -174,6 +174,7 @@ namespace Nino\Modules\Files {
 				'folders'	=> $folders,
 				'files'		=> $files,
 				'types'		=> Store::types( $appData ),
+				'notify'	=> \Nino\Features::setting( $appData, 'files', 'notifyMembers', false ) === true,
 				'limits'	=> [
 					'chunk'		=> Store::chunkBytes( $appData ),
 					'max'			=> Store::maxBytes( $appData ),
@@ -294,11 +295,23 @@ namespace Nino\Modules\Files {
 		}
 
 		/**
+		 *	The owner's choice whether the members are mailed for this action
+		 *
+		 *	@param		array 		$data				The posted payload
+		 *
+		 *	@return 	bool|null								The field notify where it is a bool; null (the setting decides) where it is absent or anything else
+		 */
+		private static function _notify( array $data ): ?bool {
+
+			return is_bool( $data['notify'] ?? null ) === true ? $data['notify'] : null;
+		}
+
+		/**
 		 *	One chunk of the owner's upload, with the fields of the route of the members' - folder, name, size, upload,
 		 *	index and count - and the bytes as the file part chunk; and visible, which is true unless it says false, for
-		 *	a file that is not shown to the members yet. A part that did not arrive is the shell's refusal
+		 *	a file that is not shown to the members yet; and notify, a bool that says whether the members are mailed (absent: the setting decides). A part that did not arrive is the shell's refusal
 		 *	(Admin::uploadError()). The owner uploads into any folder. The last chunk puts the file in: the callback
-		 *	'/files/add' is told of it and, where it is visible and the setting notifyMembers is on, the group is mailed
+		 *	'/files/add' is told of it and, where it is visible and the setting notifyMembers is on - or notify says true; false mails nobody - the group is mailed
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		&$request			(reference) Current server request
@@ -344,15 +357,17 @@ namespace Nino\Modules\Files {
 
 			\Nino\Callbacks::doCallbacks( $appData, '/files/add', $entry );
 
-			if( $entry['visible'] === true )
-				\Nino\Modules\Files::notifyMembers( $appData, $folder, [ $entry ] );
+			$appData['./nino/files/mailed'] = 0;
 
-			\Nino\Http::ok( $request, [ 'id' => $entry['id'], 'name' => $entry['name'], 'size' => $entry['size'] ] );
+			if( $entry['visible'] === true )
+				\Nino\Modules\Files::notifyMembers( $appData, $folder, [ $entry ], self::_notify( $data ) );
+
+			\Nino\Http::ok( $request, [ 'id' => $entry['id'], 'name' => $entry['name'], 'size' => $entry['size'], 'mailed' => (int) $appData['./nino/files/mailed'] ] );
 		}
 
 		/**
 		 *	Change a file: whether it is visible to the members, and the folder it is in - another folder of the same
-		 *	group. A file that is made visible is told to the group where the setting notifyMembers is on
+		 *	group. A file that is made visible is told to the group where the setting notifyMembers is on or notify says true (false: not told)
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		&$request			(reference) Current server request
@@ -380,15 +395,17 @@ namespace Nino\Modules\Files {
 				return;
 			}
 
+			$appData['./nino/files/mailed'] = 0;
+
 			if( $saved['before']['visible'] === false && $saved['file']['visible'] === true ) {
 
 				$folder = Store::folder( $appData, $saved['file']['folder'] );
 
 				if( $folder !== null )
-					\Nino\Modules\Files::notifyMembers( $appData, $folder, [ $saved['file'] ] );
+					\Nino\Modules\Files::notifyMembers( $appData, $folder, [ $saved['file'] ], self::_notify( $data ) );
 			}
 
-			\Nino\Http::ok( $request, [ 'file' => $saved['file'] ] );
+			\Nino\Http::ok( $request, [ 'file' => $saved['file'], 'mailed' => (int) $appData['./nino/files/mailed'] ] );
 		}
 
 		/**

@@ -111,6 +111,7 @@ function world( locale ) {
 
 	return {
 		panel : Nino.admin.sign,
+		window : window,
 		Nino : Nino,
 		mount : mount,
 		requests : requests,
@@ -243,7 +244,7 @@ console.log( 'Nino.admin.sign - the screen\n' );
 	check( 'the namespace is the nav uri of the panel', w.panel.uri === 'sign' && typeof w.panel.showCurrent === 'function' );
 
 	w.answer( 200, LIST );
-	check( 'the answer draws the two regions of the screen, the form above the list, in the one mount of the template', w.mount.children.length === 2 && w.mount.children[0].id === 'sign-new' && w.mount.children[1].id === 'sign-rows' );
+	check( 'the answer draws the three regions of the screen, the box for the mail first, then the form above the list, in the one mount of the template', w.mount.children.length === 3 && w.mount.children[0].id === 'sign-mail' && w.mount.children[1].id === 'sign-new' && w.mount.children[2].id === 'sign-rows' );
 	check( '...and the form asks the server what it offers - sign/options, no payload - while the list is already there', w.requests.length === 2 && w.last().action === 'sign/options' && JSON.stringify( w.last().payload ) === '{}' && w.rows().length === 6 );
 
 	w.answer( 200, OPTIONS );
@@ -331,6 +332,68 @@ console.log( '\nNino.admin.sign - the record of a signing\n' );
 	check( 'no word was asked of the fills that the text files lack', w.missing.length === 0 );
 }
 
+console.log( '\nNino.admin.sign - whether the member is mailed\n' );
+
+{
+	const w = drawn('en_US');
+	const tick = w.find( w.byId('sign-mail'), function( el ) { return el.tagName === 'INPUT' && el.type === 'checkbox' } );
+	const region = w.byId('sign-link');
+
+	check( 'the box for the mail is a real checkbox with its label, above the form and the rows, ticked at first - and the region for the link beside it is hidden and empty', tick !== null && tick.dataset.key === 'notify' && tick.checked === true
+		&& w.all( w.byId('sign-mail'), function( el ) { return el.textContent === w.word('/_admin/sign/label/notify') } ).length > 0 && region.hidden === true && region.children.length === 0 );
+
+	tick.checked = false;
+	fillIn( w, 'aaaaaaaaaaaa', 'plain' );
+	fire( w.byId('sign-ask'), 'submit' );
+	check( 'unticked, the form posts sign/request with notify false', w.last().action === 'sign/request' && w.last().payload.notify === false );
+
+	let copied = null;
+	w.window.navigator = { clipboard : { writeText : function( text ) { copied = text; return { then : function( done ) { done() } } } } };
+	w.answer( 200, { id : '00000000000f', link : 'https://example.org/club/.sign?t=abc' } );
+	const field = w.byId('sign-link-field');
+	check( 'the link of the answer is shown in a read-only field of its own with the sentence that it is shown once, a button that copies it and one that closes it - and the line says that no mail went',
+		region.hidden === false && field !== null && field.readOnly === true && field.value === 'https://example.org/club/.sign?t=abc'
+		&& w.all( region, function( el ) { return el.textContent === w.word('/_admin/sign/hint/link-once') } ).length > 0 && w.button( region, w.word('/_admin/sign/label/copy') ) !== null && w.button( region, w.word('/_admin/sign/label/close-link') ) !== null
+		&& w.all( w.byId('sign-ask'), function( el ) { return el.textContent === w.word('/_admin/sign/msg/asked-quiet') } ).length > 0 );
+
+	fire( w.byId('sign-ask'), 'submit' );
+	check( 'a new ask takes the link of the one before away at once, before it asks', region.hidden === true && region.children.length === 0 && w.byId('sign-link-field') === null && w.last().action === 'sign/request' );
+	w.answer( 200, { id : '00000000000f', link : 'https://example.org/club/.sign?t=abc' } );
+	w.button( region, w.word('/_admin/sign/label/copy') ).click();
+	check( '...the copy button hands the link to the clipboard where there is one', copied === 'https://example.org/club/.sign?t=abc' );
+	delete w.window.navigator;
+	w.button( region, w.word('/_admin/sign/label/copy') ).click();
+	check( '...and where there is none it selects the field and says so', w.all( region, function( el ) { return el.textContent === w.word('/_admin/sign/msg/selected') } ).length > 0 );
+
+	w.button( region, w.word('/_admin/sign/label/close-link') ).click();
+	check( 'closing takes the link away: the field is gone and the region is hidden and empty - the text of the link is nowhere on the screen', region.hidden === true && region.children.length === 0 && w.byId('sign-link-field') === null
+		&& w.all( w.mount, function( el ) { return String( el.value ?? '' ).indexOf('abc') !== -1 || String( el.textContent ).indexOf('t=abc') !== -1 } ).length === 0 );
+
+	w.answer( 200, LIST );
+	const rows = w.rows();
+	w.button( rows[0], w.word('/_admin/sign/label/remind') ).click();
+	check( 'the rows ask the same box: Remind posts notify false while it stands unticked', w.last().action === 'sign/remind' && w.last().payload.notify === false );
+	w.answer( 200, { sent : false, link : 'https://example.org/club/.sign?t=new' } );
+	check( '...and its link is shown too, with the line of a reminder without a mail', w.byId('sign-link-field').value === 'https://example.org/club/.sign?t=new' && w.all( w.mount, function( el ) { return el.textContent === w.word('/_admin/sign/msg/reminded-quiet') } ).length > 0 );
+
+	w.button( w.rows()[0], w.word('/_admin/sign/label/remind') ).click();
+	check( 'a new action takes the old link away before it asks', w.byId('sign-link').hidden === true && w.byId('sign-link-field') === null );
+	w.answer( 403, { error : 'x', code : 'session' } );
+}
+
+{
+	const w = drawn('en_US');
+	const tick = w.find( w.byId('sign-mail'), function( el ) { return el.tagName === 'INPUT' && el.type === 'checkbox' } );
+
+	tick.checked = false;
+	fillIn( w, 'aaaaaaaaaaaa', 'plain' );
+	fire( w.byId('sign-ask'), 'submit' );
+	w.answer( 200, { id : '00000000000f', link : 'https://example.org/club/.sign?t=shown' } );
+	const asked = w.requests.length;
+	check( 'a screen that is shown again starts at the default: the box is ticked again and the link that was shown is gone - and nothing is asked of the server', w.byId('sign-link').hidden === false && tick.checked === false
+		&& ( w.panel.showCurrent(), tick.checked === true && w.byId('sign-link').hidden === true && w.byId('sign-link').children.length === 0 && w.byId('sign-link-field') === null && w.requests.length === asked ) );
+}
+
 console.log( '\nNino.admin.sign - remind, cancel, delete\n' );
 
 {
@@ -339,7 +402,7 @@ console.log( '\nNino.admin.sign - remind, cancel, delete\n' );
 	const before = w.requests.length;
 
 	w.button( rows[0], w.word('/_admin/sign/label/remind') ).click();
-	check( 'Remind posts sign/remind with the id of the request and nothing else, and the line of the row says it is on its way', w.last().action === 'sign/remind' && JSON.stringify( w.last().payload ) === '{"id":"000000000001"}'
+	check( 'Remind posts sign/remind with the id of the request and notify true and nothing else, and the line of the row says it is on its way', w.last().action === 'sign/remind' && JSON.stringify( w.last().payload ) === '{"id":"000000000001","notify":true}'
 		&& lineOf( w, rows[0] ).dataset.state === 'saving' && w.requests.length === before + 1 );
 
 	w.answer( 200, { id : '000000000001' } );
@@ -449,7 +512,7 @@ console.log( '\nNino.admin.sign - the form for a new request\n' );
 	f.title.value = 'My own title';
 	fire( f.form, 'submit' );
 	check( 'a complete form posts sign/request with the member, the template, the texts by their names - the empty optional one among them - and the title, and the button waits for the answer', w.last().action === 'sign/request'
-		&& JSON.stringify( w.last().payload ) === '{"account":"aaaaaaaaaaaa","template":"contract-one","inputs":{"rent":"1200 euros","note":"Second floor"},"title":"My own title"}' && f.submit.disabled === true
+		&& JSON.stringify( w.last().payload ) === '{"account":"aaaaaaaaaaaa","template":"contract-one","inputs":{"rent":"1200 euros","note":"Second floor"},"title":"My own title","notify":true}' && f.submit.disabled === true
 		&& f.form.querySelector('.nino-admin-status').dataset.state === 'saving' );
 
 	fire( f.form, 'submit' );
@@ -465,7 +528,7 @@ console.log( '\nNino.admin.sign - the form for a new request\n' );
 
 	w.field('input-rent').value = '300';
 	fire( f.form, 'submit' );
-	check( 'a text the template does not need that is left empty is posted empty - not left out, not filled in - and a title left empty is posted empty too', w.last().action === 'sign/request' && JSON.stringify( w.last().payload ) === '{"account":"aaaaaaaaaaaa","template":"contract-one","inputs":{"rent":"300","note":""},"title":""}' );
+	check( 'a text the template does not need that is left empty is posted empty - not left out, not filled in - and a title left empty is posted empty too', w.last().action === 'sign/request' && JSON.stringify( w.last().payload ) === '{"account":"aaaaaaaaaaaa","template":"contract-one","inputs":{"rent":"300","note":""},"title":"","notify":true}' );
 	w.answer( 400, { error : 'x', code : 'sign_template' } );
 }
 
@@ -614,7 +677,7 @@ console.log( '\nNino.admin.sign - a request that is changed\n' );
 	check( '...it has Ask again, the record and Delete - no Remind and no Cancel, which are for a request that waits', buttonsOf( w, row() ).join('|') === [ w.word('/_admin/sign/label/again'), w.word('/_admin/sign/label/details'), w.word('/_admin/sign/label/delete') ].join('|') );
 
 	w.button( row(), w.word('/_admin/sign/label/again') ).click();
-	check( 'Ask again posts sign/again with the id of the request and nothing else, without a question - it is one click - and the line of the row says it is on its way', w.last().action === 'sign/again' && JSON.stringify( w.last().payload ) === '{"id":"00000000000d"}' && w.asked.length === 0
+	check( 'Ask again posts sign/again with the id of the request and notify true and nothing else, without a question - it is one click - and the line of the row says it is on its way', w.last().action === 'sign/again' && JSON.stringify( w.last().payload ) === '{"id":"00000000000d","notify":true}' && w.asked.length === 0
 		&& lineOf( w, row() ).textContent !== '' );
 	w.answer( 200, { id : '00000000000e' } );
 	check( '...an answer says the new request is made in the line, and the list is asked for again, which shows the new one beside the old', w.last().action === 'sign/list' );

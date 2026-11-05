@@ -728,6 +728,51 @@ console.log( '\nNino.admin.review - what the owner does\n' );
 		} )() );
 }
 
+console.log( '\nNino.admin.review - whether the member is mailed\n' );
+
+{
+	const w = opened('en_US');
+	const form = w.find( w.mount, function( el ) { return el.className === 'review-form' } );
+	const text = w.find( form, function( el ) { return el.tagName === 'TEXTAREA' } );
+	const tick = w.find( form, function( el ) { return el.tagName === 'INPUT' && el.type === 'checkbox' } );
+
+	check( 'the form has a box for the mail to the member: a real checkbox with its label, which starts at the setting - off here, since the answer of review/comments says so', tick !== null && tick.dataset.key === 'notify' && tick.checked === false
+		&& w.has('/_admin/review/label/notify') === true && w.all( form, function( el ) { return el.textContent === w.word('/_admin/review/label/notify') } ).length > 0 );
+
+	tick.checked = true;
+	text.value = 'Mailed answer';
+	fire( form, 'submit' );
+	check( '...ticked, the answer posts notify true', w.last().action === 'review/answer' && w.last().payload.notify === true );
+	w.answer( 200, { comment : { id : 'c00000000009' } } );
+	check( '...and once it is sent the box is back at the setting, for the next answer', tick.checked === false );
+}
+
+{
+	const w = opened('en_US');
+	const form = w.find( w.mount, function( el ) { return el.className === 'review-form' } );
+	const tick = w.find( form, function( el ) { return el.tagName === 'INPUT' && el.type === 'checkbox' } );
+	const before = w.requests.length;
+
+	tick.checked = true;
+	check( 'a screen that is shown again starts at the setting: the box ticked before is unticked again, with the form and what is typed in it left alone - and nothing is asked', ( w.panel.showCurrent(), tick.checked === false && w.requests.length === before && form.parentNode !== null ) );
+}
+
+{
+	const w = opened( 'en_US', Object.assign( {}, VIEW, { notify : true } ) );
+	const form = w.find( w.mount, function( el ) { return el.className === 'review-form' } );
+	const text = w.find( form, function( el ) { return el.tagName === 'TEXTAREA' } );
+	const tick = w.find( form, function( el ) { return el.tagName === 'INPUT' && el.type === 'checkbox' } );
+
+	check( 'where the setting is on the box starts ticked and the answer posts notify true untouched', tick.checked === true );
+	text.value = 'Answer';
+	fire( form, 'submit' );
+	check( '...as it does after a refusal and a second try', w.last().payload.notify === true );
+	w.answer( 400, { error : 'x', code : 'review_long', params : [ 2000 ], field : 'text' } );
+	tick.checked = false;
+	fire( form, 'submit' );
+	check( 'unticked, it posts notify false - and a refused answer leaves the box as it was', w.last().payload.notify === false && tick.checked === false );
+}
+
 {
 	const w = opened('en_US');
 	const form = w.find( w.mount, function( el ) { return el.className === 'review-form' } );
@@ -751,7 +796,7 @@ console.log( '\nNino.admin.review - what the owner does\n' );
 	text.value = 'Good point';
 	check( 'what is typed is unsaved input for the shell, and nothing before', w.entry().isDirty() === true );
 	fire( form, 'submit' );
-	check( 'the form posts review/answer with the file, the text, the time as typed and no parent - and gives the button back only when the answer is there', w.last().action === 'review/answer' && JSON.stringify( w.last().payload ) === JSON.stringify( { file : FILE.id, text : 'Good point', at : '2:05.9', parent : '' } ) && send.disabled === true );
+	check( 'the form posts review/answer with the file, the text, the time as typed and no parent - and gives the button back only when the answer is there', w.last().action === 'review/answer' && JSON.stringify( w.last().payload ) === JSON.stringify( { file : FILE.id, text : 'Good point', at : '2:05.9', parent : '', notify : false } ) && send.disabled === true );
 	const out = w.requests.length;
 	fire( form, 'submit' );
 	check( '...and a second submit while the first is out sends nothing', w.requests.length === out );
@@ -785,7 +830,7 @@ console.log( '\nNino.admin.review - what the owner does\n' );
 
 	text.value = 'Answer text';
 	fire( form, 'submit' );
-	check( '...and the answer posts the id of that comment as the parent', JSON.stringify( w.last().payload ) === JSON.stringify( { file : FILE.id, text : 'Answer text', at : '', parent : 'c00000000002' } ) );
+	check( '...and the answer posts the id of that comment as the parent', JSON.stringify( w.last().payload ) === JSON.stringify( { file : FILE.id, text : 'Answer text', at : '', parent : 'c00000000002', notify : false } ) );
 	w.answer( 200, { comment : { id : 'c00000000009' } } );
 	check( '...and the line is gone again once it is stored', answering.hidden === true && w.panel._answering === null );
 

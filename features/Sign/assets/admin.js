@@ -59,6 +59,8 @@
 		_again		: false,
 		// The form for a new request - its controls and its live line - drawn once and kept
 		_form			: null,
+		// The box that says whether the member is mailed, for the form and for the Remind and Ask again of the rows; null until drawn
+		_notify		: null,
 
 		// The states in which a request can be reminded and cancelled: it waits, or its time is up
 		WAITING		: [ 'requested', 'viewed', 'expired' ],
@@ -159,6 +161,105 @@
 		},
 
 		/**
+		 *	Whether the member is mailed the link for what the owner does now: yes, unless the box is there and not ticked
+		 *
+		 *	@return		{boolean}
+		 */
+		_wantsMail : function() {
+
+			const sign = Nino.admin.sign;
+
+			return sign._notify === null || sign._notify.checked === true;
+		},
+
+		/**
+		 *	The box above the form and the rows: a real checkbox, ticked, for the mail of an ask, a reminder and an ask again; the
+		 *	region the link is shown in when the owner chose to send none lies under it
+		 *
+		 *	@param		{Element}	region
+		 *
+		 *	@return		void
+		 */
+		_renderMail : function( region ) {
+
+			const sign = Nino.admin.sign;
+			const box = Nino.adminUi.switchField( { key : 'notify', checked : true, label : Nino.content.getText('/_admin/sign/label/notify'), hint : Nino.content.getText('/_admin/sign/hint/notify') } );
+			const link = Nino.adminUi.el( 'div', 'sign-link' );
+
+			link.id = 'sign-link';
+			link.hidden = true;
+			sign._notify = box.querySelector('input');
+			region.appendChild( box );
+			region.appendChild( link );
+		},
+
+		/**
+		 *	Show the link the server gave for a request that was made without a mail - once: in a read-only field with a button that
+		 *	copies it, and the sentence that it is not shown again. It is a field of this screen and nothing else holds it
+		 *
+		 *	@param		{string}	link
+		 *
+		 *	@return		void
+		 */
+		_showLink : function( link ) {
+
+			const sign = Nino.admin.sign;
+			const region = dc.getElementById('sign-link');
+
+			if( region === null )
+				return;
+
+			const field = Nino.adminUi.el( 'input', 'nino-admin-input' );
+			const line = sign._line();
+			const copy = Nino.adminUi.button( Nino.content.getText('/_admin/sign/label/copy'), function() {
+
+				field.focus();
+				field.select();
+
+				if( typeof wn.navigator === 'object' && wn.navigator.clipboard !== undefined && typeof wn.navigator.clipboard.writeText === 'function' )
+					wn.navigator.clipboard.writeText( link ).then( function() { line.idle( Nino.content.getText('/_admin/sign/msg/copied') ) }, function() { line.idle( Nino.content.getText('/_admin/sign/msg/selected') ) } );
+				else
+					line.idle( Nino.content.getText('/_admin/sign/msg/selected') );
+			}, { className : 'nino-admin-btn-secondary nino-admin-btn--small', id : 'sign-link-copy' } );
+			const close = Nino.adminUi.button( Nino.content.getText('/_admin/sign/label/close-link'), function() { sign._hideLink() }, { className : 'nino-admin-btn-secondary nino-admin-btn--small', id : 'sign-link-close' } );
+
+			field.type = 'text';
+			field.readOnly = true;
+			field.value = link;
+			field.id = 'sign-link-field';
+			field.setAttribute( 'aria-label', Nino.content.getText('/_admin/sign/label/link') );
+
+			while( region.firstChild !== null )
+				region.removeChild( region.firstChild );
+
+			region.appendChild( Nino.adminUi.el( 'strong', '', Nino.content.getText('/_admin/sign/label/link') ) );
+			region.appendChild( field );
+			region.appendChild( Nino.adminUi.hint( Nino.content.getText('/_admin/sign/hint/link-once') ) );
+			region.appendChild( copy );
+			region.appendChild( close );
+			region.appendChild( line.element );
+			region.hidden = false;
+		},
+
+		/**
+		 *	Take the link away: the field and the sentence, and the text of the link with them
+		 *
+		 *	@return		void
+		 */
+		_hideLink : function() {
+
+			const region = dc.getElementById('sign-link');
+
+			if( region === null )
+				return;
+
+			while( region.firstChild !== null )
+				region.removeChild( region.firstChild );
+
+			region.hidden = true;
+		},
+
+		/**
 		 *	The screen: the form for a new request - the first time only, so that nothing typed is lost to a list that
 		 *	is drawn again - and the list
 		 *
@@ -178,12 +279,13 @@
 
 				mount.innerHTML = '';
 
-				[ 'sign-new', 'sign-rows' ].forEach( function( id ) {
-					const region = Nino.adminUi.el( 'div', id === 'sign-new' ? 'sign-new' : 'sign-rows' );
+				[ 'sign-mail', 'sign-new', 'sign-rows' ].forEach( function( id ) {
+					const region = Nino.adminUi.el( 'div', id );
 					region.id = id;
 					mount.appendChild( region );
 				} );
 
+				sign._renderMail( dc.getElementById('sign-mail') );
 				sign._form = null;
 				sign._options = null;
 			}
@@ -404,7 +506,9 @@
 			form.submit.disabled = true;
 			form.line.saving();
 
-			sign.call( 'request', { account : form.account.value, template : form.template.value, inputs : inputs, title : form.title.value }, function( status, response ) {
+			sign._hideLink();
+
+			sign.call( 'request', { account : form.account.value, template : form.template.value, inputs : inputs, title : form.title.value, notify : sign._wantsMail() }, function( status, response ) {
 
 				form.submit.disabled = false;
 
@@ -421,7 +525,10 @@
 
 				form.title.value = '';
 				form.inputs.forEach( function( each ) { each.control.value = '' } );
-				form.line.idle( Nino.content.getText('/_admin/sign/msg/asked') );
+				form.line.idle( Nino.content.getText( typeof response.link === 'string' ? '/_admin/sign/msg/asked-quiet' : '/_admin/sign/msg/asked' ) );
+
+				if( typeof response.link === 'string' )
+					sign._showLink( response.link );
 
 				if( typeof Nino.admin.dirty === 'object' )
 					Nino.admin.dirty.refresh();
@@ -510,13 +617,18 @@
 				actions.appendChild( Nino.adminUi.button( Nino.content.getText('/_admin/sign/label/remind'), function() {
 
 					line.saving();
+					sign._hideLink();
 
-					sign.call( 'remind', { id : request.id }, function( status, response ) {
+					sign.call( 'remind', { id : request.id, notify : sign._wantsMail() }, function( status, response ) {
 
 						if( status !== 200 )
 							return line.error( status, response, '/_admin/sign/error/remind' );
 
-						line.idle( Nino.content.getText('/_admin/sign/msg/reminded') );
+						line.idle( Nino.content.getText( typeof response.link === 'string' ? '/_admin/sign/msg/reminded-quiet' : '/_admin/sign/msg/reminded' ) );
+
+						if( typeof response.link === 'string' )
+							sign._showLink( response.link );
+
 						sign._refresh();
 					} );
 				}, { className : 'nino-admin-btn-secondary nino-admin-btn--small' } ) );
@@ -543,8 +655,9 @@
 				actions.appendChild( Nino.adminUi.button( Nino.content.getText('/_admin/sign/label/again'), function() {
 
 					line.saving();
+					sign._hideLink();
 
-					sign.call( 'again', { id : request.id }, function( status, response ) {
+					sign.call( 'again', { id : request.id, notify : sign._wantsMail() }, function( status, response ) {
 
 						if( status !== 200 ) {
 							line.error( status, response, '/_admin/sign/error/again' );
@@ -556,7 +669,10 @@
 							return;
 						}
 
-						line.idle( Nino.content.getText('/_admin/sign/msg/again') );
+						line.idle( Nino.content.getText( typeof response.link === 'string' ? '/_admin/sign/msg/again-quiet' : '/_admin/sign/msg/again' ) );
+
+						if( typeof response.link === 'string' )
+							sign._showLink( response.link );
 						sign._refresh();
 					} );
 				}, { className : 'nino-admin-btn-secondary nino-admin-btn--small' } ) );
@@ -651,5 +767,24 @@
 			form.inputs.forEach( function( each ) { each.control.value = '' } );
 		},
 	} );
+
+	// Showing the panel again is a new screen: the box for the mail is ticked again and a link that was shown is gone
+	( function() {
+
+		const shown = Nino.admin.sign.showCurrent;
+
+		Nino.admin.sign.showCurrent = function() {
+
+			const sign = Nino.admin.sign;
+
+			if( sign._notify !== null ) {
+				sign._notify.checked = true;
+				sign._notify.dispatchEvent( new Event( 'change' ) );
+			}
+
+			sign._hideLink();
+			shown();
+		};
+	} )();
 
 } )(window,document);

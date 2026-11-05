@@ -914,7 +914,7 @@ $uploaded = $owner[2][1] ?? [];
 $entry = \Nino\Modules\Files::file( $appData, (string) ( $uploaded['id'] ?? '' ) );
 check( 'three chunks of a known file are answered in order - the first with the upload id (16 hex characters), the second with the same, the last with the id, the name and the size of the file',
 	array_column( $owner, 0 ) === [ 200, 200, 200 ] && preg_match( '/^[a-f0-9]{16}$/D', $owner[0][1]['upload'] ) === 1 && $owner[0][1] === [ 'upload' => $owner[0][1]['upload'], 'index' => 0 ] && $owner[1][1] === [ 'upload' => $owner[0][1]['upload'], 'index' => 1 ]
-	&& array_keys( $uploaded ) === [ 'id', 'name', 'size' ] && $uploaded['name'] === 'Take One.mp3' && $uploaded['size'] === 2500000 && preg_match( '/^[a-f0-9]{12}$/D', $uploaded['id'] ) === 1 );
+	&& array_keys( $uploaded ) === [ 'id', 'name', 'size', 'mailed' ] && $uploaded['name'] === 'Take One.mp3' && $uploaded['size'] === 2500000 && preg_match( '/^[a-f0-9]{12}$/D', $uploaded['id'] ) === 1 );
 check( '...the entry has the right size, sha256, MIME type and name, is the owner\'s, visible and in the folder, and the bytes on disk are the fixture',
 	$entry !== null && $entry['size'] === 2500000 && $entry['sha256'] === hash( 'sha256', $mp3 ) && $entry['mime'] === 'audio/mpeg' && $entry['name'] === 'Take One.mp3' && $entry['ext'] === 'mp3'
 	&& $entry['by'] === [ 'kind' => 'owner', 'id' => '' ] && $entry['visible'] === true && $entry['folder'] === $room['id'] && hash_file( 'sha256', (string) \Nino\Modules\Files::path( $appData, $entry['id'] ) ) === hash( 'sha256', $mp3 )
@@ -2022,6 +2022,78 @@ $warnedNoAddress = ninoWarnings();
 check( 'a site without an address has no link to put in a mail: none is sent, the upload is in, and a warning says so without naming a member', $noAddress[0] === 200 && $mails === [] && count( $warnedNoAddress ) >= 1
 	&& array_filter( $warnedNoAddress, static fn( string $warning ): bool => str_contains( $warning, '@' ) ) === [] );
 \Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => false ] );
+
+// The owner's choice for one action: notify true mails whatever the setting says, false mails nobody whatever it says, absent - or anything but a bool - is the setting
+$mails = [];
+filesOwnerUpload( $appData, 'Choice Yes.mp3', $room['id'], [ 'notify' => true ] );
+$yesWithSettingOff = count( $mails );
+$mails = [];
+filesOwnerUpload( $appData, 'Choice Absent Off.mp3', $room['id'] );
+$absentWithSettingOff = count( $mails );
+$mails = [];
+filesOwnerUpload( $appData, 'Choice Text Off.mp3', $room['id'], [ 'notify' => 'true' ] );
+$textWithSettingOff = count( $mails );
+\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => true ] );
+$mails = [];
+filesOwnerUpload( $appData, 'Choice No.mp3', $room['id'], [ 'notify' => false ] );
+$noWithSettingOn = count( $mails );
+$mails = [];
+filesOwnerUpload( $appData, 'Choice Absent On.mp3', $room['id'] );
+$absentWithSettingOn = count( $mails );
+$mails = [];
+filesOwnerUpload( $appData, 'Choice Text On.mp3', $room['id'], [ 'notify' => 'false' ] );
+$textWithSettingOn = count( $mails );
+check( 'the upload takes notify: true mails the group with the setting off, false mails nobody with the setting on, and absent is the setting either way - as is a notify that is no bool',
+	$yesWithSettingOff === 7 && $absentWithSettingOff === 0 && $textWithSettingOff === 0 && $noWithSettingOn === 0 && $absentWithSettingOn === 7 && $textWithSettingOn === 7 );
+
+$mails = [];
+$silentOne = filesOwnerUpload( $appData, 'Choice Chunked.mp3', $room['id'], [ 'notify' => false ] );
+check( '...a file that is not mailed is in all the same, visible', $silentOne[0] === 200 && ( \Nino\Modules\Files::file( $appData, (string) $silentOne[1]['id'] )['visible'] ?? null ) === true );
+
+$hiddenTwo = filesOwnerUpload( $appData, 'Choice Hidden.mp3', $room['id'], [ 'visible' => false, 'notify' => true ] );
+check( '...and a hidden file sends none whatever notify says - there is nothing for the members to see', $hiddenTwo[0] === 200 && $mails === [] );
+
+$swapped = [];
+foreach( [ [ true, false ], [ false, true ], [ null, true ] ] as [ $notify, $setting ] ) {
+	\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => $setting ] );
+	$again = filesOwnerUpload( $appData, 'Choice Swap '. count( $swapped ). '.mp3', $room['id'], [ 'visible' => false ] );
+	$mails = [];
+	filesWorkbench( 'admin' );
+	filesFresh( $appData );
+	ninoCall( $appData, $panel, [ 'id' => $again[1]['id'], 'visible' => true ] + ( $notify === null ? [] : [ 'notify' => $notify ] ), 'files/save' );
+	$swapped[] = count( $mails );
+}
+check( 'making a file visible takes notify the same way: true mails with the setting off, false mails nobody with it on, absent is the setting', $swapped === [ 7, 0, 7 ] );
+
+// What the panel answers says whether the members were told: mailed, the number of mails delivered
+\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => false ] );
+$told = filesOwnerUpload( $appData, 'Told.mp3', $room['id'], [ 'notify' => true ] );
+$toldLog = \Nino\Modules\Files\Admin::log( 'files/upload', [ 'notify' => true ] );
+$untold = filesOwnerUpload( $appData, 'Untold.mp3', $room['id'], [ 'notify' => false ] );
+$untoldLog = \Nino\Modules\Files\Admin::log( 'files/upload', [ 'notify' => false ] );
+$noMail = filesOwnerUpload( $appData, 'No Mail.mp3', $room['id'] );
+$hiddenAgain = filesOwnerUpload( $appData, 'Hidden Again.mp3', $room['id'], [ 'visible' => false, 'notify' => true ] );
+filesWorkbench( 'admin' );
+filesFresh( $appData );
+$savedTold = ninoCall( $appData, $panel, [ 'id' => $hiddenAgain[1]['id'], 'visible' => true, 'notify' => true ], 'files/save' );
+$savedPlain = ninoCall( $appData, $panel, [ 'id' => $hiddenAgain[1]['id'], 'folder' => $room['id'] ], 'files/save' );
+check( 'the answer of the last chunk and of a switch to visible says how many mails were delivered - 7 where the group was told, 0 where nobody was, whatever the box said', ( $told[1]['mailed'] ?? -1 ) === 7 && ( $untold[1]['mailed'] ?? -1 ) === 0 && ( $noMail[1]['mailed'] ?? -1 ) === 0
+	&& ( $savedTold[1]['mailed'] ?? -1 ) === 7 && ( $savedPlain[1]['mailed'] ?? -1 ) === 0 );
+check( '...and the line of the log for an upload that was not mailed says so, where a mailed one does not', str_contains( $untoldLog, 'not mailed' ) === true && str_contains( $toldLog, 'not mailed' ) === false );
+\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => true ] );
+
+$mails = [];
+filesFresh( $appData );
+$moved = ninoCall( $appData, $panel, [ 'id' => $hiddenTwo[1]['id'], 'visible' => true, 'notify' => 1 ], 'files/save' );
+check( '...and a notify that is no bool is the setting there too', count( $mails ) === 7 && $moved[0] === 200 );
+
+\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => true ] );
+filesFresh( $appData );
+$listed = ninoCall( $appData, $panel, [ 'group' => 'staff' ], 'files/list' );
+\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => false ] );
+filesFresh( $appData );
+$listedOff = ninoCall( $appData, $panel, [ 'group' => 'staff' ], 'files/list' );
+check( 'the list says the setting as notify, for the box of the screen to start from', ( $listed[1]['notify'] ?? null ) === true && ( $listedOff[1]['notify'] ?? null ) === false );
 
 echo "\n";
 

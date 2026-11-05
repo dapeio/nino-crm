@@ -582,6 +582,7 @@
 			const atField = Nino.adminUi.textField( { label : Nino.content.getText('/_admin/review/label/at'), value : '', maxLength : 12, autocomplete : 'off' } );
 			const at = atField.querySelector('input');
 			const line = review._line();
+			const notify = Nino.adminUi.switchField( { key : 'notify', checked : review._view !== null && review._view.notify === true, label : Nino.content.getText('/_admin/review/label/notify') } );
 			const send = Nino.adminUi.button( Nino.content.getText('/_admin/review/label/send'), null, { type : 'submit', className : 'nino-admin-btn-primary' } );
 			const actions = Nino.adminUi.el( 'div', 'nino-admin-actions' );
 
@@ -600,6 +601,7 @@
 			form.appendChild( answering );
 			form.appendChild( textField );
 			form.appendChild( atField );
+			form.appendChild( notify );
 
 			if( review._media !== null )
 				actions.appendChild( Nino.adminUi.button( Nino.content.getText('/_admin/review/label/now'), function() {
@@ -610,7 +612,7 @@
 			actions.appendChild( line.element );
 			form.appendChild( actions );
 
-			review._form = { form : form, answering : answering, answeringText : answeringText, text : text, at : at, send : send, line : line };
+			review._form = { form : form, notify : notify.querySelector('input'), answering : answering, answeringText : answeringText, text : text, at : at, send : send, line : line };
 
 			line.bind( form, function() { return review._dirty() } );
 
@@ -660,7 +662,7 @@
 			form.send.disabled = true;
 			form.line.saving();
 
-			review.call( 'answer', { file : review._open, text : form.text.value, at : form.at.value, parent : review._answering === null ? '' : review._answering.id }, function( status, response ) {
+			review.call( 'answer', { file : review._open, text : form.text.value, at : form.at.value, parent : review._answering === null ? '' : review._answering.id, notify : form.notify.checked }, function( status, response ) {
 
 				form.send.disabled = false;
 
@@ -672,6 +674,8 @@
 
 				form.text.value = '';
 				form.at.value = '';
+				form.notify.checked = review._view !== null && review._view.notify === true;
+				form.notify.dispatchEvent( new Event( 'change' ) );
 				review._answer( null );
 
 				if( typeof Nino.admin.dirty === 'object' )
@@ -700,5 +704,23 @@
 			review._answer( null );
 		},
 	} );
+
+	// Showing the panel again is a new screen: the box of the answer is back at the setting
+	( function() {
+
+		const shown = Nino.admin.review.showCurrent;
+
+		Nino.admin.review.showCurrent = function() {
+
+			const review = Nino.admin.review;
+
+			if( review._form !== null && review._view !== null ) {
+				review._form.notify.checked = review._view.notify === true;
+				review._form.notify.dispatchEvent( new Event( 'change' ) );
+			}
+
+			shown();
+		};
+	} )();
 
 } )(window);

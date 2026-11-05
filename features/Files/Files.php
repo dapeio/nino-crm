@@ -501,7 +501,7 @@ namespace Nino\Modules {
 		}
 
 		/**
-		 *	Tell a group of files that are there for them, where the setting notifyMembers is on: one mail to each
+		 *	Tell a group of files that are there for them, where the setting notifyMembers is on or the owner chose so for this action: one mail to each
 		 *	active member of the folder's group naming the files - all the files of one panel request in one mail - and
 		 *	linking the page members land on after they sign in. The mails go out in one call of the kernel's mail
 		 *	cap, which counts a call and not a mail. Mails that are not all delivered, or that the cap refuses, are a
@@ -510,12 +510,16 @@ namespace Nino\Modules {
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		$folder				The folder, with its id
 		 *	@param		array 		$files				The entries that are visible now, each with its id
+		 *	@param		bool|null	$notify				The owner's choice for this action: true mails the group whatever the setting says, false mails nobody, null (not asked) is the setting
 		 *
-		 *	@return 	bool										Whether every mail was delivered - true where there was none to send: the setting off, no file, nobody in the group
+		 *	@return 	bool										Whether every mail was delivered - true where there was none to send: the setting off or the choice false, no file, nobody in the group. The number delivered is in './nino/files/mailed'
 		 */
-		public static function notifyMembers( array &$appData, array $folder, array $files ): bool {
+		public static function notifyMembers( array &$appData, array $folder, array $files, ?bool $notify = null ): bool {
 
-			if( \Nino\Features::setting( $appData, self::FEATURE_KEY, 'notifyMembers', false ) !== true || $files === [] )
+			// How many mails were delivered, for the panel's answer to say whether the members were told: none until some are
+			$appData['./nino/files/mailed'] = 0;
+
+			if( ( $notify ?? \Nino\Features::setting( $appData, self::FEATURE_KEY, 'notifyMembers', false ) ) !== true || $files === [] )
 				return true;
 
 			$recipients = array_values( array_filter( \Nino\Modules\Members::accounts( $appData ),
@@ -557,8 +561,10 @@ namespace Nino\Modules {
 				$mails[] = [ 'to' => $account['email'], 'subject' => $mail['subject'], 'body' => $mail['body'], 'replyTo' => $replyTo ];
 			}
 
-			if( \Nino\Mail::sendAll( $appData, $mails ) === true )
+			if( \Nino\Mail::sendAll( $appData, $mails ) === true ) {
+				$appData['./nino/files/mailed'] = count( $mails );
 				return true;
+			}
 
 			trigger_error( 'Files: the mails to the group about the files '. implode( ', ', array_column( $files, 'id' ) ). ( \Nino\Mail::rateLimited( $appData ) === true ? ' were refused by the cap of mails an hour' : ' were not all delivered' ), E_USER_WARNING );
 

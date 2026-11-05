@@ -100,7 +100,8 @@ function world( locale, shell ) {
 	if( shell !== false )
 		Nino.admin = { dirty : { register : function( name, entry ) { registered.push( { name : name, entry : entry } ) }, refresh : function() { refreshed++ } } };
 
-	const context = vm.createContext( { console : console, document : page, Nino : Nino, window : { Nino : Nino, confirm : function( text ) { asked.push( text ); return agree } } } );
+	const window = { Nino : Nino, confirm : function( text ) { asked.push( text ); return agree } };
+	const context = vm.createContext( { console : console, document : page, Nino : Nino, window : window, Event : Event } );
 	load( '_admin/assets/Nino.admin.js', context );
 
 	// The one way a panel talks to the server is the kernel's api.call(): what it is asked for is kept, to be answered
@@ -114,6 +115,7 @@ function world( locale, shell ) {
 
 	return {
 		panel : Nino.admin.members,
+		window : window,
 		mount : mount,
 		requests : requests,
 		registered : registered,
@@ -271,7 +273,7 @@ console.log( '\nNino.admin.members - a new member\n' );
 	const told = [];
 	w.entry().save( function( ok ) { told.push( ok ) } );
 	const sent = w.last();
-	check( 'save posts members/add with the four values of the form - the invitation as a flag - and the button waits for the answer', sent.action === 'members/add' && JSON.stringify( sent.payload ) === '{"email":"new@example.org","name":"","group":"","invite":true}'
+	check( 'save posts members/add with the four values of the form - the invitation as a flag - and the button waits for the answer', sent.action === 'members/add' && JSON.stringify( sent.payload ) === '{"email":"new@example.org","name":"","group":"","invite":true,"notify":true}'
 		&& w.button( form, w.word('/_admin/members/label/add') ).disabled === true );
 
 	name.value = 'New One';
@@ -288,7 +290,7 @@ console.log( '\nNino.admin.members - a new member\n' );
 	const quiet = JSON.stringify( w.last().payload );
 	w.answer( 200, { account : A, invited : false } );
 	w.answer( 200, LIST );
-	check( 'an invitation that is not ticked is not asked for: the flag is false', quiet === '{"email":"quiet@example.org","name":"","group":"","invite":false}' );
+	check( 'an invitation that is not ticked is not asked for: the flag is false', quiet === '{"email":"quiet@example.org","name":"","group":"","invite":false,"notify":true}' );
 
 	email.value = 'x@example.org';
 	invite.checked = true;
@@ -410,11 +412,76 @@ console.log( '\nNino.admin.members - changing an account\n' );
 	check( 'discard forgets what was typed', typed === true && w.entry().isDirty() === false && w.input( w.region('members-new'), 'email' ).value === '' );
 }
 
+console.log( '\nNino.admin.members - whether the account is mailed\n' );
+
+{
+	const w = drawn('en_US');
+	const mail = w.region('members-mail');
+	const tick = w.find( mail, function( el ) { return el.tagName === 'INPUT' && el.type === 'checkbox' } );
+	const region = w.region('members-link');
+
+	check( 'the box for the mail is a real checkbox with its label, ticked at first, among the tools - and the region for the link beside it is hidden and empty', tick !== null && tick.dataset.key === 'notify' && tick.checked === true
+		&& w.region('members-tools').children.indexOf( mail ) !== -1 && w.all( mail, function( el ) { return el.textContent === w.word('/_admin/members/label/notify') } ).length > 0 && region.hidden === true && region.children.length === 0 );
+
+	tick.checked = false;
+	const form = w.region('members-new');
+	w.input( form, 'email' ).value = 'link@example.org';
+	w.entry().save( function() {} );
+	check( 'unticked, the form posts members/add with notify false', w.last().action === 'members/add' && w.last().payload.notify === false && w.last().payload.invite === true );
+
+	let copied = null;
+	w.window.navigator = { clipboard : { writeText : function( text ) { copied = text; return { then : function( done ) { done() } } } } };
+	w.answer( 200, { account : A, invited : true, link : 'https://example.org/.members/login?t=abc' } );
+	const field = w.region('members-link-field');
+	check( 'the link of the answer is shown in a read-only field with the sentence that it is shown once, a button that copies it and one that closes it - and the form says that no mail went',
+		region.hidden === false && field !== null && field.readOnly === true && field.value === 'https://example.org/.members/login?t=abc'
+		&& w.all( region, function( el ) { return el.textContent === w.word('/_admin/members/hint/link-once') } ).length > 0 && w.button( region, w.word('/_admin/members/label/copy') ) !== null && w.button( region, w.word('/_admin/members/label/close-link') ) !== null
+		&& w.all( form, function( el ) { return el.textContent === w.word('/_admin/members/msg/invited-quiet') } ).length > 0 );
+
+	w.input( form, 'email' ).value = 'again@example.org';
+	w.entry().save( function() {} );
+	check( 'a new add takes the link of the one before away at once, before it asks', region.hidden === true && region.children.length === 0 && w.region('members-link-field') === null && w.last().action === 'members/add' );
+	w.answer( 200, { account : A, invited : true, link : 'https://example.org/.members/login?t=abc' } );
+	w.button( region, w.word('/_admin/members/label/copy') ).click();
+	check( '...the copy button hands the link to the clipboard where there is one', copied === 'https://example.org/.members/login?t=abc' );
+	delete w.window.navigator;
+	w.button( region, w.word('/_admin/members/label/copy') ).click();
+	check( '...and where there is none it selects the field and says so', w.all( region, function( el ) { return el.textContent === w.word('/_admin/members/msg/selected') } ).length > 0 );
+
+	w.button( region, w.word('/_admin/members/label/close-link') ).click();
+	check( 'closing takes the link away: the field is gone, the region hidden and empty', region.hidden === true && region.children.length === 0 && w.region('members-link-field') === null );
+
+	w.answer( 200, LIST );
+	fire( w.button( w.rows()[0], 'Send login link' ), 'click' );
+	check( 'the rows ask the same box: Send login link posts notify false while it stands unticked', w.last().action === 'members/link' && w.last().payload.notify === false );
+	w.answer( 200, { sent : false, link : 'https://example.org/.members/login?t=def' } );
+	check( '...and its link is shown, with the line of a link made without a mail', w.region('members-link-field').value === 'https://example.org/.members/login?t=def'
+		&& w.find( w.rows()[0], function( el ) { return el.classList.contains('nino-admin-status') } ).textContent === w.word('/_admin/members/msg/sent-quiet') );
+
+	fire( w.button( w.rows()[0], 'Send login link' ), 'click' );
+	check( 'a new action takes the old link away before it asks', w.region('members-link').hidden === true && w.region('members-link-field') === null );
+	w.answer( 500, { error : 'x', code : 'members_mail' } );
+}
+
+
+{
+	const w = drawn('en_US');
+	const tick = w.find( w.region('members-mail'), function( el ) { return el.tagName === 'INPUT' && el.type === 'checkbox' } );
+
+	tick.checked = false;
+	fire( tick, 'change' );
+	w.input( w.region('members-new'), 'email' ).value = 'again@example.org';
+	w.entry().save( function() {} );
+	w.answer( 200, { account : A, invited : true, link : 'https://example.org/.members/login?t=shown' } );
+	check( 'a screen that is shown again starts at the default: the box is ticked again and the link that was shown is gone - the panel is not asked for anything', w.region('members-link').hidden === false && tick.checked === false
+		&& ( w.panel.showCurrent(), tick.checked === true && w.region('members-link').hidden === true && w.region('members-link').children.length === 0 && w.region('members-link-field') === null && w.panel._notify.checked === true ) );
+}
+
 {
 	const w = drawn('en_US');
 
 	fire( w.button( w.rows()[0], 'Send login link' ), 'click' );
-	check( 'send login link posts members/link with the id', w.last().action === 'members/link' && JSON.stringify( w.last().payload ) === '{"id":"aaaaaaaaaaaa"}' );
+	check( 'send login link posts members/link with the id', w.last().action === 'members/link' && JSON.stringify( w.last().payload ) === '{"id":"aaaaaaaaaaaa","notify":true}' );
 	w.answer( 200, { sent : true } );
 	check( '...and the row says the link is sent', w.find( w.rows()[0], function( el ) { return el.classList.contains('nino-admin-status') } ).textContent === w.word('/_admin/members/msg/sent') );
 

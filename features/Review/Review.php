@@ -447,7 +447,7 @@ namespace Nino\Modules {
 		}
 
 		/**
-		 *	Tell members of a comment of the owner's, where the setting notifyMembers is on. An answer goes to the member whose
+		 *	Tell members of a comment of the owner's, where the setting notifyMembers is on or the owner chose so for this comment. An answer goes to the member whose
 		 *	comment it answers - if that is a member, and their account is there and active; a comment of the owner's on the
 		 *	file goes to every active member of the group of the folder the file is in, if the file is visible to them. The
 		 *	link leads to the page that showed the player when the comment answered was written, with ?review=<id>, else to
@@ -459,12 +459,13 @@ namespace Nino\Modules {
 		 *	@param		array 		$file					The entry of the file, as Files::file() has it
 		 *	@param		array 		$comment			The comment of the owner, as add() answers it
 		 *	@param		array|null	$answered			The comment it answers, as comments() has it; null for a comment of its own
+		 *	@param		bool|null	$notify				The owner's choice for this comment: true mails whatever the setting says, false mails nobody, null (not asked) is the setting
 		 *
 		 *	@return 	bool										Whether every mail was delivered - true where there was none to send
 		 */
-		public static function notifyMembers( array &$appData, array $file, array $comment, ?array $answered ): bool {
+		public static function notifyMembers( array &$appData, array $file, array $comment, ?array $answered, ?bool $notify = null ): bool {
 
-			if( \Nino\Features::setting( $appData, self::FEATURE_KEY, 'notifyMembers', false ) !== true )
+			if( ( $notify ?? \Nino\Features::setting( $appData, self::FEATURE_KEY, 'notifyMembers', false ) ) !== true )
 				return true;
 
 			$recipients = [];

@@ -103,7 +103,7 @@ class Clients {
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$input				Any of FIELDS
-	 *	@param		array|null	$first				The first account of the client: email and name. Without an email the client is made alone
+	 *	@param		array|null	$first				The first account of the client: email and name, and notify (false: the invitation is not mailed, its link is in the answer). Without an email the client is made alone
 	 *
 	 *	@return 	array|string							The client; or why not, see the class. With a first account the client has the key first: what invite()
 	 *																		answered - the account and whether it was mailed - or the code it was refused with (Members' invalid, long,
@@ -145,7 +145,7 @@ class Clients {
 		if( $email !== '' ) {
 
 			try {
-				$client['first'] = self::invite( $appData, $client, $email, (string) ( $first['name'] ?? '' ) );
+				$client['first'] = self::invite( $appData, $client, $email, (string) ( $first['name'] ?? '' ), ( $first['notify'] ?? true ) !== false );
 			}
 			catch( \PDOException $e ) {
 				$client['first'] = 'database';
@@ -386,16 +386,24 @@ class Clients {
 	}
 
 	/**
-	 *	Make an account of Members in the group of a client, link it and mail the invitation
+	 *	Make an account of Members in the group of a client, link it and mail the invitation - or, with $notify false, keep the invitation and mail
+	 *	nobody: the answer carries its link, once
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$client
 	 *	@param		string		$email
 	 *	@param		string		$name
+	 *	@param		bool			$notify				Whether the invitation is mailed
 	 *
-	 *	@return 	array|string							account (as accountsDetailed() has it) and mailed; or Members' reason: 'invalid', 'long', 'taken' or 'write'. An account that cannot be linked is taken back and the \PDOException goes on
+	 *	@return 	array|string							account (as accountsDetailed() has it) and mailed - and link, with $notify false; or Members' reason: 'invalid', 'long', 'taken' or 'write'. An account that cannot be linked is taken back and the \PDOException goes on
 	 */
-	public static function invite( array &$appData, array $client, string $email, string $name ): array|string {
+	public static function invite( array &$appData, array $client, string $email, string $name, bool $notify = true ): array|string {
+
+		// A link that is to be shown is charged to the cap of mails: where the cap is spent already nothing is made - no account to be asked for again, no 'taken' at the retry
+		if( $notify === false && \Nino\Feature::spent( $appData, 'ratelimit', \Nino\Http::getClientIp( $appData ), (int) ( $appData['/nino/mail/cap'] ?? \Nino\AppData::DEFAULTS['/nino/mail/cap'] ) ) === true ) {
+			$appData['./nino/mail/ratelimited'] = true;
+			return 'ratelimit';
+		}
 
 		$account = \Nino\Modules\Members::add( $appData, $email, $name, $client['group'] );
 
@@ -412,9 +420,13 @@ class Clients {
 		}
 
 		// The invited member lands on the portal
-		$mailed = \Nino\Modules\Members::link( $appData, $account, 'invite', '/portal', true );
+		$made = \Nino\Modules\Members::link( $appData, $account, 'invite', '/portal', true, $notify );
 
-		return [ 'account' => self::row( $account['id'], $account ), 'mailed' => $mailed ];
+		// A link that was to be shown and could not be made is a refusal, never an empty link in an answer: the account is there and its link can be asked for again
+		if( $notify === false && is_string( $made ) === false )
+			return \Nino\Mail::rateLimited( $appData ) === true ? 'ratelimit' : 'link';
+
+		return [ 'account' => self::row( $account['id'], $account ), 'mailed' => $made === true ] + ( $notify === false ? [ 'link' => (string) $made ] : [] );
 	}
 
 	/**
@@ -422,12 +434,13 @@ class Clients {
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$account			As accountsDetailed() has it, and not gone
+	 *	@param		bool			$notify				Whether the mail is sent; with false nobody is mailed and the link is the answer, once
 	 *
-	 *	@return 	bool											Whether the mail was delivered
+	 *	@return 	bool|string								Whether the mail was delivered; with $notify false the link, or false where it could not be made
 	 */
-	public static function resend( array &$appData, array $account ): bool {
+	public static function resend( array &$appData, array $account, bool $notify = true ): bool|string {
 
-		return \Nino\Modules\Members::link( $appData, $account, $account['login'] === null ? 'invite' : 'login', '/portal', true );
+		return \Nino\Modules\Members::link( $appData, $account, $account['login'] === null ? 'invite' : 'login', '/portal', true, $notify );
 	}
 
 	/**

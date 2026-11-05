@@ -16,6 +16,11 @@ class Crm {
 	// The one permission of the CRM: the surface at /crm, the panel CRM of the workbench and the API behind both
 	public const string MANAGE_PERM = '/_admin/crm/manage';
 
+	// The permissions of the features whose links the owner may have shown instead of mailed: a link without the mail signs in or signs as the account,
+	// so it needs the permission of the feature that makes it - the CRM's alone is not enough
+	public const string LINK_PERM_MEMBERS = '/_admin/members/manage';
+	public const string LINK_PERM_SIGN = '/_admin/sign/manage';
+
 	// The body of the route GET:// once the site's front is the portal's door (written by the Einrichtung, answered by Portal::callbackDoor())
 	public const string DOOR = '[template /templates/page-door]';
 
@@ -199,6 +204,19 @@ class Crm {
 		$feature = \Nino\Features::get( $appData, $key );
 
 		return $feature !== null && $feature['active'] === true && $feature['problems'] === [];
+	}
+
+	/**
+	 *	Whether the account may have a link shown instead of mailed: it holds the permission of the feature that makes the link (members or sign)
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$feature			members or sign
+	 *
+	 *	@return 	bool
+	 */
+	public static function mayLink( array &$appData, string $feature ): bool {
+
+		return \Nino\Auth::checkPermission( $appData, $feature === 'sign' ? self::LINK_PERM_SIGN : self::LINK_PERM_MEMBERS ) === true;
 	}
 
 	/**

@@ -845,15 +845,17 @@ class Documents {
 
 	/**
 	 *	A reminder to pay: the release mail again, in the words of a reminder, to each active account of the client of an invoice that is open or
-	 *	sent, overdue and released to the portal. Nothing else changes. The activity log names the number
+	 *	sent, overdue and released to the portal. The reminder is noted on the invoice (reminded_at, and whether it went by mail) - with the mail or
+	 *	without it, so that the owner who phoned notes it as well; without the mail nothing is sent. Nothing else changes. The activity log names the number
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		int				$id
+	 *	@param		bool			$mail					Whether the accounts of the client are mailed
 	 *
 	 *	@return 	array|string							document (as get() has it) and mailed (how many mails were delivered); or unknown; state (it is no invoice that is overdue);
 	 *																		released (the client could not find it in the portal); address, limit as release() has them
 	 */
-	public static function remind( array &$appData, int $id ): array|string {
+	public static function remind( array &$appData, int $id, bool $mail = true ): array|string {
 
 		$document = self::get( $appData, $id );
 
@@ -866,12 +868,14 @@ class Documents {
 		if( $document['released'] === false )
 			return 'released';
 
-		$sent = Mail::remind( $appData, $document );
+		$sent = $mail === true ? Mail::remind( $appData, $document ) : 0;
 
 		if( is_string( $sent ) === true )
 			return $sent;
 
-		return [ 'document' => $document, 'mailed' => $sent ];
+		Db::exec( $appData, 'UPDATE documents SET reminded_at = :now, reminded_mail = :mail WHERE id = :id', [ 'now' => gmdate( self::TIME ), 'mail' => $mail === true ? 1 : 0, 'id' => $id ] );
+
+		return [ 'document' => (array) self::get( $appData, $id ), 'mailed' => $sent ];
 	}
 
 	/**
@@ -1017,10 +1021,11 @@ class Documents {
 	 *	@param		int				$id
 	 *	@param		string		$accountId		An account of Members that belongs to the client
 	 *	@param		int|null	$days					How long the link is good for, 1 to 90; the setting of Sign where none is given
+	 *	@param		bool			$notify				Whether Sign mails the account; with false the request is made all the same and the answer carries its link, once
 	 *
-	 *	@return 	array|string							document (as get() has it) and mailed (whether Sign delivered its mail); or why not
+	 *	@return 	array|string							document (as get() has it) and mailed (whether Sign delivered its mail) and, with $notify false, link; or why not
 	 */
-	public static function requestSignature( array &$appData, int $id, string $accountId, ?int $days = null ): array|string {
+	public static function requestSignature( array &$appData, int $id, string $accountId, ?int $days = null, bool $notify = true ): array|string {
 
 		$document = self::get( $appData, $id );
 
@@ -1045,11 +1050,11 @@ class Documents {
 		if( in_array( $accountId, Clients::accounts( $appData, $document['client_id'] ), true ) === false )
 			return 'account';
 
-		$options = [ 'title' => $document['title'], 'page' => '/portal/belege' ] + ( $days === null ? [] : [ 'days' => $days ] );
+		$options = [ 'title' => $document['title'], 'page' => '/portal/belege' ] + ( $days === null ? [] : [ 'days' => $days ] ) + ( $notify === false ? [ 'notify' => false ] : [] );
 		$request = \Nino\Modules\Sign::request( $appData, $document['template_key'], self::dataOf( $appData, $document ), $accountId, $options );
 
 		if( is_string( $request ) === true )
-			return match( $request ) { 'member' => 'field', 'account' => 'account', default => 'sign:'. $request };
+			return match( $request ) { 'member' => 'field', 'account' => 'account', 'ratelimit' => 'limit', default => 'sign:'. $request };
 
 		// Two requests made at once: the one that wrote its id first is the request of the document, the other is taken back
 		$claimed = Db::exec( $appData, 'UPDATE documents SET sign_id = :sign, sign_state = \'requested\', updated = :now WHERE id = :id AND state IN ( \'open\', \'sent\' ) AND sign_state NOT IN ( \'requested\', \'viewed\' )',
@@ -1060,7 +1065,7 @@ class Documents {
 			return 'pending';
 		}
 
-		return [ 'document' => (array) self::get( $appData, $id ), 'mailed' => $request['mailed'] === true ];
+		return [ 'document' => (array) self::get( $appData, $id ), 'mailed' => $request['mailed'] === true ] + ( $notify === false ? [ 'link' => (string) ( $request['link'] ?? '' ) ] : [] );
 	}
 
 	/**
@@ -1068,10 +1073,11 @@ class Documents {
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		int				$id
+	 *	@param		bool			$notify				Whether Sign mails the account; with false the request gets its new token all the same - the old link is dead - and the document carries the new link as link, once
 	 *
-	 *	@return 	array|string							The document as get() has it; or unknown; category; state (no request is waiting); sign (Sign is off); mail (the member was not mailed, the link is as it was)
+	 *	@return 	array|string							The document as get() has it, and with $notify false link; or unknown; category; state (no request is waiting); sign (Sign is off); mail (the member was not mailed, the link is as it was)
 	 */
-	public static function remindSignature( array &$appData, int $id ): array|string {
+	public static function remindSignature( array &$appData, int $id, bool $notify = true ): array|string {
 
 		$document = self::get( $appData, $id );
 
@@ -1087,10 +1093,12 @@ class Documents {
 		if( Crm::featureOn( $appData, 'sign' ) === false )
 			return 'sign';
 
-		if( \Nino\Modules\Sign::remind( $appData, $document['sign_id'] ) === false )
-			return 'mail';
+		$reminded = \Nino\Modules\Sign::remind( $appData, $document['sign_id'], $notify );
 
-		return (array) self::get( $appData, $id );
+		if( $reminded === false )
+			return \Nino\Mail::rateLimited( $appData ) === true ? 'limit' : 'mail';
+
+		return (array) self::get( $appData, $id ) + ( $notify === false ? [ 'link' => (string) $reminded ] : [] );
 	}
 
 	/**
@@ -1834,6 +1842,8 @@ class Documents {
 		$row['parent_id'] = $row['parent_id'] === null ? null : (int) $row['parent_id'];
 		$row['reverse_charge'] = (int) $row['reverse_charge'] === 1;
 		$row['released'] = (int) $row['released'] === 1;
+		$row['reminded_at'] = (string) ( $row['reminded_at'] ?? '' );
+		$row['reminded_mail'] = (int) ( $row['reminded_mail'] ?? 0 ) === 1;
 		$row['number'] = (string) ( $row['number'] ?? '' );
 		$row['inputs'] = is_array( $inputs ) === true ? $inputs : [];
 		$row['client_frozen'] = is_array( $frozen ) === true ? $frozen : [];
