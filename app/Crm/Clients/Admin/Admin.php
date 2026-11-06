@@ -57,6 +57,7 @@ class Admin {
 			'crm-clients/account-email'  => [ self::class, 'apiAccountEmail' ],
 			'crm-clients/account-remove' => [ self::class, 'apiAccountRemove' ],
 			'crm-clients/portal'   => [ self::class, 'apiPortal' ],
+			'crm-clients/message'  => [ self::class, 'apiMessage' ],
 		];
 	}
 
@@ -85,6 +86,7 @@ class Admin {
 			'crm-clients/account-name'   => 'Renamed account'. $id. ' of client'. $of,
 			'crm-clients/account-email'  => $of === '' ? '' : 'Changed the sign-in address of account'. $id. ' of client'. $of,
 			'crm-clients/account-remove' => 'Deleted account'. $id. ' of client'. $of,
+			'crm-clients/message'        => 'Changed the message of client'. $of,
 			default                      => '',
 		};
 	}
@@ -366,7 +368,7 @@ class Admin {
 		match( $kind ) {
 			'empty'   => \Nino\Http::fail( $request, 400, 'a client needs a company, a name or the address of its first account', 'crm_clients_empty', [], 'company' ),
 			'email'   => \Nino\Http::fail( $request, 400, 'the address is not valid', 'crm_clients_email', [], 'email' ),
-			'long'    => \Nino\Http::fail( $request, 400, 'the value is too long', 'crm_clients_long', [ \Crm\Clients::FIELDS[$field] ?? 0 ], $field ),
+			'long'    => \Nino\Http::fail( $request, 400, 'the value is too long', 'crm_clients_long', [ \Crm\Clients::FIELDS[$field] ?? ( $field === 'message' ? \Crm\Clients::MESSAGE_MAX : 0 ) ], $field ),
 			'format'  => \Nino\Http::fail( $request, 400, 'the value has a wrong format', 'crm_clients_format', [], $field ),
 			'write'   => self::_refuse( $request, 'write' ),
 			default   => \Nino\Http::fail( $request, 404, 'there is no such client', 'crm_clients_unknown', [], 'id' ),
@@ -594,7 +596,42 @@ class Admin {
 	}
 
 	/**
-	 *	Send an account its link again: the invitation where it never signed in, a link to sign in where it did.
+	 *	Write the message the client reads in the portal (text), or take it away (an empty text). The log line names the number of the client, never the text
+	 */
+	public static function apiMessage( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		self::_run( $request, static function() use ( &$appData, &$request ): void {
+
+			$data = \Nino\Admin\Admin::postData();
+			$client = self::_client( $appData, $request, $data );
+
+			if( $client === null )
+				return;
+
+			if( is_string( $data['text'] ?? null ) === false ) {
+				\Nino\Http::fail( $request, 400, 'the value is no text', 'crm_clients_format', [], 'message' );
+				return;
+			}
+
+			$saved = \Crm\Clients::setMessage( $appData, $client['id'], $data['text'] );
+
+			if( is_string( $saved ) === true ) {
+				self::_refused( $request, $saved );
+				return;
+			}
+
+			self::$_made['crm-clients/message'] = $client['number'];
+
+			\Nino\Http::ok( $request, [ 'client' => $saved ] );
+		} );
+	}
+
+	/**
+	 *	Send an account its link again: the invitation where it never signed in, a link to sign in where it did, to the page of the portal the field target names (none: the
+	 *	start page of the portal). A target that is no page of the portal is 400 crm_clients_target.
 	 *	An account that is switched off has nothing to sign in to (409 crm_clients_off); the cap of mails of the kernel is a 429 of its own
 	 */
 	public static function apiAccountResend( array &$appData, array &$request ): void {
@@ -612,6 +649,19 @@ class Admin {
 
 			[ $client, $account ] = $target;
 
+			// Where the link leads: a page of the portal, or nothing for its start page
+			$page = '';
+
+			if( array_key_exists( 'target', $data ) === true ) {
+
+				$page = \Crm\Portal::target( $data['target'] );
+
+				if( $page === '' ) {
+					\Nino\Http::fail( $request, 400, 'the target is no page of the portal', 'crm_clients_target', [], 'target' );
+					return;
+				}
+			}
+
 			if( $account['active'] === false ) {
 				\Nino\Http::fail( $request, 409, 'the account is switched off', 'crm_clients_off', [], 'account' );
 				return;
@@ -624,7 +674,7 @@ class Admin {
 				return;
 			}
 
-			$sent = \Crm\Clients::resend( $appData, $account, $notify );
+			$sent = \Crm\Clients::resend( $appData, $account, $notify, $page );
 
 			if( $sent === false ) {
 

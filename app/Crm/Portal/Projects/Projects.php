@@ -126,12 +126,60 @@ class Projects {
 	 */
 	private static function list( array &$appData, array $client, bool $open, bool $short, bool $unknown, string $classes ): string {
 
-		$projects = Projekte::list( $appData, $client['number'], $open );
+		[ 'projects' => $projects, 'counts' => $counts, 'files' => $files ] = self::ranked( $appData, $client, $open );
 		$say = $unknown === true ? self::template( 'projects-unknown' ) : '';
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 
 		if( $projects === [] )
 			return Portal::render( 'projects-empty', [ '[[classes]]' => $classes, '[[unknown]]' => $say, '[[empty]]' => Portal::emptyState( $appData, 'folder', '[[/project/crm-portal/projects/none]]', 'crm-projects__empty' ) ] );
+
+		if( $short === true )
+			$projects = array_slice( $projects, 0, self::SHORT );
+
+		$rows = [ 'open' => '', 'done' => '' ];
+
+		foreach( $projects as $project )
+			$rows[$project['done'] === true ? 'done' : 'open'] .= self::row( $project, $counts[$project['id']] ?? 0, $files[$project['id']] === null ? null : count( $files[$project['id']] ), $dir );
+
+		return Portal::render( 'projects', [
+			'[[classes]]'  => $classes. ( $short === true ? ' crm-projects--short' : '' ),
+			'[[labelled]]' => $short === true ? ' aria-labelledby="crm-projects-heading"' : '',
+			'[[heading]]'  => $short === true ? Portal::render( 'projects-heading', [ '[[dir]]' => $dir ] ) : '',
+			'[[unknown]]'  => $say,
+			'[[open]]'     => $rows['open'] === '' ? '' : Portal::render( 'projects-open', [ '[[rows]]' => $rows['open'] ] ),
+			'[[done]]'     => $rows['done'] === '' ? '' : Portal::render( 'projects-done', [ '[[rows]]' => $rows['done'] ] ),
+		] );
+	}
+
+	/**
+	 *	The project of the client that was last active and is not done: where the portal leads a client who has nothing waiting for it (see ranked() for what active is)
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client
+	 *
+	 *	@return 	array|null								As Projekte::get() has it; null where the client has no open project
+	 */
+	public static function latest( array &$appData, array $client ): ?array {
+
+		return self::ranked( $appData, $client, true )['projects'][0] ?? null;
+	}
+
+	/**
+	 *	The projects of the client in the order of the list, the one that was last active first: the day a document of it was released, a file came into its folder
+	 *	(one the member may see) or it began, whichever is latest
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client
+	 *	@param		bool			$open					Leave out the done ones
+	 *
+	 *	@return 	array											projects (as Projekte::list() has them), counts (the released documents of each project, by its id) and files (the files the member may see in the folder of each, by the id of the project; null for a project without a folder to look into)
+	 */
+	private static function ranked( array &$appData, array $client, bool $open ): array {
+
+		$projects = Projekte::list( $appData, $client['number'], $open );
+
+		if( $projects === [] )
+			return [ 'projects' => [], 'counts' => [], 'files' => [] ];
 
 		$counts = [];
 		$active = [];
@@ -156,22 +204,7 @@ class Projects {
 		// The latest day first; of two on a day the newer project (the list has it first already) - a stable sort keeps it so
 		usort( $projects, static fn( array $a, array $b ): int => strcmp( $active[$b['id']], $active[$a['id']] ) );
 
-		if( $short === true )
-			$projects = array_slice( $projects, 0, self::SHORT );
-
-		$rows = [ 'open' => '', 'done' => '' ];
-
-		foreach( $projects as $project )
-			$rows[$project['done'] === true ? 'done' : 'open'] .= self::row( $project, $counts[$project['id']] ?? 0, $files[$project['id']] === null ? null : count( $files[$project['id']] ), $dir );
-
-		return Portal::render( 'projects', [
-			'[[classes]]'  => $classes. ( $short === true ? ' crm-projects--short' : '' ),
-			'[[labelled]]' => $short === true ? ' aria-labelledby="crm-projects-heading"' : '',
-			'[[heading]]'  => $short === true ? Portal::render( 'projects-heading', [ '[[dir]]' => $dir ] ) : '',
-			'[[unknown]]'  => $say,
-			'[[open]]'     => $rows['open'] === '' ? '' : Portal::render( 'projects-open', [ '[[rows]]' => $rows['open'] ] ),
-			'[[done]]'     => $rows['done'] === '' ? '' : Portal::render( 'projects-done', [ '[[rows]]' => $rows['done'] ] ),
-		] );
+		return [ 'projects' => $projects, 'counts' => $counts, 'files' => $files ];
 	}
 
 	/**

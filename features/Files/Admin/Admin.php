@@ -312,9 +312,21 @@ namespace Nino\Modules\Files {
 		}
 
 		/**
+		 *	The page the mail to the members links, when the owner's action names one
+		 *
+		 *	@param		array 		$data				The posted payload
+		 *
+		 *	@return 	string|null							The field page where it is a path of this site as Files::page() accepts it; null (the page members land on) where it is absent or anything else
+		 */
+		private static function _page( array $data ): ?string {
+
+			return is_string( $data['page'] ?? null ) === true && \Nino\Modules\Files::page( $data['page'] ) === true ? $data['page'] : null;
+		}
+
+		/**
 		 *	One chunk of the owner's upload, with the fields of the route of the members' - folder, name, size, upload,
 		 *	index and count - and the bytes as the file part chunk; and visible, which is true unless it says false, for
-		 *	a file that is not shown to the members yet; and notify, a bool that says whether the members are mailed (absent: the setting decides). A part that did not arrive is the shell's refusal
+		 *	a file that is not shown to the members yet; and notify, a bool that says whether the members are mailed (absent: the setting decides), and page, the path of the page the mail links (absent, or not a path of this site: the page members land on). A part that did not arrive is the shell's refusal
 		 *	(Admin::uploadError()). The owner uploads into any folder. The last chunk puts the file in: the callback
 		 *	'/files/add' is told of it and, where it is visible and the setting notifyMembers is on - or notify says true; false mails nobody - the group is mailed
 		 *
@@ -365,14 +377,14 @@ namespace Nino\Modules\Files {
 			$appData['./nino/files/mailed'] = 0;
 
 			if( $entry['visible'] === true )
-				\Nino\Modules\Files::notifyMembers( $appData, $folder, [ $entry ], self::_notify( $data ) );
+				\Nino\Modules\Files::notifyMembers( $appData, $folder, [ $entry ], self::_notify( $data ), self::_page( $data ) );
 
 			\Nino\Http::ok( $request, [ 'id' => $entry['id'], 'name' => $entry['name'], 'size' => $entry['size'], 'mailed' => (int) $appData['./nino/files/mailed'] ] );
 		}
 
 		/**
 		 *	Change a file: whether it is visible to the members, and the folder it is in - another folder of the same
-		 *	group. A file that is made visible is told to the group where the setting notifyMembers is on or notify says true (false: not told)
+		 *	group. A file that is made visible is told to the group where the setting notifyMembers is on or notify says true (false: not told); page names the page the mail links, as in the upload
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		&$request			(reference) Current server request
@@ -407,7 +419,7 @@ namespace Nino\Modules\Files {
 				$folder = Store::folder( $appData, $saved['file']['folder'] );
 
 				if( $folder !== null )
-					\Nino\Modules\Files::notifyMembers( $appData, $folder, [ $saved['file'] ], self::_notify( $data ) );
+					\Nino\Modules\Files::notifyMembers( $appData, $folder, [ $saved['file'] ], self::_notify( $data ), self::_page( $data ) );
 			}
 
 			\Nino\Http::ok( $request, [ 'file' => $saved['file'], 'mailed' => (int) $appData['./nino/files/mailed'] ] );

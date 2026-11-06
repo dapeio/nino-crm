@@ -3,7 +3,7 @@ declare(strict_types=1);
 /**
  *	Crm\Documents\Mail		The mail that tells the accounts of a client a document was released to the portal: one mail for each active
  *												account of the client, in German (a document is the owner's letter to his client, and an account of
- *												Members has no language of its own), with the absolute link to the page Belege and no attachment.
+ *												Members has no language of its own), with the absolute link to the document in the portal (Portal::documentHref(): its row in the list of documents, for a document of a project its card on the page of the project) and no attachment.
  *												All mails are one call of the kernel's mail, which counts a call against the cap of mails an hour and not
  *												a mail. The words are in text/de_DE.php, the markup in templates/release.tpl (changed.tpl for the mail to the owner about changed data, order-owner.tpl and order-confirm.tpl for the order of an offer); a value enters the
  *												template after it was rendered, escaped, so that nothing in it is read as a fill or a shortcode. The same
@@ -16,7 +16,7 @@ use Crm\Crm;
 
 class Mail {
 
-	// The page the mail leads to
+	// The list of documents of the portal: the page of a document that has no project, and the page a mail asks for the address of the site with
 	public const string PAGE = '/portal/belege';
 
 	private static array $_texts = [];
@@ -67,7 +67,7 @@ class Mail {
 	 */
 	public static function compose( array &$appData, array $document, string $kind = 'release' ): array {
 
-		$link = \Nino\Html::absoluteUrl( $appData, self::PAGE );
+		$link = \Nino\Html::absoluteUrl( $appData, \Crm\Portal::documentHref( $document, $document['category'] === 'offer' ? 'angebot' : 'belege' ) );
 
 		if( $link === '' || Crm::featureOn( $appData, 'members' ) === false )
 			return [];
@@ -296,7 +296,7 @@ class Mail {
 					'[[greeting]]'       => self::text( 'greeting', $who ),
 					'[[intro]]'          => self::text( 'order.confirm.intro', $day ),
 					'[[offer]]'          => self::text( 'order.confirm.offer', $number ),
-					'[[link]]'           => $project === '' ? $documents : \Nino\Html::absoluteUrl( $appData, '/portal/projekte?projekt='. rawurlencode( $project ) ),
+					'[[link]]'           => \Nino\Html::absoluteUrl( $appData, \Crm\Portal::documentHref( $document, 'angebot' ) ),
 					'[[cta]]'            => self::text( $project === '' ? 'order.confirm.button.documents' : 'order.confirm.button.project' ),
 					'[[download]]'       => \Nino\Html::absoluteUrl( $appData, '/.crm/pdf/'. (int) $document['id']. '?download=1' ),
 					'[[download-label]]' => self::text( 'order.confirm.download' ),

@@ -17,6 +17,11 @@ declare(strict_types=1);
  *								names it by (Clients::invoiceReady()), in this order. pending() says which step is next; callbackPending() sends a member whose client has one pending to
  *								the page of it (303, with ?weiter=<the page the member wanted>), and onward() is the one place that decides whether a weiter from a request is a path to go on to.
  *
+ *								After the sign-in the client lands where something waits for it (landing(): the offer that can be ordered, else the project that was last active), unless it came
+ *								for a page of its own; the callback '/members/start' of Members is where callbackStart() says so. A link to a page of the portal - in a mail, in an invitation -
+ *								names it as a target() has it, and documentHref() is the address of a document in the portal. The messages the owner wrote - to every client, to this
+ *								client - stand over the head of every page of the portal (messages()), once the gate is open.
+ *
  *								The look of all of it is the portal's own design, portal.css (its head comment says the system); the markup of every
  *								part is a template of templates/, read through template() and filled through render(), which also puts the icons in
  *								(Portal\Icons: a template asks for one with [[icon:<name>]]). The states a customer reads are the customer's words
@@ -42,6 +47,9 @@ class Portal {
 
 	// The longest page to go on to a request may name: a path under /portal and a short query
 	private const int ONWARD_MAX = 300;
+
+	// The part of an address that names a place on the page: lower case words and hyphens
+	private const string FRAGMENT = '/^[a-z0-9]+(?:-[a-z0-9]+)*$/D';
 
 	// The entries of the navigation, in its order: the last part of the address below /portal ('' is the start page), which is also the key of the page's name, and the icon of the entry
 	public const array NAV = [ '' => 'house', 'projekte' => 'folder', 'belege' => 'file-text', 'termine' => 'calendar', 'upload' => 'upload', 'meine-daten' => 'user' ];
@@ -125,6 +133,96 @@ class Portal {
 			return '';
 
 		return $posted;
+	}
+
+	/**
+	 *	A page of the portal a link may lead to, as a mail or an invitation names it: what onward() accepts - a path under /portal and a short query - and, after it, the place on the page
+	 *	(#beleg-12). Anything else is none
+	 *
+	 *	@param		mixed			$posted
+	 *
+	 *	@return 	string										The address as it was given; '' for none
+	 */
+	public static function target( mixed $posted ): string {
+
+		if( is_string( $posted ) === false || $posted === '' || strlen( $posted ) > self::ONWARD_MAX )
+			return '';
+
+		[ $page, $place ] = array_pad( explode( '#', $posted, 2 ), 2, null );
+
+		if( $place !== null && preg_match( self::FRAGMENT, $place ) !== 1 )
+			return '';
+
+		return self::onward( $page ) === '' ? '' : $posted;
+	}
+
+	/**
+	 *	The address of a document in the portal, from the directory the project is served from: its row in the list of documents, or - for a document of a project - its card on the page of the project
+	 *
+	 *	@param		array 		$document			id and project - as Documents::get() and released() have them
+	 *	@param		string		$tab					angebot for an offer (the section Angebot), belege for any other document (the section Belege)
+	 *
+	 *	@return 	string										A path with its query and the place on the page, not escaped
+	 */
+	public static function documentHref( array $document, string $tab ): string {
+
+		if( preg_match( Projekte::ID, (string) $document['project'] ) !== 1 )
+			return Portal\Order::PAGE_DOCUMENTS. '#beleg-'. $document['id'];
+
+		return Portal\Order::PAGE_PROJECTS. '?projekt='. rawurlencode( (string) $document['project'] ). '&tab='. $tab. '#'. ( $tab === 'angebot' ? 'angebot-' : 'beleg-' ). $document['id'];
+	}
+
+	/**
+	 *	Where the portal leads a client that has just signed in and asked for no page of its own: nothing while the gate has a step pending (the gate leads it, and the
+	 *	client goes on to the start page after it); else the card of the offer that can be ordered - the newest - or, without one, the files of the project that was last active
+	 *	and is not done (Projects::latest()); else nothing, the start page
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client				As Clients::get() has it
+	 *
+	 *	@return 	string										A path of the portal with its query and place; '' for the start page
+	 */
+	public static function landing( array &$appData, array $client ): string {
+
+		if( self::pending( $appData, $client ) !== '' )
+			return '';
+
+		foreach( Documents::released( $appData, $client['id'] ) as $document )
+			if( Documents::orderable( $document ) === true )
+				return self::documentHref( $document, 'angebot' );
+
+		$project = Portal\Projects::latest( $appData, $client );
+
+		return $project === null ? '' : Portal\Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $project['id'] ). '&tab=dateien';
+	}
+
+	/**
+	 *	'/members/start': a client that signs in without a page it asked for lands where landing() says. A member of no client, a sign-in with a target and a sign-in that
+	 *	comes when Members is off are left as they are; so is a client whose books cannot be read - the sign-in does not fail for want of a place to land
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$args				account, target and to, as Members fires them
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackStart( array &$appData, array &$args ): void {
+
+		// The start page of the portal is no page the client asked for: a bookmark of it, which the gate of Members keeps as the target, is as good as none
+		$target = (string) ( $args['target'] ?? '' );
+
+		if( ( $target !== '' && $target !== '/portal' ) || is_string( $args['account']['id'] ?? null ) === false || Crm::featureOn( $appData, 'members' ) === false )
+			return;
+
+		try {
+			$client = Clients::ofMember( $appData, $args['account']['id'] );
+			$to = $client === null ? '' : self::landing( $appData, $client );
+		}
+		catch( \PDOException $e ) {
+			return;
+		}
+
+		if( $to !== '' )
+			$args['to'] = $to;
 	}
 
 	/**
@@ -270,7 +368,8 @@ class Portal {
 
 		$wanted = self::onward( (string) ( $request['/nino/http/request']['uri'] ?? '' ). ( $flat === [] ? '' : '?'. http_build_query( $flat, '', '&', PHP_QUERY_RFC3986 ) ) );
 
-		\Nino\Http::redirect( $appData, $request, self::stepAddress( $pending, $wanted ), 303 );
+		// The start page is where the gate leads after its steps anyway: no weiter for it
+		\Nino\Http::redirect( $appData, $request, self::stepAddress( $pending, $wanted === '/portal' ? '' : $wanted ), 303 );
 	}
 
 	/**
@@ -391,8 +490,7 @@ class Portal {
 
 		if( ( $args['nav'] ?? '1' ) !== '0' ) {
 
-			// The name of the site is a text of the project and is put in as text: what the page of the site draws as markup is shown as typed here
-			$site = str_replace( "\0", '', trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/general/name' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
+			$site = self::siteName( $appData );
 			$bar = self::render( 'bar', [
 				'[[dir]]'      => $dir,
 				'[[site]]'     => \Nino\Modules\Components::escape( $site ),
@@ -404,7 +502,7 @@ class Portal {
 			$navigation = self::componentCrmPortalNav( $appData, [] );
 		}
 
-		return $bar. $navigation. self::render( 'head', [
+		return $bar. $navigation. ( $client === null ? '' : self::messages( $appData, $client ) ). self::render( 'head', [
 			'[[classes]]' => \Nino\Feature::classes( $args ),
 			'[[crumbs]]'  => $crumbs,
 			'[[title]]'   => $title,
@@ -412,6 +510,76 @@ class Portal {
 			'[[lead]]'    => $lead,
 			'[[actions]]' => ( $args['calendar'] ?? '0' ) === '1' && Crm::featureOn( $appData, 'events' ) === true ? self::template( 'head-calendar' ) : '',
 		] );
+	}
+
+	/**
+	 *	The name of the site: a text of the project, put in as text - what the page of the site draws as markup is shown as typed here
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	string										Not escaped; '' where the site has none
+	 */
+	private static function siteName( array &$appData ): string {
+
+		return str_replace( "\0", '', trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/general/name' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
+	}
+
+	/**
+	 *	The messages the owner wrote to the client, as notes over the head of a page of the portal: the one to every client first (the setting portal_message), then the one to this
+	 *	client (its message). Each says who wrote it - the name of the site - and the day, and holds the text as text: its line breaks are line breaks, and nothing else of it is
+	 *	read as markup, a fill or a shortcode. None while the gate has a step pending: the client reads the step first, and the messages after it
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client				As Clients::get() has it
+	 *
+	 *	@return 	string										Markup; '' for none
+	 */
+	public static function messages( array &$appData, array $client ): string {
+
+		if( self::pending( $appData, $client ) !== '' )
+			return '';
+
+		$all = Settings::all( $appData );
+		$site = self::siteName( $appData );
+		$html = '';
+
+		foreach( [ [ (string) $all['portal_message'], (string) $all['portal_message_at'] ], [ (string) $client['message'], (string) $client['message_at'] ] ] as [ $text, $at ] ) {
+
+			$text = trim( str_replace( "\0", '', $text ) );
+
+			if( $text === '' )
+				continue;
+
+			$day = Documents\Render::day( self::dayOf( $appData, $at ) );
+
+			$html .= self::render( 'message', [
+				'[[from]]' => $site === '' ? '[[/project/crm-portal/message/plain]]' : '[[/project/crm-portal/message/from]] <strong>'. \Nino\Modules\Components::escape( $site ). '</strong>',
+				'[[day]]'  => $day === '' ? '' : self::render( 'message-day', [ '[[iso]]' => \Nino\Modules\Components::escape( self::dayOf( $appData, $at ) ), '[[date]]' => \Nino\Modules\Components::escape( $day ) ] ),
+				'[[text]]' => str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $text ) ),
+			] );
+		}
+
+		return $html;
+	}
+
+	/**
+	 *	The day of a time of the server (UTC) in the timezone of the site: the zone of Events where that is on, else the one php runs in
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$at						Y-m-d\TH:i:s\Z
+	 *
+	 *	@return 	string										Y-m-d; '' for a text that is no time
+	 */
+	private static function dayOf( array &$appData, string $at ): string {
+
+		try {
+			$zone = Crm::featureOn( $appData, 'events' ) === true ? \Nino\Modules\Events::zone( $appData ) : new \DateTimeZone( date_default_timezone_get() );
+
+			return ( new \DateTimeImmutable( $at, new \DateTimeZone( 'UTC' ) ) )->setTimezone( $zone )->format( 'Y-m-d' );
+		}
+		catch( \Exception $e ) {
+			return '';
+		}
 	}
 
 	/**

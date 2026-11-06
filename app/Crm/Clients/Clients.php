@@ -11,8 +11,10 @@ declare(strict_types=1);
  *								or a name. A client is ready for an invoice (invoiceReady()) when it has a company or a name and a street, a postal code, a city and a country; get() and list()
  *								carry ready and title.
  *
+ *								A client carries the message the owner wrote to it (message, and message_at, the time it was written; setMessage()), which the portal shows on every page of it.
+ *
  *								A write answers the client as list() has it, or a string: 'empty' (neither company nor name - and, for add(), no valid address of a first account),
- *								'email:email', 'long:<field>' or 'format:<field>' (the field a value was refused for; format:business for a flag that is none),
+ *								'email:email', 'long:<field>' or 'format:<field>' (the field a value was refused for; format:business for a flag that is none; message for the message),
  *								'unknown' (no such client). A database failure is a \PDOException the caller answers.
  *
  *								The accounts of a client are rows of client_accounts and accounts of Members. An account belongs
@@ -39,6 +41,9 @@ class Clients {
 		'phone'   => '/^[0-9+][0-9 +()\/.-]*$/D',
 		'vat_id'  => '/^[A-Z]{2}[A-Za-z0-9]{2,18}$/D',
 	];
+
+	// The longest message to a client
+	public const int MESSAGE_MAX = 2000;
 
 	private const string TIME = 'Y-m-d\TH:i:s\Z';
 
@@ -227,6 +232,34 @@ class Clients {
 
 		Db::exec( $appData, 'UPDATE clients SET company = :company, name = :name, street = :street, zip = :zip, city = :city, country = :country,
 			email = :email, phone = :phone, vat_id = :vat_id, buyer_reference = :buyer_reference, business = :business, notes = :notes, updated = :now WHERE id = :id', [ 'id' => $id, 'now' => gmdate( self::TIME ) ] + $values );
+
+		return (array) self::get( $appData, $id );
+	}
+
+	/**
+	 *	Write the message a client reads in the portal, or take it away: text with line breaks, at most MESSAGE_MAX characters, no control character but the line break and the tab
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *	@param		string		$text					Empty to remove the message
+	 *
+	 *	@return 	array|string							The client as get() has it, with message_at the time the text was written ('' for none); or why not: 'unknown', 'long:message' or 'format:message'
+	 */
+	public static function setMessage( array &$appData, int $id, string $text ): array|string {
+
+		if( self::get( $appData, $id ) === null )
+			return 'unknown';
+
+		$text = trim( str_replace( [ "\r\n", "\r" ], "\n", $text ) );
+
+		if( mb_strlen( $text, 'UTF-8' ) > self::MESSAGE_MAX )
+			return 'long:message';
+
+		// A text that is no UTF-8 is none: preg_match() answers false for it
+		if( preg_match( '/[^\P{Cc}\n\t]/u', $text ) !== 0 )
+			return 'format:message';
+
+		Db::exec( $appData, 'UPDATE clients SET message = :message, message_at = :at WHERE id = :id', [ 'message' => $text, 'at' => $text === '' ? '' : gmdate( self::TIME ), 'id' => $id ] );
 
 		return (array) self::get( $appData, $id );
 	}
@@ -440,10 +473,11 @@ class Clients {
 	 *	@param		string		$email
 	 *	@param		string		$name
 	 *	@param		bool			$notify				Whether the invitation is mailed
+	 *	@param		string		$target				The page the invitation leads to once the account has signed in: a page of the portal as Portal::target() has it; '' - and any other text - is no page: the link leads to the start page of the portal, where the landing decides
 	 *
 	 *	@return 	array|string							account (as accountsDetailed() has it) and mailed - and link, with $notify false; or Members' reason: 'invalid', 'long', 'taken' or 'write'. An account that cannot be linked is taken back and the \PDOException goes on
 	 */
-	public static function invite( array &$appData, array $client, string $email, string $name, bool $notify = true ): array|string {
+	public static function invite( array &$appData, array $client, string $email, string $name, bool $notify = true, string $target = '' ): array|string {
 
 		// A link that is to be shown is charged to the cap of mails: where the cap is spent already nothing is made - no account to be asked for again, no 'taken' at the retry
 		if( $notify === false && \Nino\Feature::spent( $appData, 'ratelimit', \Nino\Http::getClientIp( $appData ), (int) ( $appData['/nino/mail/cap'] ?? \Nino\AppData::DEFAULTS['/nino/mail/cap'] ) ) === true ) {
@@ -465,8 +499,8 @@ class Clients {
 			throw $e;
 		}
 
-		// The invited member lands on the portal
-		$made = \Nino\Modules\Members::link( $appData, $account, 'invite', '/portal', true, $notify );
+		// The invited member lands on the page asked for, else on the portal
+		$made = \Nino\Modules\Members::link( $appData, $account, 'invite', Portal::target( $target ), true, $notify );
 
 		// A link that was to be shown and could not be made is a refusal, never an empty link in an answer: the account is there and its link can be asked for again
 		if( $notify === false && is_string( $made ) === false )
@@ -481,12 +515,13 @@ class Clients {
 	 *	@param		array 		&$appData
 	 *	@param		array 		$account			As accountsDetailed() has it, and not gone
 	 *	@param		bool			$notify				Whether the mail is sent; with false nobody is mailed and the link is the answer, once
+	 *	@param		string		$target				The page the link leads to once the account has signed in: a page of the portal as Portal::target() has it; '' - and any other text - is no page: the link leads to the start page of the portal, where the landing decides
 	 *
 	 *	@return 	bool|string								Whether the mail was delivered; with $notify false the link, or false where it could not be made
 	 */
-	public static function resend( array &$appData, array $account, bool $notify = true ): bool|string {
+	public static function resend( array &$appData, array $account, bool $notify = true, string $target = '' ): bool|string {
 
-		return \Nino\Modules\Members::link( $appData, $account, $account['login'] === null ? 'invite' : 'login', '/portal', true, $notify );
+		return \Nino\Modules\Members::link( $appData, $account, $account['login'] === null ? 'invite' : 'login', Portal::target( $target ), true, $notify );
 	}
 
 	/**

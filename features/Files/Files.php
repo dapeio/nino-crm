@@ -55,6 +55,9 @@ namespace Nino\Modules {
 		// Where this feature's own templates are, as \Nino\Filesystem resolves them
 		public const string TEMPLATES = '/features/Files/templates';
 
+		// The longest page the mail about new files may link
+		public const int PAGE_MAX = 500;
+
 		// The counter of the chunk requests, \Nino\Feature::count() under this name: the file /data/files-tries.php.
 		// Not 'files' - that is the file of the index, and a counter drops whatever in its file is no entry of its own,
 		// the index among it. It is not in the manifest's 'data' either: a window of an hour is nothing a backup carries
@@ -610,9 +613,23 @@ namespace Nino\Modules {
 		}
 
 		/**
+		 *	Whether a text is a page the mail about new files may link: a path of this site - a single slash first, no blank or control character, no colon before the next slash,
+		 *	no backslash after the first slash and no endpoint of a module ('/.') - of at most PAGE_MAX characters. The query is part of it
+		 *
+		 *	@param		string		$page
+		 *
+		 *	@return 	bool
+		 */
+		public static function page( string $page ): bool {
+
+			return strlen( $page ) <= self::PAGE_MAX && str_starts_with( $page, '/' ) === true && str_starts_with( $page, '//' ) === false && str_starts_with( $page, '/\\' ) === false
+				&& str_starts_with( $page, '/.' ) === false && preg_match( '/[\s\x00-\x1f\x7f]/', $page ) !== 1 && preg_match( '#^/[^/]*:#', $page ) !== 1;
+		}
+
+		/**
 		 *	Tell a group of files that are there for them, where the setting notifyMembers is on or the owner chose so for this action: one mail to each
 		 *	active member of the folder's group naming the files - all the files of one panel request in one mail - and
-		 *	linking the page members land on after they sign in. The mails go out in one call of the kernel's mail
+		 *	linking the page members land on after they sign in - or the page the caller names (see page()). The mails go out in one call of the kernel's mail
 		 *	cap, which counts a call and not a mail. Mails that are not all delivered, or that the cap refuses, are a
 		 *	warning that names the files by their ids and never an address
 		 *
@@ -620,10 +637,11 @@ namespace Nino\Modules {
 		 *	@param		array 		$folder				The folder, with its id
 		 *	@param		array 		$files				The entries that are visible now, each with its id
 		 *	@param		bool|null	$notify				The owner's choice for this action: true mails the group whatever the setting says, false mails nobody, null (not asked) is the setting
+		 *	@param		string|null	$page				The page the mail links, a path of this site as page() accepts it; null, or a text it does not accept, is the page members land on
 		 *
 		 *	@return 	bool										Whether every mail was delivered - true where there was none to send: the setting off or the choice false, no file, nobody in the group. The number delivered is in './nino/files/mailed'
 		 */
-		public static function notifyMembers( array &$appData, array $folder, array $files, ?bool $notify = null ): bool {
+		public static function notifyMembers( array &$appData, array $folder, array $files, ?bool $notify = null, ?string $page = null ): bool {
 
 			// How many mails were delivered, for the panel's answer to say whether the members were told: none until some are
 			$appData['./nino/files/mailed'] = 0;
@@ -637,7 +655,7 @@ namespace Nino\Modules {
 			if( $recipients === [] )
 				return true;
 
-			$link = \Nino\Html::absoluteUrl( $appData, (string) \Nino\Features::setting( $appData, 'members', 'start', '/' ) );
+			$link = \Nino\Html::absoluteUrl( $appData, $page !== null && self::page( $page ) === true ? $page : (string) \Nino\Features::setting( $appData, 'members', 'start', '/' ) );
 
 			if( $link === '' ) {
 				trigger_error( 'Files: no mail was sent to the group, the site has no address of its own', E_USER_WARNING );

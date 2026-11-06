@@ -37,10 +37,12 @@ class Settings {
 		'vat_exempt_text' => 'Kein Ausweis von Umsatzsteuer gemäß § 19 UStG',
 		'privacy_text'   => '',
 		'privacy_changed' => '',
+		'portal_message' => '',
+		'portal_message_at' => '',
 	];
 
-	// The keys the module keeps itself: a post of the surface never writes them. privacy_changed is the day privacy_text last changed
-	public const array READ_ONLY = [ 'privacy_changed' ];
+	// The keys the module keeps itself: a post of the surface never writes them. privacy_changed is the day privacy_text last changed, portal_message_at the time portal_message last changed
+	public const array READ_ONLY = [ 'privacy_changed', 'portal_message_at' ];
 
 	public const array VAT_MODES = [ 'small_business', 'regular' ];
 
@@ -54,6 +56,7 @@ class Settings {
 	public const int MAX_TAX = 40;
 	public const int MAX_BANK = 80;
 	public const int MAX_PRIVACY = 20000;
+	public const int MAX_MESSAGE = 2000;
 
 	// The seller's particulars an electronic invoice names (the block Rechnungsaussteller): the longest value each takes. The text of the
 	// exemption is used under the VAT mode small_business only
@@ -177,7 +180,13 @@ class Settings {
 		// A text of the Datenschutz that is different from the one before is a new text: the day is kept beside it, and the customers are asked again
 		$changed = $key === 'privacy_text' && self::get( $appData, 'privacy_text' ) !== $clean;
 
+		$messaged = $key === 'portal_message' && self::get( $appData, 'portal_message' ) !== $clean;
+
 		Db::exec( $appData, 'INSERT INTO settings ( key, value ) VALUES ( :k, :v ) ON CONFLICT( key ) DO UPDATE SET value = excluded.value', [ 'k' => $key, 'v' => $clean ] );
+
+		// A message that is different from the one before is written now; none is written at no time
+		if( $messaged === true )
+			Db::exec( $appData, 'INSERT INTO settings ( key, value ) VALUES ( \'portal_message_at\', :v ) ON CONFLICT( key ) DO UPDATE SET value = excluded.value', [ 'v' => $clean === '' ? '' : gmdate( 'Y-m-d\TH:i:s\Z' ) ] );
 
 		if( $changed === true )
 			Db::exec( $appData, 'INSERT INTO settings ( key, value ) VALUES ( \'privacy_changed\', :v ) ON CONFLICT( key ) DO UPDATE SET value = excluded.value', [ 'v' => date( 'Y-m-d' ) ] );
@@ -208,8 +217,15 @@ class Settings {
 
 				return mb_strlen( $value, 'UTF-8' ) <= self::MAX_PRIVACY && preg_match( '/[^\P{C}\n\t]/u', $value ) === 0 ? $value : [ 'value:'. $key ];
 
+			// The message every client reads in the portal: text with line breaks, as long as a client's own
+			case 'portal_message':
+				$value = trim( str_replace( [ "\r\n", "\r" ], "\n", $value ) );
+
+				return mb_strlen( $value, 'UTF-8' ) <= self::MAX_MESSAGE && preg_match( '/[^\P{Cc}\n\t]/u', $value ) === 0 ? $value : [ 'value:'. $key ];
+
 			// Set by the module when the text changes, never by a post
 			case 'privacy_changed':
+			case 'portal_message_at':
 				return [ 'value:'. $key ];
 
 			case 'vat_mode':

@@ -707,14 +707,14 @@ function press( w, key, target, mods ) {
 
 	const menus = [
 		[ 'an open invoice', { state : 'open' }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Stornieren|Als Entwurf kopieren|Projekt ändern|Notizen' ],
-		[ 'a sent invoice that is overdue and in the portal', { state : 'sent', overdue : true, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'a sent invoice that is overdue and in the portal', { state : 'sent', overdue : true, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Kunden hierher einladen|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
 		[ 'a paid invoice', { state : 'paid' }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 		[ 'a cancelled invoice', { state : 'cancelled' }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 		[ 'an open offer', { id : 13, category : 'offer', state : 'open', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als angenommen markieren|Als abgelehnt markieren|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 		[ 'an accepted offer', { id : 13, category : 'offer', state : 'accepted', due_date : null }, 'PDF ansehen|PDF herunterladen|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 		[ 'a credit note', { id : 17, category : 'credit', state : 'sent', due_date : null }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 		[ 'a contract that waits for a signature', { id : 18, category : 'contract', state : 'open', sign_state : 'viewed', lines : [], title : 'V', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Erinnern|Anfrage zurückziehen|Projekt ändern|Notizen' ],
-		[ 'a contract with no request', { id : 18, category : 'contract', state : 'open', released : true, lines : [], title : 'V', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Unterschrift anfordern|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'a contract with no request', { id : 18, category : 'contract', state : 'open', released : true, lines : [], title : 'V', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Unterschrift anfordern|Kunden hierher einladen|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
 		[ 'an information document', { id : 20, category : 'information', state : 'open', lines : [], title : 'Z', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 	];
 
@@ -852,6 +852,85 @@ function press( w, key, target, mods ) {
 	menuClick( step, 'Freigabe zurücknehmen' );
 	await settle();
 	check( 'Freigabe zurücknehmen posts crm-documents/unrelease', JSON.stringify( step.steps[0] ) === '["unrelease",{"id":"11"}]' && step.toast.textContent === 'Die Freigabe ist zurückgenommen.' );
+
+	// Kunden hierher einladen, from the menu of a document that is in the portal
+	const hereAccounts = [
+		{ id : 'aaaaaaaaaaaa', gone : false, state : 'signed', email : 'lena@nordlicht.example', name : 'Lena Brandt', active : true, login : '2026-10-30T10:00:00Z' },
+		{ id : 'bbbbbbbbbbbb', gone : false, state : 'invited', email : 'tom@nordlicht.example', name : '', active : true, login : null },
+		{ id : 'cccccccccccc', gone : false, state : 'off', email : 'alt@nordlicht.example', name : 'Alt', active : false, login : '2026-01-02T10:00:00Z' },
+		{ id : 'dddddddddddd', gone : true, state : 'gone' },
+	];
+	const hereSent = [];
+	const hereAnswers = function( refuse ) {
+		return {
+			'crm-clients/accounts' : function() { return [ 200, { accounts : hereAccounts } ] },
+			'crm-clients/account-resend' : function( data ) { hereSent.push( data ); return data.account === refuse ? [ 429, { error : 'x', code : 'crm_clients_ratelimit', params : [], field : '' } ] : [ 200, { sent : true, kind : 'login' } ] },
+		};
+	};
+	const hereTargets = {};
+	const hereYes = function( w, index ) { click( w, all( w.dialogs[index], 'button' ).pop() ) };
+	const hereNo = function( w, index ) { click( w, all( w.dialogs[index], 'button' )[0] ) };
+
+	for( const [ label, over ] of Object.entries( {
+		'an invoice without a project' : { state : 'sent', released : true },
+		'an invoice of a project' : { state : 'sent', released : true, project : '00001', project_title : 'Album 2027' },
+		'an offer of a project' : { id : 13, category : 'offer', state : 'sent', released : true, project : 'Album_2027-b', project_title : 'Album', due_date : null },
+		'an offer without a project' : { id : 14, category : 'offer', state : 'open', released : true, due_date : null },
+	} ) ) {
+		hereSent.length = 0;
+		const here = await stepper( over, hereAnswers( '' ) );
+		menuClick( here, texts['here.menu'] );
+		await settle();
+		hereYes( here, 0 );
+		await settle();
+		hereTargets[label] = Array.from( new Set( hereSent.map( function( post ) { return post.target } ) ) ).join( '|' );
+	}
+
+	check( 'a document that is in the portal has Kunden hierher einladen in its menu, before the way back: the link leads to its card on the page of the project (Angebot for an offer, Belege for another document) or to its row in the list of documents', hereTargets['an invoice without a project'] === '/portal/belege#beleg-11' && hereTargets['an invoice of a project'] === '/portal/projekte?projekt=00001&tab=belege#beleg-11'
+		&& hereTargets['an offer of a project'] === '/portal/projekte?projekt=Album_2027-b&tab=angebot#angebot-13' && hereTargets['an offer without a project'] === '/portal/belege#beleg-14' );
+	hereSent.length = 0;
+	const hereBox = await stepper( { state : 'sent', released : true }, hereAnswers( '' ) );
+	menuClick( hereBox, texts['here.menu'] );
+	await settle();
+	const hereDialog = hereBox.dialogs[0];
+	check( '...it asks crm-clients/accounts for the client of the document, then offers the accounts that are on - one tick for each, all ticked, the word of the link beside the name: an invitation for an account that never signed in, a link to sign in for the other - and the page the link leads to', JSON.stringify( hereBox.last( 'crm-clients/accounts' ).data ) === '{"id":"1"}'
+		&& all( hereDialog, 'input' ).map( function( input ) { return input.type+ ':'+ input.checked } ).join() === 'checkbox:true,checkbox:true' && all( hereDialog, 'label' ).map( textOf ).join( '|' ) === ' Lena Brandt · '+ texts['here.login']+ '| tom@nordlicht.example · '+ texts['here.invite'] && textOf( all( hereDialog, 'h2' )[0] ) === texts['here.title']
+		&& textOf( all( hereDialog, 'p' )[0] ) === texts['here.text'].replace( '%s', texts['here.page-document'] ) && hereSent.length === 0 );
+	hereNo( hereBox, 0 );
+	await settle();
+	check( '...the no sends nothing', hereSent.length === 0 && hereBox.toast.textContent === '' );
+	menuClick( hereBox, texts['here.menu'] );
+	await settle();
+	all( hereBox.dialogs[1], 'input' )[1].checked = false;
+	hereYes( hereBox, 1 );
+	await settle();
+	check( '...the yes sends one link to each account that stays ticked, by the action of the card of the client with the target, and the toast says how many: one', JSON.stringify( hereSent ) === '[{"id":"1","account":"aaaaaaaaaaaa","target":"/portal/belege#beleg-11"}]' && hereBox.toast.textContent === texts['here.sent-one'] );
+	hereSent.length = 0;
+	menuClick( hereBox, texts['here.menu'] );
+	await settle();
+	hereYes( hereBox, 2 );
+	await settle();
+	check( '...two ticked are two links, in the order of the accounts: the toast says two', hereSent.map( function( post ) { return post.account } ).join() === 'aaaaaaaaaaaa,bbbbbbbbbbbb' && hereBox.toast.textContent === texts['here.sent-many'].replace( '%s', '2' ) );
+	hereSent.length = 0;
+	menuClick( hereBox, texts['here.menu'] );
+	await settle();
+	all( hereBox.dialogs[3], 'input' ).forEach( function( input ) { input.checked = false } );
+	hereYes( hereBox, 3 );
+	await settle();
+	check( '...none ticked sends nothing and says so', hereSent.length === 0 && hereBox.toast.textContent === texts['here.nobody'] && hereBox.toast.classList.contains( 'bad' ) === true );
+	const hereRefused = await stepper( { state : 'sent', released : true }, hereAnswers( 'aaaaaaaaaaaa' ) );
+	hereSent.length = 0;
+	menuClick( hereRefused, texts['here.menu'] );
+	await settle();
+	hereYes( hereRefused, 0 );
+	await settle();
+	check( '...a link the server refuses is said with its sentence and does not stop the next: both are tried, the toast counts the one that went', hereSent.length === 2 && hereRefused.toast.textContent === texts['here.sent-one'] );
+	const hereNone = await stepper( { state : 'sent', released : true }, { 'crm-clients/accounts' : function() { return [ 200, { accounts : [ hereAccounts[2], hereAccounts[3] ] } ] } } );
+	menuClick( hereNone, texts['here.menu'] );
+	await settle();
+	check( '...a client with no account that is on is told so and nothing is asked', hereNone.dialogs.length === 0 && hereNone.toast.textContent === texts['here.none'] && hereNone.toast.classList.contains( 'bad' ) === true );
+	const hereDraft = await stepper( { state : 'sent', released : false } );
+	check( '...a document that is not in the portal has no such item', all( all( hereDraft.main, '.menu' )[0], '[role="menuitem"]' ).map( textOf ).indexOf( texts['here.menu'] ) === -1 );
 	step = await stepper( { id : 13, category : 'offer', state : 'open', due_date : null } );
 	menuClick( step, 'Als angenommen markieren' );
 	await settle();
@@ -1459,13 +1538,13 @@ function press( w, key, target, mods ) {
 	// === fix round 1: the menu by state, released or not
 	const moreMenus = [
 		[ 'an invoice that is overdue and not in the portal: no reminder, no way back', { state : 'sent', overdue : true, released : false }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Projekt ändern|Notizen' ],
-		[ 'a sent invoice in the portal that is not due yet: the reminder is offered, the owner decides when', { state : 'sent', overdue : false, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
-		[ 'an open invoice that is overdue and in the portal: marked as sent, and the reminder all the same', { state : 'open', overdue : true, released : true }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
-		[ 'a sent invoice in the portal with no due date: the reminder is offered', { state : 'sent', overdue : false, due_date : null, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
-		[ 'a paid invoice in the portal: no reminder', { state : 'paid', overdue : false, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'a sent invoice in the portal that is not due yet: the reminder is offered, the owner decides when', { state : 'sent', overdue : false, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Kunden hierher einladen|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'an open invoice that is overdue and in the portal: marked as sent, and the reminder all the same', { state : 'open', overdue : true, released : true }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Kunden hierher einladen|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'a sent invoice in the portal with no due date: the reminder is offered', { state : 'sent', overdue : false, due_date : null, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Zahlungserinnerung senden|Kunden hierher einladen|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'a paid invoice in the portal: no reminder', { state : 'paid', overdue : false, released : true }, 'PDF ansehen|PDF herunterladen|Stornieren|Als Entwurf kopieren|Kunden hierher einladen|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
 		[ 'a declined offer: no invoice, a contract is still possible', { id : 13, category : 'offer', state : 'declined', due_date : null }, 'PDF ansehen|PDF herunterladen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 		[ 'a sent offer', { id : 13, category : 'offer', state : 'sent', due_date : null }, 'PDF ansehen|PDF herunterladen|Als angenommen markieren|Als abgelehnt markieren|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
-		[ 'a cancelled invoice that is in the portal', { state : 'cancelled', released : true }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
+		[ 'a cancelled invoice that is in the portal', { state : 'cancelled', released : true }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Kunden hierher einladen|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
 	];
 
 	for( const [ label, over, expected ] of moreMenus ) {
@@ -1982,6 +2061,60 @@ function press( w, key, target, mods ) {
 	}
 
 	check( '...a refusal - the address is an account\'s already, is none, or the account holds no permission of Members - says the sentence of its code in the red toast, and the row is as it was', refusedMail.join() === 'true,true,true' && texts['error.crm_clients_taken'] !== undefined && texts['error.crm_clients_email'] !== undefined );
+
+	// the message to the client
+	const messageClient = Object.assign( {}, kclients[0], { message : 'Zu bis Montag.\n<b>Danke!</b>', message_at : '2026-11-02T10:00:00Z' } );
+	const kempty = await kopen( '#kunde-1' );
+	const kemptyBlock = all( kempty.main, '#client-message' )[0];
+	const kemptyOrder = Array.from( kempty.main.children );
+	check( 'the card has the block Nachricht im Portal under the head and before the columns of the card: with no message the sentence that the client reads it on every page until it is removed, and a button that writes one - nothing to remove', kemptyBlock !== undefined && textOf( all( kemptyBlock, 'h3' )[0] ) === texts['message.title'] && textOf( all( kempty.main, '#client-message-empty' )[0] ) === texts['message.empty']
+		&& textOf( all( kempty.main, '#message-edit' )[0] ) === texts['message.write'] && all( kempty.main, '#message-remove' ).length === 0 && all( kempty.main, '#client-message-text' ).length === 0
+		&& kemptyOrder.indexOf( kemptyBlock ) > kemptyOrder.indexOf( all( kempty.main, '.head' )[0] ) && kemptyOrder.indexOf( kemptyBlock ) < kemptyOrder.indexOf( all( kempty.main, '.cols-3' )[0] ) );
+
+	const messagePosts = [];
+	const kmessage = await kopen( '#kunde-1', {
+		'crm-clients/get' : function() { return [ 200, { client : messageClient, accounts : kaccounts } ] },
+		'crm-clients/message' : function( data ) { messagePosts.push( data ); return data.text.length > 2000 ? [ 400, { error : 'x', code : 'crm_clients_long', params : [ 2000 ], field : 'message' } ] : [ 200, { client : Object.assign( {}, messageClient, { message : data.text.trim(), message_at : data.text.trim() === '' ? '' : '2026-11-06T09:00:00Z' } ) } ] },
+	} );
+	const kmessageText = all( kmessage.main, '#client-message-text' )[0];
+	check( 'with a message the block shows the text as text - the line break is in the string, the markup is no element - the day since which the client reads it, Bearbeiten and Entfernen', kmessageText.textContent === 'Zu bis Montag.\n<b>Danke!</b>' && all( all( kmessage.main, '#client-message' )[0], 'b' ).length === 0
+		&& textOf( all( kmessage.main, '#client-message-day' )[0] ) === texts['message.since'].replace( '%s', '02.11.2026' ) && textOf( all( kmessage.main, '#message-edit' )[0] ) === texts['message.edit'] && textOf( all( kmessage.main, '#message-remove' )[0] ) === texts['message.remove'] && all( kmessage.main, '#client-message-empty' ).length === 0 );
+	click( kmessage, all( kmessage.main, '#message-edit' )[0] );
+	const kmessageBox = kmessage.dialogs[0];
+	const kmessageArea = all( kmessageBox, '#dlg-text' )[0];
+	check( 'Bearbeiten opens a dialog with a textarea that holds the text, limited to 2000 characters, and nothing is posted before the yes', kmessage.dialogs.length === 1 && kmessageArea.tagName === 'TEXTAREA' && kmessageArea.value === messageClient.message && kmessageArea.getAttribute( 'maxlength' ) === '2000' && messagePosts.length === 0
+		&& textOf( all( kmessageBox, 'h2' )[0] ) === texts['message.dialog'] && textOf( all( kmessageBox, 'button' ).pop() ) === texts['message.save'] );
+	kmessageArea.value = 'Neuer Text\nzweite Zeile';
+	fire( kmessageBox, 'keydown', { ctrlKey : true, key : 'x' } );
+	await settle();
+	check( '...Strg+X is nothing for the dialog', messagePosts.length === 0 && kmessageBox.open === true );
+	fire( kmessageBox, 'keydown', { ctrlKey : true, key : 's' } );
+	await settle();
+	check( '...Strg+S in the dialog is the yes: crm-clients/message with the client and the text, the block is drawn again with what the server answers, the toast says it is saved', JSON.stringify( messagePosts ) === '[{"id":"1","text":"Neuer Text\\nzweite Zeile"}]' && all( kmessage.main, '#client-message-text' )[0].textContent === 'Neuer Text\nzweite Zeile'
+		&& kmessage.toast.textContent === texts['message.saved'] && textOf( all( kmessage.main, '#client-message-day' )[0] ) === texts['message.since'].replace( '%s', '06.11.2026' ) && kmessageBox.open === false && all( kmessage.main, '#client-message' ).length === 1 );
+	click( kmessage, all( kmessage.main, '#message-edit' )[0] );
+	yes( kmessage, 1 );
+	await settle();
+	check( '...a yes over the text as it is posts nothing', messagePosts.length === 1 );
+	click( kmessage, all( kmessage.main, '#message-edit' )[0] );
+	all( kmessage.dialogs[2], '#dlg-text' )[0].value = 'x'.repeat( 2001 );
+	yes( kmessage, 2 );
+	await settle();
+	check( '...a text the server refuses is said with its sentence and the limit, and the block stays as it was', messagePosts.length === 2 && kmessage.toast.textContent === 'Der Wert darf höchstens 2000 Zeichen haben.' && all( kmessage.main, '#client-message-text' )[0].textContent === 'Neuer Text\nzweite Zeile' );
+	click( kmessage, all( kmessage.main, '#message-remove' )[0] );
+	const kmessageAsk = kmessage.dialogs[3];
+	fire( kmessageAsk, 'keydown', { ctrlKey : true, key : 's' } );
+	await settle();
+	check( 'Entfernen asks first, with the danger button: nothing is posted before the yes, and Strg+S is no yes of a question', textOf( all( kmessageAsk, 'h2' )[0] ) === texts['message.remove-title'] && messagePosts.length === 2 && kmessageAsk.open === true && all( kmessageAsk, 'button' ).pop().classList.contains( 'danger' ) === true );
+	yes( kmessage, 3 );
+	await settle();
+	check( '...the yes posts the empty text: the block says there is none, the button writes one, the toast says it is removed', JSON.stringify( messagePosts[2] ) === '{"id":"1","text":""}' && textOf( all( kmessage.main, '#client-message-empty' )[0] ) === texts['message.empty'] && all( kmessage.main, '#message-remove' ).length === 0 && kmessage.toast.textContent === texts['message.removed'] );
+
+	const klistMessage = await kopen( '#kunden', { 'crm-clients/list' : function() { return [ 200, { clients : kclients.map( function( one ) { return Object.assign( {}, one, { message : one.id === 2 ? 'Eine Nachricht' : '' } ) } ) } ] } } );
+	const kmessageRows = Array.from( krowsOf( klistMessage ) );
+	const kicons = all( klistMessage.main, '.msg-icon' );
+	check( 'the list of the clients marks a client with a message: an icon message-square in the column Kunde, with its words as the title and for a reader - and only that one', kicons.length === 1 && kmessageRows.map( function( row ) { return all( row, '.msg-icon' ).length } ).join() === '0,1,0,0,0' && kicons[0].parentNode === kmessageRows[1].children[1] && kicons[0].dataset.icon === 'message-square'
+		&& kicons[0].title === texts['clients.has-message'] && kicons[0].getAttribute( 'aria-label' ) === texts['clients.has-message'] && kicons[0].getAttribute( 'role' ) === 'img' );
 
 	// switch
 	let switched = null;
@@ -4247,12 +4380,13 @@ function press( w, key, target, mods ) {
 	const jc = await jopen( '#projekt-00001' );
 	check( 'the card asks crm-projekte/get with the id as a string; the head has the title, the state, the client as a link and since when, the menu Neuer Beleg and ⋯', JSON.stringify( jc.last( 'crm-projekte/get' ).data ) === '{"id":"00001"}' && textOf( all( jc.main, 'h1' )[0] ) === 'Album 2027' && textOf( all( jc.main, '.head .badge' )[0] ) === texts['projects.running']
 		&& all( all( jc.main, '.head .sub' )[0], 'a' )[0].getAttribute( 'href' ) === '#kunde-1' && textOf( all( jc.main, '.head .sub' )[0] ).indexOf( 'seit 01.10.2026' ) !== -1 && all( jc.main, '.crumb a' )[0].getAttribute( 'href' ) === '#projekte' && jmenu( jc, texts['card.document-new'] ) !== undefined && jmenu( jc, '⋯' ) !== undefined );
-	check( '...the menu ⋯ has Bearbeiten, Abschließen and Löschen (the last one in red); a done project offers Wieder öffnen', all( jmenu( jc, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === [ texts['projects.edit'], texts['projects.finish'], texts['projects.delete'] ].join( '|' ) && jitem( jc, texts['projects.delete'] ).classList.contains( 'danger' ) === true
-		&& all( jmenu( await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { done : true } ) } ) ] } } ), '⋯' ), '[role="menuitem"]' ).map( textOf )[1] === texts['projects.reopen'] );
+	check( '...the menu ⋯ has Kunden hierher einladen, Bearbeiten, Abschließen and Löschen (the last one in red); a done project offers Wieder öffnen', all( jmenu( jc, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === [ texts['here.menu'], texts['projects.edit'], texts['projects.finish'], texts['projects.delete'] ].join( '|' ) && jitem( jc, texts['projects.delete'] ).classList.contains( 'danger' ) === true
+		&& all( jmenu( await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { done : true } ) } ) ] } } ), '⋯' ), '[role="menuitem"]' ).map( textOf )[2] === texts['projects.reopen'] );
 	const jcn = await jopen( '#projekt-00001' );
 	click( jcn, all( jmenu( jcn, texts['card.document-new'] ), '[role="menuitem"]' ).find( function( one ) { return textOf( one ) === 'Rechnung' } ) );
 	check( '...Neuer Beleg opens the editor for the client with the project chosen: the address carries both', jcn.location.hash === '#neu-invoice-k1-p00001' );
-	check( '...a client that is off gets no Neuer Beleg, and a card without the permission of the Elements panel no menu ⋯', jmenu( await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { client : Object.assign( {}, jclient1, { active : false } ) } ) ] } } ), texts['card.document-new'] ) === undefined && jmenu( await jopen( '#projekt-00001', {}, { crm : true, pdf : false, elements : false, files : true } ), '⋯' ) === undefined );
+	check( '...a client that is off gets no Neuer Beleg, and a card without the permission of the Elements panel a menu ⋯ with Kunden hierher einladen alone', jmenu( await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { client : Object.assign( {}, jclient1, { active : false } ) } ) ] } } ), texts['card.document-new'] ) === undefined && jmenu( await jopen( '#projekt-00001', {}, { crm : true, pdf : false, elements : false, files : true } ), '⋯' ) !== undefined
+		&& all( jmenu( await jopen( '#projekt-00001', {}, { crm : true, pdf : false, elements : false, files : true } ), '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === texts['here.menu'] );
 	const jinfo = jf( jc, 'project-info' );
 	check( 'the card shows the facts: the client as a link, the day, the note on two lines, the documents with the offers that wait, the folder - and nothing that is empty', all( jinfo, 'dt' ).map( textOf ).join( '|' ) === [ texts['projects.f-client'], texts['projects.f-started'], texts['projects.f-description'], texts['projects.column-documents'], texts['projects.folder'] ].join( '|' ) && all( jinfo, 'dd' ).map( textOf ).join( '|' ).indexOf( 'Nordlicht Records GmbH · K-0001|01.10.2026|Aufnahmeund Mix|3 · '+ texts['projects.open-offers'].replace( '%s', '1' )+ '|Album 2027' ) === 0
 		&& all( jinfo, 'br' ).length === 1 );
@@ -4339,7 +4473,7 @@ function press( w, key, target, mods ) {
 		&& all( jfrows( jdf )[0], 'input' )[0].checked === true && all( jfrows( jdf )[1], 'input' )[0].checked === false && all( jfrows( jdf )[0], 'input' )[0].getAttribute( 'role' ) === 'switch' );
 	jtoggle( all( jfrows( jdf )[1], 'input' )[0], true );
 	await settle();
-	check( 'the switch sichtbar posts the Files panel\'s action files/save with the id and the value; a refusal puts the switch back and says the sentence', JSON.stringify( jposts[0] ) === JSON.stringify( [ 'files/save', { id : 'a00000000002', visible : true, notify : false } ] ) && all( jfrows( jdf )[1], 'input' )[0].checked === true && all( jfrows( jdf )[1], 'input' )[0].disabled === false );
+	check( 'the switch sichtbar posts the Files panel\'s action files/save with the id and the value; a refusal puts the switch back and says the sentence', JSON.stringify( jposts[0] ) === JSON.stringify( [ 'files/save', { id : 'a00000000002', visible : true, notify : false, page : '/portal/projekte?projekt=00001&tab=dateien' } ] ) && all( jfrows( jdf )[1], 'input' )[0].checked === true && all( jfrows( jdf )[1], 'input' )[0].disabled === false );
 	const jbox = jf( jdf, 'project-notify' );
 	check( 'the tab has one box "Kunden per E-Mail informieren" above the table and the upload - a real checkbox, unticked here since the card says the setting of Dateien is off - and a switch to visible says in the toast that no mail went', jbox !== undefined && jbox.type === 'checkbox' && jbox.checked === false && textOf( jf( jdf, 'project-notify-label' ) ).indexOf( texts['notify.files'] ) !== -1
 		&& texts['notify.files'] === 'Kunden per E-Mail informieren' && jdf.toast.textContent === texts['projects.shown-not-informed'] );
@@ -4362,6 +4496,7 @@ function press( w, key, target, mods ) {
 	click( jon, jf( jon, 'up-send' ) );
 	await settle();
 	check( '...the upload after the redraw posts notify false', jon.all( 'files/upload' ).length === 1 && jon.all( 'files/upload' )[0].data.notify === false );
+	check( '...every chunk of an upload and the switch sichtbar carry the page the mail to the customer links: the page of the project with the tab Dateien, so that the mail leads there and not to the start page', jon.all( 'files/upload' ).every( function( call ) { return call.data.page === '/portal/projekte?projekt=00001&tab=dateien' } ) && jon.all( 'files/upload' ).length === 1 );
 	jon.location.hash = '#projekte';
 	await settle();
 	jon.location.hash = '#projekt-00001-dateien';
@@ -4966,6 +5101,23 @@ function press( w, key, target, mods ) {
 
 	check( 'the waiting offers of a project are told with their number in a form that is right for every count: the word has a place for the number, and the number does not stand before a singular noun', texts['projects.open-offers'].indexOf( '%s' ) !== -1 && /%s Angebot\b/.test( texts['projects.open-offers'] ) === false );
 
+	// --- Kunden hierher einladen, from the card of a project
+	const jhereSent = [];
+	const jhereAnswers = { 'crm-clients/accounts' : function() { return [ 200, { accounts : kaccounts } ] }, 'crm-clients/account-resend' : function( data ) { jhereSent.push( data ); return [ 200, { sent : true, kind : data.account === 'bbbbbbbbbbbb' ? 'invite' : 'login' } ] } };
+	const jhere = await jopen( '#projekt-00001', jhereAnswers );
+	click( jhere, jitem( jhere, texts['here.menu'] ) );
+	await settle();
+	const jhereBox = jhere.dialogs[0];
+	check( 'the card of a project has Kunden hierher einladen first in the menu ⋯: the accounts of the client that are on are asked for and offered, all ticked, with the page the link leads to named - the files of the project', jhere.last( 'crm-clients/accounts' ) !== undefined && JSON.stringify( jhere.last( 'crm-clients/accounts' ).data ) === '{"id":"1"}'
+		&& all( jhereBox, 'input' ).length === 2 && all( jhereBox, 'input' ).every( function( input ) { return input.type === 'checkbox' && input.checked === true } ) && textOf( all( jhereBox, 'p' )[0] ) === texts['here.text'].replace( '%s', texts['here.page-project'] ) );
+	jyes( jhere, 0 );
+	await settle();
+	check( '...the yes sends a link to each, to the page of the files of the project - its id encoded, the tab named - and the toast says how many', JSON.stringify( jhereSent ) === JSON.stringify( [ { id : '1', account : 'aaaaaaaaaaaa', target : '/portal/projekte?projekt=00001&tab=dateien' }, { id : '1', account : 'bbbbbbbbbbbb', target : '/portal/projekte?projekt=00001&tab=dateien' } ] )
+		&& jhere.toast.textContent === texts['here.sent-many'].replace( '%s', '2' ) );
+	const jhereReader = await jopen( '#projekt-00001', jhereAnswers, { crm : true, pdf : false, elements : false, text : false, files : true } );
+	check( '...a card without the permission of the Elements panel has the menu with this item alone, and one whose client is not known has none of it', all( jmenu( jhereReader, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === texts['here.menu']
+		&& jmenu( await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { client : null } ) ] } }, { crm : true, pdf : false, elements : false, text : false, files : true } ), '⋯' ) === undefined );
+
 	// --- the script
 	check( 'the script posts a file to the Files panel\'s upload only as chunks, with the part named chunk, and keeps no folder of its own: the actions it names of that panel are the seven of the endpoint', [ ...new Set( [ ...script.matchAll( /(?:api|call|upload)\( '(files\/[a-z/]+)'/g ) ].map( function( found ) { return found[1] } ) ) ].sort().join() === 'files/delete,files/folder/add,files/folder/save,files/list,files/remove,files/save,files/upload' && /upload\( 'files\/upload', \{[^}]*\}, file\.slice\([^)]*\), 'chunk' \)/.test( script ) === true );
 	check( '...every word the screens ask for is a word of the page', [ ...script.matchAll( /\bt\( '(projects\.[a-z-]+|project\.[a-z-]+|ptab\.[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return typeof texts[key] !== 'string' || texts[key] === '' } ).length === 0 && typeof texts['nav.projects'] === 'string' );
@@ -5000,6 +5152,31 @@ function press( w, key, target, mods ) {
 	check( 'a refusal is said at the field it names, the field marked and focused, and the text stays as typed', x18_parea.classList.contains( 'err' ) === true && x18_parea.focused === true && textOf( all( x18_pbox, '.state-note' ).find( function( n ) { return textOf( n ).indexOf( texts['error.crm_documents_setting'].slice( 0, 12 ) ) === 0 } ) ?? element( 'span' ) ) !== '' && x18_parea.value === 'zu\x07' && privacyPosts.length === 2 );
 	const x18_pr0 = await eopen( {} );
 	check( 'where no text is stored yet the block says so and the field is empty', efield( x18_pr0, 'privacy_text' ).value === '' && textOf( all( x18_pr0.main, '#privacy-changed' )[0] ) === texts['privacy.never'] );
+
+	// the block Nachricht an alle Kunden of the Einstellungen
+	const messageAllPosts = [];
+	const messageAll = await eopen( { settings : Object.assign( {}, esettings, { portal_message : 'Zu bis Montag.\nDanke!', portal_message_at : '2026-11-02T10:00:00Z' } ) }, undefined, {
+		'crm-documents/settings-save' : function( data ) { messageAllPosts.push( data ); return data.portal_message.length > 2000 ? [ 400, { error : 'x', code : 'crm_documents_portal_message', field : 'portal_message' } ] : [ 200, { settings : Object.assign( {}, esettings, { portal_message : data.portal_message, portal_message_at : data.portal_message === '' ? '' : '2026-11-06T09:00:00Z' } ) } ] },
+	} );
+	const messageAllBox = all( messageAll.main, '#message-all' )[0];
+	const messageAllArea = efield( messageAll, 'portal_message' );
+	check( 'the Einstellungen have the block Nachricht an alle Kunden: a form of its own with a textarea that holds the message as stored - line breaks kept, 2000 characters at most -, the day it last changed and a Speichern that carries the shortcut; the settings form does not hold it', messageAllBox !== undefined && messageAllBox.tagName === 'FORM' && messageAllArea.tagName === 'TEXTAREA'
+		&& messageAllArea.value === 'Zu bis Montag.\nDanke!' && messageAllArea.getAttribute( 'maxlength' ) === '2000' && textOf( all( messageAll.main, '#message-all-changed' )[0] ) === texts['message-all.changed'].replace( '%s', '02.11.2026' ) && textOf( all( messageAllBox, 'h3' )[0] ) === texts['message-all.title']
+		&& all( messageAll.main, '#message-all-save' )[0].title === texts['save.shortcut'] && all( all( messageAll.main, '#settings-form' )[0], '#f-portal_message' ).length === 0 );
+	check( '...nothing typed, nothing to save', pkey18( messageAll ) === false && messageAllPosts.length === 0 );
+	type( messageAllArea, 'Neu\nText', false );
+	check( 'what is typed is unsaved input, and Strg+S in the field saves it: crm-documents/settings-save with the message alone, the time the module set is shown, the toast says it is saved', messageAll.app.state.draft.dirty === true && ( messageAllArea.focused = true, pkey18( messageAll ) ) === true && ( await settle(), messageAllPosts.length === 1 ) && JSON.stringify( messageAllPosts[0] ) === '{"portal_message":"Neu\\nText"}'
+		&& textOf( all( messageAll.main, '#message-all-changed' )[0] ) === texts['message-all.changed'].replace( '%s', '06.11.2026' ) && messageAll.toast.textContent === texts['message-all.saved'] && messageAll.app.state.draft === null );
+	type( messageAllArea, 'x'.repeat( 2001 ), false );
+	submit( messageAll, messageAllBox );
+	await settle();
+	check( '...a refusal is said at the field, which is marked and focused, and the text stays as typed', messageAllArea.classList.contains( 'err' ) === true && messageAllArea.focused === true && messageAllArea.value.length === 2001 && messageAllPosts.length === 2 );
+	type( messageAllArea, '', false );
+	submit( messageAll, messageAllBox );
+	await settle();
+	check( '...an empty text removes the message: the block says there is none and the toast says it is removed', messageAllPosts[2].portal_message === '' && textOf( all( messageAll.main, '#message-all-changed' )[0] ) === texts['message-all.never'] && messageAll.toast.textContent === texts['message-all.removed'] );
+	const messageAll0 = await eopen( {} );
+	check( '...where none is stored the block says so and the field is empty', efield( messageAll0, 'portal_message' ).value === '' && textOf( all( messageAll0.main, '#message-all-changed' )[0] ) === texts['message-all.never'] );
 
 	// the Kundenkarte: the head and the tab Portal
 	const x18_kagreed = Object.assign( {}, kclient, { privacy : { asked : true, agreed : true, at : '2026-11-03T10:15:00Z', member_name : 'Lena Brandt' } } );

@@ -74,7 +74,7 @@ echo "Migration 0002\n";
 $pdo = Db::pdo( $appData );
 $tables = array_column( Db::rows( $appData, 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' ORDER BY name' ), 'name' );
 check( 'the tables of C01 and of C02 are there - and the table of the items is not: migration 0005 dropped it', $tables === [ 'client_accounts', 'clients', 'document_lines', 'documents', 'records', 'sequences', 'settings' ] );
-check( 'user_version is 9 and the first boot ran the nine migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 9 && Db::migrated() === 9 );
+check( 'user_version is 10 and the first boot ran the ten migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 10 && Db::migrated() === 10 );
 
 Db::close();
 Db::pdo( $appData );
@@ -83,7 +83,7 @@ check( 'a second boot runs no migration', Db::migrated() === 0 );
 $settings = Settings::all( $appData );
 check( 'the settings are written where they were missing: the defaults of the plan', $settings === [ 'vat_mode' => 'small_business', 'vat_rates' => '1900,700,0', 'payment_days' => '14', 'offer_days' => '30', 'currency' => '€',
 	'number_offer' => 'A-{YYYY}-{NNNN}', 'number_invoice' => 'R-{YYYY}-{NNNN}', 'number_credit' => 'G-{YYYY}-{NNNN}', 'tax_id' => '', 'bank_name' => '', 'iban' => '', 'bic' => '', 'seller_name' => '', 'seller_street' => '', 'seller_zip' => '', 'seller_city' => '', 'seller_country' => 'DE', 'seller_contact' => '', 'seller_phone' => '',
-	'seller_email' => '', 'vat_id' => '', 'vat_exempt_text' => 'Kein Ausweis von Umsatzsteuer gemäß § 19 UStG', 'privacy_text' => '', 'privacy_changed' => '' ]);
+	'seller_email' => '', 'vat_id' => '', 'vat_exempt_text' => 'Kein Ausweis von Umsatzsteuer gemäß § 19 UStG', 'privacy_text' => '', 'privacy_changed' => '', 'portal_message' => '', 'portal_message_at' => '' ]);
 check( 'the columns of documents are the ones of the plan', array_column( Db::rows( $appData, 'PRAGMA table_info( documents )' ), 'name' ) === [ 'id', 'category', 'client_id', 'parent_id', 'number', 'state', 'date', 'due_date', 'valid_until', 'period_from', 'period_to',
 	'vat_mode', 'reverse_charge', 'net', 'vat', 'gross', 'template_key', 'inputs_json', 'client_json', 'notes', 'pdf_path', 'pdf_sha256', 'finalised', 'sent_at', 'paid_at', 'created', 'updated',
 	'title', 'released', 'released_at', 'sign_id', 'sign_state', 'signed_at', 'project', 'reminded_at', 'reminded_mail', 'buyer_reference', 'xml_path', 'xml_sha256', 'xml_lacks' ] );
@@ -797,7 +797,7 @@ check( 'the inputs are the document\'s own', $data['inputs'] === $secondInvoice[
 // The particulars of the owner's invoices: the settings tax_id, bank_name, iban, bic, and the tokens a template reads them as
 check( 'the four particulars are tokens of every document, empty where the settings are not set: /site/tax, /site/bank, /site/iban, /site/bic', array_intersect_key( $tokens, array_flip( [ '/site/tax', '/site/bank', '/site/iban', '/site/bic' ] ) ) === [ '/site/tax' => '', '/site/bank' => '', '/site/iban' => '', '/site/bic' => '' ]
 	&& array_intersect_key( $offerTokens, array_flip( [ '/site/tax', '/site/iban' ] ) ) === [ '/site/tax' => '', '/site/iban' => '' ] );
-check( '...the settings are keys with an empty default: all() has them, get() reads them, and a key that is none is still refused', Settings::get( $appData, 'iban' ) === '' && array_slice( array_keys( Settings::all( $appData ) ), -16 ) === [ 'tax_id', 'bank_name', 'iban', 'bic', 'seller_name', 'seller_street', 'seller_zip', 'seller_city', 'seller_country', 'seller_contact', 'seller_phone', 'seller_email', 'vat_id', 'vat_exempt_text', 'privacy_text', 'privacy_changed' ] && Settings::set( $appData, 'swift', 'x' ) === 'unknown' );
+check( '...the settings are keys with an empty default: all() has them, get() reads them, and a key that is none is still refused', Settings::get( $appData, 'iban' ) === '' && array_slice( array_keys( Settings::all( $appData ) ), -18 ) === [ 'tax_id', 'bank_name', 'iban', 'bic', 'seller_name', 'seller_street', 'seller_zip', 'seller_city', 'seller_country', 'seller_contact', 'seller_phone', 'seller_email', 'vat_id', 'vat_exempt_text', 'privacy_text', 'privacy_changed', 'portal_message', 'portal_message_at' ] && Settings::set( $appData, 'swift', 'x' ) === 'unknown' );
 $particulars = [ 'tax_id' => '12/345/67890', 'bank_name' => 'Sparkasse Hamburg', 'iban' => 'de89 3704 0044 0532 0130 00', 'bic' => 'cobadeffxxx' ];
 check( '...they are written where they pass their rule: an IBAN in capitals in groups of four, a BIC in capitals; set() answers true', array_filter( $particulars, static fn( string $value, string $key ): bool => Settings::set( $appData, $key, $value ) !== true, ARRAY_FILTER_USE_BOTH ) === []
 	&& Settings::get( $appData, 'iban' ) === 'DE89 3704 0044 0532 0130 00' && Settings::get( $appData, 'bic' ) === 'COBADEFFXXX' && Settings::get( $appData, 'tax_id' ) === '12/345/67890' && Settings::get( $appData, 'bank_name' ) === 'Sparkasse Hamburg' );
@@ -1451,6 +1451,20 @@ check( 'a value that is none is 400 crm_documents_setting on its key, and nothin
 check( 'a number format that is none is 400 crm_documents_numberformat on its key, and nothing of the request is written', ( $r = $post( 'crm-documents/settings-save', [ 'payment_days' => '30', 'number_credit' => 'G/{NNNN}' ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_numberformat' && $r[1]['field'] === 'number_credit' && Settings::all( $appData ) === $kept );
 check( 'rates in percent are written by settings-save as hundredths: 19; 7,5 is 1900,750', ( $r = $post( 'crm-documents/settings-save', [ 'vat_rates_percent' => '19; 7,5' ] ) )[0] === 200 && $r[1]['settings']['vat_rates'] === '1900,750' && Settings::get( $appData, 'vat_rates' ) === '1900,750' );
 check( '...19,7,0 is refused as a whole with the code of a setting on the field of the percentages, nothing is written - and nothing of the same request', ( $r = $post( 'crm-documents/settings-save', [ 'payment_days' => '30', 'vat_rates_percent' => '19,7,0' ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_setting' && $r[1]['field'] === 'vat_rates_percent' && Settings::get( $appData, 'vat_rates' ) === '1900,750' && Settings::get( $appData, 'payment_days' ) === $kept['payment_days'] );
+[ $status, $body ] = $post( 'crm-documents/settings-save', [ 'portal_message' => "  Zu bis Montag.\r\nDanke!  ", 'portal_message_at' => '2020-01-01T00:00:00Z' ] );
+check( 'settings-save writes the message to every client with its line breaks, answers it with the time the module set - and a time that is posted is not written', $status === 200 && $body['settings']['portal_message'] === "Zu bis Montag.\nDanke!" && $body['settings']['portal_message_at'] !== '' && $body['settings']['portal_message_at'] !== '2020-01-01T00:00:00Z'
+	&& Settings::get( $appData, 'portal_message' ) === "Zu bis Montag.\nDanke!" );
+$wrongMessages = [];
+
+foreach( [ 'too long' => str_repeat( 'x', 2001 ), 'a control character' => "a\x07b", 'a null byte' => "a\0b", 'an array' => [ 'x' ] ] as $label => $value ) {
+	[ $status, $body ] = $post( 'crm-documents/settings-save', [ 'portal_message' => $value ] );
+	$wrongMessages[$label] = $status === 400 && $body['code'] === 'crm_documents_portal_message' && $body['field'] === 'portal_message' && Settings::get( $appData, 'portal_message' ) === "Zu bis Montag.\nDanke!";
+}
+
+check( '...a message that is none is 400 crm_documents_portal_message at the field, with a sentence in both languages, and the message stays: too long, a control character, a null byte, an array', array_keys( array_filter( $wrongMessages, static fn( bool $same ): bool => $same === false ) ) === []
+	&& array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => trim( (string) ( require $root. '/app/Crm/Documents/Admin/text/'. $locale. '.php' )['[[/_admin/error/crm_documents_portal_message]]'] ) === '' ) === [] );
+[ $status, $body ] = $post( 'crm-documents/settings-save', [ 'portal_message' => '' ] );
+check( '...an empty text removes the message and its time', $status === 200 && $body['settings']['portal_message'] === '' && $body['settings']['portal_message_at'] === '' );
 check( 'the particulars are saved with the others, and a wrong one is refused as a whole on its field with a sentence of its own - nothing of the same request is written', ( $r = $post( 'crm-documents/settings-save', [ 'tax_id' => 'DE123456789', 'bank_name' => 'GLS Bank', 'iban' => 'DE89370400440532013000', 'bic' => 'GENODEM1GLS' ] ) )[0] === 200
 	&& $r[1]['settings']['iban'] === 'DE89 3704 0044 0532 0130 00' && $r[1]['settings']['tax_id'] === 'DE123456789' && ( $bad = $post( 'crm-documents/settings-save', [ 'payment_days' => '99', 'bank_name' => 'Nope', 'iban' => 'DE00 0000' ] ) )[0] === 400 && $bad[1]['code'] === 'crm_documents_particular_iban'
 	&& $bad[1]['field'] === 'iban' && Settings::get( $appData, 'bank_name' ) === 'GLS Bank' && Settings::get( $appData, 'payment_days' ) === $kept['payment_days'] && ( $bic = $post( 'crm-documents/settings-save', [ 'bic' => 'XX' ] ) )[1]['code'] === 'crm_documents_particular_bic' );
@@ -1587,7 +1601,7 @@ foreach( (array) include \Crm\Db::migrations()[1] as $statement )
 $file->exec( 'PRAGMA user_version = 1' );
 $file->exec( 'UPDATE settings SET value = \'regular\' WHERE key = \'vat_mode\'' );
 $file = null;
-check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 8 );
+check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 9 );
 Db::close();
 \Nino\Filesystem::removeDir( ninoSandboxDir( $old ) );
 
@@ -1647,7 +1661,7 @@ $file->exec( 'INSERT INTO document_lines ( document_id, sort, title, qty, price_
 check( 'the database before has the table of the items with its rows', (int) $file->query( 'SELECT COUNT(*) FROM items' )->fetchColumn() === 2 );
 $file = null;
 $kept = Documents::get( $dropped, 1 );
-check( 'migrations 0005 to 0009 on a database of the fourth schema run once: version 9, the table of the items is gone', (int) Db::pdo( $dropped )->query( 'PRAGMA user_version' )->fetchColumn() === 9 && Db::migrated() === 5
+check( 'migrations 0005 to 0010 on a database of the fourth schema run once: version 10, the table of the items is gone', (int) Db::pdo( $dropped )->query( 'PRAGMA user_version' )->fetchColumn() === 10 && Db::migrated() === 6
 	&& Db::rows( $dropped, 'SELECT name FROM sqlite_master WHERE name = \'items\'' ) === [] && Db::rows( $dropped, 'SELECT name FROM sqlite_sequence WHERE name = \'items\'' ) === [] );
 check( '...the document and its line are as they were: the line has the words it copied', is_array( $kept ) && $kept['number'] === 'R-2025-0001' && count( $kept['lines'] ) === 1 && $kept['lines'][0]['title'] === 'Alt' && $kept['lines'][0]['price_net'] === 100 );
 check( '...it is one statement and nothing else, and document_lines is not in it', ( include $root. '/app/Crm/Db/migrations/0005-positionen.php' ) === [ 'DROP TABLE IF EXISTS items' ] && str_contains( implode( ' ', (array) include $root. '/app/Crm/Db/migrations/0005-positionen.php' ), 'document_lines' ) === false );
@@ -1674,7 +1688,7 @@ $file->exec( 'INSERT INTO clients ( id, number, company, created, updated ) VALU
 $file->exec( 'INSERT INTO documents ( category, client_id, number, state, date, vat_mode, template_key, created, updated ) VALUES ( \'invoice\', 1, \'R-2025-0001\', \'paid\', \'2025-05-05\', \'small_business\', \'rechnung\', \'x\', \'x\' )' );
 $file = null;
 $old = Documents::get( $upgraded, 1 );
-check( 'a database of the second schema with a document is migrated once: version 9, the seven migrations that were missing', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 9 && Db::migrated() === 7 );
+check( 'a database of the second schema with a document is migrated once: version 10, the eight migrations that were missing', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 10 && Db::migrated() === 8 );
 check( '...the document is as it was, with the new columns at their defaults: no title, not released, no request, no signing day', is_array( $old ) === false ? false : $old['number'] === 'R-2025-0001' && $old['state'] === 'paid' && $old['title'] === '' && $old['released'] === false && $old['released_at'] === null
 	&& $old['sign_id'] === '' && $old['sign_state'] === '' && $old['signed_at'] === null );
 Db::close();

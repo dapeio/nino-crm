@@ -253,6 +253,11 @@ check( '...the rail has eight entries and each is a screen of the surface: Kunde
 	&& str_contains( $rail[0][0], 'id="n-kunden"' ) === true && str_contains( $rail[0][0], 'id="n-belege"' ) === true );
 check( '...the words are the surface\'s and the sentences of the codes of both panels, as error.<code>', $data['texts']['error.crm_documents_fixed'] === Surface::texts()['error.crm_documents_fixed'] && isset( $data['texts']['error.crm_clients_email'] ) === true
 	&& str_starts_with( $data['texts']['error.crm_documents_state'], 'Dieser Schritt' ) === true && count( array_filter( array_keys( $data['texts'] ), static fn( string $key ): bool => str_starts_with( $key, 'error.crm_' ) ) ) > 60 );
+$messageWords = [ 'message.title', 'message.empty', 'message.since', 'message.write', 'message.edit', 'message.remove', 'message.remove-title', 'message.remove-text', 'message.dialog', 'message.dialog-text', 'message.field', 'message.save', 'message.saved', 'message.removed', 'clients.has-message', 'error.message',
+	'here.menu', 'here.title', 'here.text', 'here.yes', 'here.invite', 'here.login', 'here.none', 'here.nobody', 'here.sent-one', 'here.sent-many', 'here.page-project', 'here.page-document', 'here.page-offer', 'here.page-documents',
+	'message-all.title', 'message-all.note', 'message-all.label', 'message-all.hint', 'message-all.never', 'message-all.changed', 'message-all.save', 'message-all.saved', 'message-all.removed', 'error.crm_clients_target', 'error.crm_documents_portal_message' ];
+check( '...and the words of the message to the clients and of the links to a page are there, each a sentence in the Du form - and the sentences of the two new codes come with the panels', array_filter( $messageWords, static fn( string $key ): bool => trim( (string) ( Surface::texts()[$key] ?? '' ) ) === '' ) === []
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', array_map( static fn( string $key ): string => Surface::texts()[$key], $messageWords ) ) ) !== 1 && $data['texts']['error.crm_clients_target'] === Surface::texts()['error.crm_clients_target'] );
 
 // the hashed names the page links are the ones the assets answer
 $linked = [];
@@ -590,8 +595,8 @@ $reminded = Documents::remind( $appData, $late1['id'] );
 $sent = surfaceMailsFrom( $before );
 $remindedBody = (string) ( $sent[0]['body'] ?? '' );
 check( 'an overdue invoice that is released reminds the accounts of its client: one mail each, to the two active accounts, and the answer says how many', is_array( $reminded ) && $reminded['mailed'] === 2 && array_column( $sent, 'to' ) === [ 'anna@example.org', 'carl@example.org' ] && $reminded['document']['id'] === $late1['id'] );
-check( '...in the words of a reminder: the subject, the due day, the link to the page Belege, no attachment, nothing left unfilled', $sent[0]['subject'] === 'Zahlungserinnerung: Rechnung: '. $late1['number'] && str_contains( $sent[0]['body'], 'Eine Rechnung ist noch offen' ) === true
-	&& str_contains( $sent[0]['body'], 'Fällig war sie am '. \Crm\Documents\Render::day( $day( -46 ) ). ':' ) === true && str_contains( $sent[0]['body'], 'href="https://example.org/club/portal/belege"' ) === true
+check( '...in the words of a reminder: the subject, the due day, the link to the row of the invoice in the list Belege, no attachment, nothing left unfilled', $sent[0]['subject'] === 'Zahlungserinnerung: Rechnung: '. $late1['number'] && str_contains( $sent[0]['body'], 'Eine Rechnung ist noch offen' ) === true
+	&& str_contains( $sent[0]['body'], 'Fällig war sie am '. \Crm\Documents\Render::day( $day( -46 ) ). ':' ) === true && str_contains( $sent[0]['body'], 'href="https://example.org/club/portal/belege#beleg-'. $late1['id']. '"' ) === true
 	&& str_contains( $sent[0]['body'], '>Rechnung ansehen</a>' ) === true && str_contains( $sent[0]['body'], '[[' ) === false && str_contains( $sent[0]['body'], '.pdf' ) === false && str_contains( $sent[0]['body'], 'Hallo Anna Nord,' ) === true );
 check( '...it changes nothing of the invoice: not its state, not its release, not its dates', Documents::get( $appData, $late1['id'] ) === array_merge( $reminded['document'], [] ) && $reminded['document']['state'] === 'sent' && $reminded['document']['released'] === true );
 $undatedRemind = \Crm\Documents\Mail::compose( $appData, array_merge( (array) Documents::get( $appData, $late1['id'] ), [ 'due_date' => null ] ), 'remind' );

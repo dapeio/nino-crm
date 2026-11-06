@@ -2306,6 +2306,52 @@ check( 'the answer of the last chunk and of a switch to visible says how many ma
 check( '...and the line of the log for an upload that was not mailed says so, where a mailed one does not', str_contains( $untoldLog, 'not mailed' ) === true && str_contains( $toldLog, 'not mailed' ) === false );
 \Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => true ] );
 
+// The page the mail links: a caller that knows a better one names it - the field page of the owner's upload and of the switch to visible, the argument of notifyMembers() - and a text that is no path of the site is the page members land on
+$linkOf = static function( array $mail ): string {
+
+	return preg_match( '~href="(https://example\.org/club[^"]*)"~', (string) ( $mail['body'] ?? '' ), $found ) === 1 ? $found[1] : '';
+};
+$mails = [];
+filesOwnerUpload( $appData, 'Page One.mp3', $room['id'], [ 'page' => '/portal/projekte?projekt=00001&tab=dateien' ] );
+$pageLinks = array_unique( array_map( $linkOf, $mails ) );
+$mails = [];
+filesOwnerUpload( $appData, 'Page Two.mp3', $room['id'] );
+$startLinks = array_unique( array_map( $linkOf, $mails ) );
+check( 'the owner\'s upload takes page: the mail to each member links that page - its query escaped for the markup - and without it the page members land on, the start page', count( $pageLinks ) === 1 && array_values( $pageLinks ) === [ 'https://example.org/club/portal/projekte?projekt=00001&amp;tab=dateien' ]
+	&& array_values( $startLinks ) === [ 'https://example.org/club/' ] );
+
+$refusedPages = [];
+
+foreach( [ 'another host' => '//evil.example/x', 'a scheme' => 'https://evil.example/', 'a colon before the next slash' => '/javascript:alert(1)', 'a backslash' => '/\\evil.example', 'an endpoint' => '/.members/logout', 'a line break' => "/portal\nBcc: a@example.org", 'a null byte' => "/portal\0", 'a blank' => '/portal x', 'no slash' => 'portal', 'more than '. \Nino\Modules\Files::PAGE_MAX. ' characters' => '/p?x='. str_repeat( 'a', \Nino\Modules\Files::PAGE_MAX ), 'a number' => 5, 'an array' => [ '/portal' ] ] as $label => $page ) {
+	$mails = [];
+	filesOwnerUpload( $appData, 'Refused Page.mp3', $room['id'], [ 'page' => $page ] );
+	$refusedPages[$label] = count( $mails ) === 7 && array_values( array_unique( array_map( $linkOf, $mails ) ) ) === [ 'https://example.org/club/' ];
+}
+
+check( '...a page that is none of the site\'s - another host, a scheme, a colon before the next slash, a backslash, an endpoint, a line break, a null byte, a blank, no slash, too long, a number, an array - is the start page, and the upload is in all the same', array_keys( array_filter( $refusedPages, static fn( bool $same ): bool => $same === false ) ) === [] && count( $refusedPages ) === 12 );
+check( '...the rule is page(): 500 characters pass, 501 do not, nor does a path with an endpoint or two slashes at its head', \Nino\Modules\Files::page( '/'. str_repeat( 'a', \Nino\Modules\Files::PAGE_MAX - 1 ) ) === true && \Nino\Modules\Files::page( '/'. str_repeat( 'a', \Nino\Modules\Files::PAGE_MAX ) ) === false && \Nino\Modules\Files::page( '/portal' ) === true
+	&& \Nino\Modules\Files::page( '/portal?a=1&b=%20' ) === true && \Nino\Modules\Files::page( '/.files/x' ) === false && \Nino\Modules\Files::page( '//portal' ) === false && \Nino\Modules\Files::page( '' ) === false );
+
+$mails = [];
+\Nino\Modules\Files::notifyMembers( $appData, $room, [ $kept ], true, '/portal/projekte?projekt=00002&tab=dateien' );
+$direct = array_values( array_unique( array_map( $linkOf, $mails ) ) );
+$mails = [];
+\Nino\Modules\Files::notifyMembers( $appData, $room, [ $kept ], true, '//evil.example' );
+$directRefused = array_values( array_unique( array_map( $linkOf, $mails ) ) );
+$mails = [];
+\Nino\Modules\Files::notifyMembers( $appData, $room, [ $kept ], true, null );
+$directNone = array_values( array_unique( array_map( $linkOf, $mails ) ) );
+check( '...notifyMembers() takes it as its fifth argument: a page, a text that is none, and null', $direct === [ 'https://example.org/club/portal/projekte?projekt=00002&amp;tab=dateien' ] && $directRefused === [ 'https://example.org/club/' ] && $directNone === [ 'https://example.org/club/' ] );
+
+\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => false ] );
+$hiddenPage = filesOwnerUpload( $appData, 'Hidden Page.mp3', $room['id'], [ 'visible' => false ] );
+$mails = [];
+filesWorkbench( 'admin' );
+filesFresh( $appData );
+ninoCall( $appData, $panel, [ 'id' => $hiddenPage[1]['id'], 'visible' => true, 'notify' => true, 'page' => '/portal/projekte?projekt=00003&tab=dateien' ], 'files/save' );
+check( '...and so does the switch to visible: the mail links the page the action names', count( $mails ) === 7 && array_values( array_unique( array_map( $linkOf, $mails ) ) ) === [ 'https://example.org/club/portal/projekte?projekt=00003&amp;tab=dateien' ] );
+\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => true ] );
+
 $mails = [];
 filesFresh( $appData );
 $moved = ninoCall( $appData, $panel, [ 'id' => $hiddenTwo[1]['id'], 'visible' => true, 'notify' => 1 ], 'files/save' );

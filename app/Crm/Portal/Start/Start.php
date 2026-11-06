@@ -239,20 +239,17 @@ class Start {
 	}
 
 	/**
-	 *	Where a document is read: its card in the section of its project page, or its row in the list of documents for one without a project
+	 *	Where a document is read: its card in the section of its project page, or its row in the list of documents for one without a project (Portal::documentHref())
 	 *
 	 *	@param		array 		$document			As Documents::released() has it
 	 *	@param		string		$dir					Escaped
 	 *	@param		string		$tab					angebot for an offer that waits (the section Angebot), belege for a document that is new (the section Belege)
 	 *
-	 *	@return 	string
+	 *	@return 	string										Escaped
 	 */
 	private static function documentHref( array $document, string $dir, string $tab ): string {
 
-		if( preg_match( Projekte::ID, $document['project'] ) !== 1 )
-			return $dir. Order::PAGE_DOCUMENTS. '#beleg-'. $document['id'];
-
-		return $dir. Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $document['project'] ). '&amp;tab='. $tab. '#'. ( $tab === 'angebot' ? 'angebot-' : 'beleg-' ). $document['id'];
+		return $dir. \Nino\Modules\Components::escape( Portal::documentHref( $document, $tab ) );
 	}
 
 	/**

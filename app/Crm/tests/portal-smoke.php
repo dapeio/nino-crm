@@ -374,7 +374,7 @@ $released = Documents::release( $appData, $invoiceA['id'], true );
 $sent = portalMailsFrom( $before );
 
 check( 'releasing an invoice with the mail mails each active account of its client once: two mails, not the account that is switched off, not the accounts of another client', is_array( $released ) && $released['mailed'] === 2 && array_column( $sent, 'to' ) === [ 'anna@example.org', 'carl@example.org' ] );
-check( '...the link in each is the absolute address of the page Belege, and the greeting names the account', str_contains( $sent[0]['body'], 'href="https://example.org/club/portal/belege"' ) === true && str_contains( $sent[0]['body'], 'Hallo Anna Nord,' ) === true && str_contains( $sent[1]['body'], 'Hallo Carl Nord,' ) === true );
+check( '...the link in each is the absolute address of the row of the document in the list Belege (a document without a project), and the greeting names the account', str_contains( $sent[0]['body'], 'href="https://example.org/club/portal/belege#beleg-'. $invoiceA['id']. '"' ) === true && str_contains( $sent[0]['body'], 'Hallo Anna Nord,' ) === true && str_contains( $sent[1]['body'], 'Hallo Carl Nord,' ) === true );
 check( '...the subject names the kind and the number, the body the same, and nothing is attached: the body holds no file name, the mail no attachment', $sent[0]['subject'] === 'Neues Dokument für Dich: Rechnung: '. $invoiceA['number'] && str_contains( $sent[0]['body'], 'Rechnung: '. $invoiceA['number'] ) === true
 	&& str_contains( $sent[0]['body'], '.pdf' ) === false && array_diff( array_keys( $sent[0] ), [ 'to', 'subject', 'body', 'replyTo', 'sender', 'headers', 'sent' ] ) === [] );
 check( '...in German with Du, from the template: no token and no fill of it is left in the body, the reply goes to the owner', str_contains( $sent[0]['body'], '[[' ) === false && str_contains( $sent[0]['body'], 'Melde Dich im Kundenportal an' ) === true && str_contains( $sent[0]['body'], 'Viele Grüße' ) === true && $sent[0]['replyTo'] === 'owner@example.org' );
@@ -831,7 +831,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 185 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 187 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -2307,8 +2307,8 @@ check( 'two mails go out, in one call: the owner\'s first - to the contact addre
 	&& ( $ownerMail['subject'] ?? '' ) === 'Auftrag erteilt: Angebot '. $orderOne['number']. ' von Kunde K-0001 '. $clientNow['company']. ' durch Anna Nord' );
 check( '...its body names the offer, the client and the sum, the account, and links to the document in the surface (#beleg-<id>); every value is text; nothing of a fill is left', str_contains( $ownerMail['body'] ?? '', 'href="https://example.org/club/crm#beleg-'. $orderOne['id']. '"' ) === true && preg_match( '/^\p{Lu}/u', portalText( $ownerMail['body'], '//p[1]' ) ) === 1 && str_contains( $ownerMail['body'], $orderOne['number'] ) === true && str_contains( $ownerMail['body'], 'K-0001' ) === true && str_contains( $ownerMail['body'], 'Nord &amp; Söhne &lt;GmbH&gt;' ) === true && str_contains( $ownerMail['body'], '<GmbH>' ) === false
 	&& str_contains( $ownerMail['body'], 'anna@example.org' ) === true && str_contains( $ownerMail['body'], '[[' ) === false && str_contains( $ownerMail['body'], '100,00' ) === true );
-check( '...the confirmation goes to the account that ordered, the reply to the owner: the offer, the day, the link to the page of the project and the address of the PDF - no attachment, in German with Du', ( $confirmMail['to'] ?? '' ) === 'anna@example.org' && ( $confirmMail['replyTo'] ?? '' ) === 'owner@example.org' && ( $confirmMail['subject'] ?? '' ) === 'Dein Auftrag: Angebot '. $orderOne['number']
-	&& str_contains( $confirmMail['body'] ?? '', 'Hallo Anna Nord,' ) === true && str_contains( $confirmMail['body'], 'href="https://example.org/club/portal/projekte?projekt='. $p1. '"' ) === true && str_contains( $confirmMail['body'], 'href="https://example.org/club/.crm/pdf/'. $orderOne['id']. '?download=1"' ) === true
+check( '...the confirmation goes to the account that ordered, the reply to the owner: the offer, the day, the link to the card of the offer on the page of the project and the address of the PDF - no attachment, in German with Du', ( $confirmMail['to'] ?? '' ) === 'anna@example.org' && ( $confirmMail['replyTo'] ?? '' ) === 'owner@example.org' && ( $confirmMail['subject'] ?? '' ) === 'Dein Auftrag: Angebot '. $orderOne['number']
+	&& str_contains( $confirmMail['body'] ?? '', 'Hallo Anna Nord,' ) === true && str_contains( $confirmMail['body'], 'href="https://example.org/club/portal/projekte?projekt='. $p1. '&amp;tab=angebot#angebot-'. $orderOne['id']. '"' ) === true && str_contains( $confirmMail['body'], 'href="https://example.org/club/.crm/pdf/'. $orderOne['id']. '?download=1"' ) === true
 	&& str_contains( $confirmMail['body'], \Crm\Documents\Render::day( gmdate( 'Y-m-d' ) ) ) === true && str_contains( $confirmMail['body'], '[[' ) === false && array_diff( array_keys( $confirmMail ), [ 'to', 'subject', 'body', 'replyTo', 'sender', 'headers', 'sent' ] ) === [] && preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', strip_tags( $confirmMail['body'] ) ) !== 1 );
 
 // after it
@@ -2947,7 +2947,7 @@ if( \Crm\Records::privacy( $appData, $a['id'] )['agreed'] === false )
 	\Crm\Records::add( $appData, [ 'kind' => 'privacy', 'client_id' => $a['id'], 'member' => [ 'id' => $accounts['anna']['id'], 'email' => 'anna@example.org', 'name' => 'Anna Nord' ], 'shown' => $gateText ] );
 
 $locationOf = static fn( array $response ): string => (string) ( $response['header']['Location'] ?? '' );
-$wanted = static fn( string $step, string $uri ): string => '/portal/'. $step. '?weiter='. rawurlencode( $uri );
+$wanted = static fn( string $step, string $uri ): string => '/portal/'. $step. ( $uri === '/portal' ? '' : '?weiter='. rawurlencode( $uri ) );
 $gClient = static fn( array $client ): array => (array) \Crm\Clients::get( $appData, $client['id'] );
 
 /**
@@ -3140,12 +3140,12 @@ $opened = portalServe( $appData, '/.members/login?t='. $i['token'] );
 $signed = portalServe( $appData, '/.members/confirm', 'POST', [ 'token' => $i['token'] ] );
 $step1 = portalServe( $appData, $locationOf( $signed ) );
 $step2 = portalServe( $appData, $locationOf( $step1 ) );
-$step3 = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1', 'weiter' => '/portal' ] );
+$step3 = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1' ] );
 $step4 = portalServe( $appData, $locationOf( $step3 ) );
-$step5 = portalServe( $appData, '/.crm/daten', 'POST', [ 'name' => 'Ines Ide', 'street' => 'Platz 1', 'zip' => '01067', 'city' => 'Dresden', 'country' => 'DE', 'weiter' => '/portal' ] );
+$step5 = portalServe( $appData, '/.crm/daten', 'POST', [ 'name' => 'Ines Ide', 'street' => 'Platz 1', 'zip' => '01067', 'city' => 'Dresden', 'country' => 'DE' ] );
 $step6 = portalServe( $appData, $locationOf( $step5 ) );
-check( 'the invitation, the Datenschutz, the data, the page - in one session: the link signs in and leads to /portal, which goes to the Datenschutz with weiter=/portal; the confirmation goes to Meine Daten with the same weiter; the data goes to /portal, which answers', $opened['statusCode'] === 200 && $signed['statusCode'] === 303 && $locationOf( $signed ) === '/portal' && $step1['statusCode'] === 303 && $locationOf( $step1 ) === $wanted( 'datenschutz', '/portal' ) && $step2['statusCode'] === 200
-	&& $locationOf( $step3 ) === $wanted( 'meine-daten', '/portal' ) && $step4['statusCode'] === 200 && $locationOf( $step5 ) === '/portal' && $step6['statusCode'] === 200 && \Crm\Portal::pending( $appData, $gClient( $i['client'] ) ) === '' && \Crm\Portal::nameOf( (array) \Nino\Modules\Members::current( $appData ) ) === 'Ines Ide' );
+check( 'the invitation, the Datenschutz, the data, the page - in one session: the link signs in and leads to /portal, which goes to the Datenschutz - the start page is no page to carry on to, so no weiter -; the confirmation goes to Meine Daten; the data is saved on its page, which answers', $opened['statusCode'] === 200 && $signed['statusCode'] === 303 && $locationOf( $signed ) === '/portal' && $step1['statusCode'] === 303 && $locationOf( $step1 ) === $wanted( 'datenschutz', '/portal' ) && $step2['statusCode'] === 200
+	&& $locationOf( $step3 ) === $wanted( 'meine-daten', '/portal' ) && $step4['statusCode'] === 200 && $locationOf( $step5 ) === '/portal/meine-daten?state=saved' && $step6['statusCode'] === 200 && \Crm\Portal::pending( $appData, $gClient( $i['client'] ) ) === '' && \Crm\Portal::nameOf( (array) \Nino\Modules\Members::current( $appData ) ) === 'Ines Ide' );
 check( '...the client is called by its name and has what an invoice needs: ready for an offer and an invoice', $gClient( $i['client'] )['title'] === 'Ines Ide' && $gClient( $i['client'] )['ready'] === true );
 
 check( '...after the gate the notes are gone: neither page of a step says what is asked first, the Datenschutz says when it was confirmed and Meine Daten has no weiter', portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//*[contains(@class, "crm-gate")]' ) === [] && portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//*[contains(@class, "crm-gate")] | //input[@name="weiter"]' ) === []
@@ -3161,6 +3161,261 @@ check( 'a client with its data whose Datenschutz changed is sent to the Datensch
 check( 'the warnings of the whole way hold no address of a client', array_filter( ninoWarnings(), static fn( string $line ): bool => preg_match( '/@example\.org/', $line ) === 1 ) === [] );
 
 check( '...and it puts the focus on the field of Meine Daten that the server marked invalid, once the page is drawn - the script asks for aria-invalid in the form of the data and focuses it, before the address loses its state', preg_match( '/function focusRefused\(\)\s*\{[^}]*querySelector\(\s*\'\.crm-data__form \[aria-invalid="true"\]\'\s*\)[^}]*\.focus\(\)/s', $script ) === 1 && strpos( $script, 'focusRefused();' ) !== false && strpos( $script, 'focusRefused();' ) < strpos( $script, 'forgetState();', (int) strpos( $script, 'function init()' ) ) );
+
+// --- Where a client lands after the sign-in, and the messages it reads -------------------------------------------------------------------------
+
+echo "\nThe landing and the messages\n";
+
+\Crm\Settings::set( $appData, 'privacy_text', '' );
+$asAdmin();
+$start = (string) \Nino\Features::setting( $appData, 'members', 'start', '/' );
+
+/**
+ *	Sign in by a link the way a member does, and say where the button sends the member
+ */
+$signInTo = static function( array $account, string $target = '' ) use ( &$appData, $locationOf ): string {
+
+	global $mails;
+
+	$_SESSION = [];
+	unset( $appData['./nino/auth/current'] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+	$count = count( $mails );
+
+	if( \Nino\Modules\Members::link( $appData, $account, 'login', $target ) !== true || count( $mails ) !== $count + 1 || preg_match( '~t=([A-Za-z0-9_-]+)"~', (string) portalMail( $count )['body'], $found ) !== 1 )
+		return '';
+
+	portalServe( $appData, '/.members/login?t='. $found[1] );
+
+	return $locationOf( portalServe( $appData, '/.members/confirm', 'POST', [ 'token' => $found[1] ] ) );
+};
+
+/**
+ *	Sign in with a code the way a member does: the form is posted, the digits are read out of the mail, the code is posted
+ */
+$codeIn = static function( array $account, string $from = '' ) use ( &$appData, $locationOf ): string {
+
+	global $mails;
+
+	$_SESSION = [];
+	unset( $appData['./nino/auth/current'] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+	$count = count( $mails );
+
+	// A visitor who asked for a page of the portal is shown the login there, and the gate keeps the page
+	if( $from !== '' )
+		portalServe( $appData, $from );
+
+	portalServe( $appData, '/.members/login', 'POST', [ 'email' => $account['email'], 'return' => $from === '' ? '/' : '/portal' ] );
+
+	if( count( $mails ) !== $count + 1 || preg_match( '~>\s*([0-9]{3}) ([0-9]{3})\s*</p>~', (string) portalMail( $count )['body'], $found ) !== 1 )
+		return '';
+
+	return $locationOf( portalServe( $appData, '/.members/code', 'POST', [ 'code' => $found[1]. $found[2], 'return' => '/' ] ) );
+};
+
+$lc = \Crm\Clients::add( $appData, [ 'company' => 'Landung GmbH', 'street' => 'Weg 1', 'zip' => '01067', 'city' => 'Dresden', 'country' => 'DE' ], [ 'email' => 'landung@example.org', 'name' => 'Lena Land', 'notify' => false ] );
+$lAccount = (array) ( $lc['first']['account'] ?? [] );
+$lClient = static fn(): array => (array) \Crm\Clients::get( $appData, $lc['id'] );
+$folderOld = $store::addFolder( $appData, $lc['group'], 'Alt' );
+$folderNew = $store::addFolder( $appData, $lc['group'], 'Neu' );
+$folderDone = $store::addFolder( $appData, $lc['group'], 'Fertig' );
+$pOld = $made( 'Altes Projekt', $lc['number'], [ 'started' => '2026-01-01', 'folder' => $folderOld['id'] ] );
+$pPlain = $made( 'Anderes Projekt', $lc['number'], [ 'started' => '2026-02-01', 'folder' => $folderNew['id'] ] );
+$pDone = $made( 'Fertiges Projekt', $lc['number'], [ 'started' => '2026-03-01', 'folder' => $folderDone['id'], 'done' => true ] );
+$put( $folderOld, 'Alt.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-03-01T09:00:00Z' );
+$put( $folderNew, 'Versteckt.mp3', 'mp3', 'audio/mpeg', false, $owner, '2026-12-30T09:00:00Z' );
+$put( $folderDone, 'Fertig.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-12-24T09:00:00Z' );
+$dateien = static fn( string $id ): string => '/portal/projekte?projekt='. $id. '&tab=dateien';
+portalSignIn( $appData, $lAccount );
+
+check( 'the fixtures: a client that is ready, with two open projects and a done one, and nothing pending', is_array( $lc ) && $lc['ready'] === true && $lAccount['id'] !== '' && $pOld !== '' && $pPlain !== '' && $pDone !== '' && \Crm\Portal::pending( $appData, $lClient() ) === '' );
+check( 'the client lands on the files of the open project that was last active: the file of the owner that the member may not see does not count, a done project does not', \Crm\Portal::landing( $appData, $lClient() ) === $dateien( $pOld ) );
+$put( $folderNew, 'Neu.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-04-01T09:00:00Z' );
+check( '...a file in the folder of another project moves the landing there', \Crm\Portal::landing( $appData, $lClient() ) === $dateien( $pPlain ) );
+$lInvoice = $final( 'invoice', $lc['id'], [ 'date' => $today, 'project' => $pOld, 'template_key' => 'rechnung', 'lines' => [ $line( 'Rechnung' ) ] ] );
+Documents::release( $appData, $lInvoice['id'], false );
+check( '...so does the release of a document of a project; an invoice is nothing that waits for an order', \Crm\Portal::landing( $appData, $lClient() ) === $dateien( $pOld ) );
+Db::exec( $appData, 'UPDATE documents SET released = 0 WHERE id = :id', [ 'id' => $lInvoice['id'] ] );
+\Crm\Clients::change( $appData, $lc['id'], [ 'street' => '' ] );
+check( '...while the gate has the data pending the client lands nowhere in particular: the start page', \Crm\Portal::pending( $appData, $lClient() ) === 'data' && \Crm\Portal::landing( $appData, $lClient() ) === '' );
+\Crm\Clients::change( $appData, $lc['id'], [ 'street' => 'Weg 1' ] );
+\Crm\Settings::set( $appData, 'privacy_text', 'Ein Text' );
+check( '...and the Datenschutz pending, the same', \Crm\Portal::pending( $appData, $lClient() ) === 'privacy' && \Crm\Portal::landing( $appData, $lClient() ) === '' );
+\Crm\Settings::set( $appData, 'privacy_text', '' );
+
+$offerNo = $final( 'offer', $lc['id'], [ 'date' => $today, 'valid_until' => date( 'Y-m-d', strtotime( '+20 days' ) ), 'template_key' => 'angebot', 'lines' => [ $line( 'Ohne Projekt' ) ] ] );
+Documents::release( $appData, $offerNo['id'], false );
+check( 'an offer that waits is where the client lands, before any project: an offer without a project is its row in the list of documents', \Crm\Portal::landing( $appData, $lClient() ) === '/portal/belege#beleg-'. $offerNo['id'] );
+$offerP = $final( 'offer', $lc['id'], [ 'date' => $today, 'valid_until' => date( 'Y-m-d', strtotime( '+20 days' ) ), 'template_key' => 'angebot', 'project' => $pPlain, 'lines' => [ $line( 'Mit Projekt' ) ] ] );
+Documents::release( $appData, $offerP['id'], false );
+check( '...the newest of two is the one: an offer of a project is its card on the page of the project, in the section Angebot', \Crm\Portal::landing( $appData, $lClient() ) === '/portal/projekte?projekt='. $pPlain. '&tab=angebot#angebot-'. $offerP['id'] );
+$offerExpired = $final( 'offer', $lc['id'], [ 'date' => $today, 'valid_until' => date( 'Y-m-d', strtotime( '-1 day' ) ), 'template_key' => 'angebot', 'lines' => [ $line( 'Abgelaufen' ) ] ] );
+$offerDeclined = $final( 'offer', $lc['id'], [ 'date' => $today, 'valid_until' => date( 'Y-m-d', strtotime( '+20 days' ) ), 'template_key' => 'angebot', 'lines' => [ $line( 'Abgelehnt' ) ] ] );
+$offerAccepted = $final( 'offer', $lc['id'], [ 'date' => $today, 'valid_until' => date( 'Y-m-d', strtotime( '+20 days' ) ), 'template_key' => 'angebot', 'lines' => [ $line( 'Angenommen' ) ] ] );
+$offerHidden = $final( 'offer', $lc['id'], [ 'date' => $today, 'valid_until' => date( 'Y-m-d', strtotime( '+20 days' ) ), 'template_key' => 'angebot', 'lines' => [ $line( 'Nicht freigegeben' ) ] ] );
+
+foreach( [ $offerExpired, $offerDeclined, $offerAccepted ] as $each )
+	Documents::release( $appData, $each['id'], false );
+
+Documents::setState( $appData, $offerDeclined['id'], 'declined' );
+Documents::setState( $appData, $offerAccepted['id'], 'accepted' );
+check( '...an offer that ran out, one that was declined, one that was accepted and one that is not released are newer and wait for nothing: the landing stays', \Crm\Portal::landing( $appData, $lClient() ) === '/portal/projekte?projekt='. $pPlain. '&tab=angebot#angebot-'. $offerP['id']
+	&& array_map( static fn( array $document ): bool => Documents::orderable( $document ), array_column( Documents::released( $appData, $lc['id'] ), null, 'id' ) )[$offerExpired['id']] === false );
+
+check( 'the module answers /members/start, once', array_values( array_filter( \Nino\Callbacks::registered( $appData, '/members/start' ), static fn( mixed $callback ): bool => $callback === [ \Crm\Portal::class, 'callbackStart' ] ) ) === [ [ \Crm\Portal::class, 'callbackStart' ] ] );
+
+$toOffer = '/portal/projekte?projekt='. $pPlain. '&tab=angebot#angebot-'. $offerP['id'];
+check( 'a client that signs in with a link and asked for no page lands on the offer that waits', $signInTo( $lAccount ) === $toOffer );
+check( '...and so does one that signs in with a code', $codeIn( $lAccount ) === $toOffer );
+check( '...also one that came for the start page of the portal itself - a bookmark, which the gate keeps as the page it was asked for - by a code and by a link that carries it: the start page is no page of its own', $codeIn( $lAccount, '/portal' ) === $toOffer && $signInTo( $lAccount, '/portal' ) === $toOffer
+	&& $signInTo( $lAccount, '/portal?x=1' ) === '/portal?x=1' && $codeIn( $lAccount, '/portal/projekte' ) === '/portal/projekte' );
+$resetCaps = static function() use ( &$appData ): void {
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+};
+$resetCaps();
+$_SESSION = [];
+unset( $appData['./nino/auth/current'] );
+$resent = \Crm\Clients::resend( $appData, $lAccount, false );
+$resentToken = is_string( $resent ) === true && preg_match( '~t=([A-Za-z0-9_-]+)$~', $resent, $resentFound ) === 1 ? $resentFound[1] : '';
+portalServe( $appData, '/.members/login?t='. $resentToken );
+$resentRecord = (array) ( \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] )[ hash( 'sha256', $resentToken ) ] ?? [] );
+check( '...and a link that the owner sends with no page named leads where something waits: resend() and invite() have no target of their own', $resentToken !== '' && ( $resentRecord['target'] ?? null ) === '' && $locationOf( portalServe( $appData, '/.members/confirm', 'POST', [ 'token' => $resentToken ] ) ) === $toOffer );
+$bare = [ 'account' => $lAccount, 'target' => '/portal', 'to' => '/portal' ];
+\Crm\Portal::callbackStart( $appData, $bare );
+check( '...callbackStart() takes exactly /portal for no target: not /portal with a query, a place or a longer path', $bare['to'] === $toOffer && array_filter( [ '/portal?x=1', '/portal#a', '/portal/', '/portal/belege', '/portalx' ], static function( string $target ) use ( &$appData, $lAccount ): bool {
+	$args = [ 'account' => $lAccount, 'target' => $target, 'to' => $target ];
+	\Crm\Portal::callbackStart( $appData, $args );
+
+	return $args['to'] !== $target;
+} ) === [] );
+check( '...a page it asked for goes before: a link that carries one, with or without a query', $signInTo( $lAccount, '/portal/upload' ) === '/portal/upload' && $signInTo( $lAccount, '/portal/projekte?review=0123456789ab' ) === '/portal/projekte?review=0123456789ab' );
+check( '...a member who is no client\'s is led where the sign-in leads without the module: the start page', $signInTo( $stray ) === $start );
+\Crm\Clients::change( $appData, $lc['id'], [ 'street' => '' ] );
+check( '...a client with a step of the gate pending lands on the start page, which the gate leads on, with no weiter of its own', $signInTo( $lAccount ) === $start );
+\Crm\Clients::change( $appData, $lc['id'], [ 'street' => 'Weg 1' ] );
+$noAccount = [ 'target' => '', 'to' => '/' ];
+\Crm\Portal::callbackStart( $appData, $noAccount );
+$withTarget = [ 'account' => $lAccount, 'target' => '/portal/upload', 'to' => '/portal/upload' ];
+\Crm\Portal::callbackStart( $appData, $withTarget );
+check( '...nothing is changed where there is no account in the arguments, or where there is a target', $noAccount['to'] === '/' && $withTarget['to'] === '/portal/upload' );
+
+// The offer is ordered: the client has nothing waiting, and lands on its project that was last active
+Documents::setState( $appData, $offerNo['id'], 'declined' );
+Documents::setState( $appData, $offerP['id'], 'declined' );
+check( 'once nothing waits any more the client lands on its project again', $signInTo( $lAccount ) === $dateien( $pPlain ) );
+
+// The mails lead to the row of the document: the card of an offer of a project, the row of any other document of a project, the row in the list for a document without one
+$mailOffer = $final( 'offer', $lc['id'], [ 'date' => $today, 'valid_until' => date( 'Y-m-d', strtotime( '+20 days' ) ), 'template_key' => 'angebot', 'project' => $pPlain, 'lines' => [ $line( 'Mail Angebot' ) ] ] );
+$mailInvoice = $final( 'invoice', $lc['id'], [ 'date' => $today, 'template_key' => 'rechnung', 'project' => $pOld, 'lines' => [ $line( 'Mail Rechnung' ) ] ] );
+$mailPlain = $final( 'invoice', $lc['id'], [ 'date' => $today, 'template_key' => 'rechnung', 'lines' => [ $line( 'Mail ohne Projekt' ) ] ] );
+$linkOfMail = static function( array $mail ): string {
+	return preg_match( '~href="(https://example\.org/club/portal/[^"]*)"~', (string) ( $mail['body'] ?? '' ), $found ) === 1 ? $found[1] : '';
+};
+$links = [];
+
+foreach( [ 'offer of a project' => [ $mailOffer, 'https://example.org/club/portal/projekte?projekt='. $pPlain. '&amp;tab=angebot#angebot-'. $mailOffer['id'] ], 'invoice of a project' => [ $mailInvoice, 'https://example.org/club/portal/projekte?projekt='. $pOld. '&amp;tab=belege#beleg-'. $mailInvoice['id'] ], 'invoice without one' => [ $mailPlain, 'https://example.org/club/portal/belege#beleg-'. $mailPlain['id'] ] ] as $label => [ $document, $expected ] ) {
+	$reset();
+	$before = count( $mails );
+	$released = Documents::release( $appData, $document['id'], true );
+	$sentMails = portalMailsFrom( $before );
+	$links[$label] = is_array( $released ) && $released['mailed'] === 1 && count( $sentMails ) === 1 && $linkOfMail( $sentMails[0] ) === $expected && $sentMails[0]['to'] === 'landung@example.org';
+}
+
+check( 'the mail of a release links the document: the card of an offer of a project in its section Angebot, the row of an invoice of a project in the section Belege, the row in the list for an invoice without one', array_keys( array_filter( $links, static fn( bool $same ): bool => $same === false ) ) === [] && count( $links ) === 3 );
+Db::exec( $appData, 'UPDATE documents SET state = \'sent\' WHERE id = :id', [ 'id' => $mailInvoice['id'] ] );
+$reset();
+$before = count( $mails );
+$reminded = Documents::remind( $appData, $mailInvoice['id'] );
+$remindMails = portalMailsFrom( $before );
+check( '...so does the reminder: the row of the invoice in the section Belege of its project', is_array( $reminded ) && $reminded['mailed'] === 1 && count( $remindMails ) === 1 && $linkOfMail( $remindMails[0] ) === 'https://example.org/club/portal/projekte?projekt='. $pOld. '&amp;tab=belege#beleg-'. $mailInvoice['id'] );
+
+$portalSheet = (string) file_get_contents( $root. \Crm\Portal::STYLE );
+check( 'the style of the message is the portal\'s own: a card with a line of the accent at 40% and the accent at 10% behind, its text in the ink of the page, the icon in the link colour - all roles, no colour of its own - and the template carries no style and no handler', preg_match( '/\n\.crm-message \{[^}]*border: 1px solid color-mix\(in srgb, var\(--crm-info\) 40%[^}]*background-color: color-mix\(in srgb, var\(--crm-info\) 10%[^}]*color: var\(--crm-ink\);/', $portalSheet ) === 1
+	&& preg_match( '/\n\.crm-message > \.crm-icon \{[^}]*color: var\(--crm-link\)/', $portalSheet ) === 1 && preg_match( '/\n\.crm-message__text \{[^}]*white-space: pre-line;[^}]*font-size: var\(--crm-text-m\)/', $portalSheet ) === 1 && preg_match( '/#[0-9a-fA-F]{3,8}\b|\brgb\(|\bstyle=|\bon[a-z]+=/', (string) file_get_contents( $root. '/app/Crm/Portal/templates/message.tpl' ). (string) file_get_contents( $root. '/app/Crm/Portal/templates/message-day.tpl' ) ) !== 1 );
+
+// The day of a message is the day of the site, not of UTC: a message written at half past eleven in the evening of New Year's Eve in UTC is the first of January in Berlin
+\Nino\Features::saveSettings( $appData, 'events', [ 'timezone' => 'Europe/Berlin' ] );
+\Crm\Clients::setMessage( $appData, $lc['id'], 'Um Mitternacht' );
+Db::exec( $appData, 'UPDATE clients SET message_at = \'2026-12-31T23:30:00Z\' WHERE id = :id', [ 'id' => $lc['id'] ] );
+\Crm\Portal::forget( $appData );
+$midnight = \Crm\Portal::messages( $appData, $lClient() );
+\Nino\Features::saveSettings( $appData, 'events', [ 'timezone' => 'America/Los_Angeles' ] );
+$evening = \Crm\Portal::messages( $appData, $lClient() );
+\Nino\Features::saveSettings( $appData, 'events', [ 'timezone' => 'server' ] );
+\Crm\Clients::setMessage( $appData, $lc['id'], '' );
+\Crm\Portal::forget( $appData );
+check( 'the day a message is shown with is the day in the timezone of the site: 23:30 UTC on the 31st is the 1st of January in Berlin and the 31st in Los Angeles - the datetime and the words say the same day', str_contains( $midnight, 'datetime="2027-01-01"' ) === true && str_contains( $midnight, '01.01.2027' ) === true && str_contains( $evening, 'datetime="2026-12-31"' ) === true && str_contains( $evening, '31.12.2026' ) === true );
+
+// The messages
+$noMessage = \Crm\Portal::messages( $appData, $lClient() );
+check( 'a client with no message and a site with none reads none: the head draws the bar, the navigation and the head of the page and no note', $noMessage === '' && portalFind( portalHeadAt( $appData, '/portal' ), '//*[contains(@class, "crm-message")]' ) === [] );
+
+\Crm\Settings::set( $appData, 'portal_message', "Das Studio ist <b>zu</b>.\nDanke!\n[crm-client] [[/project/company/general/name]]" );
+$one = portalHeadAt( $appData, '/portal' );
+$notes = portalFind( $one, '//div[@role="note"][contains(@class, "crm-message")]' );
+$noteHtml = $notes === [] ? '' : $notes[0]->ownerDocument->saveHTML( $notes[0] );
+check( 'the message to every client is a note over the head: role note, the icon, who wrote it and the day, and the text', count( $notes ) === 1 && portalFind( $noteHtml, '//svg[contains(@class, "crm-icon--message-square")][@aria-hidden="true"]' ) !== []
+	&& portalFind( $noteHtml, '//p[contains(@class, "crm-message__from")]/strong' )[0]->textContent === 'Studio <Eins> & Co [members-name]' && portalFind( $noteHtml, '//p[contains(@class, "crm-message__from")]//time/@datetime' )[0]->nodeValue === substr( \Crm\Settings::get( $appData, 'portal_message_at' ), 0, 10 )
+	&& portalFind( $noteHtml, '//p[contains(@class, "crm-message__from")]//time' )[0]->textContent === \Crm\Documents\Render::day( substr( \Crm\Settings::get( $appData, 'portal_message_at' ), 0, 10 ) ) );
+$textNode = portalFind( $noteHtml, '//p[contains(@class, "crm-message__text")]' );
+check( '...the text is text: the markup in it is shown as typed, a shortcode and a key are not read, the line breaks are line breaks (two <br>) - nothing is left unfilled', $textNode !== [] && str_contains( $textNode[0]->textContent, '<b>zu</b>' ) === true && portalFind( $noteHtml, '//p[contains(@class, "crm-message__text")]//b' ) === []
+	&& str_contains( $textNode[0]->textContent, '[crm-client] [[/project/company/general/name]]' ) === true && count( portalFind( $noteHtml, '//p[contains(@class, "crm-message__text")]/br' ) ) === 2 && portalLeft( $one ) === false );
+
+$db = \Crm\Db::pdo( $appData );
+\Crm\Clients::setMessage( $appData, $lc['id'], "Nur für Dich:\n<script>alert(1)</script>" );
+Db::exec( $appData, 'UPDATE clients SET message = message || :nul WHERE id = :id', [ 'nul' => "\0 und [members-name]", 'id' => $lc['id'] ] );
+\Crm\Portal::forget( $appData );
+$two = portalHeadAt( $appData, '/portal' );
+$notes = portalFind( $two, '//div[@role="note"][contains(@class, "crm-message")]' );
+check( 'the message to the client stands under the one to everybody: both, in that order, each its own note', count( $notes ) === 2 && str_contains( $notes[0]->textContent, 'Das Studio ist' ) === true && str_contains( $notes[1]->textContent, 'Nur für Dich:' ) === true );
+check( '...a script in it is text, a null byte in the database is left out of the page, a shortcode in it stays one that is not read', portalFind( $two, '//*[contains(@class, "crm-message")]//script' ) === [] && str_contains( $two, "\0" ) === false && str_contains( $notes[1]->textContent, '<script>alert(1)</script>' ) === true && str_contains( $notes[1]->textContent, ' und [members-name]' ) === true && str_contains( $two, '&#91;members-name]' ) === true && str_contains( $one, '&#91;crm-client]' ) === true );
+
+$pagesWith = [ '/portal', '/portal/projekte', '/portal/projekte?projekt='. $pOld, '/portal/belege', '/portal/upload', '/portal/termine', '/portal/meine-daten', '/portal/datenschutz' ];
+$orders = [];
+$counts = [];
+
+foreach( $pagesWith as $uri ) {
+	[ $status, $html ] = portalPage( $appData, $uri );
+	$counts[$uri] = $status === 200 ? count( portalFind( $html, '//div[@role="note"][contains(@class, "crm-message")]' ) ) : -1;
+	$orders[$uri] = strpos( $html, 'class="crm-bar"' ) < strpos( $html, 'class="crm-nav' ) && strpos( $html, 'class="crm-nav' ) < strpos( $html, 'class="crm-message"' ) && strpos( $html, 'class="crm-message"' ) < strpos( $html, 'class="crm-head' );
+}
+
+check( 'every page of the portal carries both notes, under the bar and the navigation and over the head of the page: the start, the projects and one project, the documents, the upload, the dates, Meine Daten and the Datenschutz', array_values( array_unique( $counts ) ) === [ 2 ] && count( $counts ) === 8 && array_values( array_unique( $orders ) ) === [ true ] );
+
+$put( $folderOld, 'Klang.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 60 ) );
+\Crm\Clients::setMessage( $appData, $lc['id'], '' );
+\Crm\Portal::forget( $appData );
+check( '...a message that is removed is gone from the pages; the one to everybody stays', count( portalFind( portalPage( $appData, '/portal' )[1], '//div[@role="note"][contains(@class, "crm-message")]' ) ) === 1 );
+
+// during the gate: not a word before the step is done
+\Crm\Clients::setMessage( $appData, $lc['id'], 'Eine Nachricht' );
+\Crm\Clients::change( $appData, $lc['id'], [ 'street' => '' ] );
+\Crm\Portal::forget( $appData );
+$data = portalPage( $appData, '/portal/meine-daten' );
+\Crm\Clients::change( $appData, $lc['id'], [ 'street' => 'Weg 1' ] );
+\Crm\Settings::set( $appData, 'privacy_text', 'Ein Text, der noch nicht bestätigt ist' );
+\Crm\Portal::forget( $appData );
+$privacy = portalPage( $appData, '/portal/datenschutz' );
+\Crm\Settings::set( $appData, 'privacy_text', '' );
+\Crm\Portal::forget( $appData );
+check( 'while a step of the gate is pending the pages of the steps - Meine Daten, the Datenschutz - carry no message, to everybody or to the client, and the gate itself says what is asked', $data[0] === 200 && $privacy[0] === 200 && portalFind( $data[1], '//*[contains(@class, "crm-message")]' ) === [] && portalFind( $privacy[1], '//*[contains(@class, "crm-message")]' ) === []
+	&& portalFind( $data[1], '//p[contains(@class, "crm-gate")]' ) !== [] && portalFind( $privacy[1], '//p[contains(@class, "crm-gate")]' ) !== [] );
+check( '...and after it they are back', count( portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//div[@role="note"][contains(@class, "crm-message")]' ) ) === 2 );
+
+// who reads them: nobody who is no client
+portalSignIn( $appData, $stray );
+$strayHead = portalHeadAt( $appData, '/portal' );
+$asVisitor();
+$visitorHead = portalHeadAt( $appData, '/portal' );
+check( 'a member who is no client\'s reads no message, to everybody or any, and a visitor reads no head at all', portalFind( $strayHead, '//*[contains(@class, "crm-message")]' ) === [] && str_contains( $strayHead, 'class="crm-head' ) === true && trim( $visitorHead ) === '' );
+\Crm\Clients::setMessage( $appData, $lc['id'], '' );
+\Crm\Settings::set( $appData, 'portal_message', '' );
+\Crm\Portal::forget( $appData );
+portalSignIn( $appData, $accounts['anna'] );
 
 // The rest of the suite runs as it did before: Review and Events off
 foreach( [ 'events', 'review' ] as $key )

@@ -35,6 +35,8 @@ return [
 	'[[/project/crm-portal/gate/data]]' => 'Before you go on: we need your address for the offer and the invoice.',
 	'[[/project/crm-portal/gate/next]]' => 'After that you go on to',
 	'[[/project/crm-portal/gate/project]]' => 'Project',
+	'[[/project/crm-portal/message/from]]' => 'Message from',
+	'[[/project/crm-portal/message/plain]]' => 'Message',
 	'[[/project/crm-portal/head/path]]' => 'You are here',
 	'[[/project/crm-portal/door/enter]]' => 'Go to the portal',
 	'[[/project/crm-portal/empty/contact]]' => 'If you have a question, reach us by e-mail and phone:',

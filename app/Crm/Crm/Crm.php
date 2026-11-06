@@ -213,6 +213,9 @@ class Crm {
 		\Nino\Callbacks::registerCallback( $appData, '/members/login', [ Portal::class, 'callbackSession' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/members/logout', [ Portal::class, 'callbackSession' ] );
 
+		// A client that signs in without a page it asked for lands where something waits for it: the offer to order, else the project that was last active (see Portal::callbackStart())
+		\Nino\Callbacks::registerCallback( $appData, '/members/start', [ Portal::class, 'callbackStart' ] );
+
 		// A visitor sees no page of the portal in a menu of the site (the kernel fires the callback once it has built the lines of a menu)
 		\Nino\Callbacks::registerCallback( $appData, '/nino/navigation/lines', [ Portal::class, 'callbackNavigationLines' ] );
 

@@ -35,6 +35,7 @@ return [
 	'[[/_admin/error/crm_documents_exists_xml]]' => 'The file of the electronic invoice of number %s is there already, at %s. The document was not finalised and no number was given. Move the file if it belongs to no document, and never delete the file of a finalised document.',
 	'[[/_admin/error/crm_documents_render]]' => 'The template made no PDF. The document was not finalised and no number was used.',
 	'[[/_admin/error/crm_documents_write]]' => 'The PDF file could not be written. The document was not finalised.',
+	'[[/_admin/error/crm_documents_portal_message]]' => 'The message may have 2000 characters at most and no control characters, line breaks apart.',
 	'[[/_admin/error/crm_documents_setting]]' => 'The value of the setting is not valid. For the rates: separate them with a semicolon or blanks; the comma is the decimal comma.',
 	'[[/_admin/error/crm_documents_particular_tax_id]]' => 'The tax number may hold letters, digits, blanks, dots, slashes and hyphens, up to 40 characters.',
 	'[[/_admin/error/crm_documents_particular_bank_name]]' => 'The name of the bank has at most 80 characters, no control characters.',

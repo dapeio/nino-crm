@@ -1679,6 +1679,101 @@ check( 'a page that has a route for each language is shut at every address: the 
 	&& array_values( array_unique( array_map( 'json_encode', $germanMember ) ) ) === [ '[200,"","no-store","FOR MEMBERS"]' ] && count( $germanMember ) === 3 );
 $_SESSION = $sibling;
 
+// The page that asked for the login is kept with its query, as it came - and with nothing a header or a browser would take for more than the page
+$wanted = [];
+$long = '/club/news?x=';
+
+foreach( [
+	'a query' => [ '/club/news?issue=7&tab=files', '/club/news?issue=7&tab=files' ],
+	'a query that is encoded' => [ '/club/news?q=a%20b&x=%0A%00', '/club/news?q=a%20b&x=%0A%00' ],
+	'a fragment, which no browser sends, is no part of it' => [ '/club/news?issue=7#top', '/club/news?issue=7' ],
+	'a question mark and nothing behind it' => [ '/club/news?', '/club/news' ],
+	'a line break in the query' => [ "/club/news?x=\n", '/club/news' ],
+	'a null byte in the query' => [ "/club/news?x=\0", '/club/news' ],
+	'a carriage return' => [ "/club/news?x=1\r&y=2", '/club/news' ],
+	'a blank' => [ '/club/news?x=a b', '/club/news' ],
+	'a tab' => [ "/club/news?x=a\tb", '/club/news' ],
+	'2000 characters in all' => [ $long. str_repeat( 'a', 2000 - strlen( $long ) ), $long. str_repeat( 'a', 2000 - strlen( $long ) ) ],
+	'one more than that: the path alone' => [ $long. str_repeat( 'a', 2001 - strlen( $long ) ), '/club/news' ],
+] as $label => [ $uri, $expected ] ) {
+	membersVisitor();
+	membersServe( $appData, $uri );
+	$wanted[$label] = \Nino\Runtime::getSessionValue( $appData, './members/target' ) === $expected;
+}
+
+check( 'the page a protected page was asked for is kept with its query: the path and what follows the question mark, as it came, without a fragment - and the path alone for a query that holds a control character or a blank, or that makes the whole longer than 2000 characters', array_keys( array_filter( $wanted, static fn( bool $same ): bool => $same === false ) ) === [] && count( $wanted ) === 11 );
+
+membersVisitor();
+$mails = [];
+membersServe( $appData, '/club/news?issue=7&tab=files' );
+$digits = membersAskCode( $appData, 'ada@example.org', '/club/news' );
+$withQuery = membersFile( $appData, 'tokens' )[ hash( 'sha256', ( membersPending( $appData )['nonce'] ?? '' ). '|'. $digits ) ] ?? [];
+$through = membersCodeServe( $appData, $digits, '/club/news' );
+check( '...the record of the code carries it, and the code leads the member back to the page with its query', ( $withQuery['target'] ?? null ) === '/club/news?issue=7&tab=files' && $through === [ 303, '/club/news?issue=7&tab=files', 'no-store', '' ] && \Nino\Modules\Members::current( $appData ) !== null );
+
+membersVisitor();
+check( '...so does the link: the page it carries, with its query and the place on the page, is where the button leads; a target with a line break in its query is the start page', membersSignIn( $appData, $ada, '/club/news?issue=7&tab=files#top' ) === [ 303, '/club/news?issue=7&tab=files#top', 'no-store', '' ]
+	&& ( membersVisitor() ?? true ) && membersSignIn( $appData, $ada, "/club/news?x=\n" ) === [ 303, '/', 'no-store', '' ] && ( membersVisitor() ?? true ) && membersSignIn( $appData, $ada, '/club/news?x='. str_repeat( 'a', 2000 ) ) === [ 303, '/', 'no-store', '' ] );
+
+// '/members/start': where a sign-in leads is told to the features that build on it, and they may say another page
+$heard = [];
+$startSays = [];
+\Nino\Callbacks::registerCallback( $appData, '/members/start', static function( array &$appData, array &$args ) use ( &$heard, &$startSays ): void {
+
+	$heard[] = $args;
+
+	if( $startSays !== [] )
+		$args['to'] = $startSays['to'];
+} );
+
+membersVisitor();
+$mails = [];
+$answer = membersSignIn( $appData, $ada, '/club/news?issue=7' );
+$plain = membersSignIn( $appData, $ada );
+membersVisitor();
+$noTarget = membersSignIn( $appData, $ada );
+$accountKeys = array_keys( $heard[0]['account'] ?? [] );
+sort( $accountKeys );
+check( 'a sign-in by a link fires /members/start with the account, the target and where it leads - the target, else the start page - and leads there when no callback says another', count( $heard ) === 3 && $answer === [ 303, '/club/news?issue=7', 'no-store', '' ] && $noTarget === [ 303, '/', 'no-store', '' ]
+	&& $heard[0] === [ 'account' => $heard[0]['account'], 'target' => '/club/news?issue=7', 'to' => '/club/news?issue=7' ] && $heard[0]['account']['id'] === $ada['id'] && $heard[2]['target'] === '' && $heard[2]['to'] === '/' && $plain === [ 303, '/', 'no-store', '' ]
+	&& $accountKeys === [ 'active', 'created', 'email', 'group', 'id', 'login', 'name' ] );
+
+membersVisitor();
+$mails = [];
+membersServe( $appData, '/club/news?issue=8' );
+$digits = membersAskCode( $appData, 'ada@example.org', '/club/news' );
+$heard = [];
+$byCode = membersCodeServe( $appData, $digits, '/club/news' );
+check( '...so does a sign-in by a code, with the page that asked for it', count( $heard ) === 1 && $heard[0]['target'] === '/club/news?issue=8' && $heard[0]['to'] === '/club/news?issue=8' && $heard[0]['account']['id'] === $ada['id'] && $byCode[1] === '/club/news?issue=8' );
+
+membersVisitor();
+$heard = [];
+$digits = membersAskCode( $appData, 'ada@example.org', '/join' );
+$wrong = membersCodeServe( $appData, sprintf( '%06d', ( (int) $digits + 1 ) % 1000000 ), '/join' );
+$badLink = membersAnswer( membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => 'not-a-token' ] ) );
+check( '...and nothing is fired where nobody was signed in: a code that is wrong, a link that is not one', $heard === [] && $wrong[0] === 303 && $wrong[1] === '/join?members=wrong' && $badLink[0] === 400 );
+
+$leads = [];
+
+foreach( [ 'a page of the site' => [ '/club/other?x=1', '/club/other?x=1' ], 'a page with a place' => [ '/club/other#top', '/club/other#top' ], 'the front page' => [ '/', '/' ] ] as $label => [ $says, $expected ] ) {
+	membersVisitor();
+	$startSays = [ 'to' => $says ];
+	$leads[$label] = membersSignIn( $appData, $ada, '/club/news' )[1] === $expected;
+}
+
+check( '...a callback that sets to to a path of the site leads the member there, whatever the target was', array_keys( array_filter( $leads, static fn( bool $same ): bool => $same === false ) ) === [] && count( $leads ) === 3 );
+
+$refused = [];
+
+foreach( [ 'another host' => '//evil.example/x', 'a scheme' => 'https://evil.example/', 'javascript' => 'javascript:alert(1)', 'a colon before the next slash' => '/javascript:alert(1)', 'a backslash' => '/\\evil.example', 'an endpoint' => '/.members/logout', 'a line break' => "/club/x\nSet-Cookie: a=b", 'a null byte' => "/club/x\0", 'a blank' => '/club/x y', 'no slash' => 'club/x', 'nothing' => '', 'more than 2000 characters' => '/club/x?y='. str_repeat( 'a', 2000 ), 'a number' => 5, 'an array' => [ '/club/x' ], 'null' => null ] as $label => $says ) {
+	membersVisitor();
+	$startSays = [ 'to' => $says ];
+	$refused[$label] = membersSignIn( $appData, $ada, '/club/news' ) === [ 303, '/', 'no-store', '' ];
+}
+
+$startSays = [];
+check( '...and any other value of to is the start page: another host, a scheme, a colon before the next slash, a backslash, an endpoint, a line break, a null byte, a blank, no slash, nothing, too many characters, a number, an array', array_keys( array_filter( $refused, static fn( bool $same ): bool => $same === false ) ) === [] && count( $refused ) === 15 );
+
 // The Seo feature is told what a crawler has no business with
 $exclude = [ '/old/*' ];
 \Nino\Callbacks::doCallbacks( $appData, '/seo/exclude', $exclude );

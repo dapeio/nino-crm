@@ -213,6 +213,9 @@ a.btn { text-decoration: none }
 .field > span { color: var(--fg-3); font-size: 12px }
 .field input, .field select, .field textarea, .kv select, .kv textarea { width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: inherit; font: inherit; padding: 0 8px }
 .field textarea, .area { padding: 6px 8px; height: auto }
+.message-text { margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere }
+.msg-icon { position: relative; display: inline-block; width: 13px; height: 10px; margin: 0 0 0 8px; border: 2px solid var(--accent); border-radius: 3px; vertical-align: -1px }
+.msg-icon::after { content: ""; position: absolute; left: 1px; bottom: -7px; border: 3px solid transparent; border-top-color: var(--accent); border-left-color: var(--accent) }
 .area { width: 100%; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: inherit; font: inherit; resize: vertical }
 .check { display: flex; gap: 8px; align-items: center; margin: 10px 0 }
 .kv dd.pair, .kv .pair { display: flex; gap: 6px }

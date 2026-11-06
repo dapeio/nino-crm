@@ -21,6 +21,7 @@ return [
 	'[[/_admin/error/crm_clients_ratelimit]]' => 'Von dieser IP-Adresse aus ist die Grenze für E-Mails pro Stunde erreicht, die der Kern setzt. Versuche es später noch einmal.',
 	'[[/_admin/error/crm_clients_write]]' => 'Das Konto konnte nicht geschrieben werden.',
 	'[[/_admin/error/crm_clients_taken]]' => 'Zu dieser E-Mail-Adresse gibt es schon ein Konto.',
+	'[[/_admin/error/crm_clients_target]]' => 'Das Ziel ist keine Seite des Portals.',
 	'[[/_admin/error/crm_clients_unknown]]' => 'Diesen Kunden gibt es nicht.',
 	'[[/_admin/error/crm_clients_link_perm]]' => 'Einen Link ohne Mail darf nur sehen, wer das Panel Mitglieder verwalten darf. Sende die Mail oder bitte jemanden mit dieser Berechtigung.',
 	'[[/_admin/error/crm_clients_link]]' => 'Der Link konnte nicht gemacht werden. Das Konto ist da; frage den Link über das Menü des Kontos noch einmal an.',

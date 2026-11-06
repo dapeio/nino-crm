@@ -35,6 +35,9 @@
 	const REFERENCING = [ 'invoice', 'credit' ];
 	const UNIT_CODES = [ 'H87', 'HUR', 'MIN', 'DAY', 'WEE', 'MON', 'LS', 'C62', 'KMT' ];
 	const PAGE_SIZE = 50;
+
+	// The longest message to a client, or to every client: the server's own limit
+	const MESSAGE_MAX = 2000;
 	const NEW_KINDS = [ 'invoice', 'offer', 'contract', 'privacy', 'information' ];
 	const CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id', 'buyer_reference' ];
 	const CLIENT_TABS = [ 'belege', 'projekte', 'portal', 'notizen' ];
@@ -584,7 +587,7 @@
 	/**
 	 *	A dialog with one question: the text, optionally fields, and two buttons. Escape and the second button are the no
 	 *
-	 *	@param		{Object}	spec						title, text, yes, no, danger, fields ([ { name, label, type, value, options } ]; the type checkbox is a box, ticked where the value is true, and its value is a boolean), link ({ href, text } instead of the buttons),
+	 *	@param		{Object}	spec						title, text, yes, no, danger, fields ([ { name, label, type, value, options, maxlength, rows } ]; the type checkbox is a box, ticked where the value is true, and its value is a boolean; the type textarea is a field of several lines), shortcut (true: Strg+S, Cmd+S says yes - for a dialog that is a form to save), link ({ href, text } instead of the buttons),
 	 *														secret ({ label, value, note }: a link shown once, in a field nobody can type in, with a button that copies it - and the dialog closes with a button)
 	 *
 	 *	@return		{Promise}									The values of the fields (an empty object without fields) for the yes; null for the no
@@ -630,7 +633,9 @@
 
 				const control = field.options !== undefined
 					? el( 'select', { id: 'dlg-'+ field.name }, field.options.map( function( option ) { return el( 'option', { value: option.value, selected: option.value === field.value, text: option.label } ) } ) )
-					: el( 'input', { id: 'dlg-'+ field.name, type: field.type || 'text', value: field.value ?? '', min: field.min, max: field.max } );
+					: ( field.type === 'textarea'
+						? el( 'textarea', { id: 'dlg-'+ field.name, rows: field.rows ?? 6, maxlength: field.maxlength ?? null, value: field.value ?? '' } )
+						: el( 'input', { id: 'dlg-'+ field.name, type: field.type || 'text', value: field.value ?? '', min: field.min, max: field.max } ) );
 
 				controls[field.name] = control;
 
@@ -674,6 +679,15 @@
 							el( 'button', { type: 'button', class: 'btn', text: spec.no || t( 'dialog.no' ), on: { click: function() { finish( null ) } } } ),
 							el( 'button', { type: 'button', class: 'btn '+ ( spec.danger === true ? 'danger' : 'primary' ), text: spec.yes || t( 'dialog.yes' ), on: { click: accept } } ),
 						] ) );
+
+			// A dialog that is a form to save takes Strg+S (Cmd+S) as its yes; the browser's own save of the page is kept off
+			if( spec.shortcut === true )
+				box.addEventListener( 'keydown', function( event ) {
+					if( ( event.ctrlKey === true || event.metaKey === true ) && typeof event.key === 'string' && event.key.toLowerCase() === 's' ) {
+						event.preventDefault();
+						accept();
+					}
+				} );
 
 			box.appendChild( form );
 			state.dialogs.appendChild( box );
@@ -1754,7 +1768,7 @@
 		}
 
 		if( doc.released === true )
-			items.push( 'sep', { label : t( 'menu.unrelease' ), run : function() { move( view, 'crm-documents/unrelease', {}, 'error.unrelease', function() { return t( 'release.undone' ) } ) } } );
+			items.push( 'sep', { label : t( 'here.menu' ), run : function() { inviteHere( doc.client_id, documentTarget( doc ), t( doc.project === '' ? 'here.page-document' : ( doc.category === 'offer' ? 'here.page-offer' : 'here.page-documents' ) ) ) } }, { label : t( 'menu.unrelease' ), run : function() { move( view, 'crm-documents/unrelease', {}, 'error.unrelease', function() { return t( 'release.undone' ) } ) } } );
 
 		items.push( 'sep', { label : t( 'menu.project' ), run : function() { changeProject( view ) } }, { label : t( 'menu.notes' ), run : function() { state.tab = 'notes'; drawBeleg( view ) } } );
 
@@ -3202,7 +3216,8 @@
 			: shown.map( function( client ) {
 				return el( 'tr', { dataset: { id: client.id }, on: { click: function() { wn.location.hash = '#kunde-'+ client.id } } },
 					el( 'td', { class: 'num' }, link( '#kunde-'+ client.id, client.number ) ),
-					el( 'td', {}, clientBare( client ) ? [ el( 'span', { class: 'bare', text: clientTitle( client ) } ), el( 'span', { class: 'bare', text: ' · '+ t( 'clients.bare' ) } ) ] : ( client.company === '' ? el( 'span', { class: 'muted', text: '–' } ) : client.company ) ),
+					el( 'td', {}, clientBare( client ) ? [ el( 'span', { class: 'bare', text: clientTitle( client ) } ), el( 'span', { class: 'bare', text: ' · '+ t( 'clients.bare' ) } ) ] : ( client.company === '' ? el( 'span', { class: 'muted', text: '–' } ) : client.company ) ,
+						typeof client.message === 'string' && client.message !== '' ? el( 'span', { class: 'msg-icon', dataset: { icon: 'message-square' }, role: 'img', title: t( 'clients.has-message' ), 'aria-label': t( 'clients.has-message' ) } ) : null ),
 					el( 'td', { text: client.name } ),
 					el( 'td', {}, client.city, client.country !== 'DE' ? el( 'span', { class: 'muted', text: ' ('+ client.country+ ')' } ) : null ),
 					el( 'td', {}, client.accounts === 0 ? el( 'span', { class: 'muted', text: t( 'clients.accounts-none' ) } ) : client.active_accounts+ ' / '+ client.accounts ),
@@ -3250,7 +3265,7 @@
 			// The link "einladen" of the Übersicht leads to the invitation: the tab Portal, the form open
 			state.tab = where.tab === 'einladen' ? 'portal' : where.tab;
 
-			drawKunde( { client : answers[0].body.client, accounts : answers[0].body.accounts, documents : answers[1].body.documents, projects : answers[2].ok === true && answers[2].body.missing !== true ? answers[2].body.projects : null, portal : null, editing : false, inviting : where.tab === 'einladen', invite : null, box : null, master : null } );
+			drawKunde( { client : answers[0].body.client, accounts : answers[0].body.accounts, documents : answers[1].body.documents, projects : answers[2].ok === true && answers[2].body.missing !== true ? answers[2].body.projects : null, portal : null, editing : false, inviting : where.tab === 'einladen', invite : null, box : null, master : null, message : null } );
 		} );
 	};
 
@@ -3564,6 +3579,141 @@
 	};
 
 	/**
+	 *	The page of the portal a link leads to for a project: its files
+	 *
+	 *	@param		{string}	project					The id of the project
+	 *
+	 *	@return		{string}
+	 */
+	const projectTarget = function( project ) {
+		return '/portal/projekte?projekt='+ encodeURIComponent( project )+ '&tab=dateien';
+	};
+
+	/**
+	 *	The page of the portal a link leads to for a document that is released: its card on the page of its project (the section Angebot for an offer, Belege for any other
+	 *	document), else its row in the list of the documents
+	 *
+	 *	@param		{Object}	doc							category, id and project
+	 *
+	 *	@return		{string}
+	 */
+	const documentTarget = function( doc ) {
+
+		if( doc.project === '' )
+			return '/portal/belege#beleg-'+ doc.id;
+
+		return '/portal/projekte?projekt='+ encodeURIComponent( doc.project )+ '&tab='+ ( doc.category === 'offer' ? 'angebot#angebot-' : 'belege#beleg-' )+ doc.id;
+	};
+
+	/**
+	 *	Kunden hierher einladen: ask which of the active accounts of the client are sent a link that leads to a page of the portal - the invitation for an account that never
+	 *	signed in, a link to sign in for the others -, then send one link to each, by mail. The answer is how many were sent
+	 *
+	 *	@param		{number}	clientId
+	 *	@param		{string}	target					A page of the portal, as the server takes it
+	 *	@param		{string}	where						The words of the page the links lead to, for the sentence of the dialog
+	 *
+	 *	@return		{Promise}
+	 */
+	const inviteHere = function( clientId, target, where ) {
+
+		return call( 'crm-clients/accounts', { id : String( clientId ) }, 'error.load' ).then( function( answer ) {
+
+			if( answer.ok !== true )
+				return null;
+
+			const accounts = answer.body.accounts.filter( function( account ) { return account.gone !== true && account.active === true } );
+
+			if( accounts.length === 0 ) {
+				toast( t( 'here.none' ), true );
+				return null;
+			}
+
+			return dialog( { title : t( 'here.title' ), text : t( 'here.text', where ), yes : t( 'here.yes' ), fields : accounts.map( function( account ) {
+				return { name : 'a-'+ account.id, type : 'checkbox', value : true, label : whoIs( account )+ ' · '+ t( account.login === null ? 'here.invite' : 'here.login' ) };
+			} ) } ).then( function( values ) {
+
+				if( values === null )
+					return null;
+
+				const chosen = accounts.filter( function( account ) { return values['a-'+ account.id] === true } );
+				let sent = 0;
+
+				if( chosen.length === 0 ) {
+					toast( t( 'here.nobody' ), true );
+					return null;
+				}
+
+				// One link after the other: the cap of mails of the kernel counts a call, and a refusal of one is said once
+				return chosen.reduce( function( chain, account ) {
+					return chain.then( function() {
+						return call( 'crm-clients/account-resend', { id : String( clientId ), account : account.id, target : target }, 'error.account-resend' ).then( function( result ) {
+							sent += result.ok === true ? 1 : 0;
+						} );
+					} );
+				}, Promise.resolve() ).then( function() {
+
+					if( sent > 0 )
+						toast( sent === 1 ? t( 'here.sent-one' ) : t( 'here.sent-many', sent ) );
+
+					return sent;
+				} );
+			} );
+		} );
+	};
+
+	/**
+	 *	The block Nachricht im Portal of the card of a client: the text the client reads over every page of the portal, the day it was written, Bearbeiten and Entfernen; the sentence
+	 *	that there is none and the way to write one where there is none
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const messageCard = function( view ) {
+
+		const client = view.client;
+		const text = typeof client.message === 'string' ? client.message : '';
+		const save = function( message, done ) {
+
+			call( 'crm-clients/message', { id : String( client.id ), text : message }, 'error.message' ).then( function( answer ) {
+
+				if( answer.ok !== true || state.view !== view.mine )
+					return;
+
+				view.client = answer.body.client;
+				view.message.replaceWith( view.message = messageCard( view ) );
+				toast( t( done ) );
+			} );
+		};
+
+		const write = function() {
+
+			dialog( { title : t( 'message.dialog' ), text : t( 'message.dialog-text' ), yes : t( 'message.save' ), shortcut : true,
+				fields : [ { name : 'text', label : t( 'message.field' ), type : 'textarea', rows : 8, maxlength : String( MESSAGE_MAX ), value : text } ] } ).then( function( values ) {
+
+				if( values !== null && values.text !== text )
+					save( values.text, values.text.trim() === '' ? 'message.removed' : 'message.saved' );
+			} );
+		};
+
+		return el( 'div', { class: 'card pad gap', id: 'client-message' },
+			el( 'h3', { text: t( 'message.title' ) } ),
+			text === '' ? el( 'p', { class: 'state-note', id: 'client-message-empty', text: t( 'message.empty' ) } ) : [
+				el( 'p', { class: 'message-text', id: 'client-message-text', text: text } ),
+				el( 'p', { class: 'state-note', id: 'client-message-day', text: t( 'message.since', dmy( client.message_at ) ) } ),
+			],
+			el( 'div', { class: 'actions' },
+				el( 'button', { type: 'button', class: 'btn sm', id: 'message-edit', text: t( text === '' ? 'message.write' : 'message.edit' ), on: { click: write } } ),
+				text === '' ? null : el( 'button', { type: 'button', class: 'btn sm', id: 'message-remove', text: t( 'message.remove' ), on: { click: function() {
+					ask( { title : t( 'message.remove-title' ), text : t( 'message.remove-text' ), yes : t( 'message.remove' ), danger : true } ).then( function( yes ) {
+						if( yes === true )
+							save( '', 'message.removed' );
+					} );
+				} } } ) ) );
+	};
+
+	/**
 	 *	The form that invites an account: an address and a name, in the card of the accounts
 	 *
 	 *	@param		{Object}	view
@@ -3873,6 +4023,8 @@
 
 		if( client.ready === false )
 			state.main.appendChild( el( 'p', { class: 'state-note', id: 'client-unready', text: t( 'card.unready-note' ) } ) );
+
+		state.main.appendChild( view.message = messageCard( view ) );
 
 		view.master = masterCard( view );
 		view.box = accountsCard( view );
@@ -5306,7 +5458,7 @@
 
 			const next = function( index ) {
 
-				upload( 'files/upload', { folder : view.folder.id, name : file.name, size : file.size, upload : id, index : index, count : parts.length, visible : true, notify : wantsNotify( view ) }, file.slice( parts[index][0], parts[index][1] ), 'chunk' ).then( function( answer ) {
+				upload( 'files/upload', { folder : view.folder.id, name : file.name, size : file.size, upload : id, index : index, count : parts.length, visible : true, notify : wantsNotify( view ), page : projectTarget( view.project.id ) }, file.slice( parts[index][0], parts[index][1] ), 'chunk' ).then( function( answer ) {
 
 					if( answer.status === 413 ) {
 
@@ -5727,7 +5879,7 @@
 
 					box.disabled = true;
 
-					call( 'files/save', { id : file.id, visible : wanted, notify : wantsNotify( view ) }, 'projects.error-file' ).then( function( answer ) {
+					call( 'files/save', { id : file.id, visible : wanted, notify : wantsNotify( view ), page : projectTarget( view.project.id ) }, 'projects.error-file' ).then( function( answer ) {
 
 						box.disabled = false;
 
@@ -5862,6 +6014,54 @@
 	};
 
 	/**
+	 *	The menu ⋯ of the head of a project: the link to the files of the project for the accounts of its client (for whoever holds the permission of the CRM), and - for
+	 *	an account that edits the Elements - change, finish or reopen and delete
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object|null}							null where there is nothing to offer
+	 */
+	const projectMenu = function( view ) {
+
+		const project = view.project;
+		const items = [];
+
+		if( view.client !== null )
+			items.push( { label : t( 'here.menu' ), run : function() { inviteHere( view.client.id, projectTarget( project.id ), t( 'here.page-project' ) ) } } );
+
+		if( state.perms.elements === true ) {
+
+			if( items.length > 0 )
+				items.push( 'sep' );
+
+			items.push(
+				{ label : t( 'projects.edit' ), run : function() {
+					if( view.editing === true )
+						return;
+					view.editing = true;
+					view.info.replaceWith( view.info = projectCard( view ) );
+				} },
+				{ label : t( project.done === true ? 'projects.reopen' : 'projects.finish' ), run : function() {
+					projectSave( project.id, view.native, { done : project.done !== true } ).then( function( answer ) {
+						if( answer.ok !== true ) {
+							failed( answer, 'projects.error-save' );
+							return;
+						}
+
+						toast( t( project.done === true ? 'projects.reopened' : 'projects.finished' ) );
+
+						if( state.view === view.mine )
+							reloadProjekt( view );
+					} );
+				} },
+				'sep',
+				{ label : t( 'projects.delete' ), danger : true, run : function() { removeProjekt( view ) } } );
+		}
+
+		return items.length === 0 ? null : menu( { label : '⋯', aria : t( 'items.more' ), items : items } );
+	};
+
+	/**
 	 *	Delete a project, after the question: the Elements panel's own delete. The folder in Files stays
 	 *
 	 *	@param		{Object}	view
@@ -5889,7 +6089,6 @@
 	const drawProjekt = function( view ) {
 
 		const project = view.project;
-		const edits = state.perms.elements === true;
 		const start = PROJECT_TABS.includes( state.tab ) === true ? state.tab : PROJECT_TABS[0];
 
 		view.mine = state.view;
@@ -5902,29 +6101,7 @@
 			el( 'span', { class: 'sub' }, view.client === null ? project.client : link( '#kunde-'+ view.client.id, view.client.title ), project.started === '' ? null : ' · '+ t( 'projects.since', dmy( project.started ) ) ),
 			el( 'span', { class: 'grow' } ),
 			view.client !== null && view.client.active === true ? newMenu( t( 'card.document-new' ), view.client.id, project.id ) : null,
-			edits === false ? null : menu( { label : '⋯', aria : t( 'items.more' ), items : [
-				{ label : t( 'projects.edit' ), run : function() {
-					if( view.editing === true )
-						return;
-					view.editing = true;
-					view.info.replaceWith( view.info = projectCard( view ) );
-				} },
-				{ label : t( project.done === true ? 'projects.reopen' : 'projects.finish' ), run : function() {
-					projectSave( project.id, view.native, { done : project.done !== true } ).then( function( answer ) {
-						if( answer.ok !== true ) {
-							failed( answer, 'projects.error-save' );
-							return;
-						}
-
-						toast( t( project.done === true ? 'projects.reopened' : 'projects.finished' ) );
-
-						if( state.view === view.mine )
-							reloadProjekt( view );
-					} );
-				} },
-				'sep',
-				{ label : t( 'projects.delete' ), danger : true, run : function() { removeProjekt( view ) } },
-			] } ) ) );
+			projectMenu( view ) ) );
 
 		view.info = projectCard( view );
 		state.main.appendChild( view.info );
@@ -6807,6 +6984,73 @@
 		return box;
 	};
 
+	/**
+	 *	The block Nachricht an alle Kunden of the Einstellungen: the text every client reads over every page of the portal, a field with Speichern of its own (and Strg+S). The
+	 *	time it last changed is the module's and only shown. An empty text means there is no message
+	 *
+	 *	@param		{Object}	settings				As settings-get has them
+	 *	@param		{Object}	sibling					The form of the screen next to it, which keeps the page's guard when this one is saved
+	 *
+	 *	@return		{Object}
+	 */
+	const messageSettingCard = function( settings, sibling ) {
+
+		const form = { controls : {}, notes : {}, dirty : false, form : true };
+		const area = el( 'textarea', { id: 'f-portal_message', rows: 5, maxlength: String( MESSAGE_MAX ), spellcheck: 'true', value: settings.portal_message ?? '' } );
+		const day = function( at ) { return ( at ?? '' ) === '' ? t( 'message-all.never' ) : t( 'message-all.changed', dmy( at ) ) };
+		const note = el( 'span', { class: 'state-note', id: 'message-all-changed', text: day( settings.portal_message_at ) } );
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'message-all-save', title: t( 'save.shortcut' ), text: t( 'message-all.save' ) } );
+		const mine = state.view;
+		let stored = area.value;
+
+		const list = formList( [ { name : 'portal_message', label : t( 'message-all.label' ), control : area, hint : t( 'message-all.hint' ) } ], form );
+
+		[ 'input', 'change' ].forEach( function( name ) {
+			area.addEventListener( name, function() {
+				form.dirty = area.value !== stored;
+
+				if( form.dirty === true && ( state.draft === null || state.draft.dirty !== true ) )
+					state.draft = form;
+			} );
+		} );
+
+		const box = el( 'form', { class: 'card pad gap', id: 'message-all', novalidate: 'novalidate', on: { submit: function( event ) {
+
+			event.preventDefault();
+			save.disabled = true;
+
+			api( 'crm-documents/settings-save', { portal_message : area.value } ).then( function( answer ) {
+
+				save.disabled = false;
+
+				if( state.view !== mine )
+					return;
+
+				if( answer.ok !== true ) {
+					refuseAt( form, answer, 'error.settings' );
+					return;
+				}
+
+				stored = answer.body.settings.portal_message;
+				area.value = stored;
+				form.dirty = false;
+				note.textContent = day( answer.body.settings.portal_message_at );
+
+				if( state.draft === form )
+					state.draft = sibling.dirty === true ? sibling : null;
+
+				toast( t( stored === '' ? 'message-all.removed' : 'message-all.saved' ) );
+			} );
+		} } },
+			el( 'h3', { text: t( 'message-all.title' ) } ), el( 'p', { class: 'state-note', text: t( 'message-all.note' ) } ),
+			list, el( 'p', {}, note ),
+			el( 'div', { class: 'actions top' }, save ) );
+
+		submitter( 'message-all', box, save, function() { return area.value !== stored } );
+
+		return box;
+	};
+
 	const drawEinstellungen = function( view, items, said ) {
 
 		const settings = view.settings;
@@ -6905,6 +7149,7 @@
 		submitter( 'settings', box, save, function() { return form.dirty === true } );
 
 		state.main.appendChild( privacyCard( settings, form ) );
+		state.main.appendChild( messageSettingCard( settings, form ) );
 
 		const firma = el( 'div', { class: 'gap', id: 'firma-holder' } );
 

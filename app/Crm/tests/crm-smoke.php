@@ -122,7 +122,7 @@ $thirdFile->exec( 'INSERT INTO client_accounts ( client_id, member_id ) VALUES (
 $thirdFile = null;
 $migrated = \Crm\Db::pdo( $third );
 $rows = \Crm\Db::rows( $third, 'SELECT client_id, member_id FROM client_accounts ORDER BY rowid' );
-check( 'migrations 0004 to 0009 on a database of the third schema run once: version 9, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 6 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 9
+check( 'migrations 0004 to 0010 on a database of the third schema run once: version 10, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 7 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 10
 	&& array_map( 'json_encode', $rows ) === [ '{"client_id":2,"member_id":"aaaaaaaaaaaa"}', '{"client_id":1,"member_id":"bbbbbbbbbbbb"}' ] );
 check( '...migration 0006 gave the documents the column project, empty for every row there is, and the index on it', in_array( 'project', array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( documents )' ), 'name' ), true ) === true
 	&& (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'documents_project\' AND tbl_name = \'documents\'' )['n'] === 1 && \Crm\Db::rows( $third, 'SELECT id FROM documents WHERE project <> \'\'' ) === [] );
@@ -305,7 +305,7 @@ check( 'the workbench has one panel of the module, in the content group, and the
 check( 'its permission is /_admin/crm/manage, the one of the whole CRM', \Crm\Crm\Admin::perm() === '/_admin/crm/manage' && ( new \ReflectionClass( \Crm\Crm::class ) )->getConstant( 'MANAGE_PERM' ) === '/_admin/crm/manage' && ( $panels['crm']['perm'] ?? '' ) === '/_admin/crm/manage' );
 check( 'its actions are the two that moved from Kunden: the status and the setup', array_keys( \Crm\Crm\Admin::actions() ) === [ 'crm/status', 'crm/setup' ] );
 check( 'the API of the clients is the fourteen actions that remain, and has no setup and no status - and no panel in it', array_keys( \Crm\Clients\Admin::actions() ) === [ 'crm-clients/list', 'crm-clients/get', 'crm-clients/save', 'crm-clients/active', 'crm-clients/invite', 'crm-clients/accounts', 'crm-clients/unlinked',
-	'crm-clients/account-link', 'crm-clients/account-resend', 'crm-clients/account-active', 'crm-clients/account-name', 'crm-clients/account-email', 'crm-clients/account-remove', 'crm-clients/portal' ]
+	'crm-clients/account-link', 'crm-clients/account-resend', 'crm-clients/account-active', 'crm-clients/account-name', 'crm-clients/account-email', 'crm-clients/account-remove', 'crm-clients/portal', 'crm-clients/message' ]
 	&& array_filter( [ 'nav', 'icon', 'template', 'assets', 'text', 'summary', 'perm', 'apiSetup', 'apiStatus', 'unitDir' ], static fn( string $method ): bool => method_exists( \Crm\Clients\Admin::class, $method ) === true ) === [] );
 
 $assets = \Crm\Crm\Admin::assets();
@@ -339,7 +339,7 @@ ninoUser( $appData, 'admin@example.com' );
 $posts = [ 'crm-clients/list' => [], 'crm-clients/get' => [ 'id' => '1' ], 'crm-clients/save' => [ 'name' => 'Nobody' ], 'crm-clients/active' => [ 'id' => '1' ],
 	'crm-clients/invite' => [ 'id' => '1', 'email' => 'nobody@example.org' ], 'crm-clients/accounts' => [ 'id' => '1' ], 'crm-clients/unlinked' => [],
 	'crm-clients/account-link' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/account-resend' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/account-active' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ],
-	'crm-clients/account-name' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa', 'name' => 'Nobody' ], 'crm-clients/account-email' => [ 'id' => '1', 'member' => 'aaaaaaaaaaaa', 'email' => 'nobody@example.org' ], 'crm-clients/account-remove' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/portal' => [ 'id' => '1' ] ];
+	'crm-clients/account-name' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa', 'name' => 'Nobody' ], 'crm-clients/account-email' => [ 'id' => '1', 'member' => 'aaaaaaaaaaaa', 'email' => 'nobody@example.org' ], 'crm-clients/account-remove' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/portal' => [ 'id' => '1' ], 'crm-clients/message' => [ 'id' => '1', 'text' => 'x' ] ];
 $denied = [ 'signed out' => [], 'without the permission' => [] ];
 
 unset( $appData['./nino/auth/current'] );
@@ -427,7 +427,7 @@ check( 'invite makes an account of Members in the group of the client, linked, a
 check( '...the mail carries a link of the invitation', preg_match( '~href="https://example\.org/club/\.members/login\?t=([A-Za-z0-9_-]+)"~', (string) ( crmMail( $mails, 0 )['body'] ?? '' ), $found ) === 1 );
 $inviteToken = $found[1] ?? '';
 $tokens = array_values( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) );
-check( 'the link of the invitation leads to the portal', count( $tokens ) === 1 && ( $tokens[0]['target'] ?? '' ) === '/portal' && ( $tokens[0]['kind'] ?? '' ) === 'invite' );
+check( 'the link of the invitation names no page: the landing decides', count( $tokens ) === 1 && ( $tokens[0]['target'] ?? '' ) === '' && ( $tokens[0]['kind'] ?? '' ) === 'invite' );
 check( 'the answer names the account and its state', ( $body['account']['email'] ?? '' ) === 'anna@example.org' && $body['account']['gone'] === false && $body['account']['active'] === true );
 [ $status, $body ] = ninoCall( $appData, $panel, [ 'id' => (string) $first['id'] ], 'crm-clients/accounts' );
 check( 'accounts lists it with its state in Members', $status === 200 && count( array_filter( $body['accounts'], static fn( array $a ): bool => ( $a['email'] ?? '' ) === 'anna@example.org' && $a['login'] === null ) ) === 1 );
@@ -820,7 +820,7 @@ $neu = (array) ( $body['first']['account'] ?? [] );
 check( 'save without an id and with an address makes the client and its first account: in the group of the client, linked, active, with the invitation mailed', $status === 200 && ( $kg['number'] ?? '' ) === 'K-0006' && ( $body['first']['mailed'] ?? null ) === true && $isNull( (array) $body['first'], 'refused' )
 	&& ( $neu['email'] ?? '' ) === 'neu@example.org' && ( $neu['name'] ?? '' ) === 'Neu Person' && ( $neu['state'] ?? '' ) === 'invited' && ( $memberOf( (string) $neu['id'] )['group'] ?? '' ) === 'k-0006'
 	&& \Crm\Clients::accounts( $appData, (int) $kg['id'] ) === [ $neu['id'] ] && count( $mails ) === 1 && ( crmMail( $mails, 0 )['to'] ?? '' ) === 'neu@example.org' );
-check( '...the link of the mail is an invitation that leads to the portal', ( $lastToken()['kind'] ?? '' ) === 'invite' && ( $lastToken()['target'] ?? '' ) === '/portal' && preg_match( '~href="https://example\.org/club/\.members/login\?t=([A-Za-z0-9_-]+)"~', (string) ( crmMail( $mails, 0 )['body'] ?? '' ), $found ) === 1 );
+check( '...the link of the mail is an invitation that names no page', ( $lastToken()['kind'] ?? '' ) === 'invite' && ( $lastToken()['target'] ?? '' ) === '' && preg_match( '~href="https://example\.org/club/\.members/login\?t=([A-Za-z0-9_-]+)"~', (string) ( crmMail( $mails, 0 )['body'] ?? '' ), $found ) === 1 );
 $neuToken = $found[1] ?? '';
 check( '...the client is counted with one account, one of them active', ( \Crm\Clients::get( $appData, (int) $kg['id'] )['accounts'] ?? 0 ) === 1 && ( \Crm\Clients::get( $appData, (int) $kg['id'] )['active_accounts'] ?? 0 ) === 1 );
 check( '...the log line names the client and no address', \Crm\Clients\Admin::log( 'crm-clients/save', [ 'account_email' => 'neu@example.org' ] ) === 'Added client K-0006' );
@@ -934,7 +934,7 @@ $resetCap();
 $mails->exchangeArray( [] );
 [ $status, $body ] = $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'] ] );
 check( 'an account that never signed in is sent the invitation again: kind invite, a mail to its address, a token of the invitation to the portal', $status === 200 && $body === [ 'sent' => true, 'kind' => 'invite' ] && count( $mails ) === 1 && crmMail( $mails, 0 )['to'] === 'neu@example.org'
-	&& ( $lastToken()['kind'] ?? '' ) === 'invite' && ( $lastToken()['target'] ?? '' ) === '/portal' );
+	&& ( $lastToken()['kind'] ?? '' ) === 'invite' && ( $lastToken()['target'] ?? '' ) === '' );
 check( '...the log line names the client and the account', \Crm\Clients\Admin::log( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'] ] ) === 'Sent a link to account '. $neu['id']. ' of client K-0006' );
 
 crmConfirm( $appData, $neuToken );
@@ -942,7 +942,7 @@ crmConfirm( $appData, $neuToken );
 check( 'the account signs in with the invitation', ( $memberOf( (string) $neu['id'] )['login'] ?? null ) !== null );
 $resetCap();
 [ $status, $body ] = $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'] ] );
-check( 'one that did gets a link to sign in: kind login, to the portal', $status === 200 && $body === [ 'sent' => true, 'kind' => 'login' ] && count( $mails ) === 2 && ( $lastToken()['kind'] ?? '' ) === 'login' && ( $lastToken()['target'] ?? '' ) === '/portal' );
+check( 'one that did gets a link to sign in: kind login, to the portal', $status === 200 && $body === [ 'sent' => true, 'kind' => 'login' ] && count( $mails ) === 2 && ( $lastToken()['kind'] ?? '' ) === 'login' && ( $lastToken()['target'] ?? '' ) === '' );
 check( '...and the card of the client has it as signed in', ( \Crm\Clients::accountOf( $appData, (int) $kg['id'], (string) $neu['id'] )['state'] ?? '' ) === 'signed' );
 
 // ...without the mail: the link is the answer, once
@@ -954,7 +954,7 @@ $quietLogin = preg_match( '~^https://example\.org/club/\.members/login\?t=([A-Za
 $quietLog = \Crm\Clients\Admin::log( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'], 'notify' => false ] );
 $quietEntry = (array) ( \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] )[ hash( 'sha256', $quietLogin ) ] ?? [] );
 check( 'with notify false the link to sign in is made and nobody is mailed: the answer has the link, sent false and the kind, and the token is kept for the account - kind login, to the portal - as its hash',
-	$status === 200 && $body['sent'] === false && $body['kind'] === 'login' && $quietLogin !== '' && count( $mails ) === 0 && ( $quietEntry['kind'] ?? '' ) === 'login' && ( $quietEntry['target'] ?? '' ) === '/portal'
+	$status === 200 && $body['sent'] === false && $body['kind'] === 'login' && $quietLogin !== '' && count( $mails ) === 0 && ( $quietEntry['kind'] ?? '' ) === 'login' && ( $quietEntry['target'] ?? '' ) === ''
 	&& ( $quietEntry['account'] ?? '' ) === $neu['id'] && count( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) ) === $tokensBefore + 1 );
 crmConfirm( $appData, $quietLogin );
 check( '...the link is as good as a mailed one: the page signs the account in with it and the token is spent', array_key_exists( hash( 'sha256', $quietLogin ), (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) ) === false );
@@ -984,12 +984,129 @@ check( '...and the sentence of the 429, in both languages, and the internal mess
 $resetCap();
 $cleared = ninoWarnings();
 
+// ...to a page of the portal: the field target is a page under /portal, with its query and the place on the page, and nothing else
+$neuAccount = (array) \Crm\Clients::accountOf( $appData, (int) $kg['id'], (string) $neu['id'] );
+$pages = [];
+
+foreach( [ '/portal/projekte?projekt=00001&tab=dateien', '/portal/projekte?projekt=00001&tab=angebot#angebot-12', '/portal/belege#beleg-12', '/portal/belege', '/portal' ] as $page ) {
+	$resetCap();
+	$mails->exchangeArray( [] );
+	[ $status, $body ] = $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'], 'target' => $page ] );
+	$pages[$page] = $status === 200 && $body['sent'] === true && count( $mails ) === 1 && ( $lastToken()['target'] ?? '' ) === $page;
+}
+
+check( 'the link of an account goes to the page the field target names: a project with its tab, an offer with its card, a document with its row, the list, the start page - the token keeps it', array_keys( array_filter( $pages, static fn( bool $same ): bool => $same === false ) ) === [] );
+
+$resetCap();
+$mails->exchangeArray( [] );
+[ $status, $body ] = $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'], 'notify' => false, 'target' => '/portal/projekte?projekt=00001&tab=dateien' ] );
+check( '...also the link that is shown and not mailed', $status === 200 && $body['sent'] === false && count( $mails ) === 0 && ( $lastToken()['target'] ?? '' ) === '/portal/projekte?projekt=00001&tab=dateien' );
+
+$tokenCount = count( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) );
+$refusedTargets = [];
+
+foreach( [ 'another host' => '//evil.example/x', 'a scheme' => 'https://evil.example/portal', 'javascript' => 'javascript:alert(1)', 'the surface' => '/crm', 'an endpoint' => '/.members/logout', 'a line break' => "/portal\nSet-Cookie: a=b", 'a null byte' => "/portal\0", 'a dot segment' => '/portal/../crm', 'an encoded dot segment' => '/portal/%2e%2e/crm', 'markup in the query' => '/portal?x=<b>', 'a blank in the place' => '/portal#a b', 'an empty place' => '/portal#', 'a place with a capital' => '/portal#Beleg', 'nothing' => '', 'a page that only begins like the portal' => '/portalx', 'no slash' => 'portal', 'a number' => 5, 'an array' => [ '/portal' ], 'null' => null, 'more than 300 characters' => '/portal/projekte?projekt='. str_repeat( 'a', 300 ) ] as $label => $page ) {
+	$resetCap();
+	$mails->exchangeArray( [] );
+	[ $status, $body ] = $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'], 'target' => $page ] );
+	$refusedTargets[$label] = $status === 400 && $body['code'] === 'crm_clients_target' && $body['field'] === 'target' && count( $mails ) === 0;
+}
+
+check( '...a target that is no page of the portal is 400 crm_clients_target at the field target and sends nothing, makes no token: another host, a scheme, javascript, the surface, an endpoint, a line break, a null byte, a dot segment, markup, a blank, an empty place, a capital, nothing, a page that only begins like the portal, no slash, a number, an array, null, too long',
+	array_keys( array_filter( $refusedTargets, static fn( bool $same ): bool => $same === false ) ) === [] && count( $refusedTargets ) === 20 && count( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) ) === $tokenCount );
+check( '...the sentence of the code is in both languages', array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => trim( (string) ( require $root. '/app/Crm/Clients/Admin/text/'. $locale. '.php' )['[[/_admin/error/crm_clients_target]]'] ) === '' ) === [] );
+
+$resetCap();
+\Crm\Clients::resend( $appData, $neuAccount, true, '//evil.example' );
+$modelRefused = $lastToken()['target'] ?? '';
+$resetCap();
+\Crm\Clients::resend( $appData, $neuAccount, true, '/portal/belege#beleg-3' );
+$modelKept = $lastToken()['target'] ?? '';
+$resetCap();
+$invited = \Crm\Clients::invite( $appData, $kg, 'target-one@example.org', '', true, '/portal/projekte?projekt=00001&tab=dateien' );
+$invitedTarget = $lastToken()['target'] ?? '';
+$resetCap();
+$invitedTwo = \Crm\Clients::invite( $appData, $kg, 'target-two@example.org', '', true, "/portal\r\nx" );
+$invitedRefused = $lastToken()['target'] ?? '';
+$resetCap();
+$invitedThree = \Crm\Clients::invite( $appData, $kg, 'target-three@example.org', '' );
+$invitedLast = $lastToken()['target'] ?? '';
+
+// The accounts the probes made are not part of the card the rest of the section counts
+foreach( [ $invited, $invitedTwo, $invitedThree ] as $each )
+	if( is_array( $each ) === true )
+		\Crm\Clients::removeAccount( $appData, (int) $kg['id'], (string) $each['account']['id'] );
+
+check( 'the model takes the same: resend() and invite() lead to a page of the portal that Portal::target() accepts and to no page for any other text, and where no target is given', is_array( $invited ) && $modelRefused === '' && $modelKept === '/portal/belege#beleg-3' && $invitedTarget === '/portal/projekte?projekt=00001&tab=dateien'
+	&& $invitedRefused === '' && $invitedLast === '' && is_array( $invitedTwo ) && is_array( $invitedThree ) );
+$resetCap();
+$mails->exchangeArray( [] );
+
 $mailsNow = count( $mails );
 $call( 'crm-clients/account-active', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'], 'active' => false ] );
 [ $status, $body ] = $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'] ] );
 check( 'an account that is switched off is sent nothing: 409 crm_clients_off', $status === 409 && $body['code'] === 'crm_clients_off' && count( $mails ) === $mailsNow );
 check( 'an account of another client is 404 crm_clients_member', ( $r = $call( 'crm-clients/account-resend', [ 'id' => (string) $other['id'], 'account' => (string) $neu['id'] ] ) )[0] === 404 && $r[1]['code'] === 'crm_clients_member' );
 check( 'a bad id of an account is 400 crm_clients_account', $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => 'XYZ' ] )[1]['code'] === 'crm_clients_account' );
+
+// The message the client reads
+$messageClient = (array) \Crm\Clients::get( $appData, (int) $kg['id'] );
+check( 'a client has no message until one is written: message and message_at are empty in get() and in list()', $messageClient['message'] === '' && $messageClient['message_at'] === '' && array_column( \Crm\Clients::list( $appData ), 'message', 'id' )[$kg['id']] === '' );
+$written = \Crm\Clients::setMessage( $appData, (int) $kg['id'], "  Das Studio ist vom 24. bis 31. Dezember zu.\r\nBis dahin: Danke!\n " );
+check( 'setMessage() keeps the text trimmed with its line breaks as \n and the time it was written (UTC, as the clients have their times), and answers the client', is_array( $written ) && $written['id'] === $kg['id'] && $written['message'] === "Das Studio ist vom 24. bis 31. Dezember zu.\nBis dahin: Danke!"
+	&& preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $written['message_at'] ) === 1 && abs( strtotime( $written['message_at'] ) - time() ) < 10 && \Crm\Clients::get( $appData, (int) $kg['id'] )['message'] === $written['message'] );
+check( '...and nothing else of the client changes: the master data, the accounts, the flags', array_diff_key( $written, [ 'message' => 1, 'message_at' => 1 ] ) === array_diff_key( $messageClient, [ 'message' => 1, 'message_at' => 1 ] ) );
+$fields = \Crm\Clients::change( $appData, (int) $kg['id'], [ 'notes' => 'Eine Notiz' ] );
+check( '...and a change of the master data leaves the message as it is', is_array( $fields ) && $fields['message'] === $written['message'] && $fields['message_at'] === $written['message_at'] );
+check( '...the limit is '. \Crm\Clients::MESSAGE_MAX. ' characters, counted as characters: that many pass (umlauts too), one more is long:message and writes nothing', is_array( \Crm\Clients::setMessage( $appData, (int) $kg['id'], str_repeat( 'ä', \Crm\Clients::MESSAGE_MAX ) ) )
+	&& \Crm\Clients::setMessage( $appData, (int) $kg['id'], str_repeat( 'ä', \Crm\Clients::MESSAGE_MAX + 1 ) ) === 'long:message' && mb_strlen( \Crm\Clients::get( $appData, (int) $kg['id'] )['message'], 'UTF-8' ) === \Crm\Clients::MESSAGE_MAX );
+$badTexts = [];
+
+foreach( [ 'a null byte' => "a\0b", 'a bell' => "a\x07b", 'an escape' => "a\x1bb", 'bytes that are no UTF-8' => "\xff\xfe" ] as $label => $text )
+	$badTexts[$label] = \Crm\Clients::setMessage( $appData, (int) $kg['id'], $text ) === 'format:message';
+
+check( '...a control character other than the line break and the tab, and a text that is no UTF-8, is format:message; the tab passes - and so do the characters of format that text is made of: the joiner of an emoji of a family, a mark of direction, a soft hyphen', array_keys( array_filter( $badTexts, static fn( bool $same ): bool => $same === false ) ) === [] && is_array( \Crm\Clients::setMessage( $appData, (int) $kg['id'], "a\tb" ) )
+	&& is_array( \Crm\Clients::setMessage( $appData, (int) $kg['id'], "Familie \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} \u{200E}k\u{AD}urz" ) ) );
+$kept = (array) \Crm\Clients::setMessage( $appData, (int) $kg['id'], 'Eine Nachricht' );
+$cleared = \Crm\Clients::setMessage( $appData, (int) $kg['id'], " \n " );
+check( 'an empty text removes the message and its time; a client nobody has is unknown', is_array( $cleared ) && $cleared['message'] === '' && $cleared['message_at'] === '' && $kept['message_at'] !== '' && \Crm\Clients::setMessage( $appData, 999999, 'x' ) === 'unknown' );
+
+// ...by the action
+$messages = [];
+[ $status, $body ] = $call( 'crm-clients/message', [ 'id' => (string) $kg['id'], 'text' => "Hallo\nWelt" ] );
+$messages['save'] = $status === 200 && $body['client']['message'] === "Hallo\nWelt" && $body['client']['message_at'] !== '' && \Crm\Clients::get( $appData, (int) $kg['id'] )['message'] === "Hallo\nWelt";
+[ $status, $body ] = $call( 'crm-clients/message', [ 'id' => (string) $kg['id'], 'text' => '' ] );
+$messages['remove'] = $status === 200 && $body['client']['message'] === '' && $body['client']['message_at'] === '';
+[ $status, $body ] = $call( 'crm-clients/message', [ 'id' => (string) $kg['id'], 'text' => str_repeat( 'x', 2001 ) ] );
+$messages['long'] = $status === 400 && $body['code'] === 'crm_clients_long' && $body['params'] === [ 2000 ] && $body['field'] === 'message';
+[ $status, $body ] = $call( 'crm-clients/message', [ 'id' => (string) $kg['id'], 'text' => "a\0b" ] );
+$messages['null'] = $status === 400 && $body['code'] === 'crm_clients_format' && $body['field'] === 'message';
+[ $status, $body ] = $call( 'crm-clients/message', [ 'id' => (string) $kg['id'], 'text' => [ 'x' ] ] );
+$messages['array'] = $status === 400 && $body['code'] === 'crm_clients_format' && $body['field'] === 'message';
+[ $status, $body ] = $call( 'crm-clients/message', [ 'id' => (string) $kg['id'] ] );
+$messages['absent'] = $status === 400 && $body['code'] === 'crm_clients_format';
+[ $status, $body ] = $call( 'crm-clients/message', [ 'id' => '999999', 'text' => 'x' ] );
+$messages['unknown'] = $status === 404 && $body['code'] === 'crm_clients_unknown';
+[ $status, $body ] = $call( 'crm-clients/message', [ 'id' => 'x', 'text' => 'x' ] );
+$messages['id'] = $status === 400 && $body['code'] === 'crm_clients_id';
+check( 'crm-clients/message writes the message and removes it with an empty text; a text over 2000 characters is 400 crm_clients_long with the limit, a control character, an array and no text are 400 crm_clients_format, a client nobody has is 404, a bad id 400 - all at the field message where it is the text', array_keys( array_filter( $messages, static fn( bool $same ): bool => $same === false ) ) === []
+	&& mb_strlen( \Crm\Clients::get( $appData, (int) $kg['id'] )['message'], 'UTF-8' ) === 0 );
+$call( 'crm-clients/message', [ 'id' => (string) $kg['id'], 'text' => 'Ein Satz' ] );
+$messageLog = \Crm\Clients\Admin::log( 'crm-clients/message', [ 'id' => (string) $kg['id'], 'text' => 'Ein Satz' ] );
+check( '...the log line names the client and never the text', $messageLog === 'Changed the message of client K-0006' && str_contains( $messageLog, 'Satz' ) === false );
+$call( 'crm-clients/message', [ 'id' => (string) $kg['id'], 'text' => '' ] );
+
+// The address of a document in the portal, and the pages a link may lead to
+$hrefs = [
+	'a document without a project is its row in the list' => [ \Crm\Portal::documentHref( [ 'id' => 7, 'project' => '' ], 'belege' ), '/portal/belege#beleg-7' ],
+	'...so is an offer without one, whatever the tab' => [ \Crm\Portal::documentHref( [ 'id' => 7, 'project' => '' ], 'angebot' ), '/portal/belege#beleg-7' ],
+	'an offer of a project is its card in the section Angebot' => [ \Crm\Portal::documentHref( [ 'id' => 7, 'project' => '00001' ], 'angebot' ), '/portal/projekte?projekt=00001&tab=angebot#angebot-7' ],
+	'any other document of a project is its row in the section Belege' => [ \Crm\Portal::documentHref( [ 'id' => 7, 'project' => 'Album_2027-b' ], 'belege' ), '/portal/projekte?projekt=Album_2027-b&tab=belege#beleg-7' ],
+	'a project that is no id is none' => [ \Crm\Portal::documentHref( [ 'id' => 7, 'project' => 'a/b&tab=x' ], 'angebot' ), '/portal/belege#beleg-7' ],
+];
+check( 'Portal::documentHref() is the card of an offer in the section Angebot of its project, the row of any other document of a project in the section Belege, the row in the list for a document without one - and a project that is no id is none', array_keys( array_filter( $hrefs, static fn( array $pair ): bool => $pair[0] !== $pair[1] ) ) === [] );
+check( 'Portal::target() lets a page of the portal through as it is - the path, a query, a place on the page - and makes nothing of a text that is none', array_filter( [ '/portal', '/portal/projekte', '/portal/projekte?projekt=00001&tab=dateien', '/portal/belege#beleg-3', '/portal/projekte?projekt=a%20b&tab=angebot#angebot-3' ], static fn( string $page ): bool => \Crm\Portal::target( $page ) !== $page ) === []
+	&& array_filter( [ '', '/', '/crm', '//portal', '/portal/', '/portal/Projekte', "/portal\n", '/portal?a b', '/portal?a=<', '/portal#', '/portal#a#b', '/portal/projekte?projekt=1&tab=dateien#', null, 7, [], true ], static fn( mixed $page ): bool => \Crm\Portal::target( $page ) !== '' ) === [] );
 
 // Switching on and off
 [ $status, $body ] = $call( 'crm-clients/account-active', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'] ] );
@@ -1587,7 +1704,20 @@ check( '...a save that leaves the text as it is does not move the day; a differe
 check( '...the rule of the text: tabs and line breaks pass, a control character, a text longer than '. \Crm\Settings::MAX_PRIVACY. ' characters and anything that is not text are refused; the empty text is a text (the portal asks for nothing again)', \Crm\Settings::set( $rec, 'privacy_text', "a\tb\nc" ) === true && \Crm\Settings::set( $rec, 'privacy_text', "a\x07b" ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', "a\x00b" ) === 'value:privacy_text'
 	&& \Crm\Settings::set( $rec, 'privacy_text', str_repeat( 'x', \Crm\Settings::MAX_PRIVACY + 1 ) ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', str_repeat( 'ä', \Crm\Settings::MAX_PRIVACY ) ) === true && \Crm\Settings::set( $rec, 'privacy_text', [ 'x' ] ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', "\xff\xfe" ) === 'value:privacy_text' );
 \Crm\Settings::set( $rec, 'privacy_text', $first );
-check( '...a text that is stored keeps the keys in order: the particulars, then the text and its day', array_slice( array_keys( \Crm\Settings::all( $rec ) ), -2 ) === [ 'privacy_text', 'privacy_changed' ] );
+check( '...a text that is stored keeps the keys in order: the particulars, then the text and its day, then the message to the clients and its time', array_slice( array_keys( \Crm\Settings::all( $rec ) ), -4 ) === [ 'privacy_text', 'privacy_changed', 'portal_message', 'portal_message_at' ] );
+$messageChecks = [];
+$messageChecks['none'] = \Crm\Settings::get( $rec, 'portal_message' ) === '' && \Crm\Settings::get( $rec, 'portal_message_at' ) === '';
+$messageChecks['set'] = \Crm\Settings::set( $rec, 'portal_message', "  Zu bis Montag.\r\nDanke!  " ) === true && \Crm\Settings::get( $rec, 'portal_message' ) === "Zu bis Montag.\nDanke!"
+	&& preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', \Crm\Settings::get( $rec, 'portal_message_at' ) ) === 1;
+\Crm\Db::exec( $rec, 'UPDATE settings SET value = \'2026-01-01T09:00:00Z\' WHERE key = \'portal_message_at\'' );
+$messageChecks['same'] = \Crm\Settings::set( $rec, 'portal_message', "Zu bis Montag.\nDanke!" ) === true && \Crm\Settings::get( $rec, 'portal_message_at' ) === '2026-01-01T09:00:00Z';
+$messageChecks['changed'] = \Crm\Settings::set( $rec, 'portal_message', 'Wieder offen.' ) === true && \Crm\Settings::get( $rec, 'portal_message_at' ) !== '2026-01-01T09:00:00Z' && substr( \Crm\Settings::get( $rec, 'portal_message_at' ), 0, 10 ) === gmdate( 'Y-m-d' );
+$messageChecks['at is the module\'s'] = \Crm\Settings::set( $rec, 'portal_message_at', '2020-01-01T00:00:00Z' ) === 'value:portal_message_at' && \Crm\Settings::get( $rec, 'portal_message_at' ) !== '2020-01-01T00:00:00Z';
+$messageChecks['limit'] = \Crm\Settings::set( $rec, 'portal_message', str_repeat( 'ä', \Crm\Settings::MAX_MESSAGE ) ) === true && \Crm\Settings::set( $rec, 'portal_message', str_repeat( 'x', \Crm\Settings::MAX_MESSAGE + 1 ) ) === 'value:portal_message';
+$messageChecks['control'] = \Crm\Settings::set( $rec, 'portal_message', "a\tb\nc" ) === true && \Crm\Settings::set( $rec, 'portal_message', "a\x07b" ) === 'value:portal_message' && \Crm\Settings::set( $rec, 'portal_message', "Familie \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} \u{200E}k\u{AD}urz" ) === true && \Crm\Settings::set( $rec, 'portal_message', "a\x00b" ) === 'value:portal_message'
+	&& \Crm\Settings::set( $rec, 'portal_message', "\xff\xfe" ) === 'value:portal_message' && \Crm\Settings::set( $rec, 'portal_message', [ 'x' ] ) === 'value:portal_message';
+$messageChecks['removed'] = \Crm\Settings::set( $rec, 'portal_message', '' ) === true && \Crm\Settings::get( $rec, 'portal_message' ) === '' && \Crm\Settings::get( $rec, 'portal_message_at' ) === '';
+check( 'the setting portal_message is the message to every client: text with line breaks, its time set by the module when the text changes (not when it stays) and cleared when the message goes - and never by a post; 2000 characters, no control character but the tab and the line break, no bytes that are no UTF-8', array_keys( array_filter( $messageChecks, static fn( bool $same ): bool => $same === false ) ) === [] );
 check( 'with a text the portal asks, and nobody has agreed yet; Clients::get() and list() carry the standing', \Crm\Records::privacy( $rec, $ra['id'] ) === [ 'asked' => true, 'agreed' => false, 'at' => '', 'member_name' => '' ] && \Crm\Clients::get( $rec, $ra['id'] )['privacy'] === \Crm\Records::privacy( $rec, $ra['id'] ) && array_column( \Crm\Clients::list( $rec ), 'privacy', 'id' )[$rb['id']]['asked'] === true );
 
 $agent = str_repeat( 'ü', 320 );

@@ -36,6 +36,8 @@ return [
 	'[[/project/crm-portal/gate/data]]' => 'Bevor es weitergeht: Wir brauchen Deine Anschrift für Angebot und Rechnung.',
 	'[[/project/crm-portal/gate/next]]' => 'Danach geht es weiter zu',
 	'[[/project/crm-portal/gate/project]]' => 'Projekt',
+	'[[/project/crm-portal/message/from]]' => 'Nachricht von',
+	'[[/project/crm-portal/message/plain]]' => 'Nachricht',
 	'[[/project/crm-portal/head/path]]' => 'Du bist hier',
 	'[[/project/crm-portal/door/enter]]' => 'Weiter zum Portal',
 	'[[/project/crm-portal/empty/contact]]' => 'Bei Fragen erreichst Du uns per E-Mail und Telefon:',

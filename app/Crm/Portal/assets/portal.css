@@ -56,6 +56,7 @@
  *							ink as the text. Every state of the portal is one of them, written in lower case.
  *	6 Notes		.crm-note with the same tones (--error is the danger tone, --muted the grey): an icon in the tone, a left edge of 3px of it, the
  *							tone at 10% behind, no line. Success and error are told apart at a glance, light and dark.
+ *							.crm-message is the owner's message to the client, a card of its own over the head: the accent at 10% behind, a line of it at 40%, who wrote it and the day over the text.
  *	7 Buttons	.crm-btn, 44px high: --primary (the theme's primary ground and ink, also as a link), --secondary (surface with a line, ink),
  *							--ghost (ink 2, quiet); --small is the row size (xs words, less padding, the same height); --holds wraps a link a feature
  *							draws and stretches it over the whole button. An icon in a button sits before its words. A link is the accent only where
@@ -470,6 +471,53 @@ a.crm-crumbs__link:hover {
 .crm-note a:where(:not(.crm-btn)) {
 	color: var(--crm-link);
 	font-weight: 600;
+}
+
+/*	The message of the owner to the client: a note over the head of every page of the portal, on the accent at 10% with a line of it at 40% (the tone of --crm-info, as the
+	notes have it, but a card of its own: a message is read, not passed). Who wrote it and the day are a line over the text; the text keeps its line breaks	*/
+
+.crm-message {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--crm-3);
+	margin: 0 0 var(--crm-5);
+	padding: var(--crm-4);
+	border: 1px solid color-mix(in srgb, var(--crm-info) 40%, var(--crm-surface));
+	border-radius: var(--crm-radius);
+	background-color: color-mix(in srgb, var(--crm-info) 10%, var(--crm-surface));
+	color: var(--crm-ink);
+	overflow-wrap: anywhere;
+}
+
+.crm-message > .crm-icon {
+	flex: none;
+	margin-top: .1em;
+	color: var(--crm-link);
+}
+
+.crm-message__body {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.crm-message__from {
+	margin: 0 0 var(--crm-1);
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-xs);
+	font-weight: 500;
+	line-height: 1.4;
+}
+
+.crm-message__from strong {
+	color: var(--crm-ink);
+	font-weight: 600;
+}
+
+.crm-message__text {
+	margin: 0;
+	white-space: pre-line;
+	font-size: var(--crm-text-m);
+	line-height: 1.5;
 }
 
 /*	The note over the page of a step of the gate: the sentence that says what is asked, and under it where it goes on to after it	*/

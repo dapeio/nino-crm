@@ -81,8 +81,8 @@ return [
 		],
 		'callbacks' => [
 			'/nino/http/response' => [
-				'en_US' => 'The gate: puts the login page in place of every page under a protected path, for a visitor who is not signed in (status 401, and never stored by the cache). A page with a route for each language is shut at every address: the gate looks at the uri of the route as well as at the path. Nothing under /_ or /. is ever protected.',
-				'de_DE' => 'Das Tor: stellt die Anmeldeseite an die Stelle jeder Seite unter einem geschützten Pfad, für einen Besucher, der nicht angemeldet ist (Status 401, und vom Cache nie gespeichert). Eine Seite mit einer Route je Sprache ist an jeder Adresse zu: Das Tor sieht auf die Uri der Route und auf den Pfad. Unter /_ und /. wird nie etwas geschützt.',
+				'en_US' => 'The gate: puts the login page in place of every page under a protected path, for a visitor who is not signed in (status 401, and never stored by the cache). A page with a route for each language is shut at every address: the gate looks at the uri of the route as well as at the path. Nothing under /_ or /. is ever protected. The path of the page is kept in the session with its query, as it came, so that the sign-in leads back to it; a query with a control character or a blank, and an address over 2000 characters, leave the path alone.',
+				'de_DE' => 'Das Tor: stellt die Anmeldeseite an die Stelle jeder Seite unter einem geschützten Pfad, für einen Besucher, der nicht angemeldet ist (Status 401, und vom Cache nie gespeichert). Eine Seite mit einer Route je Sprache ist an jeder Adresse zu: Das Tor sieht auf die Uri der Route und auf den Pfad. Unter /_ und /. wird nie etwas geschützt. Der Pfad der Seite wird mit ihrer Query, wie sie kam, in der Sitzung gemerkt, damit die Anmeldung dorthin zurückführt; eine Query mit Steuerzeichen oder Leerzeichen und eine Adresse über 2000 Zeichen lassen nur den Pfad.',
 			],
 			'/seo/exclude' => [
 				'en_US' => 'Tells the SEO feature, where it is installed, to keep the protected paths out of sitemap.xml and llms.txt - and the address in every language of a page that lies under one.',
@@ -91,6 +91,10 @@ return [
 			'/members/login' => [
 				'en_US' => 'Fired by this feature when a member has signed in, with the account as the argument - an array of id, email, name, group, active, created and login - for the features that build on it.',
 				'de_DE' => 'Wird von diesem Feature ausgelöst, wenn sich ein Mitglied angemeldet hat, mit dem Konto als Argument – einem Array aus id, email, name, group, active, created und login –, für die Features, die darauf aufbauen.',
+			],
+			'/members/start' => [
+				'en_US' => 'Fired by this feature when a sign-in - a code, or the button of a link - has signed the member in and is about to lead on, after /members/login, with the argument account (the account as above), target (the page the sign-in was asked from or the link carries, with its query; empty for none) and to (where it leads: the target, else the start page). A callback may set to to a path of this site - one that starts with a single slash, holds no blank or control character, no colon before the next slash and is no endpoint of a module (/.) - to lead the member there; any other value is the start page. The feature changes nothing about where it leads by itself.',
+				'de_DE' => 'Wird von diesem Feature ausgelöst, wenn eine Anmeldung – ein Code oder der Button eines Links – das Mitglied angemeldet hat und weiterleiten will, nach /members/login, mit dem Argument account (das Konto wie oben), target (die Seite, von der die Anmeldung verlangt wurde oder die der Link trägt, mit ihrer Query; leer für keine) und to (wohin es geht: das Ziel, sonst die Startseite). Ein Callback darf to auf einen Pfad dieser Website setzen – einen, der mit einem einzelnen Schrägstrich beginnt, kein Leerzeichen und kein Steuerzeichen enthält, keinen Doppelpunkt vor dem nächsten Schrägstrich hat und kein Endpunkt eines Moduls (/.) ist –, um das Mitglied dorthin zu führen; jeder andere Wert ist die Startseite. Von sich aus ändert das Feature nichts daran, wohin es geht.',
 			],
 			'/members/logout' => [
 				'en_US' => 'Fired when a signed-in member signs out through /.members/logout, with the same account as the argument.',

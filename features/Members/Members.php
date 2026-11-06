@@ -48,7 +48,7 @@ namespace Nino\Modules {
 	 *										see callbackGate(), priority 1 on '/nino/http/response' -
 	 *										before Modules\Cache's 9, so a page for a member is never
 	 *										the one that gets cached). The page asked for is kept in
-	 *										the session, and the code requested from that page takes
+	 *										the session - with its query, as it came -, and the code requested from that page takes
 	 *										the member back to it.
 	 *
 	 *										Three components put the form, a link to sign out and
@@ -74,7 +74,8 @@ namespace Nino\Modules {
 	 *										accounts() and groups(), and by the callbacks
 	 *										'/members/login', '/members/logout' and '/members/changed',
 	 *										which are fired with the account as their argument (the last
-	 *										with who changed the address, too).
+	 *										with who changed the address, too), and '/members/start', which a
+	 *										sign-in fires before it leads on: a feature may say where to.
 	 *
 	 *	@package					Dape/Nino
 	 *	@author						David Perchermeier <mail@dape.io>
@@ -105,6 +106,9 @@ namespace Nino\Modules {
 		// all three: the feature has no cookie of its own
 		private const string SESSION_ACCOUNT = './members/account';
 		private const string SESSION_TARGET = './members/target';
+
+		// The longest page a sign-in may lead back to, its query included
+		private const int TARGET_MAX = 2000;
 		private const string SESSION_PENDING = './members/pending';
 
 		// The change of an address the member asked for: [ account, email, nonce, tries, until ]
@@ -644,8 +648,9 @@ namespace Nino\Modules {
 		 *	for a page whose uri lies under one, at whichever address a route gives it
 		 *	(see _behindTheGate()) - by somebody who is not signed in, with the login
 		 *	page. A plain 401 - never a 200, so nothing caches it, and honest about the
-		 *	fact that nothing was actually served. The path is kept in the session, for
-		 *	the code that is requested from this page to lead back to it. The workbench
+		 *	fact that nothing was actually served. The path and the query of the page, as
+		 *	they came, are kept in the session, for the code that is requested from this
+		 *	page to lead back to it (see _wanted()). The workbench
 		 *	and the endpoints of this feature are never protected (see prefixes()), and
 		 *	a signed-in workbench user is no exception: the sign-in is the only way in.
 		 *
@@ -671,7 +676,7 @@ namespace Nino\Modules {
 			if( self::_behindTheGate( $appData, $request ) === false || self::current( $appData ) !== null )
 				return;
 
-			\Nino\Runtime::setSessionValue( $appData, self::SESSION_TARGET, $uri );
+			\Nino\Runtime::setSessionValue( $appData, self::SESSION_TARGET, self::_wanted( $uri, (string) ( $request['REQUEST_URI'] ?? '' ) ) );
 
 			$request['/nino/http/response']['body']										= '[template /templates/page-members-login]';
 			$request['/nino/http/response']['statusCode']							= 401;
@@ -695,6 +700,49 @@ namespace Nino\Modules {
 
 			return self::protects( $appData, (string) ( $request['/nino/http/request']['uri'] ?? '' ) ) === true
 				|| self::protects( $appData, (string) ( $request['/nino/http/response']['uri'] ?? '' ) ) === true;
+		}
+
+		/**
+		 *	The page a visitor wanted, as a sign-in leads back to it: the path and the query as they came, without a fragment - no browser sends one. A query that makes
+		 *	the whole no path _isPath() accepts (a control character, a blank), or one that makes it longer than TARGET_MAX, leaves the path alone
+		 *
+		 *	@param		string		$uri					The path of the request
+		 *	@param		string		$raw					The address of the request as the server got it
+		 *
+		 *	@return 	string
+		 */
+		private static function _wanted( string $uri, string $raw ): string {
+
+			$cut = strpos( $raw, '?' );
+			$query = $cut === false ? '' : substr( $raw, $cut + 1 );
+			$query = substr( $query, 0, strcspn( $query, '#' ) );
+			$target = $query === '' ? $uri : $uri. '?'. $query;
+
+			return strlen( $target ) <= self::TARGET_MAX && self::_isPath( $target ) === true ? $target : $uri;
+		}
+
+		/**
+		 *	Where a sign-in leads: the page it was asked from or the link carries, else the start page - and the features that build on the sign-in may say another, through the callback
+		 *	'/members/start', fired with the account, the target (the page of the sign-in, '' for none) and to (where it leads: the target or the start page). A callback that sets
+		 *	to to a path _isPath() accepts moves the member there; any other value of to is the start page
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		$account			As account() has it
+		 *	@param		string		$target				The path the record of the code or of the link carries
+		 *
+		 *	@return 	string										A path of this site
+		 */
+		private static function _arrival( array &$appData, array $account, string $target ): string {
+
+			$target = strlen( $target ) <= self::TARGET_MAX && self::_isPath( $target ) === true ? $target : '';
+			$start = self::_start( $appData );
+			$args = [ 'account' => $account, 'target' => $target, 'to' => $target !== '' ? $target : $start ];
+
+			\Nino\Callbacks::doCallbacks( $appData, '/members/start', $args );
+
+			$to = is_array( $args ) === true ? ( $args['to'] ?? null ) : null;
+
+			return is_string( $to ) === true && strlen( $to ) <= self::TARGET_MAX && self::_isPath( $to ) === true ? $to : $start;
 		}
 
 		/**
@@ -783,7 +831,8 @@ namespace Nino\Modules {
 		 *	that is wrong - is looked up as sha256( nonce | code ) and spent. A code
 		 *	that is good ends the request, signs the member in (_signIn()), tells the
 		 *	features that build on it and redirects, 303, to the path the record of the
-		 *	code carries, else to the start page, as callbackConfirm() does; one that is
+		 *	code carries, else to the start page, as callbackConfirm() does - where the
+		 *	callback '/members/start' may name another page (see _arrival()); one that is
 		 *	good for an account that is gone or switched off ends the request with
 		 *	?members=gone. One that is not found is ?members=wrong - and, the fifth time,
 		 *	the end of the request and ?members=gone: a new code has to be asked for
@@ -842,7 +891,7 @@ namespace Nino\Modules {
 
 			\Nino\Callbacks::doCallbacks( $appData, '/members/login', $account );
 
-			\Nino\Http::redirect( $appData, $request, self::_isPath( $spent['target'] ) === true ? $spent['target'] : self::_start( $appData ), 303 );
+			\Nino\Http::redirect( $appData, $request, self::_arrival( $appData, $account, $spent['target'] ), 303 );
 		}
 
 		/**
@@ -888,7 +937,7 @@ namespace Nino\Modules {
 		 *	that is switched off has the token spent all the same). A good one is spent
 		 *	(deleted), the member is signed in (_signIn()), the features that build on it are
 		 *	told, and the answer is a redirect, 303, to the path the token carries, else to
-		 *	the start page
+		 *	the start page - where the callback '/members/start' may name another page (see _arrival())
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		&$request			(reference) Current server request
@@ -927,9 +976,7 @@ namespace Nino\Modules {
 
 			\Nino\Callbacks::doCallbacks( $appData, '/members/login', $account );
 
-			$target = $spent['target'];
-
-			\Nino\Http::redirect( $appData, $request, self::_isPath( $target ) === true ? $target : self::_start( $appData ), 303 );
+			\Nino\Http::redirect( $appData, $request, self::_arrival( $appData, $account, $spent['target'] ), 303 );
 		}
 
 		/**
