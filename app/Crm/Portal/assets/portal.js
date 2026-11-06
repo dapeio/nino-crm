@@ -7,7 +7,7 @@
  *							leave the page); a message the address carries (?state=..., ?sign-state=...) is taken out of the address once the page has shown it,
  *							so that a reload does not say it again; the card or the row an anchor names (#angebot-<id>, #beleg-<id>), or the row of the document
  *							Sign has just brought back (data-sign-state), is unfolded and brought into view, also when it stands in a tab the kernel's script has
- *							hidden; the field of Meine Daten the server refused gets the focus; the drop zone of the upload says that a file hangs over it; and the select of the versions over a player sends its form when the choice changes - at once for the mouse and touch, on Enter or on leaving for the keyboard - and gets the focus back after the page is loaded (the button that does it without the script is taken away). No markup is made here, nothing is sent but that form (a plain GET) and nothing is stored.
+ *							hidden; the field of Meine Daten the server refused gets the focus; the drop zone of the upload says that a file hangs over it; and the select of the versions over a player sends its form when the choice changes - at once for the mouse and touch, on Enter or on leaving for the keyboard - and gets the focus back after the page is loaded (the button that does it without the script is taken away). The pills over the list of documents are shown and filter its rows (a row that does not fit is hidden, the number over the list says how many are shown; the pill the server pressed is the one that applies at first, and a row that is hidden is not unfolded by an anchor); a message of the owner is put away by posting the form on its card, and the card goes from the page once the server has answered (it stays where the post fails). No markup is made here, nothing is sent but those two forms (a plain GET, a post to the same site) and nothing is stored.
  */
 ( function() {
 
@@ -92,7 +92,9 @@
 		// No anchor: the row of the document Sign has just brought back, which the server marked
 		else if( hash.length === 0 )
 			target = dc.querySelector( '[data-sign-state]' );
-		if( target === null )
+		// A row the filter hides is not unfolded
+		const row = target === null ? null : target.closest( '.crm-documents__row' );
+		if( target === null || ( row !== null && row.hidden === true ) )
 			return;
 		let node = target;
 		while( node !== null ) {
@@ -179,6 +181,81 @@
 			field.focus();
 	}
 
+	// The pills over the list of documents: shown once the script is here, each one a filter on the rows (by their kind, or by the mark that they ask for something). The pill
+	// the server pressed is the one that applies first; the number over the list tells how many rows are shown when it is not all of them
+	function watchFilter() {
+		const group = dc.querySelector( '.crm-filter' );
+		if( group === null )
+			return;
+		const pills = Array.from( group.querySelectorAll( '.crm-filter__pill' ) );
+		const rows = Array.from( dc.querySelectorAll( '.crm-documents__row' ) );
+		const count = dc.querySelector( '.crm-documents__count' );
+		const whole = count === null ? '' : count.textContent;
+		const apply = function( pill ) {
+			const name = pill.getAttribute( 'data-filter' );
+			const kinds = ( pill.getAttribute( 'data-kinds' ) || '' ).split( ' ' );
+			let shown = 0;
+			pills.forEach( function( other ) { other.setAttribute( 'aria-pressed', other === pill ? 'true' : 'false' ); } );
+			rows.forEach( function( row ) {
+				const fits = name === 'all' || ( name === 'due' ? row.getAttribute( 'data-due' ) === '1' : kinds.indexOf( row.getAttribute( 'data-kind' ) ) !== -1 );
+				row.hidden = fits === false;
+				// A row that is hidden is folded: the server opens the one the address names, and it is not to stand open when the filter shows it
+				if( fits === false )
+					row.querySelectorAll( 'details' ).forEach( function( fold ) { fold.open = false; } );
+				shown += fits ? 1 : 0;
+			} );
+			if( count !== null )
+				count.textContent = shown === rows.length ? whole : ( count.getAttribute( 'data-shown' ) || '' ).replace( '{shown}', String( shown ) ).replace( '{total}', String( rows.length ) );
+		};
+		pills.forEach( function( pill ) { pill.addEventListener( 'click', function() { apply( pill ); } ); } );
+		const chosen = pills.find( function( pill ) { return pill.getAttribute( 'aria-pressed' ) === 'true'; } );
+		if( chosen !== undefined )
+			apply( chosen );
+		group.hidden = false;
+	}
+
+	// The form on the card of a message: posted in the background, and the card goes once the server has answered; where the post fails (the answer is no page, or it
+	// says the token ran out) the card stays and the button is free again. A form that posts to another site is left to the browser
+	function watchMessages() {
+		dc.querySelectorAll( 'form.crm-message__dismiss' ).forEach( function( form ) {
+			form.addEventListener( 'submit', function( event ) {
+				let own = false;
+				try { own = new URL( form.action, location.href ).origin === location.origin; } catch( e ) { own = false; }
+				if( own === false || typeof fetch !== 'function' )
+					return;
+				event.preventDefault();
+				const card = form.closest( '.crm-message' );
+				const button = form.querySelector( 'button' );
+				const body = new URLSearchParams();
+				form.querySelectorAll( 'input[name]' ).forEach( function( input ) { body.append( input.getAttribute( 'name' ), input.value ); } );
+				if( button !== null )
+					button.disabled = true;
+				const failed = function() {
+					if( button !== null )
+						button.disabled = false;
+				};
+				fetch( form.action, { method : 'POST', body : body, credentials : 'same-origin' } ).then( function( response ) {
+					let refused = true;
+					try {
+						const answer = new URL( response.url, location.href );
+						refused = answer.origin !== location.origin || answer.searchParams.get( 'state' ) === 'expired';
+					} catch( e ) { refused = true; }
+					if( response.ok !== true || refused === true ) {
+						failed();
+						return;
+					}
+					if( card !== null )
+						card.remove();
+					const title = dc.querySelector( '.crm-head__title' );
+					if( title !== null ) {
+						title.setAttribute( 'tabindex', '-1' );
+						title.focus( { preventScroll: true } );
+					}
+				} ).catch( failed );
+			} );
+		} );
+	}
+
 	function init() {
 		if( dc.querySelector( '.crm-portal' ) === null )
 			return;
@@ -186,6 +263,8 @@
 		followTabs();
 		watchDrop();
 		watchVersions();
+		watchFilter();
+		watchMessages();
 		forgetState();
 		revealTarget();
 		window.addEventListener( 'hashchange', revealTarget );

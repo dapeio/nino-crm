@@ -4,4 +4,5 @@
 		<p class="crm-message__from">[[from]][[day]]</p>
 		<p class="crm-message__text">[[text]]</p>
 	</div>
+	[[form]]
 </div>

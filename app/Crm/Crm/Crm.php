@@ -262,6 +262,10 @@ class Crm {
 		$appData['/nino/http/routes']['POST://.crm/abnahme'] = [ 'uri' => Portal\Approval::ROUTE ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/abnahme', [ Portal\Approval::class, 'callbackApprove' ] );
 
+		// The card of a message of the owner posts here: a member of a client puts the message away for itself (see Portal\Message::callbackDismiss())
+		$appData['/nino/http/routes']['POST://.crm/nachricht/weg'] = [ 'uri' => Portal\Message::ROUTE ];
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/nachricht/weg', [ Portal\Message::class, 'callbackDismiss' ] );
+
 		// The projects: a project that a document names is not deleted, and its client is a client that is there and stays - the kernel's vetoes, so that
 		// the Elements panel of the workbench refuses as the endpoint of the surface does
 		\Nino\Callbacks::registerCallback( $appData, '/nino/elements/delete'. Projekte::TYPE, [ Projekte::class, 'callbackDelete' ] );

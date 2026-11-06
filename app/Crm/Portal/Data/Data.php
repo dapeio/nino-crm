@@ -42,8 +42,8 @@ class Data {
 	// The fields of the form, in their order: the client's fields the member may change, how the input is made, whether it takes the whole line and whether it is required
 	// (a company or a name is required too, either of the two: the server asks it of the pair)
 	public const array FIELDS = [
-		'company' => [ 'type' => 'text', 'autocomplete' => 'organization', 'wide' => false, 'required' => false ],
 		'name'    => [ 'type' => 'text', 'autocomplete' => 'name', 'wide' => false, 'required' => false ],
+		'company' => [ 'type' => 'text', 'autocomplete' => 'organization', 'wide' => false, 'required' => false ],
 		'street'  => [ 'type' => 'text', 'autocomplete' => 'street-address', 'wide' => true, 'required' => true ],
 		'zip'     => [ 'type' => 'text', 'autocomplete' => 'postal-code', 'wide' => false, 'required' => true ],
 		'city'    => [ 'type' => 'text', 'autocomplete' => 'address-level2', 'wide' => false, 'required' => true ],

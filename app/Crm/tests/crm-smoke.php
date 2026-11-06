@@ -122,7 +122,7 @@ $thirdFile->exec( 'INSERT INTO client_accounts ( client_id, member_id ) VALUES (
 $thirdFile = null;
 $migrated = \Crm\Db::pdo( $third );
 $rows = \Crm\Db::rows( $third, 'SELECT client_id, member_id FROM client_accounts ORDER BY rowid' );
-check( 'migrations 0004 to 0011 on a database of the third schema run once: version 11, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 8 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 11
+check( 'migrations 0004 to 0012 on a database of the third schema run once: version 12, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 9 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 12
 	&& array_map( 'json_encode', $rows ) === [ '{"client_id":2,"member_id":"aaaaaaaaaaaa"}', '{"client_id":1,"member_id":"bbbbbbbbbbbb"}' ] );
 check( '...migration 0006 gave the documents the column project, empty for every row there is, and the index on it', in_array( 'project', array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( documents )' ), 'name' ), true ) === true
 	&& (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'documents_project\' AND tbl_name = \'documents\'' )['n'] === 1 && \Crm\Db::rows( $third, 'SELECT id FROM documents WHERE project <> \'\'' ) === [] );
@@ -130,6 +130,9 @@ check( '...and the index that keeps an account on one client is unique', (int) \
 $stateColumns = array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( project_states )' ), null, 'name' );
 check( '...migration 0011 made the table of the states of the projects: the project is its key and the download is off, with no day and no account, where nothing is said', array_keys( $stateColumns ) === [ 'project', 'download', 'download_at', 'download_by' ] && (int) $stateColumns['project']['pk'] === 1
 	&& $stateColumns['download']['dflt_value'] === '0' && (int) $stateColumns['download']['notnull'] === 1 && $stateColumns['download_at']['dflt_value'] === "''" && $stateColumns['download_by']['dflt_value'] === "''" && \Crm\Db::rows( $third, 'SELECT project FROM project_states' ) === [] );
+$dismissColumns = array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( dismissals )' ), null, 'name' );
+check( '...migration 0012 made the table of the dismissals: the member and the sum are its key together, and there is no row where nothing was dismissed', array_keys( $dismissColumns ) === [ 'member', 'sha256', 'at' ]
+	&& (int) $dismissColumns['member']['pk'] === 1 && (int) $dismissColumns['sha256']['pk'] === 2 && (int) $dismissColumns['at']['pk'] === 0 && (int) $dismissColumns['at']['notnull'] === 1 && \Crm\Db::rows( $third, 'SELECT member FROM dismissals' ) === [] );
 \Crm\Db::close();
 \Crm\Db::pdo( $third );
 check( '...a second boot runs nothing', \Crm\Db::migrated() === 0 );

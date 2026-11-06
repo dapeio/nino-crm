@@ -520,6 +520,33 @@ a.crm-crumbs__link:hover {
 	line-height: 1.5;
 }
 
+/*	The button that puts the message away: a quiet 44px square at the top right of the card, the corner of the card pulled in so that it does not make the card taller	*/
+.crm-message__dismiss {
+	flex: none;
+	margin: calc( -1 * var(--crm-3) ) calc( -1 * var(--crm-3) ) calc( -1 * var(--crm-3) ) 0;
+}
+
+.crm-message__close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--crm-touch);
+	height: var(--crm-touch);
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: var(--crm-radius-s);
+	background-color: transparent;
+	color: var(--crm-ink-2);
+	cursor: pointer;
+	transition: background-color .15s ease, color .15s ease;
+}
+
+.crm-message__close:hover {
+	background-color: color-mix(in srgb, var(--crm-info) 14%, var(--crm-surface));
+	color: var(--crm-ink);
+}
+
 /*	The note over the page of a step of the gate: the sentence that says what is asked, and under it where it goes on to after it	*/
 
 .crm-gate__next {
@@ -1058,6 +1085,22 @@ time.crm-table__cell {
 	margin: 0 0 var(--crm-6);
 }
 
+/*	The section under the head with the two cards the client reaches for first: one column, and from 768px the files at 3 parts and the offers at 2 beside them	*/
+.crm-start__top {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	align-items: stretch;
+	gap: var(--crm-4);
+	margin: 0 0 var(--crm-6);
+}
+
+@media (min-width: 768px) {
+
+	.crm-start__top--pair {
+		grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+	}
+}
+
 /*	The key figures: a row of tiles, each a link, over the cards; the figure that waits for the client is in the warning tone	*/
 .crm-kpis {
 	display: grid;
@@ -1391,6 +1434,50 @@ time.crm-table__cell {
 
 .crm-documents {
 	margin: 0 0 var(--crm-7);
+}
+
+/*	The pills over the list: one button for All, one for what asks for something and one for each kind of document the client has. The pressed one is the ink on the ground of
+	the surface; the script shows the row and hides what does not fit (hidden, which a row of a grid needs said again)	*/
+.crm-filter {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--crm-2);
+	margin: 0 0 var(--crm-3);
+}
+
+.crm-filter[hidden],
+.crm-documents__row[hidden] {
+	display: none;
+}
+
+.crm-filter__pill {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: var(--crm-touch);
+	margin: 0;
+	padding: 0 var(--crm-4);
+	border: 1px solid var(--crm-line-strong);
+	border-radius: var(--crm-pill);
+	background-color: var(--crm-surface);
+	color: var(--crm-ink);
+	font-family: inherit;
+	font-size: var(--crm-text-s);
+	font-weight: 600;
+	line-height: 1.2;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.crm-filter__pill:hover {
+	border-color: var(--crm-ink-3);
+}
+
+.crm-filter__pill[aria-pressed="true"] {
+	border-color: var(--crm-ink);
+	background-color: var(--crm-ink);
+	color: var(--crm-surface);
 }
 
 /*	The number of documents stands over the list: the list is as long as the page	*/

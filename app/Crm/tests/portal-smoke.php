@@ -707,7 +707,7 @@ $rowOfNow = static function( int $id ) use ( &$appData ): string {
 			return $row;
 	return '';
 };
-check( 'the list has a row for each released document of the member\'s client, newest first, and none for anything else', count( $rows ) === 5 && array_map( static fn( string $row ): int => (int) preg_replace( '/^.*?data-document="(\d+)".*$/s', '$1', $row ), $rows ) === [ $infoA['id'], $privacyA['id'], $contractA['id'], $invoiceA['id'], $offerA['id'] ]
+check( 'the list has a row for each released document of the member\'s client, what asks for something first and then the newest, and none for anything else', count( $rows ) === 5 && array_map( static fn( string $row ): int => (int) preg_replace( '/^.*?data-document="(\d+)".*$/s', '$1', $row ), $rows ) === [ $invoiceA['id'], $infoA['id'], $privacyA['id'], $contractA['id'], $offerA['id'] ]
 	&& str_contains( $html, 'data-document="'. $invoiceB['id']. '"' ) === false && str_contains( $html, 'data-document="'. $draftA['id']. '"' ) === false && str_contains( $html, 'data-document="'. $invoiceA2['id']. '"' ) === false );
 $cellOf = static fn( string $row, string $class ): string => portalText( '<ul>'. $row. '</ul>', '//*[contains(concat(" ", normalize-space(@class), " "), " '. $class. ' ")]' );
 $pillOf = static fn( string $row ): string => portalFind( '<ul>'. $row. '</ul>', '//span[contains(@class, "crm-documents__state")]/span[contains(@class, "crm-pill")]' )[0]->getAttribute( 'class' );
@@ -837,7 +837,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 207 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 221 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -1640,9 +1640,9 @@ $client = (array) \Crm\Clients::get( $appData, $a['id'] );
 $data = portalPage( $appData, '/portal/meine-daten' )[1];
 $inputs = portalFind( $data, '//form[@class="crm-data__form"]//input[@name]' );
 $values = array_column( array_map( static fn( \DOMElement $input ): array => [ $input->getAttribute( 'name' ), $input->getAttribute( 'value' ) ], $inputs ), 1, 0 );
-check( 'the form posts to /.crm/daten and has the fields Firma, Name, Straße, PLZ, Ort, Land (a select), Telefon, USt-IdNr. with the values of the client - and the csrf token', portalFind( $data, '//form[@class="crm-data__form"]/@action' )[0]->nodeValue === '/.crm/daten' && portalFind( $data, '//form[@class="crm-data__form"]/@method' )[0]->nodeValue === 'post'
-	&& array_keys( $values ) === [ '_csrf', 'company', 'name', 'street', 'zip', 'city', 'phone', 'vat_id' ] && $values['_csrf'] === \Nino\Csrf::getToken( $appData )
-	&& array_diff_key( $values, [ '_csrf' => 1 ] ) === array_intersect_key( $client, array_flip( [ 'company', 'name', 'street', 'zip', 'city', 'phone', 'vat_id' ] ) )
+check( 'the form posts to /.crm/daten and has the fields Name, Firma, Straße, PLZ, Ort, Land (a select), Telefon, USt-IdNr. with the values of the client - and the csrf token', portalFind( $data, '//form[@class="crm-data__form"]/@action' )[0]->nodeValue === '/.crm/daten' && portalFind( $data, '//form[@class="crm-data__form"]/@method' )[0]->nodeValue === 'post'
+	&& array_keys( $values ) === [ '_csrf', 'name', 'company', 'street', 'zip', 'city', 'phone', 'vat_id' ] && $values['_csrf'] === \Nino\Csrf::getToken( $appData )
+	&& array_diff_key( $values, [ '_csrf' => 1 ] ) === array_replace( array_flip( [ 'name', 'company', 'street', 'zip', 'city', 'phone', 'vat_id' ] ), array_intersect_key( $client, array_flip( [ 'company', 'name', 'street', 'zip', 'city', 'phone', 'vat_id' ] ) ) )
 	&& portalFind( $data, '//form//select[@name="country"]/option[@selected]/@value' )[0]->nodeValue === $client['country'] && portalFind( $data, '//form//select[@name="country"]/option[@value="DE"]' ) !== [] );
 check( '...every value is text: markup and a shortcode in the company are escaped, and each field has its label and the length the client takes', str_contains( $data, 'Nord &quot;A&amp;B&quot; &lt;x&gt; &#91;members-name]' ) === true && str_contains( $data, '<x>' ) === false
 	&& count( portalFind( $data, '//form[@class="crm-data__form"]//label[@for]' ) ) === 8 &&  portalFind( $data, '//input[@name="company"]/@maxlength' )[0]->nodeValue === '120' && portalFind( $data, '//input[@name="phone"]/@type' )[0]->nodeValue === 'tel' );
@@ -2435,7 +2435,7 @@ $reset();
 
 echo "\n[crm-portal-start]\n";
 
-$cards = static fn( string $html ): array => array_map( static fn( \DOMElement $card ): string => $card->getAttribute( 'data-card' ), portalFind( $html, '//article[contains(concat(" ", normalize-space(@class), " "), " crm-start__card ")]' ) );
+$cards = static fn( string $html ): array => array_map( static fn( \DOMElement $card ): string => $card->getAttribute( 'data-card' ), portalFind( $html, '//section[@aria-labelledby="crm-start-heading"]//article[contains(concat(" ", normalize-space(@class), " "), " crm-start__card ")]' ) );
 $rowsOf = static fn( string $html, string $card ): array => portalFind( $html, '//article[@data-card="'. $card. '"]//li[contains(@class, "crm-start__row")]' );
 $partOf = static fn( \DOMElement $row, string $part ): string => portalText( $row->ownerDocument->saveHTML( $row ), '//span[@class="crm-start__'. $part. '"]' );
 $hrefOf = static fn( \DOMElement $row ): string => portalFind( $row->ownerDocument->saveHTML( $row ), '//a[contains(@class, "crm-start__link")]/@href' )[0]->nodeValue;
@@ -2475,7 +2475,7 @@ $pNew = $made( 'Dateien-Test', $a['number'], [ 'folder' => $folderNew['id'] ] );
 $orderOpen = $mkOffer( 'Wartet', [ 'project' => $p1 ] );
 $orderOpenPlain = $mkOffer( 'Wartet ohne Projekt', [] );
 $start = portalPage( $appData, '/portal' )[1];
-check( 'for Studio Nord the cards are there that apply - not the Datenschutz it has agreed to: the offers, the documents, the files and the dates', $cards( $start ) === [ 'offers', 'documents', 'files', 'dates' ] && portalFind( $start, '//article[@data-card="privacy"]' ) === [] );
+check( 'for Studio Nord the cards are there that apply - not the Datenschutz it has agreed to: the documents and the dates under the heading, the files and the offers in the section over it', $cards( $start ) === [ 'documents', 'dates' ] && portalFind( $start, '//article[@data-card="privacy"]' ) === [] );
 $offerRows = $rowsOf( $start, 'offers' );
 $offerLinks = array_map( $hrefOf, $offerRows );
 $expectedNumbers = [ $orderAtomic['number'], $orderOpen['number'], $orderOpenPlain['number'] ];
@@ -2517,7 +2517,7 @@ $fileRowOf = static fn( array $rows, string $project ): ?\DOMElement => array_va
 check( '...a project whose folder holds one lately visible file of the owner, the member\'s own new upload, an old visible file and a hidden one counts exactly one new file', $fileRowOf( $fileRows, $pNew ) !== null && preg_match( '/^1 \S/', $partOf( $fileRowOf( $fileRows, $pNew ), 'extra' ) ) === 1 );
 check( 'Neue Dateien der letzten 14 Tage: for each project with a folder the number of files that came lately and that the member may see - the member\'s own uploads are no news, the old file and the hidden ones are not counted - and the way to the files of the project', count( $fileRows ) >= 1 && $fileRowOf( $fileRows, $p1 ) !== null && $partOf( $fileRowOf( $fileRows, $p1 ), 'text' ) === 'Album 2027'
 	&& preg_match( '/^[2-9] \S/', $partOf( $fileRowOf( $fileRows, $p1 ), 'extra' ) ) === 1 && $partOf( $fileRowOf( $fileRows, $p1 ), 'extra' ) !== $partOf( $fileRowOf( $fileRows, $pNew ), 'extra' ) );
-check( 'the cards of the start page are .crm-card in one grid: no card without the class, and the links of the offers and of the files name their tab (angebot, dateien) and the anchor of their card', portalFind( $start, '//article[@data-card][not(contains(concat(" ", normalize-space(@class), " "), " crm-card "))]' ) === [] && count( portalFind( $start, '//div[contains(@class, "crm-start__grid")]/article[@data-card]' ) ) >= 3
+check( 'the cards of the start page are .crm-card in one grid: no card without the class, and the links of the offers and of the files name their tab (angebot, dateien) and the anchor of their card', portalFind( $start, '//article[@data-card][not(contains(concat(" ", normalize-space(@class), " "), " crm-card "))]' ) === [] && count( portalFind( $start, '//div[contains(@class, "crm-start__grid")]/article[@data-card] | //section[contains(@class, "crm-start__top")]/article[@data-card]' ) ) >= 4
 	&& array_filter( array_map( $hrefOf, $fileRows ), static fn( string $href ): bool => str_contains( $href, '&tab=dateien#projekt-files' ) === false ) === []
 	&& array_filter( $offerRows, static fn( \DOMElement $row ): bool => str_contains( $hrefOf( $row ), 'projekt=' ) === true && str_contains( $hrefOf( $row ), '&tab=angebot#angebot-' ) === false ) === [] );
 $dateRows = $rowsOf( $start, 'dates' );
@@ -4052,6 +4052,244 @@ function portalApprovalChecks( array &$appData, array $a, array $b, array $accou
 portalApprovalChecks( $appData, $a, $b, $accounts, $stray, $owner, $invoiceA, $p1, $p4, $today, $store, $wordsDe, $wordsEn, $hold, $reset, $asAdmin, $asVisitor, $put, $made, $final, $line, $ago, $recordsOf, $location );
 
 $resume();
+
+// --- The finishing touches of the portal ---------------------------------------------------------------------------------------------
+
+/**
+ *	The start page with the section over the rest, the list of documents in the order of what asks for something and its pills, the order of the fields of Meine Daten and the message a member puts away
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$accounts			The accounts of the suite by name; ben is the one of another client
+ *	@param		array 		$stray				A member of no client
+ *
+ *	@return 	void
+ */
+function portalFinishingTouches( array &$appData, array $accounts, array $stray ): void {
+
+	global $mails;
+
+	$today = date( 'Y-m-d' );
+	$line = static fn( string $title ): array => [ 'title' => $title, 'description' => '', 'unit' => 'Std.', 'qty' => '2', 'price' => '50', 'vat_rate' => 0 ];
+	$make = static function( string $category, int $clientId, array $input ) use ( &$appData ): int {
+		$draft = Documents::add( $appData, $category, $clientId, $input );
+		$done = is_array( $draft ) === true ? Documents::finalise( $appData, $draft['id'] ) : $draft;
+
+		return is_array( $done ) === true && is_array( Documents::release( $appData, $done['id'], false ) ) === true ? $done['id'] : 0;
+	};
+	$location = static fn( array $response ): string => (string) ( $response['header']['Location'] ?? '' );
+	$ids = static fn( string $html ): array => array_map( static fn( \DOMElement $row ): int => (int) $row->getAttribute( 'data-document' ), portalFind( $html, '//li[contains(concat(" ", normalize-space(@class), " "), " crm-documents__row ")]' ) );
+	$pressed = static fn( string $html ): array => array_map( static fn( \DOMElement $pill ): string => $pill->getAttribute( 'data-filter' ), portalFind( $html, '//div[contains(@class, "crm-filter")]/button[@aria-pressed="true"]' ) );
+
+	\Nino\Features::deactivate( $appData, 'events' );
+	\Crm\Settings::set( $appData, 'privacy_text', '' );
+	\Crm\Settings::set( $appData, 'portal_message', '' );
+	$created = \Crm\Clients::add( $appData, [ 'company' => 'Feinschliff GmbH', 'name' => 'Frieda Fein', 'street' => 'Weg 9', 'zip' => '01067', 'city' => 'Dresden', 'country' => 'DE' ], [ 'email' => 'fein@example.org', 'name' => 'Frieda Fein', 'notify' => false ] );
+	$client = (int) $created['id'];
+	$frieda = (array) ( $created['first']['account'] ?? [] );
+	$second = \Nino\Modules\Members::add( $appData, 'fein2@example.org', 'Zweite Fein', $created['group'] );
+	\Crm\Clients::link( $appData, $client, $second['id'] );
+
+	echo "\nThe section over the start page\n";
+
+	check( 'the fixtures of the finishing touches: a client with two accounts, ready, nothing pending', $frieda !== [] && $created['ready'] === true && is_array( $second ) === true && \Crm\Portal::pending( $appData, (array) \Crm\Clients::get( $appData, $client ) ) === '' );
+	portalSignIn( $appData, $frieda );
+	$bare = portalPage( $appData, '/portal' )[1];
+	$top = '//section[contains(concat(" ", normalize-space(@class), " "), " crm-start__top ")]';
+	$labelled = portalFind( $bare, $top. '/@aria-labelledby' );
+	check( 'a client with no file and no offer has the section over the rest: with a heading of its own that the section names, one card - the files - that says no file came and leads to the projects, and no card of offers', count( portalFind( $bare, $top ) ) === 1 && $labelled !== [] && portalFind( $bare, $top. '/*[@id="'. ( $labelled[0]->nodeValue ?? '' ). '"]' ) !== []
+		&& array_map( static fn( \DOMElement $card ): string => $card->getAttribute( 'data-card' ), portalFind( $bare, $top. '/article' ) ) === [ 'files' ] && portalFind( $bare, $top. '/article//li' ) === [] && trim( portalText( $bare, $top. '/article[@data-card="files"]/p[contains(@class, "crm-start__text")]' ) ) !== ''
+		&& portalFind( $bare, $top. '/article[@data-card="files"]//a/@href' )[0]->nodeValue === '/portal/projekte' && portalFind( $bare, '//*[contains(@class, "crm-start__top--pair")]' ) === [] && portalFind( $bare, '//article[@data-card="offers"]' ) === [] );
+	check( '...it stands under the head of the page and over the section "Was gerade ansteht"; the section of the rest has no card of files', strpos( $bare, 'crm-head__row' ) < strpos( $bare, 'crm-start__top' ) && strpos( $bare, 'crm-start__top' ) < strpos( $bare, 'crm-start-heading' )
+		&& portalFind( $bare, '//section[@aria-labelledby="crm-start-heading"]//article[@data-card="files"]' ) === [] );
+	$offer = $make( 'offer', $client, [ 'date' => $today, 'valid_until' => date( 'Y-m-d', strtotime( '+20 days' ) ), 'template_key' => 'angebot', 'lines' => [ $line( 'Wartet' ) ] ] );
+	Db::exec( $appData, 'UPDATE documents SET released_at = \'2020-01-01T00:00:00Z\' WHERE id = :id', [ 'id' => $offer ] );
+	$waiting = portalPage( $appData, '/portal' )[1];
+	check( 'with an offer that waits the section has two cards - the files first, the offers beside them - in the two-column mode; the key figures stay under the heading, and no card of the offers stands there', $offer > 0
+		&& array_map( static fn( \DOMElement $card ): string => $card->getAttribute( 'data-card' ), portalFind( $waiting, $top. '/article' ) ) === [ 'files', 'offers' ] && portalFind( $waiting, $top. '[contains(@class, "crm-start__top--pair")]' ) !== []
+		&& count( portalFind( $waiting, $top. '/article[@data-card="offers"]//li' ) ) === 1 && portalFind( $waiting, '//section[@aria-labelledby="crm-start-heading"]//article[@data-card="offers"]' ) === []
+		&& portalFind( $waiting, '//section[@aria-labelledby="crm-start-heading"]/ul[contains(@class, "crm-kpis")]' ) !== [] && portalFind( $waiting, $top. '//ul[contains(@class, "crm-kpis")]' ) === [] );
+	check( '...the section of the rest has no sentence that nothing is up where an offer waits, and no empty grid', portalFind( $waiting, '//*[contains(@class, "crm-start__nothing")]' ) === [] && portalFind( $waiting, '//div[contains(@class, "crm-start__grid")]' ) === [] );
+	$words = (array) require dirname( __DIR__ ). '/Portal/text/de_DE.php';
+	$headingOf = static fn( string $html ): string => portalText( $html, '//h3[@id="crm-start-top-heading"]' );
+	check( '...the heading of the section says what is in it: the word of the files alone where only the files card stands, the word of both where the offers stand beside it, and the two are not one word', $headingOf( $bare ) === $words['[[/project/crm-portal/start/top-files]]'] && $headingOf( $waiting ) === $words['[[/project/crm-portal/start/top]]'] && $headingOf( $bare ) !== $headingOf( $waiting ) && $headingOf( $bare ) !== '' );
+	Documents::setState( $appData, $offer, 'declined' );
+	$closed = portalPage( $appData, '/portal' )[1];
+	check( '...and with the offer gone the section is the files card alone, and the section of the rest says that nothing is up', count( portalFind( $closed, $top. '/article' ) ) === 1 && portalFind( $closed, '//div[contains(@class, "crm-start__nothing")]' ) !== [] );
+
+	echo "\nThe order of the documents and the pills\n";
+
+	$overdueOld = $make( 'invoice', $client, [ 'date' => '2026-08-01', 'template_key' => 'rechnung', 'lines' => [ $line( 'Alt' ) ] ] );
+	$overdueNew = $make( 'invoice', $client, [ 'date' => '2026-09-01', 'template_key' => 'rechnung', 'lines' => [ $line( 'Neu' ) ] ] );
+	$offerOld = $make( 'offer', $client, [ 'date' => '2026-10-10', 'valid_until' => date( 'Y-m-d', strtotime( '+20 days' ) ), 'template_key' => 'angebot', 'lines' => [ $line( 'A1' ) ] ] );
+	$offerNew = $make( 'offer', $client, [ 'date' => '2026-10-12', 'valid_until' => date( 'Y-m-d', strtotime( '+20 days' ) ), 'template_key' => 'angebot', 'lines' => [ $line( 'A2' ) ] ] );
+	$open = $make( 'invoice', $client, [ 'date' => $today, 'template_key' => 'rechnung', 'lines' => [ $line( 'Offen' ) ] ] );
+	$infoOld = $make( 'information', $client, [ 'date' => '2026-10-25', 'title' => 'Info alt', 'template_key' => 'zugang' ] );
+	$infoNew = $make( 'information', $client, [ 'date' => '2026-10-26', 'title' => 'Info neu', 'template_key' => 'zugang' ] );
+	$paid = $make( 'invoice', $client, [ 'date' => '2026-10-23', 'template_key' => 'rechnung', 'lines' => [ $line( 'Bezahlt' ) ] ] );
+	$contract = $make( 'contract', 0, [ 'parent_id' => $offerOld, 'date' => '2026-10-22', 'title' => 'Vertrag', 'template_key' => 'vertrag', 'inputs' => [ 'zusatz' => 'x' ] ] );
+	$privacy = $make( 'privacy', $client, [ 'date' => '2026-10-21', 'title' => 'Datenschutz', 'template_key' => 'datenschutz' ] );
+	$expired = $make( 'offer', $client, [ 'date' => '2026-10-27', 'valid_until' => date( 'Y-m-d', strtotime( '+20 days' ) ), 'template_key' => 'angebot', 'lines' => [ $line( 'Abgelaufen' ) ] ] );
+	Db::exec( $appData, 'UPDATE documents SET valid_until = \'2026-01-01\' WHERE id = :id', [ 'id' => $expired ] );
+	Documents::setState( $appData, $overdueOld, 'sent', '2026-08-01' );
+	Documents::setState( $appData, $overdueNew, 'sent', '2026-09-01' );
+	Documents::setState( $appData, $paid, 'sent', '2026-10-23' );
+	Documents::setState( $appData, $paid, 'paid', '2026-10-24' );
+	Db::exec( $appData, 'UPDATE documents SET due_date = \'2026-09-15\' WHERE id IN ( :one, :two )', [ 'one' => $overdueOld, 'two' => $overdueNew ] );
+	$list = portalPage( $appData, '/portal/belege' )[1];
+	$rows = portalFind( $list, '//li[contains(concat(" ", normalize-space(@class), " "), " crm-documents__row ")]' );
+	check( 'the documents: what asks for something first - the overdue invoices, then the offers that can be ordered, then the open invoice -, then the information, then the rest, each by its day and the newest first', $ids( $list ) === [ $overdueNew, $overdueOld, $offerNew, $offerOld, $open, $infoNew, $infoOld, $offer, $expired, $paid, $contract, $privacy ] );
+	check( '...each row names its kind (data-kind), and the rows that ask for something carry data-due', array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-kind' ), $rows ) === [ 'invoice', 'invoice', 'offer', 'offer', 'invoice', 'information', 'information', 'offer', 'offer', 'invoice', 'contract', 'privacy' ]
+		&& array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-due' ), $rows ) === [ '1', '1', '1', '1', '1', '', '', '', '', '', '', '' ] );
+	$group = portalFind( $list, '//div[contains(@class, "crm-filter")]' );
+	$pills = portalFind( $list, '//div[contains(@class, "crm-filter")]/button' );
+	check( 'the pills: a group with a label, hidden until the script shows it, over the list - All, Action needed, then a pill for each kind the client has, each a button of type button with aria-pressed, All pressed', count( $group ) === 1 && $group[0]->getAttribute( 'role' ) === 'group' && trim( $group[0]->getAttribute( 'aria-label' ) ) !== '' && $group[0]->hasAttribute( 'hidden' )
+		&& array_map( static fn( \DOMElement $pill ): string => $pill->getAttribute( 'data-filter' ), $pills ) === [ 'all', 'due', 'offer', 'invoice', 'contract', 'privacy', 'information' ] && array_filter( $pills, static fn( \DOMElement $pill ): bool => $pill->getAttribute( 'type' ) !== 'button' || in_array( $pill->getAttribute( 'aria-pressed' ), [ 'true', 'false' ], true ) === false || trim( $pill->textContent ) === '' ) === []
+		&& $pressed( $list ) === [ 'all' ] && strpos( $list, 'crm-filter' ) < strpos( $list, 'crm-documents__list' ) && portalFind( $list, '//p[contains(@class, "crm-documents__count")][@aria-live="polite"][contains(@data-shown, "{shown}")][contains(@data-shown, "{total}")]' ) !== []
+		&& portalFind( $list, '//button[@data-filter="invoice"]/@data-kinds' )[0]->nodeValue === 'invoice credit' && portalFind( $list, '//button[@data-filter="all"]/@data-kinds' ) === [] );
+	check( '...?art= presses the pill it names: a kind the client has, or the pill of what asks for something; every other value - another case, an unknown kind, markup, a null byte, a list, none - is All, and nothing of it reaches the markup', $pressed( portalPage( $appData, '/portal/belege?art=offer' )[1] ) === [ 'offer' ] && $pressed( portalPage( $appData, '/portal/belege?art=due' )[1] ) === [ 'due' ]
+		&& $pressed( portalPage( $appData, '/portal/belege?art=credit' )[1] ) === [ 'all' ] && $pressed( portalPage( $appData, '/portal/belege?art=Offer' )[1] ) === [ 'all' ] && $pressed( portalPage( $appData, '/portal/belege?art=%3Cb%3Ex' )[1] ) === [ 'all' ] && $pressed( portalPage( $appData, '/portal/belege?art=offer%00' )[1] ) === [ 'all' ]
+		&& $pressed( portalPage( $appData, '/portal/belege?art[]=offer' )[1] ) === [ 'all' ] && $pressed( portalPage( $appData, '/portal/belege?art=' )[1] ) === [ 'all' ] && str_contains( portalPage( $appData, '/portal/belege?art=%3Cb%3Ex' )[1], '<b>x' ) === false
+		&& $ids( portalPage( $appData, '/portal/belege?art=offer' )[1] ) === $ids( $list ) );
+	$element = \Nino\Elements::insertElement( $appData, '/projekte/', [ 'title' => 'Feinschliff-Projekt', 'client' => (string) \Crm\Clients::get( $appData, $client )['number'] ], '*' );
+	$project = is_array( $element ) === true ? \Nino\Elements::getElementUriFromUri( (string) $element['.uri'] ) : '';
+	Db::exec( $appData, 'UPDATE documents SET project = :project WHERE id IN ( :one, :two )', [ 'project' => $project, 'one' => $overdueOld, 'two' => $infoNew ] );
+	\Crm\Portal::forget( $appData );
+	$onProject = portalPage( $appData, '/portal/projekte?projekt='. $project )[1];
+	check( '...the list of documents on the page of a project has no pills and keeps the newest first: the information of the later day stands over the overdue invoice there', $project !== '' && $ids( $onProject ) === [ $infoNew, $overdueOld ] && portalFind( $onProject, '//div[contains(@class, "crm-filter")]' ) === [] );
+	$credit = $make( 'credit', $client, [ 'date' => '2026-10-28', 'template_key' => 'rechnung', 'lines' => [ $line( 'Gutschrift' ) ] ] );
+	Documents::setState( $appData, $credit, 'sent', '2026-10-28' );
+	Db::exec( $appData, 'UPDATE documents SET released = 0 WHERE id IN ( :one, :two )', [ 'one' => $contract, 'two' => $privacy ] );
+	Db::exec( $appData, 'UPDATE documents SET state = \'sent\' WHERE id = :id', [ 'id' => $paid ] );
+	$few = portalPage( $appData, '/portal/belege' )[1];
+	$creditRow = portalFind( $few, '//li[@data-document="'. $credit. '"]' );
+	check( 'a pill stands for each kind the client holds and for no other: with the contract and the privacy document withdrawn the pills are All, Action needed, Offers, Invoices and Information; the credit note is a row of the kind credit and asks for nothing, the invoice that was paid and is sent again asks', array_map( static fn( \DOMElement $pill ): string => $pill->getAttribute( 'data-filter' ), portalFind( $few, '//div[contains(@class, "crm-filter")]/button' ) ) === [ 'all', 'due', 'offer', 'invoice', 'information' ]
+		&& count( $creditRow ) === 1 && $creditRow[0]->getAttribute( 'data-kind' ) === 'credit' && $creditRow[0]->hasAttribute( 'data-due' ) === false && portalFind( $few, '//li[@data-document="'. $paid. '"][@data-due="1"]' ) !== [] );
+	Db::exec( $appData, 'UPDATE documents SET released = 1 WHERE id IN ( :one, :two )', [ 'one' => $contract, 'two' => $privacy ] );
+	Db::exec( $appData, 'DELETE FROM document_lines WHERE document_id = :id', [ 'id' => $credit ] );
+	Db::exec( $appData, 'DELETE FROM documents WHERE id = :id', [ 'id' => $credit ] );
+	Db::exec( $appData, 'UPDATE documents SET state = \'paid\' WHERE category = \'invoice\' AND client_id = :client', [ 'client' => $client ] );
+	Db::exec( $appData, 'UPDATE documents SET state = \'declined\' WHERE category = \'offer\' AND client_id = :client', [ 'client' => $client ] );
+	$quiet = portalPage( $appData, '/portal/belege?art=due' )[1];
+	check( 'a client for whom nothing asks has no pill of what asks for something, and ?art=due is All; the order is information first, then the day, the newest first', array_map( static fn( \DOMElement $pill ): string => $pill->getAttribute( 'data-filter' ), portalFind( $quiet, '//div[contains(@class, "crm-filter")]/button' ) ) === [ 'all', 'offer', 'invoice', 'contract', 'privacy', 'information' ]
+		&& $pressed( $quiet ) === [ 'all' ] && portalFind( $quiet, '//li[@data-due]' ) === [] && $ids( $quiet ) === array_merge( [ $infoNew, $infoOld ], array_column( Db::rows( $appData, 'SELECT id FROM documents WHERE client_id = :client AND category != \'information\' AND released = 1 ORDER BY date DESC, id DESC', [ 'client' => $client ] ), 'id' ) ) );
+
+	echo "\nMeine Daten: the name before the company\n";
+
+	$data = portalPage( $appData, '/portal/meine-daten' )[1];
+	check( 'the form of Meine Daten asks for the name first and then the company: the labels and the inputs stand in that order, and the refusal of a form with neither still points at the name', array_slice( array_map( static fn( \DOMElement $label ): string => $label->getAttribute( 'for' ), portalFind( $data, '//form[@class="crm-data__form"]//label[@for]' ) ), 0, 3 ) === [ 'crm-data-name', 'crm-data-company', 'crm-data-street' ]
+		&& strpos( $data, 'name="name"' ) < strpos( $data, 'name="company"' ) && $location( portalServe( $appData, '/.crm/daten', 'POST', [ 'name' => ' ', 'company' => '', 'street' => 'Weg 9', 'zip' => '01067', 'city' => 'Dresden', 'country' => 'DE' ] ) ) === '/portal/meine-daten?state=invalid&field=name&why=name' );
+
+	echo "\nThe client of the member in the process\n";
+
+	portalSignIn( $appData, $frieda );
+	$asFrieda = $_SESSION;
+	portalSignIn( $appData, $stray );
+	$asStray = $_SESSION;
+	$_SESSION = $asFrieda;
+	$ofFrieda = \Crm\Portal::client( $appData )['id'] ?? null;
+	$_SESSION = $asStray;
+	$ofStray = \Crm\Portal::client( $appData );
+	portalSignIn( $appData, $accounts['ben'] );
+	$ofBen = \Crm\Portal::client( $appData )['id'] ?? null;
+	check( 'the client that is read is the one of the member of the moment: a member that takes the place of another in the same process - the session changes, nothing forgets the last client - reads its own client, or none', $ofFrieda === $client && $ofStray === null && $ofBen !== null && $ofBen !== $client );
+	portalSignIn( $appData, $frieda );
+
+	echo "\nThe message a member puts away\n";
+
+	$all = 'Für <b>alle</b> [members-name] [[/project/company/general/name]] Zeile';
+	\Crm\Settings::set( $appData, 'portal_message', $all );
+	\Crm\Clients::setMessage( $appData, $client, 'Nur für Dich' );
+
+	// A text with a null byte cannot be written through the settings; the page reads it all the same, without the byte
+	Db::exec( $appData, 'UPDATE settings SET value = replace( value, \'Zeile\', \'Ze\' || char( 0 ) || \'ile\' ) WHERE key = \'portal_message\'' );
+	\Crm\Portal::forget( $appData );
+	$allSum = hash( 'sha256', 'Für <b>alle</b> [members-name] [[/project/company/general/name]] Zeile' );
+	$ownSum = hash( 'sha256', 'Nur für Dich' );
+	$cardsOf = static fn( string $html ): array => portalFind( $html, '//div[contains(concat(" ", normalize-space(@class), " "), " crm-message ")]' );
+	$sumsOf = static fn( string $html ): array => array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'value' ), portalFind( $html, '//div[contains(@class, "crm-message")]//form/input[@name="sha256"]' ) );
+	$rowsOfMember = static fn( string $id ): array => array_column( Db::rows( $appData, 'SELECT sha256 FROM dismissals WHERE member = :member ORDER BY sha256', [ 'member' => $id ] ), 'sha256' );
+	$page = portalPage( $appData, '/portal/belege?state=ordered&art=invoice' )[1];
+	$forms = portalFind( $page, '//div[contains(@class, "crm-message")]//form' );
+	check( 'each message has its form: a post to /.crm/nachricht/weg with the token, the sum of its text (without its null byte) and the page it stands on without what the page says once, and a button of its own with a name', count( $cardsOf( $page ) ) === 2 && $sumsOf( $page ) === [ $allSum, $ownSum ] && count( $forms ) === 2
+		&& $forms[0]->getAttribute( 'action' ) === '/.crm/nachricht/weg' && $forms[0]->getAttribute( 'method' ) === 'post' && portalFind( $page, '//div[contains(@class, "crm-message")]//form/input[@name="weiter"]/@value' )[0]->nodeValue === '/portal/belege?art=invoice'
+		&& portalFind( $page, '//div[contains(@class, "crm-message")]//form/input[@name="_csrf"]' ) !== [] && portalFind( $page, '//div[contains(@class, "crm-message")]//form/button[@type="submit"][string-length(@aria-label) > 0]/svg[@aria-hidden="true"]' ) !== [] && strpos( $page, '<b>alle' ) === false );
+	check( '...the page /portal has the page itself as the way back', portalFind( portalPage( $appData, '/portal' )[1], '//div[contains(@class, "crm-message")]//form/input[@name="weiter"]/@value' )[0]->nodeValue === '/portal' );
+	$post = static function( string $sum, array $over = [] ) use ( &$appData ): array {
+
+		return portalServe( $appData, '/.crm/nachricht/weg', 'POST', $over + [ 'sha256' => $sum, 'weiter' => '/portal/belege' ] );
+	};
+	$before = count( $mails );
+	$_SESSION = [];
+	unset( $appData['./nino/auth/current'] );
+	check( 'a visitor is answered 404 and nothing is kept', $post( $allSum )['statusCode'] === 404 && Db::rows( $appData, 'SELECT member FROM dismissals' ) === [] );
+	portalSignIn( $appData, $stray );
+	check( '...so is a member of no client', $post( $allSum )['statusCode'] === 404 && Db::rows( $appData, 'SELECT member FROM dismissals' ) === [] );
+	portalSignIn( $appData, $frieda );
+	$before = count( $mails );
+	$expiredAnswer = $post( $allSum, [ '_csrf' => 'wrong' ] );
+	check( '...a token that is not the session\'s is the redirect to the page with ?state=expired, and nothing is kept', $expiredAnswer['statusCode'] === 303 && $location( $expiredAnswer ) === '/portal/belege?state=expired' && Db::rows( $appData, 'SELECT member FROM dismissals' ) === []
+		&& $location( $post( $allSum, [ '_csrf' => 'wrong', 'weiter' => '/portal/belege?art=offer' ] ) ) === '/portal/belege?art=offer&state=expired' && $location( $post( $allSum, [ '_csrf' => 'wrong', 'weiter' => 'https://evil.example/portal' ] ) ) === '/portal?state=expired' );
+	$none = [];
+
+	foreach( [ str_repeat( '0', 64 ), strtoupper( $allSum ), substr( $allSum, 0, 63 ), $allSum. 'a', 'zz', '', $allSum. "\0", ' '. $allSum ] as $bad )
+		$none[] = $post( $bad )['statusCode'] === 303 && Db::rows( $appData, 'SELECT member FROM dismissals' ) === [];
+
+	$none[] = portalServe( $appData, '/.crm/nachricht/weg', 'POST', [ 'sha256' => [ $allSum ], 'weiter' => '/portal' ] )['statusCode'] === 303 && portalServe( $appData, '/.crm/nachricht/weg', 'POST', [ 'weiter' => '/portal' ] )['statusCode'] === 303 && Db::rows( $appData, 'SELECT member FROM dismissals' ) === [];
+	check( '...a sum that is no message of the member now - never written, in capitals, short, long, empty, with a null byte, a list, none at all - keeps no row and is answered 303', $none === array_fill( 0, count( $none ), true ) );
+	$done = $post( $allSum );
+	$row = Db::rows( $appData, 'SELECT member, sha256, at FROM dismissals' );
+	check( 'the sum of the message to every client keeps one row - the member, the sum, the time - and is answered 303 to the page', $done['statusCode'] === 303 && $location( $done ) === '/portal/belege' && count( $row ) === 1 && $row[0]['member'] === $frieda['id'] && $row[0]['sha256'] === $allSum && preg_match( '/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/D', $row[0]['at'] ) === 1 );
+	$post( $allSum );
+	$after = portalPage( $appData, '/portal' )[1];
+	check( '...a second post keeps no second row, and the page has the other message only; no mail went out and the row is the only trace', count( Db::rows( $appData, 'SELECT member FROM dismissals' ) ) === 1 && count( $cardsOf( $after ) ) === 1 && $sumsOf( $after ) === [ $ownSum ] && count( $mails ) === $before );
+	portalSignIn( $appData, $second );
+	$other = portalPage( $appData, '/portal' )[1];
+	check( '...another member of the client still reads both: every member puts away for itself', $sumsOf( $other ) === [ $allSum, $ownSum ] );
+	$post( $ownSum );
+	check( '...and the message to the client is put away on its own sum', $rowsOfMember( $second['id'] ) === [ $ownSum ] && $sumsOf( portalPage( $appData, '/portal' )[1] ) === [ $allSum ] );
+	portalSignIn( $appData, $accounts['ben'] );
+	$foreign = $post( $ownSum );
+	check( 'the message to one client is no message of another: its sum posted by a member of another client keeps no row, and the message to every client is read by both', $foreign['statusCode'] === 303 && $rowsOfMember( $accounts['ben']['id'] ) === [] && in_array( $allSum, $sumsOf( portalPage( $appData, '/portal' )[1] ), true ) === true );
+	portalSignIn( $appData, $frieda );
+	\Crm\Settings::set( $appData, 'portal_message', 'Neuer Text' );
+	\Crm\Portal::forget( $appData );
+	$changed = portalPage( $appData, '/portal' )[1];
+	check( 'a message the owner changes is a message again: its sum is another one and the card is back; the sum of the old text is no message and keeps no row', $sumsOf( $changed ) === [ hash( 'sha256', 'Neuer Text' ), $ownSum ] && $post( $allSum )['statusCode'] === 303 && $rowsOfMember( $frieda['id'] ) === [ $allSum ] && count( $cardsOf( portalPage( $appData, '/portal' )[1] ) ) === 2 );
+	$ways = [];
+
+	foreach( [ 'https://evil.example/portal' => '/portal', '//evil.example/portal' => '/portal', '/crm' => '/portal', '/portal/../crm' => '/portal', "/portal\0/x" => '/portal', 'javascript:alert(1)' => '/portal', '/portal/belege?art=offer' => '/portal/belege?art=offer', '/portal\\x' => '/portal', '/portal/projekte?projekt=p1&tab=dateien' => '/portal/projekte?projekt=p1&tab=dateien' ] as $weiter => $expect )
+		$ways[] = $location( $post( hash( 'sha256', 'Neuer Text' ), [ 'weiter' => $weiter ] ) ) === $expect;
+
+	check( '...the way back is a path under /portal and nothing else: a host, a second slash, a dot segment, another area, a null byte, a script and a backslash are the start page of the portal', $ways === array_fill( 0, count( $ways ), true ) );
+	check( '...and with the new text put away too the page has the message to the client only', $sumsOf( portalPage( $appData, '/portal' )[1] ) === [ $ownSum ] );
+}
+
+portalFinishingTouches( $appData, $accounts, $stray );
+
+/**
+ *	The suite of the script of the portal, where node is on the path
+ *
+ *	@param		string		$root					The checkout the suite runs in
+ *
+ *	@return 	void
+ */
+function portalScriptSuite( string $root ): void {
+
+	$node = trim( (string) shell_exec( 'command -v node 2>/dev/null' ) );
+
+	if( $node === '' ) {
+		echo "  note - node is not on the path: the suite of the portal's script was not run\n";
+
+		return;
+	}
+
+	$output = (string) shell_exec( 'NINO_ROOT='. escapeshellarg( $root ). ' '. escapeshellarg( $node ). ' '. escapeshellarg( __DIR__. '/portal-js-smoke.js' ). ' 2>&1' );
+	$ran = preg_match( '/(\d+) checks, (\d+) failed/', $output, $counts ) === 1;
+
+	check( 'portal-js-smoke.js passes ('. ( $ran ? $counts[1]. ' checks' : 'no summary' ). ')', $ran && $counts[2] === '0' && (int) $counts[1] >= 15 && str_contains( $output, 'FAIL' ) === false );
+}
+
+portalScriptSuite( $root );
 
 // The rest of the suite runs as it did before: Review and Events off
 foreach( [ 'events', 'review' ] as $key )

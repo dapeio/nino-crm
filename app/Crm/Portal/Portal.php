@@ -20,7 +20,7 @@ declare(strict_types=1);
  *								After the sign-in the client lands where something waits for it (landing(): the offer that can be ordered, else the project that was last active), unless it came
  *								for a page of its own; the callback '/members/start' of Members is where callbackStart() says so. A link to a page of the portal - in a mail, in an invitation -
  *								names it as a target() has it, and documentHref() is the address of a document in the portal. The messages the owner wrote - to every client, to this
- *								client - stand over the head of every page of the portal (messages()), once the gate is open.
+ *								client - stand over the head of every page of the portal (messages()), once the gate is open; a member puts one away for itself (Portal\Message).
  *
  *								The look of all of it is the portal's own design, portal.css (its head comment says the system); the markup of every
  *								part is a template of templates/, read through template() and filled through render(), which also puts the icons in
@@ -72,6 +72,9 @@ class Portal {
 	// The id of a request of Sign, as the feature writes it
 	private const string SIGN_ID = '/^[a-f0-9]{12}$/D';
 
+	// The pills over the list of documents: the kinds of document each stands for (a credit note is an invoice to the client's eye), in the order the pills come after All and Action needed
+	private const array FILTERS = [ 'offer' => [ 'offer' ], 'invoice' => [ 'invoice', 'credit' ], 'contract' => [ 'contract' ], 'privacy' => [ 'privacy' ], 'information' => [ 'information' ] ];
+
 	// The icon of a document, by its kind
 	private const array ICONS = [ 'offer' => 'receipt', 'invoice' => 'file-text', 'credit' => 'file-text', 'contract' => 'pen-line', 'privacy' => 'shield-check', 'information' => 'info' ];
 
@@ -92,10 +95,11 @@ class Portal {
 		if( $member === null )
 			return null;
 
-		if( array_key_exists( self::CACHE, $appData ) === false )
-			$appData[self::CACHE] = Clients::ofMember( $appData, $member['id'] );
+		// What is kept is the client of one member: another member in the same process reads its own
+		if( ( $appData[self::CACHE]['member'] ?? null ) !== $member['id'] )
+			$appData[self::CACHE] = [ 'member' => $member['id'], 'client' => Clients::ofMember( $appData, $member['id'] ) ];
 
-		return $appData[self::CACHE];
+		return $appData[self::CACHE]['client'];
 	}
 
 	/**
@@ -572,23 +576,23 @@ class Portal {
 		if( self::pending( $appData, $client ) !== '' )
 			return '';
 
-		$all = Settings::all( $appData );
+		$member = \Nino\Modules\Members::current( $appData );
+		$away = $member === null ? [] : Portal\Message::dismissed( $appData, $member['id'] );
 		$site = self::siteName( $appData );
 		$html = '';
 
-		foreach( [ [ (string) $all['portal_message'], (string) $all['portal_message_at'] ], [ (string) $client['message'], (string) $client['message_at'] ] ] as [ $text, $at ] ) {
+		foreach( Portal\Message::current( $appData, $client ) as $message ) {
 
-			$text = trim( str_replace( "\0", '', $text ) );
-
-			if( $text === '' )
+			if( in_array( $message['sha256'], $away, true ) === true )
 				continue;
 
-			$day = Documents\Render::day( self::dayOf( $appData, $at ) );
+			$day = Documents\Render::day( self::dayOf( $appData, $message['at'] ) );
 
 			$html .= self::render( 'message', [
 				'[[from]]' => $site === '' ? '[[/project/crm-portal/message/plain]]' : '[[/project/crm-portal/message/from]] <strong>'. \Nino\Modules\Components::escape( $site ). '</strong>',
-				'[[day]]'  => $day === '' ? '' : self::render( 'message-day', [ '[[iso]]' => \Nino\Modules\Components::escape( self::dayOf( $appData, $at ) ), '[[date]]' => \Nino\Modules\Components::escape( $day ) ] ),
-				'[[text]]' => str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $text ) ),
+				'[[day]]'  => $day === '' ? '' : self::render( 'message-day', [ '[[iso]]' => \Nino\Modules\Components::escape( self::dayOf( $appData, $message['at'] ) ), '[[date]]' => \Nino\Modules\Components::escape( $day ) ] ),
+				'[[text]]' => str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $message['text'] ) ),
+				'[[form]]' => $member === null ? '' : Portal\Message::form( $appData, $message['sha256'] ),
 			] );
 		}
 
@@ -795,14 +799,21 @@ class Portal {
 		$rows = '';
 		$orderable = false;
 		$count = 0;
+		$kinds = [];
+		$due = false;
 		$back = self::signReturn( $appData );
 
-		foreach( $documents as $document ) {
+		foreach( $withProject === true ? self::arrange( $documents ) : $documents as $document ) {
 
 			$orderable = $orderable === true || Documents::orderable( $document ) === true;
 			$row = self::documentRow( $appData, $document, $dir, $withProject, $client, $back );
 			$count += $row === '' ? 0 : 1;
 			$rows .= $row;
+
+			if( $row !== '' ) {
+				$kinds[$document['category']] = true;
+				$due = $due === true || self::needsAction( $document ) === true;
+			}
 		}
 
 		if( $rows === '' )
@@ -811,6 +822,7 @@ class Portal {
 		return self::render( 'documents', [
 			'[[classes]]' => $classes,
 			'[[privacy]]' => $client !== null && $orderable === true && self::pending( $appData, $client ) === 'privacy' ? Portal\Order::privacyHint( $dir ) : '',
+			'[[filter]]'  => $withProject === true ? self::filter( $appData, array_keys( $kinds ), $due ) : '',
 			'[[state]]'   => $client === null ? '' : Portal\Order::state( $appData ),
 			'[[sign]]'    => $client === null || $back['state'] === '' ? '' : self::render( 'sign-state', [ '[[state]]' => $back['state'], '[[tone]]' => self::SIGN[$back['state']][0], '[[icon]]' => self::SIGN[$back['state']][1] ] ),
 			'[[count]]'   => $count. ' [[/project/crm-portal/projects/document-'. ( $count === 1 ? 'one' : 'many' ). ']]',
@@ -818,6 +830,79 @@ class Portal {
 			'[[column]]'  => $withProject === true ? self::template( 'documents-column' ) : '',
 			'[[rows]]'    => $rows,
 		] );
+	}
+
+	/**
+	 *	Whether a document asks the client for something: an offer that can be ordered, an invoice that is open or overdue
+	 *
+	 *	@param		array 		$document			As Documents::released() has it
+	 *
+	 *	@return 	bool
+	 */
+	public static function needsAction( array $document ): bool {
+
+		return Documents::orderable( $document ) === true || ( $document['category'] === 'invoice' && in_array( self::customerState( $document ), [ 'open', 'overdue' ], true ) === true );
+	}
+
+	/**
+	 *	The documents in the order the client reads them: first what asks for something - an invoice that is overdue, then an offer that can be ordered, then an invoice that is open -,
+	 *	then the information, then the rest; each group by its day, the newest first (and the newest of a day first)
+	 *
+	 *	@param		array 		$documents		As Documents::released() has them
+	 *
+	 *	@return 	array											The same documents
+	 */
+	public static function arrange( array $documents ): array {
+
+		$rank = static function( array $document ): int {
+
+			if( self::needsAction( $document ) === true )
+				return $document['category'] === 'invoice' ? ( self::customerState( $document ) === 'overdue' ? 0 : 2 ) : 1;
+
+			return $document['category'] === 'information' ? 3 : 4;
+		};
+
+		usort( $documents, static fn( array $one, array $two ): int => [ $rank( $one ), $two['date'], $two['id'] ] <=> [ $rank( $two ), $one['date'], $one['id'] ] );
+
+		return $documents;
+	}
+
+	/**
+	 *	The pills over the list of documents: All, Action needed (where a document asks for something) and one for each kind of the list. The pill the address names
+	 *	(?art=) is the one pressed, All where it names none the list has. The pills stand hidden - the script shows them and filters the rows; without it the list is whole
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$kinds				The kinds of document the list has
+	 *	@param		bool			$due					Whether a document of the list asks for something
+	 *
+	 *	@return 	string										Markup; '' for a list of nothing
+	 */
+	private static function filter( array &$appData, array $kinds, bool $due ): string {
+
+		$pills = [ 'all' => [] ];
+
+		if( $due === true )
+			$pills['due'] = [];
+
+		foreach( self::FILTERS as $name => $members )
+			if( array_intersect( $members, $kinds ) !== [] )
+				$pills[$name] = $members;
+
+		if( count( $pills ) < 2 )
+			return '';
+
+		$query = self::query( $appData );
+		$chosen = is_string( $query['art'] ?? null ) === true && isset( $pills[$query['art']] ) === true ? $query['art'] : 'all';
+		$html = '';
+
+		foreach( $pills as $name => $members )
+			$html .= self::render( 'filter-pill', [
+				'[[name]]'    => $name,
+				'[[kinds]]'   => $members === [] ? '' : ' data-kinds="'. implode( ' ', $members ). '"',
+				'[[pressed]]' => $name === $chosen ? 'true' : 'false',
+			] );
+
+		return self::render( 'filter', [ '[[pills]]' => $html ] );
 	}
 
 	/**
@@ -912,6 +997,7 @@ class Portal {
 		return self::render( 'document', [
 			'[[id]]'       => (string) $document['id'],
 			'[[category]]' => $document['category'],
+			'[[due]]'      => self::needsAction( $document ) === true ? ' data-due="1"' : '',
 			'[[state]]'    => $state,
 			'[[sign]]'     => $back['state'] !== '' && $request !== '' && $request === $back['id'] ? ' data-sign-state="'. $back['state']. '"' : '',
 			'[[inner]]'    => $body === '' ? self::render( 'document-plain', [ '[[line]]' => $line ] ) : self::render( 'document-fold', [ '[[open]]' => Portal\Order::named( $appData ) === $document['id'] ? ' open' : '', '[[line]]' => $line, '[[body]]' => $body ] ),

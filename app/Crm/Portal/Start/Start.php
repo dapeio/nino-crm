@@ -1,16 +1,17 @@
 <?php
 declare(strict_types=1);
 /**
- *	Crm\Portal\Start		The component [crm-portal-start] of the start page of the portal - "Was gerade ansteht": what waits for the client, as cards that stand there only
- *											when they apply: the Datenschutz that is not agreed to yet (the way to it), the offers that wait for the order (each with its title - the
- *											number where it has none -, its gross amount, its number and the day it is valid until, the way to its card on the project page or in
- *											the list of documents), the documents released in the last NEW_DAYS days (each with its title, its amount, its kind, its number and the
- *											way to its row), the files that came into the folders of the client's projects in the last NEW_DAYS days (the count for each project and the
- *											way to its page) and the dates of the next DATES_DAYS days of the member's group and for everyone (through the feature Events; where it is off, none).
- *											Over the cards stands a row of key figures, each tile a link: the offers that wait for the order with their gross sum, the invoices that
- *											are open or overdue with theirs, the files that are new and the number of projects they are in, and the next date with the days to it;
- *											the row stands only where one of the numbers is more than nothing. Where nothing applies it is one sentence. Nothing here is stored or
- *											sent, and every value enters the markup escaped. A visitor and a member of no client get nothing.
+ *	Crm\Portal\Start		The component [crm-portal-start] of the start page of the portal. Directly under the head of the page stands a section of its own with the two cards the
+ *											client reaches for first: the files that came into the folders of the client's projects in the last NEW_DAYS days (the count for each project and
+ *											the way to its page; the card is always there - with the sentence that no file came where none did - and carries the way to the projects) and, beside
+ *											it from 768px, the offers that wait for the order (each with its title - the number where it has none -, its gross amount, its number and the day it is
+ *											valid until, the way to its card on the project page or in the list of documents; only where one waits). Under it stands "Was gerade ansteht": what
+ *											waits for the client, as cards that stand there only when they apply: the Datenschutz that is not agreed to yet (the way to it), the documents released
+ *											in the last NEW_DAYS days (each with its title, its amount, its kind, its number and the way to its row) and the dates of the next DATES_DAYS days of the
+ *											member's group and for everyone (through the feature Events; where it is off, none). Over those cards stands a row of key figures, each tile a link:
+ *											the offers that wait for the order with their gross sum, the invoices that are open or overdue with theirs, the files that are new and the number of
+ *											projects they are in, and the next date with the days to it; the row stands only where one of the numbers is more than nothing. Where nothing applies
+ *											it is one sentence. Nothing here is stored or sent, and every value enters the markup escaped. A visitor and a member of no client get nothing.
  */
 namespace Crm\Portal;
 
@@ -88,17 +89,11 @@ class Start {
 				$recent[] = self::row( self::documentHref( $document, $dir, 'belege' ), $title, Portal::amount( $appData, $document ), $kind. ' · '. $escape( Documents\Render::day( substr( $document['released_at'], 0, 10 ) ) ) );
 		}
 
-		if( $offers !== [] )
-			$cards['offers'] = self::list( $offers );
-
 		if( $recent !== [] )
 			$cards['documents'] = self::list( array_slice( $recent, 0, self::ROWS ) );
 
 		$news = self::news( $appData, $client );
 		$files = self::files( $news, $dir );
-
-		if( $files !== [] )
-			$cards['files'] = self::list( $files );
 
 		$upcoming = Dates::upcoming( $appData );
 		$dates = self::dates( $appData, $upcoming, $dir );
@@ -106,16 +101,56 @@ class Start {
 		if( $dates !== [] )
 			$cards['dates'] = self::list( $dates );
 
+		// The two cards the client reaches for first stand in the section over the rest: the files always, the offers where one waits
+		$top = [ 'files' => ( $files === [] ? Portal::render( 'start-text', [ '[[text]]' => '[[/project/crm-portal/start/files-none]]' ] ) : self::list( $files ) ). self::projects( $dir ) ];
+
+		if( $offers !== [] )
+			$top['offers'] = self::list( $offers );
+
+		$kpis = self::figures( $appData, $dir, $figures, $news, $upcoming[0] ?? null );
+		$classes = \Nino\Feature::classes( $args );
+		$html = self::cards( $cards );
+		$section = Portal::render( 'start-top', [
+			'[[heading]]' => count( $top ) === 2 ? 'top' : 'top-files',
+			'[[pair]]'    => count( $top ) === 2 ? ' crm-start__top--pair' : '',
+			'[[cards]]'   => self::cards( $top ),
+		] );
+
+		// The row of key figures says what waits; with it and without a card the section has no grid, and with neither it says that nothing is up
+		return $section. Portal::render( 'start', [
+			'[[classes]]' => $classes,
+			'[[kpis]]'    => $kpis,
+			'[[grid]]'    => $html === '' && $kpis !== '' ? '' : Portal::render( 'start-grid', [ '[[cards]]' => $html !== '' ? $html : Portal::template( 'start-nothing' ) ] ),
+		] );
+	}
+
+	/**
+	 *	The cards of a section
+	 *
+	 *	@param		array 		$cards				The content of each card by its name
+	 *
+	 *	@return 	string										Markup; '' for none
+	 */
+	private static function cards( array $cards ): string {
+
 		$html = '';
 
 		foreach( $cards as $name => $content )
 			$html .= Portal::render( 'start-card', [ '[[name]]' => $name, '[[icon]]' => self::ICONS[$name], '[[tone]]' => $name === 'privacy' ? ' crm-card--warning' : '', '[[content]]' => $content ] );
 
-		return Portal::render( 'start', [
-			'[[classes]]' => \Nino\Feature::classes( $args ),
-			'[[kpis]]'    => self::figures( $appData, $dir, $figures, $news, $upcoming[0] ?? null ),
-			'[[cards]]'   => $html !== '' ? $html : Portal::template( 'start-nothing' ),
-		] );
+		return $html;
+	}
+
+	/**
+	 *	The way to the projects, under the card of the files
+	 *
+	 *	@param		string		$dir					Escaped
+	 *
+	 *	@return 	string										Markup
+	 */
+	private static function projects( string $dir ): string {
+
+		return Portal::render( 'start-projects', [ '[[href]]' => $dir. Order::PAGE_PROJECTS ] );
 	}
 
 	/**

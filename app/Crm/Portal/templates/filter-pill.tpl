@@ -1,0 +1,1 @@
+<button type="button" class="crm-filter__pill" data-filter="[[name]]"[[kinds]] aria-pressed="[[pressed]]">[[/project/crm-portal/filter/[[name]]]]</button>
