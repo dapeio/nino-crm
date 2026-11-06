@@ -1,0 +1,1 @@
+<p class="crm-approval__done crm-note crm-note--success" data-project="[[id]]">[[icon:circle-check]]<span class="crm-note__text">[[/project/crm-portal/approval/done]] <time datetime="[[iso]]">[[date]]</time> [[/project/crm-portal/approval/by]] <span class="crm-approval__who">[[name]]</span>.</span></p>

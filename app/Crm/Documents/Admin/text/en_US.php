@@ -41,6 +41,7 @@ return [
 	'[[/_admin/error/crm_documents_particular_bank_name]]' => 'The name of the bank has at most 80 characters, no control characters.',
 	'[[/_admin/error/crm_documents_particular_iban]]' => 'This is not a valid IBAN: country code, two check digits and the account number, for example DE89 3704 0044 0532 0130 00.',
 	'[[/_admin/error/crm_documents_particular_bic]]' => 'This is not a valid BIC: 8 or 11 characters, for example COBADEFFXXX.',
+	'[[/_admin/error/crm_documents_particular_paypal]]' => 'This is not a PayPal.me name: letters and digits, up to 20 characters, or the address https://paypal.me/YourName.',
 	'[[/_admin/error/crm_documents_particular_seller_name]]' => 'The name may hold up to 120 characters, no control characters.',
 	'[[/_admin/error/crm_documents_particular_seller_street]]' => 'The street may hold up to 120 characters, no control characters.',
 	'[[/_admin/error/crm_documents_particular_seller_zip]]' => 'The postcode may hold letters, digits, blanks and hyphens, up to 12 characters.',

@@ -129,7 +129,8 @@ class Order {
 		$query = Portal::query( $appData );
 		$state = is_string( $query['state'] ?? null ) === true && isset( self::STATES[$query['state']] ) === true ? $query['state'] : '';
 
-		if( $state === '' || self::named( $appData ) !== $for )
+		// The states of a request for the tab Dateien are those of the approval
+		if( $state === '' || Approval::asked( $appData ) === true || self::named( $appData ) !== $for )
 			return '';
 
 		return Portal::render( 'order-state', [ '[[state]]' => $state, '[[tone]]' => self::STATES[$state][0], '[[icon]]' => self::STATES[$state][1], '[[role]]' => self::STATES[$state][2], '[[id]]' => (string) $for ] );

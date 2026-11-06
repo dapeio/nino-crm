@@ -2694,7 +2694,7 @@ function press( w, key, target, mods ) {
 	type( efield( es2, 'payment_days' ), '21', false );
 	submit( es2, all( es2.main, '#settings-form' )[0] );
 	await settle();
-	check( 'a save posts crm-documents/settings-save with the twenty-two settings as text - the rates as typed, 19,7,0 too: the server reads them, the screen has no conversion - and a refusal is said beside the field it names, the rates', Object.keys( posted[posted.length - 1] ).sort().join() === 'bank_name,bic,currency,iban,number_credit,number_invoice,number_offer,offer_days,payment_days,seller_city,seller_contact,seller_country,seller_email,seller_name,seller_phone,seller_street,seller_zip,tax_id,vat_exempt_text,vat_id,vat_mode,vat_rates_percent'
+	check( 'a save posts crm-documents/settings-save with the twenty-three settings as text - the rates as typed, 19,7,0 too: the server reads them, the screen has no conversion - and a refusal is said beside the field it names, the rates', Object.keys( posted[posted.length - 1] ).sort().join() === 'bank_name,bic,currency,iban,number_credit,number_invoice,number_offer,offer_days,payment_days,paypal,seller_city,seller_contact,seller_country,seller_email,seller_name,seller_phone,seller_street,seller_zip,tax_id,vat_exempt_text,vat_id,vat_mode,vat_rates_percent'
 		&& posted[posted.length - 1].vat_rates_percent === '19,7,0' && posted[posted.length - 1].payment_days === '21' && efield( es2, 'vat_rates_percent' ).classList.contains( 'err' ) === true && efield( es2, 'vat_rates_percent' ).focused === true
 		&& textOf( all( all( es2.main, '#settings-form' )[0], '.state-note' ).find( function( n ) { return textOf( n ).indexOf( 'Der Wert der Einstellung ist nicht gültig' ) === 0 } ) ).indexOf( 'Semikolon' ) !== -1 && efield( es2, 'payment_days' ).value === '21' );
 	type( efield( es2, 'vat_rates_percent' ), '19; 7; 5,5; 0', false );
@@ -3465,9 +3465,9 @@ function press( w, key, target, mods ) {
 	check( 'where the feature is off the endpoint says so and the screen shows the sentence with the way to try again', textOf( all( pOff.main, '.note' )[0] ).indexOf( 'Das Feature PDF ist nicht aktiv.' ) !== -1 );
 
 	// --- Einstellungen: the particulars
-	const pset = await eopen( { settings : Object.assign( {}, esettings, { tax_id : '12/345/67890', vat_id : 'DE123456789', bank_name : 'Sparkasse', iban : 'DE89 3704 0044 0532 0130 00', bic : 'COBADEFFXXX' } ) } );
-	check( 'the Einstellungen have a block Rechnungsangaben with five fields - Steuernummer, USt-IdNr., Bank, IBAN, BIC - holding the settings, and say that the footer of the layout shows them', textOf( all( pset.main, '#particulars h3' )[0] ) === 'Rechnungsangaben' && all( pset.main, '#particulars dt' ).map( textOf ).join( '|' ) === 'Steuernummer|USt-IdNr.|Bank|IBAN|BIC'
-		&& [ 'tax_id', 'vat_id', 'bank_name', 'iban', 'bic' ].map( function( n ) { return efield( pset, n ).value } ).join( '|' ) === '12/345/67890|DE123456789|Sparkasse|DE89 3704 0044 0532 0130 00|COBADEFFXXX' && textOf( all( pset.main, '#particulars' )[0] ).indexOf( 'Der Fuß des Layouts zeigt Steuernummer und IBAN' ) !== -1 );
+	const pset = await eopen( { settings : Object.assign( {}, esettings, { tax_id : '12/345/67890', vat_id : 'DE123456789', bank_name : 'Sparkasse', iban : 'DE89 3704 0044 0532 0130 00', bic : 'COBADEFFXXX', paypal : 'StudioNord' } ) } );
+	check( 'the Einstellungen have a block Rechnungsangaben with six fields - Steuernummer, USt-IdNr., Bank, IBAN, BIC, PayPal.me-Name - holding the settings, and say that the footer of the layout shows them', textOf( all( pset.main, '#particulars h3' )[0] ) === 'Rechnungsangaben' && all( pset.main, '#particulars dt' ).map( textOf ).join( '|' ) === 'Steuernummer|USt-IdNr.|Bank|IBAN|BIC|PayPal.me-Name'
+		&& [ 'tax_id', 'vat_id', 'bank_name', 'iban', 'bic', 'paypal' ].map( function( n ) { return efield( pset, n ).value } ).join( '|' ) === '12/345/67890|DE123456789|Sparkasse|DE89 3704 0044 0532 0130 00|COBADEFFXXX|StudioNord' && textOf( all( pset.main, '#particulars' )[0] ).indexOf( 'Der Fuß des Layouts zeigt Steuernummer und IBAN' ) !== -1 );
 	check( '...the field of the BIC is wide enough for eleven characters: it has its own class, and the stylesheet gives that class 150 px - not the 90 px of a short field', efield( pset, 'bic' ).className === 'bic' && /\.kv input\.bic \{ width: 150px \}/.test( source( OWN+ 'assets/crm.css' ) ) === true );
 	type( efield( pset, 'iban' ), 'DE00', false );
 	const pposted = [];
@@ -4263,7 +4263,7 @@ function press( w, key, target, mods ) {
 	const jperms = { crm : true, pdf : false, elements : true, text : false, files : true };
 	const jclient1 = { id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true };
 	const jrow = function( over ) {
-		return Object.assign( { id : '00001', title : 'Album 2027', client : 'K-0001', description : 'Aufnahme\nund Mix', started : '2026-10-01', done : false, folder : 'f00000000001', documents : 3, open : 1, client_id : 1, client_title : 'Nordlicht Records GmbH', client_active : true, files : 1, download : false, download_at : '' }, over || {} );
+		return Object.assign( { id : '00001', title : 'Album 2027', client : 'K-0001', description : 'Aufnahme\nund Mix', started : '2026-10-01', done : false, folder : 'f00000000001', documents : 3, open : 1, client_id : 1, client_title : 'Nordlicht Records GmbH', client_active : true, files : 1, download : false, download_at : '', approval : null }, over || {} );
 	};
 	const jprojects = [
 		jrow( { id : '00003', title : 'Podcast', client : 'K-0002', client_id : 2, client_title : 'Jonas Richter', description : '', started : '', folder : '', documents : 0, open : 0, files : 0 } ),
@@ -4484,6 +4484,33 @@ function press( w, key, target, mods ) {
 		return jrows( jdlSearch ).filter( function( one ) { return one.dataset.id !== undefined } ).length;
 	};
 	check( '...and the search does not find the mark: neither its arrow nor its words are part of what a project is found by, its title is', jdlFind( '↓' ) === 0 && jdlFind( 'herunterladen' ) === 0 && jdlFind( 'offen' ) === 1 );
+
+	// --- the approval of a project: the line under the head with the way to what the customer saw, the state in the list
+	const japproval = { id : 7, kind : 'approval', client_id : 1, member_id : 'aaaaaaaaaaaa', member_email : 'lena@nordlicht.example', member_name : 'Lena <b>Brandt</b>', document_id : null, project : '00001', sha256 : 'c'.repeat( 64 ), shown : '{"files":[{"name":"<img src=x onerror=alert(1)>"}]}', at : '2026-11-03T10:15:00Z', ip : '203.0.113.7', agent : 'Browser/1.0' };
+	const japproved = await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { approval : japproval } ) } ) ] } } );
+	check( 'a project the customer approved says so under the head: "Vom Kunden abgenommen am … durch …", the name as text, and the state beside the title is abgenommen in the badge of a good state', textOf( jf( japproved, 'project-approval' ) ).indexOf( texts['approval.head'].replace( '%s', '03.11.2026' ).replace( '%s', 'Lena <b>Brandt</b>' ) ) !== -1
+		&& jf( japproved, 'project-approval' ).tagName === 'P' && jf( japproved, 'project-approval' ).classList.contains( 'state-note' ) === true && findAll( jf( japproved, 'project-approval' ), function( node ) { return node.tagName === 'B' } ).length === 0
+		&& textOf( all( japproved.main, '.head .badge' )[0] ) === '✓ '+ texts['projects.approved'] && all( japproved.main, '.head .badge' )[0].classList.contains( 'b-paid' ) === true );
+	check( '...the line comes after the head and before the facts of the card', all( japproved.main, '#project-approval' ).length === 1 && japproved.main.children.indexOf( jf( japproved, 'project-approval' ) ) === japproved.main.children.indexOf( jf( japproved, 'project-info' ) ) - 1 && japproved.main.children.indexOf( jf( japproved, 'project-approval' ) ) > japproved.main.children.findIndex( function( node ) { return node.classList.contains( 'head' ) } ) );
+	click( japproved, jf( japproved, 'project-approval-show' ) );
+	check( '...Anzeigen opens a dialog with the JSON the customer was shown, as text - markup in it is not markup - and its hash', japproved.dialogs.length === 1 && textOf( all( japproved.dialogs[0], 'pre' )[0] ) === japproval.shown && findAll( japproved.dialogs[0], function( node ) { return node.tagName === 'IMG' } ).length === 0
+		&& textOf( all( japproved.dialogs[0], 'p' )[0] ) === texts['record.hash'].replace( '%s', 'c'.repeat( 64 ) ) && japproved.dialogs[0].getAttribute( 'aria-label' ) === texts['record.title-approval'] );
+	const japprovedFacts = all( japproved.dialogs[0], 'dl.kv' );
+	check( '...the dialog also says when (the day and the time), from which address and with which browser the customer approved, in that order and before the JSON', japprovedFacts.length === 1 && all( japprovedFacts[0], 'dt' ).map( textOf ).join( '|' ) === [ texts['record.at'], texts['record.ip'], texts['record.agent'] ].join( '|' )
+		&& textOf( all( japprovedFacts[0], 'dd' )[0] ).indexOf( '03.11.2026 ' ) === 0 && /\d\d:\d\d$/.test( textOf( all( japprovedFacts[0], 'dd' )[0] ) ) === true && textOf( all( japprovedFacts[0], 'dd' )[1] ) === '203.0.113.7' && textOf( all( japprovedFacts[0], 'dd' )[2] ) === 'Browser/1.0'
+		&& Array.from( all( japproved.dialogs[0], 'form' )[0].children ).indexOf( japprovedFacts[0] ) < Array.from( all( japproved.dialogs[0], 'form' )[0].children ).indexOf( all( japproved.dialogs[0], 'pre' )[0] ) );
+	const jappHostile = await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { approval : Object.assign( {}, japproval, { ip : '<b>1</b>', agent : '<img src=x onerror=alert(1)>' } ) } ) } ) ] } } );
+	click( jappHostile, jf( jappHostile, 'project-approval-show' ) );
+	check( '...what the customer\'s browser said of itself is text in it: no element is made of an address or a browser', all( jappHostile.dialogs[0], 'dd' ).length === 3 && textOf( all( jappHostile.dialogs[0], 'dd' )[1] ) === '<b>1</b>' && textOf( all( jappHostile.dialogs[0], 'dd' )[2] ) === '<img src=x onerror=alert(1)>'
+		&& findAll( jappHostile.dialogs[0], function( node ) { return node.tagName === 'IMG' || node.tagName === 'B' } ).length === 0 );
+	check( 'a project nobody approved has no such line and the state running', jf( jc, 'project-approval' ) === undefined && textOf( all( jc.main, '.head .badge' )[0] ) === texts['projects.running'] );
+	const jappDone = await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { done : true, approval : japproval } ) } ) ] } } );
+	check( '...a project that is done says abgeschlossen and not abgenommen - the line stays, it is the record', textOf( all( jappDone.main, '.head .badge' )[0] ) === texts['projects.done'] && jf( jappDone, 'project-approval' ) !== undefined );
+	const jappList = await jopen( '#projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [ jrow( { id : '00005', title : 'Abgenommen', approval : { id : 7, client_id : 1, project : '00005', at : '2026-11-03T10:15:00Z', member_email : 'lena@nordlicht.example', member_name : 'Lena Brandt', sha256 : 'c'.repeat( 64 ) } } ), jrow( { id : '00004', title : 'Läuft' } ), jrow( { id : '00003', title : 'Fertig', done : true, approval : { id : 8, client_id : 1, project : '00003', at : '2026-11-01T10:15:00Z', member_email : 'lena@nordlicht.example', member_name : '', sha256 : 'd'.repeat( 64 ) } } ) ] } ) ] } } );
+	const jappRows = jrows( jappList );
+	check( 'the list says abgenommen for a project the customer approved while it is not done - with the day and the name as the title - running for one nobody approved, and done for one that is done', textOf( jappRows[0].children[5] ) === '✓ '+ texts['projects.approved'] && all( jappRows[0].children[5], '.badge' )[0].classList.contains( 'b-paid' ) === true
+		&& all( jappRows[0].children[5], '.badge' )[0].title === texts['approval.head'].replace( '%s', '03.11.2026' ).replace( '%s', 'Lena Brandt' ) && textOf( jappRows[1].children[5] ) === texts['projects.running'] );
+	check( '...and the done project is not among the rows until the switch for the done ones is on', jappRows.length === 2 );
 
 	const jinfo = jf( jc, 'project-info' );
 	check( 'the card shows the facts: the client as a link, the day, the note on two lines, the documents with the offers that wait, the folder - and nothing that is empty', all( jinfo, 'dt' ).map( textOf ).join( '|' ) === [ texts['projects.f-client'], texts['projects.f-started'], texts['projects.f-description'], texts['projects.column-documents'], texts['projects.folder'] ].join( '|' ) && all( jinfo, 'dd' ).map( textOf ).join( '|' ).indexOf( 'Nordlicht Records GmbH · K-0001|01.10.2026|Aufnahmeund Mix|3 · '+ texts['projects.open-offers'].replace( '%s', '1' )+ '|Album 2027' ) === 0
@@ -5330,6 +5357,36 @@ function press( w, key, target, mods ) {
 	x18_ov1.boot();
 	await settle();
 	check( 'a single order is said in the singular', textOf( all( x18_ov1.main, '#needs-orders' )[0] ) === texts['needs.orders-one'].replace( '%s', '1' ) );
+	const x13_need = function( count ) { return { kind : 'approved', id : 0, client_id : 0, client_title : '', number : '', title : '', date : '', gross : 0, sign_state : '', count : count } };
+	const x13_ov = world( { hash : '#uebersicht', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [ x13_need( 3 ) ], recent : [], settings : settings } ] } } } );
+	x13_ov.boot();
+	await settle();
+	check( '"Braucht Dich" has one line for the approved projects that no invoice names: how many, with a link to the projects', textOf( all( x13_ov.main, '#needs-approved' )[0] ) === texts['needs.approved-many'].replace( '%s', '3' ) && all( x13_ov.main, '#needs-approved' )[0].getAttribute( 'href' ) === '#projekte' && all( x13_ov.main, '.list-mini' )[0].children.length === 1 );
+	click( x13_ov, all( x13_ov.main, '#needs-approved' )[0] );
+	check( '...the click asks for the done projects too: the filter of the projects shows all', x13_ov.app.state.jfilter.all === true );
+	const x13_ov1 = world( { hash : '#uebersicht', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [ x13_need( 1 ) ], recent : [], settings : settings } ] } } } );
+	x13_ov1.boot();
+	await settle();
+	check( '...one project is said in the singular, and with no such need there is no such line', textOf( all( x13_ov1.main, '#needs-approved' )[0] ) === texts['needs.approved-one'].replace( '%s', '1' ) && all( x13_ov.main, '#needs-orders' ).length === 0 );
+	const x13_ov0 = world( { hash : '#uebersicht', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] } } } );
+	x13_ov0.boot();
+	await settle();
+	check( '...nor does an empty list of needs', all( x13_ov0.main, '#needs-approved' ).length === 0 );
+	const x13_pp = await eopen( { settings : Object.assign( {}, esettings, { paypal : 'StudioNord' } ) } );
+	check( 'the Einstellungen have the field of the PayPal.me name in the block Rechnungsangaben: a text field of 80 characters with the name as saved, and the hint that the customer gets a link with the amount', efield( x13_pp, 'paypal' ).value === 'StudioNord' && efield( x13_pp, 'paypal' ).getAttribute( 'maxlength' ) === '80' && efield( x13_pp, 'paypal' ).type === 'text'
+		&& all( x13_pp.main, '#particulars dt' ).map( textOf ).pop() === texts['settings.paypal'] && textOf( all( x13_pp.main, '#particulars' )[0] ).indexOf( texts['settings.paypal-hint'] ) !== -1 );
+	const x13_posted = [];
+	const x13_pp2 = await eopen( {}, undefined, { 'crm-documents/settings-save' : function( data ) { x13_posted.push( data ); return data.paypal === '<b>' ? [ 400, { error : 'x', code : 'crm_documents_particular_paypal', params : [], field : 'paypal' } ] : [ 200, { settings : Object.assign( {}, esettings, data, { vat_rates : '1900,700,550,0' } ) } ] } } );
+	type( efield( x13_pp2, 'paypal' ), '<b>', false );
+	submit( x13_pp2, all( x13_pp2.main, '#settings-form' )[0] );
+	await settle();
+	check( 'a name that is none is said beside its field in its own sentence, the field marked and focused, and the post carried the typed value as text', x13_posted[0].paypal === '<b>' && efield( x13_pp2, 'paypal' ).classList.contains( 'err' ) === true && efield( x13_pp2, 'paypal' ).focused === true );
+	const x13_approval = { id : 7, kind : 'approval', client_id : 1, member_id : 'aaaaaaaaaaaa', member_email : 'lena@nordlicht.example', member_name : 'Lena <b>Brandt</b>', document_id : null, project : '00001', sha256 : 'c'.repeat( 64 ), shown : '{"files":[{"name":"<img src=x onerror=alert(1)>"}]}', at : '2026-11-03T10:15:00Z', ip : '203.0.113.7', agent : 'Browser/1.0' };
+	const x13_krecords = await kopen( '#kunde-1-portal', { 'crm-clients/portal' : function() { return [ 200, Object.assign( {}, kportal, { records : [ Object.assign( {}, x13_approval, { document_number : '' } ) ] } ) ] } } );
+	const x13_row = all( all( x13_krecords.main, '#client-records' )[0], 'li' )[0];
+	check( 'the tab Portal lists an approval among the records: the kind, the time, the account as text and, instead of a document, the link to the card of the project', x13_row.dataset.kind === 'approval' && textOf( x13_row ).indexOf( texts['record.kind-approval']+ ' · 03.11.2026 ' ) === 0 && textOf( x13_row ).indexOf( 'Lena <b>Brandt</b>' ) !== -1 && all( x13_row, 'a' )[0].getAttribute( 'href' ) === '#projekt-00001' && textOf( all( x13_row, 'a' )[0] ) === texts['record.project']+ ' 00001' );
+	click( x13_krecords, all( x13_row, 'button' )[0] );
+	check( '...Anzeigen opens the dialog with the title of an approval', x13_krecords.dialogs[0].getAttribute( 'aria-label' ) === texts['record.title-approval'] && textOf( all( x13_krecords.dialogs[0], 'pre' )[0] ) === x13_approval.shown );
 	check( 'the script keeps to its rules for the new screens: the texts are asked for as texts, and every new key is a word of the page', [ 'privacy.title', 'privacy.note', 'privacy.label', 'privacy.hint', 'privacy.never', 'privacy.changed', 'privacy.save', 'privacy.saved', 'privacy.head-agreed', 'privacy.head-open', 'record.document', 'record.show', 'record.hash', 'order.badge', 'order.head', 'order.title', 'order.at', 'order.by', 'order.ip', 'order.agent', 'order.hash', 'order.show', 'cportal.records', 'cportal.records-none', 'history.ordered', 'needs.orders-one', 'needs.orders-many', 'dialog.close' ].every( function( key ) { return typeof texts[key] === 'string' && texts[key] !== '' && script.indexOf( "'"+ key+ "'" ) !== -1 } ) && [ 'record.kind-', 'record.title-' ].every( function( stem ) { return script.indexOf( "'"+ stem+ "'" ) !== -1 && [ 'privacy', 'order' ].every( function( kind ) { return typeof texts[stem+ kind] === 'string' } ) } ) && typeof texts['chip.accepted'] === 'string' );
 
 

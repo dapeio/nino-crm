@@ -25,6 +25,7 @@ class Settings {
 		'bank_name'      => '',
 		'iban'           => '',
 		'bic'            => '',
+		'paypal'         => '',
 		'seller_name'    => '',
 		'seller_street'  => '',
 		'seller_zip'     => '',
@@ -287,6 +288,12 @@ class Settings {
 				$iban = self::iban( $value );
 
 				return $iban === null ? [ 'value:'. $key ] : $iban;
+
+			// The name of PayPal.me, nothing else: the address https://paypal.me/<name> or https://www.paypal.com/paypalme/<name> is cut down to it, and the link of the portal is made of the name
+			case 'paypal':
+				$name = preg_match( '#^https://(?:paypal\.me|www\.paypal\.com/paypalme)/([^/?\#]*)/?$#Di', $value, $found ) === 1 ? $found[1] : $value;
+
+				return $value === '' || preg_match( '/^[A-Za-z0-9]{1,20}$/D', $name ) === 1 ? $name : [ 'value:'. $key ];
 
 			case 'bic':
 				$bic = strtoupper( (string) preg_replace( '/\s+/', '', $value ) );

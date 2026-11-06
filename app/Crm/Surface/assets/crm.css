@@ -241,6 +241,7 @@ dialog.dlg { border: 1px solid var(--line-strong); border-radius: var(--radius);
 dialog.dlg.wide { width: min(760px, calc(100vw - 32px)) }
 dialog.dlg p { overflow-wrap: anywhere }
 dialog.dlg pre.sheet { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 60vh; margin: 0 0 8px }
+dialog.dlg .kv { margin: 0 0 12px } dialog.dlg .kv dd { overflow-wrap: anywhere }
 dialog.dlg::backdrop { background: rgba(10, 16, 22, .45) }
 dialog.dlg h2 { margin: 0 0 6px; font-size: 15px }
 dialog.dlg p { margin: 0 0 8px }

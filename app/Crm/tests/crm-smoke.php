@@ -1207,6 +1207,15 @@ check( '...the documents of the client are not touched', is_array( $invoice ) &&
 // What the portal reads of the documents: the released ones of a client, of one project when it is asked for, with the project and its title
 $kgProject = \Nino\Elements::insertElement( $appData, '/projekte/', [ 'title' => 'Projekt des Portals', 'client' => $kg['number'] ], '*' );
 $kgProjectId = is_array( $kgProject ) ? \Nino\Elements::getElementUriFromUri( (string) $kgProject['.uri'] ) : '';
+// A project that a customer approved is not deleted, one nobody approved is
+$kgSigned = \Nino\Elements::insertElement( $appData, '/projekte/', [ 'title' => 'Projekt mit Abnahme', 'client' => $kg['number'] ], '*' );
+$kgSignedId = is_array( $kgSigned ) ? \Nino\Elements::getElementUriFromUri( (string) $kgSigned['.uri'] ) : '';
+$kgPlain = \Nino\Elements::insertElement( $appData, '/projekte/', [ 'title' => 'Projekt ohne Abnahme', 'client' => $kg['number'] ], '*' );
+$kgPlainId = is_array( $kgPlain ) ? \Nino\Elements::getElementUriFromUri( (string) $kgPlain['.uri'] ) : '';
+$kgApproval = \Crm\Records::add( $appData, [ 'kind' => 'approval', 'client_id' => $kg['id'], 'member' => [ 'id' => 'kg-member', 'email' => 'kg@example.org', 'name' => 'Kg Member' ], 'project' => $kgSignedId, 'shown' => '{"project":{"id":"'. $kgSignedId. '"}}' ] );
+$kgDeleted = @\Nino\Elements::deleteElement( $appData, '/projekte/'. $kgSignedId, '*' );
+check( 'a project with an approval is not deleted: the veto of the kernel says no, the project and the record are there', is_array( $kgApproval ) && $kgDeleted !== true && \Crm\Projekte::get( $appData, $kgSignedId ) !== null && \Crm\Records::approval( $appData, $kgSignedId ) === $kgApproval );
+check( '...a project nobody approved is deleted as before', $kgPlainId !== '' && \Nino\Elements::deleteElement( $appData, '/projekte/'. $kgPlainId, '*' ) === true && \Crm\Projekte::get( $appData, $kgPlainId ) === null );
 $kgOther = \Crm\Documents::add( $appData, 'offer', (int) $kg['id'] );
 
 foreach( [ $invoice, $kgOther ] as $draft )
@@ -1752,6 +1761,41 @@ check( 'a client that has a record cannot be deleted: the table refuses it', ( s
 	}
 } )() === true );
 
+// the approval of a project: the third kind
+$files = [
+	[ 'name' => 'Zwei.wav', 'size' => 20, 'sha256' => hash( 'sha256', 'z' ), 'created' => '2026-11-02T10:00:00Z' ],
+	[ 'name' => 'Eins <b>.wav', 'size' => 10, 'sha256' => hash( 'sha256', 'e' ), 'created' => '2026-11-01T09:00:00Z' ],
+	[ 'name' => 'Weg.wav', 'size' => 5, 'sha256' => hash( 'sha256', 'w' ), 'created' => '2026-11-01T09:00:00Z', 'gone' => '2026-11-03T00:00:00Z' ],
+];
+$sentence = "Ich nehme das Projekt [[/project/x]] \"Mix\" \0 ab.";
+$shownJson = \Crm\Records::approvalShown( [ 'id' => '00007', 'title' => 'Album <b>[crm-client]</b>' ], $files, $sentence );
+$decoded = json_decode( $shownJson, true );
+check( 'Records::approvalShown is the JSON of the project and its files on the server - name, size, SHA-256 and the day of each, in the order of the names, a file that was removed left out - and the sentence; the same files give the same text', is_array( $decoded ) && array_keys( $decoded ) === [ 'project', 'files', 'sentence' ]
+	&& $decoded['project'] === [ 'id' => '00007', 'title' => 'Album <b>[crm-client]</b>' ] && array_column( $decoded['files'], 'name' ) === [ 'Eins <b>.wav', 'Zwei.wav' ] && array_keys( $decoded['files'][0] ) === [ 'name', 'size', 'sha256', 'date' ] && $decoded['files'][1]['date'] === '2026-11-02'
+	&& $decoded['sentence'] === $sentence && \Crm\Records::approvalShown( [ 'id' => '00007', 'title' => 'Album <b>[crm-client]</b>' ], array_reverse( $files ), $sentence ) === $shownJson );
+check( '...a null byte of a name or a sentence is the escape \u0000 in the text, never the byte itself', str_contains( $shownJson, "\0" ) === false && str_contains( $shownJson, '\u0000' ) === true );
+$approval = \Crm\Records::add( $rec, [ 'kind' => 'approval', 'client_id' => $ra['id'], 'member' => $member, 'project' => '00007', 'shown' => $shownJson, 'ip' => '203.0.113.9', 'agent' => 'Browser' ] );
+check( 'Records::add keeps an approval: the kind, the client, the account, the project, no document, the JSON that was shown and its hash', is_array( $approval ) && $approval['kind'] === 'approval' && $approval['client_id'] === $ra['id'] && $approval['project'] === '00007' && $approval['document_id'] === null && $approval['shown'] === $shownJson
+	&& $approval['sha256'] === hash( 'sha256', $shownJson ) && $approval['member_email'] === 'rita@example.org' && $approval['ip'] === '203.0.113.9' );
+check( '...of() lists it with the others and by its kind, forDocument() knows nothing of it, and approval() is the newest approval of the project (null for a project nobody approved)', \Crm\Records::of( $rec, $ra['id'], 'approval' ) === [ $approval ] && array_column( \Crm\Records::of( $rec, $ra['id'] ), 'kind' ) === [ 'approval', 'privacy', 'privacy' ]
+	&& \Crm\Records::approval( $rec, '00007' ) === $approval && \Crm\Records::approval( $rec, '00008' ) === null && \Crm\Records::forDocument( $rec, 1 ) === null );
+$again = \Crm\Records::add( $rec, [ 'kind' => 'approval', 'client_id' => $ra['id'], 'member' => $member, 'project' => '00007', 'shown' => $shownJson. ' ' ] );
+$elsewhere = \Crm\Records::add( $rec, [ 'kind' => 'approval', 'client_id' => $rb['id'], 'member' => $member, 'project' => '00008', 'shown' => 'x' ] );
+$approvals = \Crm\Records::approvals( $rec );
+check( '...a second approval is a record of its own and is the newest; approvals() reads the newest of every project in one query, with who and when and without the text', is_array( $again ) && \Crm\Records::approval( $rec, '00007' ) === $again && array_keys( $approvals ) === [ '00007', '00008' ]
+	&& $approvals['00007'] === [ 'id' => $again['id'], 'client_id' => $ra['id'], 'project' => '00007', 'at' => $again['at'], 'member_email' => 'rita@example.org', 'member_name' => 'Rita Record', 'sha256' => hash( 'sha256', $shownJson. ' ' ) ] && is_array( $elsewhere ) && $approvals['00008']['client_id'] === $rb['id'] );
+$refusedApprovals = array_map( static fn( array $input ): string|array => \Crm\Records::add( $rec, $input + [ 'kind' => 'approval', 'client_id' => $ra['id'], 'member' => $member, 'shown' => 'x', 'project' => '00007' ] ), [ [ 'project' => '' ], [ 'project' => '../x' ], [ 'project' => 'a b' ], [ 'document_id' => 5 ], [ 'shown' => '' ], [ 'client_id' => 999 ] ] );
+check( '...an approval that is none is refused with the cause and nothing is kept: no project, a project that is no id, a document', $refusedApprovals === [ 'project', 'project', 'project', 'document', 'shown', 'client' ] && count( \Crm\Records::of( $rec, $ra['id'], 'approval' ) ) === 2 );
+
+// the setting paypal: the name of PayPal.me, nothing else
+$paypal = [ 'DavidStudio' => 'DavidStudio', ' DavidStudio ' => 'DavidStudio', 'https://paypal.me/DavidStudio' => 'DavidStudio', 'https://www.paypal.com/paypalme/DavidStudio' => 'DavidStudio', 'https://PayPal.me/DavidStudio/' => 'DavidStudio', 'a1B2' => 'a1B2', '' => '', str_repeat( 'a', 20 ) => str_repeat( 'a', 20 ) ];
+$paypalRefused = [ 'https://paypal.me/', 'https://www.paypal.com/paypalme/', '<b>x</b>', 'Da[vid', 'David Studio', 'David-Studio', str_repeat( 'a', 21 ), 'http://paypal.me/David', 'https://paypal.me/David/75', 'https://paypal.me/David?x=1', 'https://paypal.me/Da vid', 'https://evil.example/paypal.me/David', 'https://paypal.me.evil.example/David', "Da\0vid", "Da\nvid", 'Dävid' ];
+check( 'the setting paypal is empty by default and takes the name of PayPal.me - letters and digits, one to twenty - or the address https://paypal.me/<name> or https://www.paypal.com/paypalme/<name>, cut down to the name', \Crm\Settings::get( $rec, 'paypal' ) === ''
+	&& array_map( static fn( string $in ): string|array => \Crm\Settings::clean( 'paypal', $in ), array_keys( $paypal ) ) === array_values( $paypal ) );
+check( '...anything else is value:paypal - a tag, a bracket, a blank, a hyphen, twenty-one characters, an address without the name, another scheme, an amount or a query, another host, a null byte, a line break, a letter with an umlaut', array_filter( $paypalRefused, static fn( string $in ): bool => \Crm\Settings::clean( 'paypal', $in ) !== [ 'value:paypal' ] ) === []
+	&& \Crm\Settings::clean( 'paypal', [ 'x' ] ) === [ 'value:paypal' ] && \Crm\Settings::set( $rec, 'paypal', '<b>' ) === 'value:paypal' && \Crm\Settings::get( $rec, 'paypal' ) === '' );
+check( '...set() stores the name and not the address that was typed, and an empty value takes it away again', \Crm\Settings::set( $rec, 'paypal', 'https://paypal.me/DavidStudio' ) === true && \Crm\Settings::get( $rec, 'paypal' ) === 'DavidStudio' && \Crm\Settings::set( $rec, 'paypal', '' ) === true && \Crm\Settings::get( $rec, 'paypal' ) === '' );
+
 // the module never changes or deletes a record
 $sources = [];
 
@@ -1760,7 +1804,7 @@ foreach( new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $root.
 		$sources[$file->getPathname()] = (string) file_get_contents( $file->getPathname() );
 
 check( 'the module never changes or deletes a record: no statement of it on the table records but the insert and the reads - and the class has no method that does', array_filter( $sources, static fn( string $code ): bool => preg_match( '/(UPDATE|DELETE\s+FROM|DROP\s+TABLE|REPLACE\s+INTO|INSERT\s+OR\s+REPLACE\s+INTO|ALTER\s+TABLE)\s+records\b/i', $code ) === 1 ) === []
-	&& preg_match_all( '/INSERT INTO records/', implode( "\n", $sources ) ) === 1 && array_values( array_filter( get_class_methods( \Crm\Records::class ), static fn( string $method ): bool => preg_match( '/^(add|insert|of|forDocument|latestPrivacy|privacy|privacies|privacyText|hash|source|orderShown)$/', $method ) !== 1 ) ) === [] );
+	&& preg_match_all( '/INSERT INTO records/', implode( "\n", $sources ) ) === 1 && array_values( array_filter( get_class_methods( \Crm\Records::class ), static fn( string $method ): bool => preg_match( '/^(add|insert|of|forDocument|approval|approvals|latestPrivacy|privacy|privacies|privacyText|hash|source|orderShown|approvalShown)$/', $method ) !== 1 ) ) === [] );
 
 \Nino\Filesystem::removeDir( ninoSandboxDir( $rec ) );
 

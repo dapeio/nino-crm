@@ -1,25 +1,27 @@
 <?php
 declare(strict_types=1);
 /**
- *	Crm\Records		What a customer agreed to in the portal, kept as evidence. A record is one of two kinds - privacy (the customer agreed to the
- *								Datenschutz as it stood) or order (the customer ordered an offer) - and holds the account that agreed (id, address and name as they were),
- *								the client, for an order the document and its project, the text the customer was shown (the Datenschutz itself; for an order the JSON the
- *								page of the offer was drawn from, with the sentence the box stood beside), the SHA-256 of that text, the time and the address and browser
- *								of the request. The module writes a record once and never changes or deletes it: there is no statement for it in this class or anywhere
+ *	Crm\Records		What a customer agreed to in the portal, kept as evidence. A record is one of three kinds - privacy (the customer agreed to the
+ *								Datenschutz as it stood), order (the customer ordered an offer) or approval (the customer accepted a project as its files stood) - and holds
+ *								the account that agreed (id, address and name as they were), the client, for an order the document and its project, for an approval the
+ *								project, the text the customer was shown (the Datenschutz itself; for an order the JSON the page of the offer was drawn from, with the
+ *								sentence the box stood beside; for an approval the JSON of the project and its visible files - name, size, SHA-256 and day of each - with
+ *								the sentence), the SHA-256 of that text, the time and the address and browser of the request. The module writes a record once and never changes or deletes it: there is no statement for it in this class or anywhere
  *								else, and the table refuses the deletion of a client or a document a record names.
  *
  *								A client has agreed to the Datenschutz when a record of kind privacy exists whose hash is the hash of the text the setting privacy_text
  *								holds now. A text that is changed asks again; the old records stay. Where the text is empty the portal asks for nothing.
  *
- *								add() answers the record as of() has it, or a string: 'kind' (neither privacy nor order), 'client' (no such client), 'member' (no account),
- *								'document' (an order needs the document it is for; a privacy record has none), 'shown' (nothing was shown). A database failure is a
+ *								add() answers the record as of() has it, or a string: 'kind' (none of privacy, order and approval), 'client' (no such client), 'member' (no account),
+ *								'document' (an order needs the document it is for; a privacy record and an approval have none), 'project' (an approval needs the project it is for),
+ *								'shown' (nothing was shown). A database failure is a
  *								\PDOException the caller answers.
  */
 namespace Crm;
 
 class Records {
 
-	public const array KINDS = [ 'privacy', 'order' ];
+	public const array KINDS = [ 'privacy', 'order', 'approval' ];
 
 	// The most of the browser's name that is kept
 	public const int AGENT = 300;
@@ -73,7 +75,7 @@ class Records {
 	 *	Keep a record
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$input				kind, client_id, member (id, email, name of the account), shown (the text), document_id and project (for an order), ip, agent
+	 *	@param		array 		$input				kind, client_id, member (id, email, name of the account), shown (the text), document_id and project (for an order), project (for an approval), ip, agent
 	 *
 	 *	@return 	array|string							The record; or why not, see the class
 	 */
@@ -103,6 +105,7 @@ class Records {
 			is_string( $member['id'] ?? null ) === false || $member['id'] === ''             => 'member',
 			$shown === ''                                                                     => 'shown',
 			( $kind === 'order' ) !== is_int( $document )                                    => 'document',
+			$kind === 'approval' && preg_match( Projekte::ID, (string) ( $input['project'] ?? '' ) ) !== 1 => 'project',
 			default                                                                           => '',
 		};
 
@@ -172,6 +175,38 @@ class Records {
 		$row = Db::row( $appData, 'SELECT * FROM records WHERE document_id = :id AND kind = \'order\' ORDER BY id DESC LIMIT 1', [ 'id' => $documentId ] );
 
 		return $row === null ? null : self::shape( $row );
+	}
+
+	/**
+	 *	The newest approval of a project
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$project			The id of the project
+	 *
+	 *	@return 	array|null								As of() has it; null for a project nobody approved
+	 */
+	public static function approval( array &$appData, string $project ): ?array {
+
+		$row = Db::row( $appData, 'SELECT * FROM records WHERE kind = \'approval\' AND project = :project ORDER BY id DESC LIMIT 1', [ 'project' => $project ] );
+
+		return $row === null ? null : self::shape( $row );
+	}
+
+	/**
+	 *	The newest approval of every project that has one, read in one query and without the text that was shown (the lists need who and when, not the JSON)
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											project id => id, client_id, project, at, member_email, member_name, sha256
+	 */
+	public static function approvals( array &$appData ): array {
+
+		$found = [];
+
+		foreach( Db::rows( $appData, 'SELECT id, client_id, project, at, member_email, member_name, sha256 FROM records WHERE kind = \'approval\' ORDER BY id' ) as $row )
+			$found[(string) $row['project']] = [ 'id' => (int) $row['id'], 'client_id' => (int) $row['client_id'] ] + $row;
+
+		return $found;
 	}
 
 	/**
@@ -284,6 +319,34 @@ class Records {
 			'sums'           => $sums,
 			'company'        => $company,
 			'sentence'       => $sentence,
+		], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR );
+	}
+
+	/**
+	 *	What the approval of a project shows: the JSON the Dateien of the project are drawn from - the id and the title of the project, the files the member may see (the name,
+	 *	the size, the SHA-256 and the day of each, the files that were removed from the server left out, in the order of their names) - and the sentence the customer agreed to.
+	 *	The same files give the same text, so the hash of a record can be made again
+	 *
+	 *	@param		array 		$project			id and title
+	 *	@param		array 		$files				As Files::files() has them
+	 *	@param		string		$sentence			The words beside the box, as the customer read them
+	 *
+	 *	@return 	string										JSON
+	 */
+	public static function approvalShown( array $project, array $files, string $sentence ): string {
+
+		$list = [];
+
+		foreach( $files as $file )
+			if( isset( $file['gone'] ) === false )
+				$list[] = [ 'name' => (string) $file['name'], 'size' => (int) $file['size'], 'sha256' => (string) $file['sha256'], 'date' => substr( (string) $file['created'], 0, 10 ) ];
+
+		usort( $list, static fn( array $a, array $b ): int => [ $a['name'], $a['sha256'], $a['date'] ] <=> [ $b['name'], $b['sha256'], $b['date'] ] );
+
+		return (string) json_encode( [
+			'project'  => [ 'id' => (string) $project['id'], 'title' => (string) $project['title'] ],
+			'files'    => $list,
+			'sentence' => $sentence,
 		], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR );
 	}
 

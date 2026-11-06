@@ -587,7 +587,7 @@
 	/**
 	 *	A dialog with one question: the text, optionally fields, and two buttons. Escape and the second button are the no
 	 *
-	 *	@param		{Object}	spec						title, text, yes, no, danger, fields ([ { name, label, type, value, options, maxlength, rows } ]; the type checkbox is a box, ticked where the value is true, and its value is a boolean; the type textarea is a field of several lines), shortcut (true: Strg+S, Cmd+S says yes - for a dialog that is a form to save), link ({ href, text } instead of the buttons),
+	 *	@param		{Object}	spec						title, text, facts (pairs of a label and a value, shown as text beneath the text), pre, yes, no, danger, fields ([ { name, label, type, value, options, maxlength, rows } ]; the type checkbox is a box, ticked where the value is true, and its value is a boolean; the type textarea is a field of several lines), shortcut (true: Strg+S, Cmd+S says yes - for a dialog that is a form to save), link ({ href, text } instead of the buttons),
 	 *														secret ({ label, value, note }: a link shown once, in a field nobody can type in, with a button that copies it - and the dialog closes with a button)
 	 *
 	 *	@return		{Promise}									The values of the fields (an empty object without fields) for the yes; null for the no
@@ -664,6 +664,7 @@
 			const form = el( 'form', { on: { submit: function( event ) { event.preventDefault(); accept() } } },
 				spec.title ? el( 'h2', { text: spec.title } ) : null,
 				spec.text === undefined ? null : el( 'p', { text: spec.text } ),
+				spec.facts === undefined ? null : kv( spec.facts ),
 				spec.pre === undefined ? null : el( 'pre', { class: 'sheet', text: spec.pre } ),
 				secret === null ? null : secret.node,
 				fields,
@@ -1268,6 +1269,13 @@
 				state.filter.chip = 'accepted';
 				state.filter.page = 1;
 			} } } ) ), el( 'span', { class: 'r', text: cash( need.gross ) } ) );
+
+		// The projects the customers approved that no invoice names: one line, and the link shows the projects (the finished ones too)
+		if( need.kind === 'approved' )
+			return el( 'li', {}, el( 'span', {}, dot( 'good' ), link( '#projekte', t( need.count === 1 ? 'needs.approved-one' : 'needs.approved-many', need.count ), { id: 'needs-approved', on: { click: function() {
+				state.jfilter.all = true;
+				state.jfilter.page = 1;
+			} } } ) ) );
 
 		if( need.kind === 'sign' )
 			return el( 'li', {}, el( 'span', {}, dot( 'warn' ), link( '#beleg-'+ need.id, need.title ), ' · '+ need.client_title+ ' · '+ t( 'needs.sign-'+ need.sign_state ) ), el( 'span', { class: 'r', text: t( 'needs.since', dmy( need.date ) ) } ) );
@@ -2046,7 +2054,7 @@
 	 *	@return		{Promise}
 	 */
 	const showRecord = function( record ) {
-		return dialog( { title: t( 'record.title-'+ record.kind ), text: t( 'record.hash', record.sha256 ), pre: record.shown, close: true, wide: true } );
+		return dialog( { title: t( 'record.title-'+ record.kind ), text: t( 'record.hash', record.sha256 ), facts: [ [ t( 'record.at' ), stamp( record.at ) ], [ t( 'record.ip' ), record.ip ], [ t( 'record.agent' ), record.agent ] ], pre: record.shown, close: true, wide: true } );
 	};
 
 	/**
@@ -3932,7 +3940,8 @@
 					el( 'h4', { text: t( 'cportal.records' ) } ),
 					el( 'ul', { class: 'list-mini', id: 'client-records' }, portal.records.length === 0 ? el( 'li', { class: 'muted', text: t( 'cportal.records-none' ) } ) : portal.records.map( function( record ) {
 						return el( 'li', { dataset: { kind: record.kind } }, el( 'span', {}, t( 'record.kind-'+ record.kind ), ' · ', stamp( record.at ), ' · ', recordWho( record ),
-							record.document_id === null ? null : [ ' · ', link( '#beleg-'+ record.document_id, record.document_number !== undefined && record.document_number !== '' ? record.document_number : t( 'record.document' ) ) ] ),
+							record.document_id === null ? null : [ ' · ', link( '#beleg-'+ record.document_id, record.document_number !== undefined && record.document_number !== '' ? record.document_number : t( 'record.document' ) ) ],
+							record.kind === 'approval' ? [ ' · ', link( '#projekt-'+ record.project, t( 'record.project' )+ ' '+ record.project ) ] : null ),
 							el( 'span', { class: 'r' }, el( 'button', { type: 'button', class: 'btn sm quiet', text: t( 'record.show' ), on: { click: function() { showRecord( record ) } } } ) ) );
 					} ) ),
 				],
@@ -4911,7 +4920,27 @@
 	};
 
 	const projectBadge = function( project ) {
-		return project.done === true ? badge( 'draft', t( 'projects.done' ) ) : badge( 'open', t( 'projects.running' ) );
+
+		if( project.done === true )
+			return badge( 'draft', t( 'projects.done' ) );
+
+		// A project the customer approved says so until the owner marks it done
+		if( project.approval !== null && project.approval !== undefined )
+			return badge( 'paid', '✓ '+ t( 'projects.approved' ), t( 'approval.head', dmy( project.approval.at ), recordWho( project.approval ) ) );
+
+		return badge( 'open', t( 'projects.running' ) );
+	};
+
+	/**
+	 *	The line under the head of a project's card that says the customer approved it, with the way to what the customer was shown
+	 *
+	 *	@param		{Object}	approval				The record of the newest approval, see Records
+	 *
+	 *	@return		{Object}
+	 */
+	const approvalNote = function( approval ) {
+		return el( 'p', { class: 'state-note', id: 'project-approval' }, badge( 'paid', t( 'approval.badge' ) ), ' '+ t( 'approval.head', dmy( approval.at ), recordWho( approval ) )+ ' ',
+			el( 'button', { type: 'button', class: 'btn sm quiet', id: 'project-approval-show', text: t( 'record.show' ), on: { click: function() { showRecord( approval ) } } } ) );
 	};
 
 	/**
@@ -6200,6 +6229,9 @@
 			view.client !== null && view.client.active === true ? newMenu( t( 'card.document-new' ), view.client.id, project.id ) : null,
 			projectMenu( view ) ) );
 
+		if( project.approval !== null && project.approval !== undefined )
+			state.main.appendChild( approvalNote( project.approval ) );
+
 		view.info = projectCard( view );
 		state.main.appendChild( view.info );
 
@@ -7170,6 +7202,7 @@
 			{ name : 'bank_name', label : t( 'settings.bank-name' ), control : el( 'input', { id: 'f-bank_name', type: 'text', value: settings.bank_name ?? '', maxlength: '80', autocomplete: 'off' } ) },
 			{ name : 'iban', label : t( 'settings.iban' ), control : el( 'input', { id: 'f-iban', type: 'text', value: settings.iban ?? '', maxlength: '42', autocomplete: 'off', spellcheck: 'false' } ) },
 			{ name : 'bic', label : t( 'settings.bic' ), control : el( 'input', { id: 'f-bic', type: 'text', value: settings.bic ?? '', maxlength: '11', autocomplete: 'off', spellcheck: 'false', class: 'bic' } ) },
+			{ name : 'paypal', label : t( 'settings.paypal' ), control : el( 'input', { id: 'f-paypal', type: 'text', value: settings.paypal ?? '', maxlength: '80', autocomplete: 'off', spellcheck: 'false' } ), hint : t( 'settings.paypal-hint' ) },
 		], form );
 
 		// The seller of an electronic invoice: who sends the invoice and whom the customer asks. The text of the exemption belongs to the VAT mode small_business and is there only while it is chosen

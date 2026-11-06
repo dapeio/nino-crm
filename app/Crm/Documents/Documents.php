@@ -77,6 +77,9 @@ class Documents {
 	// How many days an order of the portal that no invoice has followed stays among the things that need the owner
 	public const int ORDER_DAYS = 14;
 
+	// How many days an approval of a project that no invoice names stays among the things that need the owner
+	public const int APPROVAL_DAYS = 30;
+
 	// The fields of the client that are frozen into a finalised document: business is frozen as 1 or 0, the others as text. The electronic invoice
 	// reads the frozen client, so what it says is what the client was when the document was finalised
 	private const array CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'number', 'vat_id', 'email', 'business', 'buyer_reference' ];
@@ -760,12 +763,12 @@ class Documents {
 
 	/**
 	 *	What needs the owner: the invoices that are overdue (the oldest due first), the orders of the portal of the last ORDER_DAYS days that no invoice has followed (one
-	 *	entry, kind orders, with how many and the sum), the offers that run out within the next seven days, the contracts and privacy documents whose signature was
+	 *	entry, kind orders, with how many and the sum), the projects the customer approved in the last APPROVAL_DAYS days that no invoice names (one entry, kind approved, with how many), the offers that run out within the next seven days, the contracts and privacy documents whose signature was
 	 *	looked at and not given or ran out of time, and the active clients that have no account
 	 *
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	array											A list in that order; each has kind (overdue, orders, expiring, sign, account), id (the document, 0 for a client), client_id, client_title, number, title,
+	 *	@return 	array											A list in that order; each has kind (overdue, orders, approved, expiring, sign, account), id (the document, 0 for a client), client_id, client_title, number, title,
 	 *																		date (the due date, the day the offer runs out, the day the state last changed, ''), gross and sign_state ('' unless it is a signature)
 	 */
 	public static function needs( array &$appData ): array {
@@ -810,7 +813,22 @@ class Documents {
 			WHERE r.kind = \'order\' AND d.state = \'accepted\' AND r.at >= :since AND NOT EXISTS ( SELECT 1 FROM documents c WHERE c.parent_id = d.id AND c.category = \'invoice\' )', [ 'since' => gmdate( self::TIME, time() - self::ORDER_DAYS * 86400 ) ] );
 		$ordered = (int) ( $orders['n'] ?? 0 ) === 0 ? [] : [ [ 'kind' => 'orders', 'id' => 0, 'client_id' => 0, 'client_title' => '', 'number' => '', 'title' => '', 'date' => '', 'gross' => (int) $orders['gross'], 'sign_state' => '', 'count' => (int) $orders['n'] ] ];
 
-		return array_merge( $groups['overdue'], $ordered, $groups['sign'], $groups['expiring'], $accounts );
+		// The projects approved in the portal of the last APPROVAL_DAYS days that no invoice names (a project that is gone does not count): one line with how many
+		$approved = [];
+
+		if( Projekte::missing( $appData ) === false ) {
+
+			$known = Projekte::titles( $appData );
+
+			foreach( Db::rows( $appData, 'SELECT DISTINCT r.project FROM records r WHERE r.kind = \'approval\' AND r.at >= :since
+				AND NOT EXISTS ( SELECT 1 FROM documents d WHERE d.project = r.project AND d.category = \'invoice\' )', [ 'since' => gmdate( self::TIME, time() - self::APPROVAL_DAYS * 86400 ) ] ) as $row )
+				if( isset( $known[(string) $row['project']] ) === true )
+					$approved[] = (string) $row['project'];
+		}
+
+		$approvals = $approved === [] ? [] : [ [ 'kind' => 'approved', 'id' => 0, 'client_id' => 0, 'client_title' => '', 'number' => '', 'title' => '', 'date' => '', 'gross' => 0, 'sign_state' => '', 'count' => count( $approved ) ] ];
+
+		return array_merge( $groups['overdue'], $ordered, $approvals, $groups['sign'], $groups['expiring'], $accounts );
 	}
 
 	/**

@@ -7,9 +7,9 @@ declare(strict_types=1);
  *												panel's own actions (see Surface\Elements) and their folder through the Files panel's (see Surface\Files); these two actions only read:
  *
  *												crm-projekte/list		the projects (a client's, the open ones, a search in the title) with their client, the number of their documents
- *																						and of the offers among them that wait, and the number of their files; and native, the language the screens save in, and allowed -
+ *																						and of the offers among them that wait, and the number of their files, and approval (who approved the project in the portal and when; null for a project nobody approved); and native, the language the screens save in, and allowed -
  *																						whether the account holds the permission of the Files panel while the feature is on, as it is now (a setup changes it under the page)
- *												crm-projekte/get		one project with its client, its folder and the files in it - each audio or video file with the number of its comments and of the open ones,
+ *												crm-projekte/get		one project with its client, its approval (the record with the JSON the customer was shown), its folder and the files in it - each audio or video file with the number of its comments and of the open ones,
  *																						where the feature Review is on (review says whether it is)
  *
  *												crm-projekte/download	switch the download of the files of a project for its client on or off (id, on): the state the portal reads (Projekte::state()); the
@@ -160,6 +160,10 @@ class Admin {
 					$row = $one;
 
 			$shown = self::_shown( $appData, [ $row ], true )[0] + [ 'download_at' => Projekte::state( $appData, $id )['download_at'] ];
+
+			// The card shows what the customer was shown: the record of the newest approval with its text
+			$approval = \Crm\Records::approval( $appData, $id );
+			$shown['approval'] = $approval !== null && $shown['client_id'] === $approval['client_id'] ? $approval : null;
 			$list = $shown['file_list'];
 			$folder = $shown['folder_name'] === null ? null : [ 'id' => $shown['folder'], 'name' => $shown['folder_name'] ];
 			unset( $shown['file_list'], $shown['folder_name'] );
@@ -278,6 +282,7 @@ class Admin {
 		$on = self::filesOn( $appData );
 		$folders = [];
 		$shown = [];
+		$approvals = \Crm\Records::approvals( $appData );
 
 		foreach( $projects as $project ) {
 
@@ -304,6 +309,7 @@ class Admin {
 				'client_title'  => $client === null ? '' : $client['title'],
 				'client_active' => $client !== null && $client['active'] === true,
 				'files'         => $files === null ? ( $on === true ? 0 : null ) : count( $files ),
+				'approval'      => isset( $approvals[$project['id']] ) === true && $client !== null && $approvals[$project['id']]['client_id'] === $client['id'] ? $approvals[$project['id']] : null,
 				'folder_name'   => $folder === null ? null : (string) $folder['name'],
 				'file_list'     => $withFiles === true && $on === true ? self::_files( $appData, $files ?? [] ) : null,
 			];

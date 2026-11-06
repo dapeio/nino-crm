@@ -506,6 +506,7 @@ class Portal {
 			$badge = self::render( 'head-badge', [
 				'[[tone]]'  => self::tone( $state ),
 				'[[state]]' => '[[/project/crm-portal/projects/state-'. $state. ']]',
+				'[[approved]]' => Portal\Approval::approved( $appData, $client, $project ) === null ? '' : self::template( 'head-approved' ),
 				'[[since]]' => $day === '' ? '' : self::render( 'head-since', [ '[[iso]]' => \Nino\Modules\Components::escape( $project['started'] ), '[[date]]' => \Nino\Modules\Components::escape( $day ) ] ),
 			] );
 			$lead = $project['description'] === '' ? '' : self::render( 'head-lead', [ '[[text]]' => str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $project['description'] ) ) ] );
@@ -1050,7 +1051,9 @@ class Portal {
 
 	/**
 	 *	How an open invoice is paid, as the PDF says it: the amount, the payee (the company of the site), the bank, the IBAN and the BIC of the
-	 *	settings and the number as the purpose. Nothing where the settings hold neither a bank nor an IBAN: then there is nothing to tell
+	 *	settings and the number as the purpose - and, where the settings hold the PayPal.me name (paypalLink()), a row with the button that opens the payment of this amount
+	 *	at PayPal, which asks for the number as the purpose too. Nothing where the settings hold neither a bank nor an IBAN nor a PayPal.me name: then there is nothing to tell;
+	 *	with the name alone the block has the amount, the purpose and the PayPal row
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document			As Documents::released() has it
@@ -1063,13 +1066,15 @@ class Portal {
 		$iban = \Crm\Settings::get( $appData, 'iban' );
 		$bic = \Crm\Settings::get( $appData, 'bic' );
 
-		if( $bank === '' && $iban === '' )
+		$link = self::paypalLink( $appData, $document );
+
+		if( $bank === '' && $iban === '' && $link === '' )
 			return '';
 
 		$company = trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/general/name' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
 		$rows = '';
 
-		foreach( [ 'to' => $company, 'bank' => $bank, 'iban' => $iban, 'bic' => $bic ] as $name => $value )
+		foreach( [ 'to' => $bank !== '' || $iban !== '' ? $company : '', 'bank' => $bank, 'iban' => $iban, 'bic' => $bic ] as $name => $value )
 			if( $value !== '' )
 				$rows .= self::render( 'document-pay-row', [ '[[name]]' => $name, '[[value]]' => \Nino\Modules\Components::escape( $value ) ] );
 
@@ -1077,7 +1082,49 @@ class Portal {
 			'[[number]]' => \Nino\Modules\Components::escape( $document['number'] ),
 			'[[amount]]' => self::amount( $appData, $document ),
 			'[[rows]]'   => $rows,
+			'[[paypal]]' => $link === '' ? '' : self::paypal( $appData, $link, (string) $document['number'] ),
 		] );
+	}
+
+	/**
+	 *	The address that opens the payment of an invoice at PayPal: https://paypal.me/<name>/<amount>EUR, the amount with a point and two places from the gross sum in cents (750.00,
+	 *	1234.50: no sign for thousands). It is made of the name the settings hold once it is checked again (letters and digits, 1 to 20 - nothing a person typed reaches the address
+	 *	unchecked) and of the sum; the currency of the module is the euro, and an invoice in any other currency or without a sum to pay has no link
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			gross, where Documents::released() has it
+	 *
+	 *	@return 	string										'' where the settings hold no name or the invoice has no link
+	 */
+	public static function paypalLink( array &$appData, array $document ): string {
+
+		$name = \Crm\Settings::get( $appData, 'paypal' );
+		$gross = $document['gross'] ?? null;
+
+		if( preg_match( '/^[A-Za-z0-9]{1,20}$/D', $name ) !== 1 || is_int( $gross ) === false || $gross <= 0 || in_array( \Crm\Settings::get( $appData, 'currency' ), [ '€', 'EUR' ], true ) === false )
+			return '';
+
+		return 'https://paypal.me/'. $name. '/'. intdiv( $gross, 100 ). '.'. sprintf( '%02d', $gross % 100 ). 'EUR';
+	}
+
+	/**
+	 *	The row of the block that tells how to pay: the button to PayPal and the sentence that the number is the purpose
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$link					As paypalLink() has it
+	 *	@param		string		$number				The number of the invoice
+	 *
+	 *	@return 	string										Markup
+	 */
+	private static function paypal( array &$appData, string $link, string $number ): string {
+
+		self::words( $appData );
+
+		$escape = static fn( string $value ): string => \Nino\Modules\Components::escape( $value );
+		$parts = explode( '{number}', (string) \Nino\Html::resolveTextfill( $appData, '/project/crm-portal/pay/paypal-purpose' ), 2 );
+		$purpose = $escape( $parts[0] ). ( count( $parts ) === 2 ? '<strong class="crm-pay__number">'. $escape( $number ). '</strong>'. $escape( $parts[1] ) : '' );
+
+		return self::render( 'document-pay-paypal', [ '[[link]]' => $escape( $link ), '[[purpose]]' => $purpose ] );
 	}
 
 	/**

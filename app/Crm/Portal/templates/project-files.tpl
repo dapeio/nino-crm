@@ -5,3 +5,4 @@
 				[[rows]]
 			</ul>
 		</div>
+		[[approval]]

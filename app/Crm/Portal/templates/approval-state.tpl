@@ -1,0 +1,1 @@
+<p class="crm-approval__state crm-approval__state--[[state]] crm-note crm-note--[[tone]]" role="[[role]]" id="crm-approval-state">[[icon:[[icon]]]]<span class="crm-note__text">[[/project/crm-portal/approval/state-[[state]]]]</span></p>

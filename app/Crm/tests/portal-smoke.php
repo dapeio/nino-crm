@@ -837,7 +837,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 191 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 207 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -2697,8 +2697,51 @@ check( '...a BIC that the settings do not have is not a line of the block', arra
 \Crm\Settings::set( $appData, 'iban', '' );
 $noBank = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
 check( '...and where the settings hold neither a bank nor an IBAN there is nothing to tell: no block, no fold and no button on the row of an open invoice', portalFind( $noBank, '//dl[contains(@class, "crm-pay")]' ) === [] && portalFind( $noBank, '//li[@data-document="'. $invFuture['id']. '"]/details' ) === [] && portalFind( $noBank, '//li[@data-document="'. $invFuture['id']. '"]//span[contains(@class, "crm-table__toggle")]' ) === [] );
+// PayPal: the name of PayPal.me makes a row with a button that opens the payment of the amount
+$factNamesOf = static fn( string $html ): array => array_map( static fn( \DOMElement $fact ): string => preg_replace( '/^.*crm-pay__fact--/', '', $fact->getAttribute( 'class' ) ), portalFind( $html, '//div[contains(@class, "crm-pay__fact")]' ) );
+$blockOf = static fn( string $html, int $id ): string => ( $found = $payOf( $html, $id ) ) === [] ? '' : $found[0]->ownerDocument->saveHTML( $found[0] );
+\Crm\Settings::set( $appData, 'paypal', 'Klangwerk' );
+$paypalDocs = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
+check( 'with the PayPal.me name and neither a bank nor an IBAN the block is there all the same: the amount, the purpose and the PayPal row - no payee, no bank', count( $payOf( $paypalDocs, $invFuture['id'] ) ) === 1 && $factNamesOf( $blockOf( $paypalDocs, $invFuture['id'] ) ) === [ 'amount', 'purpose', 'paypal' ] && count( $payOf( $paypalDocs, $invPast['id'] ) ) === 1 );
+\Crm\Settings::set( $appData, 'bank_name', 'Hamburger <b>Sparkasse</b>' );
+\Crm\Settings::set( $appData, 'iban', 'DE02 1203 0000 0000 2020 51' );
+$paypalDocs = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
+$paypalBlock = $blockOf( $paypalDocs, $invFuture['id'] );
+$paypalLink = portalFind( $paypalBlock, '//div[contains(@class, "crm-pay__fact--paypal")]//a' );
+check( '...with a bank as well the row stands last, after the purpose; the button is a link to https://paypal.me/<name>/<amount>EUR made of the name and the gross sum, opens in a new window with rel noopener noreferrer, has the icon of an external link and the word', $factNamesOf( $paypalBlock ) === [ 'amount', 'to', 'bank', 'iban', 'purpose', 'paypal' ] && count( $paypalLink ) === 1
+	&& $paypalLink[0]->getAttribute( 'href' ) === 'https://paypal.me/Klangwerk/100.00EUR' && $paypalLink[0]->getAttribute( 'target' ) === '_blank' && $paypalLink[0]->getAttribute( 'rel' ) === 'noopener noreferrer' && str_contains( ' '. $paypalLink[0]->getAttribute( 'class' ). ' ', ' crm-btn ' ) === true
+	&& portalFind( $paypalBlock, '//div[contains(@class, "crm-pay__fact--paypal")]//a/svg[contains(@class, "crm-icon--external-link")]' ) !== [] && trim( portalText( $paypalBlock, '//div[contains(@class, "crm-pay__fact--paypal")]//a' ) ) === $wordsDe['[[/project/crm-portal/pay/paypal-button]]'] );
+check( '...the sentence beside the button asks for the number of the invoice as the purpose, the number set apart as text', portalText( $paypalBlock, '//div[contains(@class, "crm-pay__fact--paypal")]//strong' ) === $invFuture['number'] && str_contains( portalText( $paypalBlock, '//div[contains(@class, "crm-pay__fact--paypal")]//span[contains(@class, "crm-pay__hint")]' ), $invFuture['number'] ) === true && str_contains( $paypalBlock, '{number}' ) === false );
+check( '...no other invoice-row of the list has a different link than its own sum: the one past its day has the same name and its own amount', portalFind( $blockOf( $paypalDocs, $invPast['id'] ), '//div[contains(@class, "crm-pay__fact--paypal")]//a/@href' )[0]->nodeValue === 'https://paypal.me/Klangwerk/'. intdiv( Documents::get( $appData, $invPast['id'] )['gross'], 100 ). '.'. sprintf( '%02d', Documents::get( $appData, $invPast['id'] )['gross'] % 100 ). 'EUR' );
+$sums = [ 75000 => '750.00EUR', 123450 => '1234.50EUR', 1234500 => '12345.00EUR', 5 => '0.05EUR', 100 => '1.00EUR', 99999999 => '999999.99EUR', 1 => '0.01EUR' ];
+check( '...the sum is the gross in cents written with a point and two places, no sign for thousands: 750,00 € is 750.00EUR, 1.234,50 € is 1234.50EUR', array_map( static fn( int $gross ): string => \Crm\Portal::paypalLink( $appData, [ 'gross' => $gross ] ), array_keys( $sums ) ) === array_map( static fn( string $sum ): string => 'https://paypal.me/Klangwerk/'. $sum, array_values( $sums ) ) );
+check( '...an invoice without a sum to pay has no link: nothing, zero, a credit, a sum that is no number', array_unique( array_map( static fn( mixed $gross ): string => \Crm\Portal::paypalLink( $appData, [ 'gross' => $gross ] ), [ 0, -500, '750', 7.5, null ] ) ) === [ '' ] && \Crm\Portal::paypalLink( $appData, [] ) === '' );
+\Crm\Settings::set( $appData, 'currency', 'CHF' );
+check( '...nor has an invoice in a currency other than the euro; EUR is the euro as well as the sign', \Crm\Portal::paypalLink( $appData, [ 'gross' => 75000 ] ) === '' && \Crm\Settings::set( $appData, 'currency', 'EUR' ) === true && \Crm\Portal::paypalLink( $appData, [ 'gross' => 75000 ] ) === 'https://paypal.me/Klangwerk/750.00EUR' );
+\Crm\Settings::set( $appData, 'currency', '€' );
+$evilNames = [ 'Evil<b>', 'a/b', 'x"onmouseover="y', 'a b', str_repeat( 'a', 21 ), 'https://evil.example/x', "Da\0vid", '..', 'a?b=c', 'ä', "a\nb", 'Klang-werk', '[[/project/company/general/name]]', 'x&y' ];
+$linksFor = static function( string $name ) use ( &$appData ): array {
+	Db::exec( $appData, 'UPDATE settings SET value = :value WHERE key = \'paypal\'', [ 'value' => $name ] );
+	$html = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
+
+	return [ \Crm\Portal::paypalLink( $appData, [ 'gross' => 75000 ] ), str_contains( $html, 'paypal.me' ), portalFind( $html, '//div[contains(@class, "crm-pay__fact--paypal")]' ) === [] ];
+};
+check( '...the link is made of the checked name only: whatever else the table holds - a tag, a slash, a quote, a blank, twenty-one characters, an address, a null byte, a dot, a query, an umlaut, a line break, a hyphen, a fill, an ampersand - gives no link and no row, in the page as in the function', array_filter( $evilNames, static fn( string $name ): bool => $linksFor( $name ) !== [ '', false, true ] ) === [] );
+\Crm\Settings::set( $appData, 'paypal', '' );
+$noPaypal = \Nino\Html::renderHtml( $appData, '[crm-documents]' );
+check( '...without the name there is no PayPal row, no link to paypal.me and no sentence: the block is what it was', $factNamesOf( $blockOf( $noPaypal, $invFuture['id'] ) ) === [ 'amount', 'to', 'bank', 'iban', 'purpose' ] && str_contains( $noPaypal, 'paypal' ) === false );
+\Crm\Settings::set( $appData, 'paypal', 'Klangwerk' );
+\Crm\Settings::set( $appData, 'bank_name', '' );
+\Crm\Settings::set( $appData, 'iban', '' );
+$weird = [ 'category' => 'invoice', 'number' => 'R<b>1</b> [[/project/company/general/name]] "q" [members-name]', 'gross' => 75000 ];
+$weirdBlock = \Nino\Html::renderHtml( $appData, \Crm\Portal::payBlock( $appData, $weird ) );
+check( 'the number of the invoice enters the block as text, in the purpose and in the sentence beside the button: no <b> of it, no fill of the page, no shortcode', portalFind( $weirdBlock, '//b' ) === [] && str_contains( $weirdBlock, 'R&lt;b&gt;1&lt;/b&gt; &#91;&#91;/project/company/general/name]] &quot;q&quot; &#91;members-name]' ) === true && substr_count( $weirdBlock, 'R&lt;b&gt;1' ) === 2 && str_contains( $weirdBlock, 'Studio' ) === false
+	&& portalFind( $weirdBlock, '//a/@href' )[0]->nodeValue === 'https://paypal.me/Klangwerk/750.00EUR' );
+\Crm\Settings::set( $appData, 'paypal', '' );
+check( '...and with neither a bank nor an IBAN nor a name there is no block at all', \Crm\Portal::payBlock( $appData, $weird ) === '' );
 foreach( $settingsWere as $key => $value )
 	\Crm\Settings::set( $appData, $key, $value );
+\Crm\Settings::set( $appData, 'paypal', '' );
 
 // the offers in the list of documents: a row that unfolds to its card, folded unless the address names it
 $offerRowOf = static fn( string $html, int $id ): array => portalFind( $html, '//li[@data-document="'. $id. '"]/details[contains(@class, "crm-documents__fold")]' );
@@ -3756,6 +3799,259 @@ check( '...its log line names the document and the project and no address', \Crm
 // the words
 $wordsLocked = [ '[[/project/crm-portal/projects/files-locked]]', '[[/project/crm-portal/projects/files-waiting]]', '[[/project/crm-portal/projects/files-waiting-next]]', '[[/project/crm-portal/files/locked]]' ];
 check( 'the new words are in German and English', array_diff( $wordsLocked, array_keys( $wordsDe ), array_keys( $wordsEn ) ) === [] && array_filter( $wordsLocked, static fn( string $key ): bool => trim( $wordsDe[$key] ) === '' || trim( $wordsEn[$key] ) === '' ) === [] );
+
+// --- Abnahme: the customer accepts a project, POST /.crm/abnahme ------------------------------------------------------------
+
+/**
+ *	The checks of the approval of a project
+ */
+function portalApprovalChecks( array &$appData, array $a, array $b, array $accounts, array $stray, array $owner, array $invoiceA, string $p1, string $p4, string $today, string $store, array $wordsDe, array $wordsEn, \Closure $hold, \Closure $reset, \Closure $asAdmin, \Closure $asVisitor, \Closure $put, \Closure $made, \Closure $final, \Closure $line, \Closure $ago, \Closure $recordsOf, \Closure $location ): void {
+
+	echo "\nAbnahme and POST /.crm/abnahme\n";
+
+	$hold();
+	$reset();
+	$asAdmin();
+	\Nino\Html::addFills( $appData, [ '[[/project/company/general/name]]' => 'Studio &lt;Eins&gt; &amp; Co [members-name]' ], '*' );
+	$folderV = $store::addFolder( $appData, $a['group'], 'Abnahme' );
+	$vMix = $put( $folderV, 'Mix.wav', 'wav', 'audio/wav', true, $owner, $ago( 7200 ) );
+	$vDoc = $put( $folderV, 'Titel <b>Zwei</b> [[/project/company/general/name]]'. "\0". '.pdf', 'pdf', 'application/pdf', true, $owner, $ago( 7100 ) );
+	$vHidden = $put( $folderV, 'Intern.txt', 'txt', 'text/plain', false, $owner, $ago( 7000 ) );
+	$vTitle = '<b>Abnahme</b> [crm-client] [[/project/company/general/name]]'. "\0". ' Ende';
+	$pV = $made( $vTitle, $a['number'], [ 'folder' => $folderV['id'] ] );
+	$folderVEmpty = $store::addFolder( $appData, $a['group'], 'Leer' );
+	$pVEmpty = $made( 'Ohne Dateien', $a['number'], [ 'folder' => $folderVEmpty['id'] ] );
+	$folderVDone = $store::addFolder( $appData, $a['group'], 'Fertig' );
+	$put( $folderVDone, 'Fertig.wav', 'wav', 'audio/wav', true, $owner, $ago( 7000 ) );
+	$pVDone = $made( 'Fertig', $a['number'], [ 'folder' => $folderVDone['id'], 'done' => true ] );
+	$folderVWait = $store::addFolder( $appData, $a['group'], 'Wartet' );
+	$put( $folderVWait, 'Wartet.wav', 'wav', 'audio/wav', true, $owner, $ago( 7000 ) );
+	$pVWait = $made( 'Wartet', $a['number'], [ 'folder' => $folderVWait['id'] ] );
+	$offerVWait = $final( 'offer', $a['id'], [ 'date' => $today, 'valid_until' => '2099-12-31', 'project' => $pVWait, 'template_key' => 'angebot', 'lines' => [ $line( 'Wartet' ) ] ] );
+	Documents::release( $appData, $offerVWait['id'], false );
+	$folderVBen = $store::addFolder( $appData, $b['group'], 'Bens Abnahme' );
+	$put( $folderVBen, 'Ben.wav', 'wav', 'audio/wav', true, $owner, $ago( 7000 ) );
+	$pVBen = $made( 'Bens Projekt', $b['number'], [ 'folder' => $folderVBen['id'] ] );
+	$pVMixed = $made( 'Bens Projekt im Ordner von Anna', $b['number'], [ 'folder' => $folderV['id'] ] );
+	$vPage = '/portal/projekte?projekt='. $pV;
+	$vBlock = static fn( string $html ): array => portalFind( $html, '//section[contains(@class, "crm-project__section--files")]//div[@id="abnahme"]' );
+	$vSentence = 'Ich habe die Dateien geprüft und nehme das Projekt '. str_replace( "\0", '', $vTitle ). ' in diesem Stand ab.';
+	$vMails = static fn(): array => array_values( array_filter( portalMailsFrom( 0 ), static fn( array $mail ): bool => str_starts_with( (string) ( $mail['subject'] ?? '' ), 'Projekt abgenommen:' ) ) );
+	$vApprovals = static fn(): array => $recordsOf( $a['id'], 'approval' );
+	$vProject = static fn(): array => (array) \Crm\Projekte::get( $appData, $pV );
+	$vShownOf = static function( string $id ) use ( &$appData ): string {
+		$project = (array) \Crm\Projekte::get( $appData, $id );
+
+		return \Crm\Records::approvalShown( $project, (array) \Crm\Portal\Projects::visibleOf( $appData, $project ), \Crm\Portal\Approval::sentence( $appData, $project ) );
+	};
+	$vFiles = static fn(): array => (array) \Crm\Portal\Projects::visibleOf( $appData, $vProject() );
+	$vShown = static function() use ( &$appData, $vProject, $vFiles ): string {
+		$project = $vProject();
+
+		return \Crm\Records::approvalShown( $project, $vFiles(), \Crm\Portal\Approval::sentence( $appData, $project ) );
+	};
+	$vAge = static function( int $id, int $seconds ) use ( &$appData ): void {
+		Db::exec( $appData, 'UPDATE records SET at = :at WHERE id = :id', [ 'at' => gmdate( 'Y-m-d\TH:i:s\Z', time() - $seconds ), 'id' => $id ] );
+	};
+	portalSignIn( $appData, $accounts['anna'] );
+	check( 'the fixtures: a project with two files for the member and one hidden, one without a file, a done one, one whose offer waits, and a project of another client', count( $vFiles() ) === 2 && \Crm\Projekte::get( $appData, $pVDone )['done'] === true && \Crm\Projekte::waiting( $appData, $pVWait, $a['id'] ) !== null && $vApprovals() === []
+		&& \Crm\Projekte::get( $appData, $pVBen )['client'] === $b['number'] && \Crm\Portal\Projects::visibleOf( $appData, $vProject() ) !== null );
+
+	// the block while the project can be approved
+	$form = $vBlock( portalPage( $appData, $vPage. '&tab=dateien' )[1] );
+	$formHtml = portalPage( $appData, $vPage. '&tab=dateien' )[1];
+	check( 'under the list of files of an open project stands the block Abnahme: the form with the token, the project, the hash of what it shows and the box - required - with the sentence as its label, the title as text', count( $form ) === 1 && portalFind( $formHtml, '//div[@id="abnahme"]//form[contains(@class, "crm-approval__form")]/@action' )[0]->nodeValue === '/.crm/abnahme'
+		&& portalFind( $formHtml, '//div[@id="abnahme"]//input[@name="_csrf"]/@value' )[0]->nodeValue === \Nino\Csrf::getToken( $appData ) && portalFind( $formHtml, '//div[@id="abnahme"]//input[@name="project"]/@value' )[0]->nodeValue === $pV
+		&& portalFind( $formHtml, '//div[@id="abnahme"]//input[@name="shown"]/@value' )[0]->nodeValue === hash( 'sha256', $vShown() ) && portalFind( $formHtml, '//div[@id="abnahme"]//input[@type="checkbox"][@name="agree"][@required][@value="1"]' ) !== []
+		&& portalText( $formHtml, '//div[@id="abnahme"]//label' ) === $vSentence && portalFind( $formHtml, '//div[@id="abnahme"]//button[@type="submit"][contains(@class, "crm-btn--primary")]' ) !== [] && portalFind( $formHtml, '//div[@id="abnahme"]//form[contains(@class, "nino-form")]' ) === [] );
+	check( '...it stands after the table of the files, in the section Dateien and nowhere else: no form on the other tabs, none in the list of the projects', portalFind( $formHtml, '//section[contains(@class, "crm-project__section--files")]//div[contains(@class, "crm-files")]/following-sibling::div[@id="abnahme"]' ) !== [] && count( portalFind( $formHtml, '//form[contains(@class, "crm-approval__form")]' ) ) === 1
+		&& portalFind( portalPage( $appData, '/portal/projekte' )[1], '//form[contains(@class, "crm-approval__form")]' ) === [] && portalFind( portalPage( $appData, '/portal/belege' )[1], '//form[contains(@class, "crm-approval__form")]' ) === [] );
+	check( '...the title and the names of the files are text on the page: no <b> of them, no shortcode, no fill of the page, and the null byte of a title is not in the block', portalFind( $formHtml, '//div[@id="abnahme"]//b' ) === [] && str_contains( $formHtml, '&lt;b&gt;Abnahme&lt;/b&gt; &#91;crm-client] &#91;&#91;/project/company/general/name]]' ) === true && str_contains( $form[0]->ownerDocument->saveHTML( $form[0] ), "\0" ) === false && str_contains( $formHtml, 'Titel <b>Zwei' ) === false
+		&& str_contains( $form[0]->ownerDocument->saveHTML( $form[0] ), 'Studio' ) === false );
+	check( '...what the form shows is the JSON of the project and its files: the two the member sees, the hidden one not', array_column( (array) json_decode( $vShown(), true )['files'], 'name' ) === [ 'Mix.wav', 'Titel <b>Zwei</b> [[/project/company/general/name]]'. "\0". '.pdf' ] && json_decode( $vShown(), true )['project'] === [ 'id' => $pV, 'title' => $vTitle ] && str_contains( $vShown(), "\0" ) === false && str_contains( $vShown(), '\u0000' ) === true
+		&& json_decode( $vShown(), true )['files'][0] === [ 'name' => 'Mix.wav', 'size' => 6, 'sha256' => hash( 'sha256', 'abcdef' ), 'date' => gmdate( 'Y-m-d', time() - 7200 ) ] );
+
+	// where there is no block
+	$none = [
+		'a project without a file'          => $pVEmpty,
+		'a project that is done'            => $pVDone,
+		'a project whose offer waits'       => $pVWait,
+		'a project without a folder'        => $p4,
+	];
+	foreach( $none as $why => $project )
+		check( '...no form for '. $why. ', and no block at all', portalFind( portalPage( $appData, '/portal/projekte?projekt='. $project. '&tab=dateien' )[1], '//div[@id="abnahme"] | //form[contains(@class, "crm-approval__form")]' ) === [] );
+
+	$vClient = (array) \Crm\Clients::get( $appData, $a['id'] );
+	$vWaiting = \Crm\Portal\Approval::standing( $appData, $vClient, (array) \Crm\Projekte::get( $appData, $pVWait ), $vFiles() );
+	check( 'the offer that waits closes the approval of itself, whatever the files say: the standing of that project with files in hand is not open', $vWaiting['files'] !== [] && $vWaiting['open'] === false );
+	check( '...the same files in the standing of a project nobody waits for are open', \Crm\Portal\Approval::standing( $appData, $vClient, $vProject(), $vFiles() )['open'] === true );
+
+	check( '...a project of another client is the list with the sentence that it is unknown', portalFind( portalPage( $appData, '/portal/projekte?projekt='. $pVBen. '&tab=dateien' )[1], '//div[@id="abnahme"] | //form[contains(@class, "crm-approval__form")] | //article[contains(@class, "crm-project")]' ) === [] );
+
+	// the post that is refused
+	$apPost = static function( array $over = [], array $server = [] ) use ( &$appData, $pV, $vShown ): array {
+
+		$post = $over + [ 'project' => $pV, 'agree' => '1' ];
+
+		// The form carries the hash of the files as it showed them: a post that does not say otherwise is the post of a form that showed the project of now
+		if( array_key_exists( 'shown', $post ) === true && $post['shown'] === null )
+			unset( $post['shown'] );
+		elseif( array_key_exists( 'shown', $post ) === false )
+			$post['shown'] = $post['project'] === $pV ? hash( 'sha256', $vShown() ) : hash( 'sha256', 'x' );
+
+		return portalServe( $appData, '/.crm/abnahme', 'POST', $post, $server );
+	};
+	$vLocation = static fn( string $state, string $project = '' ): string => '/portal/projekte?projekt='. ( $project === '' ? $pV : $project ). '&tab=dateien&state='. $state. '#abnahme';
+	$vUntouched = static fn(): bool => $vApprovals() === [] && $vMails() === [];
+	$asVisitor();
+	check( 'a visitor posting the form is answered 404', $apPost()['statusCode'] === 404 && $vUntouched() );
+	portalSignIn( $appData, $stray );
+	check( '...so is a member of no client', $apPost()['statusCode'] === 404 && $vUntouched() && portalServe( $appData, '/.crm/abnahme', 'GET' )['statusCode'] !== 200 );
+	portalSignIn( $appData, $accounts['anna'] );
+	$vRefusals = [
+		'a token that is not the session\'s'        => [ [ '_csrf' => 'wrong' ], $vLocation( 'expired' ) ],
+		'a box that is not ticked'                  => [ [ 'agree' => '' ], $vLocation( 'unchecked' ) ],
+		'a box sent as anything but 1'              => [ [ 'agree' => 'on' ], $vLocation( 'unchecked' ) ],
+		'files that are not the ones the form showed' => [ [ 'shown' => hash( 'sha256', 'andere Dateien' ) ], $vLocation( 'changed' ) ],
+		'a form without the hash'                   => [ [ 'shown' => '' ], $vLocation( 'changed' ) ],
+		'a post without the field at all'           => [ [ 'shown' => null ], $vLocation( 'changed' ) ],
+		'a project of another client'               => [ [ 'project' => $pVBen ], $vLocation( 'invalid', $pVBen ) ],
+		'a project of another client whose folder is the member\'s' => [ [ 'project' => $pVMixed, 'shown' => hash( 'sha256', $vShownOf( $pVMixed ) ) ], $vLocation( 'invalid', $pVMixed ) ],
+		'a project that is not there'               => [ [ 'project' => '99999' ], $vLocation( 'invalid', '99999' ) ],
+		'a project that is done'                    => [ [ 'project' => $pVDone ], $vLocation( 'invalid', $pVDone ) ],
+		'a project without a file'                  => [ [ 'project' => $pVEmpty ], $vLocation( 'invalid', $pVEmpty ) ],
+		'a project whose offer waits'               => [ [ 'project' => $pVWait ], $vLocation( 'invalid', $pVWait ) ],
+		'a project without a folder'                => [ [ 'project' => $p4 ], $vLocation( 'invalid', $p4 ) ],
+		'a project that is no id'                   => [ [ 'project' => '../x' ], '/portal/projekte?state=invalid' ],
+		'a list as the project'                     => [ [ 'project' => [ $pV ] ], '/portal/projekte?state=invalid' ],
+		'no project'                                => [ [ 'project' => '' ], '/portal/projekte?state=invalid' ],
+	];
+
+	foreach( $vRefusals as $why => [ $over, $where ] ) {
+		$answer = $apPost( $over );
+		check( 'refused - '. $why. ': 303 to '. $where. ', nothing is kept, nobody is mailed', $answer['statusCode'] === 303 && $location( $answer ) === $where && $vUntouched() );
+	}
+
+	// the state is said above the block, on the tab Dateien; the states of the order stand on the tab Angebot, not there
+	$pStates = portalPage( $appData, $vPage. '&tab=dateien&state=unchecked' )[1];
+	check( 'a state of the query is said above the block as a note - an alert for a refusal, a status for the approval - and a state that is none says nothing', portalFind( $pStates, '//div[@id="abnahme"]/p[@id="crm-approval-state"][@role="alert"][contains(@class, "crm-approval__state--unchecked")]' ) !== []
+		&& portalFind( portalPage( $appData, $vPage. '&tab=dateien&state=approved' )[1], '//div[@id="abnahme"]/p[@id="crm-approval-state"][@role="status"][contains(@class, "crm-approval__state--approved")]' ) !== [] && portalFind( portalPage( $appData, $vPage. '&tab=dateien&state=bogus' )[1], '//p[@id="crm-approval-state"]' ) === []
+		&& portalFind( portalPage( $appData, $vPage. '&tab=dateien&state=ordered' )[1], '//p[@id="crm-approval-state"]' ) === [] );
+	check( '...the same word on another tab is the order\'s: the tab Dateien shows no note of the order, the tab Angebot none of the approval', portalFind( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&tab=dateien&state=invalid' )[1], '//p[contains(@class, "crm-order__state")]' ) === [] && portalFind( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&tab=angebot&state=invalid' )[1], '//p[contains(@class, "crm-order__state")]' ) !== []
+		&& portalFind( portalPage( $appData, $vPage. '&tab=angebot&state=invalid' )[1], '//p[@id="crm-approval-state"]' ) === [] );
+
+	// a file that came in between: the form of the old page is the old list
+	$formShown = hash( 'sha256', $vShown() );
+	$vLate = $put( $folderV, 'Dazwischen.wav', 'wav', 'audio/wav', true, $owner, $ago( 1000 ) );
+	$answer = $apPost( [ 'shown' => $formShown ] );
+	check( 'a file that came into the folder after the page was drawn is ?state=changed: the form of the old list approves nothing - and the page now shows the list as it is, with a new hash', $location( $answer ) === $vLocation( 'changed' ) && $vUntouched() && portalFind( portalPage( $appData, $vPage. '&tab=dateien' )[1], '//input[@name="shown"]/@value' )[0]->nodeValue !== $formShown && count( $vFiles() ) === 3 );
+
+	// the approval
+	$reset();
+	$beforeMails = count( portalMailsFrom( 0 ) );
+	$vAgent = 'Browser/1.0 (Abnahme)';
+	$approved = $apPost( [], [ 'HTTP_USER_AGENT' => $vAgent ] );
+	$vRecords = $vApprovals();
+	check( 'the approval: ?state=approved on the tab Dateien of the project, and one record of kind approval is kept', $approved['statusCode'] === 303 && $location( $approved ) === $vLocation( 'approved' ) && count( $vRecords ) === 1 && $vRecords[0]['kind'] === 'approval' );
+	check( '...the record names the project and no document, the account as it was, the client, the time, the address and the browser; the project is not done - that stays the owner\'s step', $vRecords[0]['project'] === $pV && $vRecords[0]['document_id'] === null && $vRecords[0]['client_id'] === $a['id'] && $vRecords[0]['member_id'] === $accounts['anna']['id'] && $vRecords[0]['member_email'] === 'anna@example.org' && $vRecords[0]['member_name'] === 'Anna Nord'
+		&& substr( $vRecords[0]['at'], 0, 10 ) === gmdate( 'Y-m-d' ) && $vRecords[0]['ip'] === '127.0.0.1' && $vRecords[0]['agent'] === $vAgent && \Crm\Projekte::get( $appData, $pV )['done'] === false && \Crm\Records::approval( $appData, $pV ) === $vRecords[0] );
+	$vJson = (array) json_decode( $vRecords[0]['shown'], true );
+	check( '...what the customer was shown is kept with its hash: the project, the three files with name, size, SHA-256 and day, and the sentence as read - the text can be made again from the same files', $vRecords[0]['sha256'] === hash( 'sha256', $vRecords[0]['shown'] ) && $vJson['project'] === [ 'id' => $pV, 'title' => $vTitle ] && count( $vJson['files'] ) === 3 && $vJson['files'][0]['name'] === 'Dazwischen.wav' && $vJson['sentence'] === $vSentence
+		&& $vShown() === $vRecords[0]['shown'] && str_contains( $vRecords[0]['shown'], "\0" ) === false );
+	$ownerMails = $vMails();
+	$vSubject = 'Projekt abgenommen: '. $pV. ' '. str_replace( "\0", ' ', $vTitle ). ' von Kunde K-0001 '. ( \Crm\Clients::get( $appData, $a['id'] )['company'] ). ' durch Anna Nord';
+	check( 'one mail goes out, to the owner: "Projekt abgenommen: <id and title> von Kunde <number and company> durch <account>" - a title without its null byte -, the reply to the account; none to the customer', count( $ownerMails ) === 1 && count( portalMailsFrom( $beforeMails ) ) === 1 && ( $ownerMails[0]['to'] ?? '' ) === 'owner@example.org' && ( $ownerMails[0]['replyTo'] ?? '' ) === 'anna@example.org'
+		&& preg_replace( '/\s+/', ' ', (string) $ownerMails[0]['subject'] ) === preg_replace( '/\s+/', ' ', $vSubject ) && str_contains( (string) $ownerMails[0]['subject'], "\0" ) === false && array_filter( portalMailsFrom( 0 ), static fn( array $mail ): bool => ( $mail['to'] ?? '' ) === 'anna@example.org' && str_contains( (string) ( $mail['subject'] ?? '' ), 'abgenommen' ) ) === [] );
+	$vBody = (string) $ownerMails[0]['body'];
+	check( '...its body names the project, the client, the number of files and the account, links to the card of the project in the surface (#projekt-<id>), and every value is text: no <b>, no fill, no shortcode, no null byte, nothing of a template left', str_contains( $vBody, 'href="https://example.org/club/crm#projekt-'. $pV. '"' ) === true && str_contains( $vBody, 'K-0001' ) === true && str_contains( $vBody, 'Dateien: 3' ) === true && str_contains( $vBody, 'anna@example.org' ) === true
+		&& portalFind( $vBody, '//b' ) === [] && str_contains( $vBody, '&lt;b&gt;Abnahme&lt;/b&gt;' ) === true && str_contains( $vBody, "\0" ) === false && str_contains( $vBody, '[[' ) === false && str_contains( $vBody, 'Studio' ) === false && preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', strip_tags( $vBody ) ) !== 1 );
+
+	// the page after it
+	$after = portalPage( $appData, $vPage. '&tab=dateien' )[1];
+	$doneLine = portalFind( $after, '//div[@id="abnahme"]/p[contains(@class, "crm-approval__done")]' );
+	check( 'after the approval the block says when and by whom - the icon of a check, the day as a time element, the name as text - and has no form', count( $doneLine ) === 1 && portalFind( $after, '//div[@id="abnahme"]/p[contains(@class, "crm-approval__done")]/svg' ) !== [] && portalFind( $after, '//div[@id="abnahme"]//time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' )
+		&& portalText( $after, '//div[@id="abnahme"]//span[contains(@class, "crm-approval__who")]' ) === 'Anna Nord' && portalFind( $after, '//form[contains(@class, "crm-approval__form")]' ) === [] && str_contains( $doneLine[0]->getAttribute( 'class' ), 'crm-note--success' ) === true );
+	check( '...the head of the page carries the badge abgenommen beside the state - and a project nobody approved does not', portalFind( portalPage( $appData, $vPage )[1], '//*[contains(@class, "crm-head__badge")]/*[contains(@class, "crm-head__approved")]' ) !== [] && portalFind( portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1], '//*[contains(@class, "crm-head__approved")]' ) === []
+		&& portalFind( portalPage( $appData, $vPage )[1], '//*[contains(@class, "crm-head__badge")]/*[contains(@class, "crm-head__state")]' ) !== [] );
+	$again = $apPost();
+	check( 'a second approval with no file since is refused: ?state=invalid, nothing new is kept, nobody is mailed again', $location( $again ) === $vLocation( 'invalid' ) && count( $vApprovals() ) === 1 && count( $vMails() ) === 1 );
+	$double = $apPost( [ 'shown' => hash( 'sha256', $vShown() ) ] );
+	check( '...nor does a second click on the old form: the same', $location( $double ) === $vLocation( 'invalid' ) && count( $vApprovals() ) === 1 );
+
+	// a new file: the second approval (the first one is some minutes old by now, the file is younger than it)
+	$vAge( $vRecords[0]['id'], 500 );
+	$vNew = $put( $folderV, 'Nachtrag.wav', 'wav', 'audio/wav', true, $owner, $ago( 100 ) );
+	$news = portalPage( $appData, $vPage. '&tab=dateien' )[1];
+	check( 'a file that came into the folder after the approval brings the form back under the line, with the sentence that there are new files - the old line stays', portalFind( $news, '//div[@id="abnahme"]/p[contains(@class, "crm-approval__done")]' ) !== [] && count( portalFind( $news, '//div[@id="abnahme"]/form[contains(@class, "crm-approval__form")]' ) ) === 1 && portalFind( $news, '//form[contains(@class, "crm-approval__form")]//p[contains(@class, "crm-approval__news")]' ) !== []
+		&& portalFind( $news, '//div[@id="abnahme"]/p[contains(@class, "crm-approval__done")]/following-sibling::form' ) !== [] && portalFind( $news, '//input[@name="shown"]/@value' )[0]->nodeValue === hash( 'sha256', $vShown() ) );
+	check( '...a file the member cannot see does not bring it back: the hidden file of the owner, a file that was removed from the server', portalFind( $after, '//p[contains(@class, "crm-approval__news")]' ) === [] );
+	$second = $apPost();
+	$vRecords = $vApprovals();
+	check( 'the second approval is a record of its own - the newest first - with the four files; the first is as it was; the owner is mailed again', $location( $second ) === $vLocation( 'approved' ) && count( $vRecords ) === 2 && count( (array) json_decode( $vRecords[0]['shown'], true )['files'] ) === 4 && count( (array) json_decode( $vRecords[1]['shown'], true )['files'] ) === 3 && \Crm\Records::approval( $appData, $pV ) === $vRecords[0] && count( $vMails() ) === 2
+		&& portalFind( portalPage( $appData, $vPage. '&tab=dateien' )[1], '//form[contains(@class, "crm-approval__form")]' ) === [] );
+
+	// a file removed from the server is not shown, not counted and not approved
+	$store::removeBytes( $appData, $vNew['id'] );
+	check( '...a file that was removed from the server is left out of the JSON, and a removal does not count as a new file', count( (array) json_decode( $vShown(), true )['files'] ) === 3 && portalFind( portalPage( $appData, $vPage. '&tab=dateien' )[1], '//form[contains(@class, "crm-approval__form")]' ) === [] );
+
+	// the mail that does not go out does not undo the approval
+	$vAge( $vApprovals()[0]['id'], 300 );
+	$vNew2 = $put( $folderV, 'Nachtrag Zwei.wav', 'wav', 'audio/wav', true, $owner, $ago( 50 ) );
+	$reset();
+
+	for( $n = 0; $n < 5; $n++ )
+		Documents::release( $appData, $invoiceA['id'], true );
+
+	$nomail = $apPost();
+	check( 'where the mail to the owner does not go out the approval is kept all the same and the page says so: ?state=nomail', $location( $nomail ) === $vLocation( 'nomail' ) && count( $vApprovals() ) === 3 && portalFind( portalPage( $appData, $vPage. '&tab=dateien&state=nomail' )[1], '//p[@id="crm-approval-state"][@role="status"]' ) !== [] );
+	$reset();
+
+	// a project of another client has its own approvals, and the record is the client's
+	$asVisitor();
+	check( 'the records of the client are its own: Ben has none, and the approval of a project is read for the client that owns it', $recordsOf( $b['id'], 'approval' ) === [] && \Crm\Portal\Approval::approved( $appData, (array) \Crm\Clients::get( $appData, $b['id'] ), $vProject() ) === null && \Crm\Portal\Approval::approved( $appData, (array) \Crm\Clients::get( $appData, $a['id'] ), $vProject() )['id'] === $vApprovals()[0]['id'] );
+	portalSignIn( $appData, $accounts['anna'] );
+
+	// a project that is done after the approval says abgeschlossen and has no form; the head keeps the badge
+	\Nino\Elements::updateElement( $appData, '/projekte/'. $pV, [ 'done' => true ], '*' );
+	unset( $appData['./crm/portal/project'] );
+	$vDone = portalPage( $appData, $vPage. '&tab=dateien' )[1];
+	check( 'a project that the owner finished has no form, however many files came since; the line of the approval stays and so does the badge', portalFind( $vDone, '//form[contains(@class, "crm-approval__form")]' ) === [] && portalFind( $vDone, '//div[@id="abnahme"]/p[contains(@class, "crm-approval__done")]' ) !== [] && portalFind( $vDone, '//*[contains(@class, "crm-head__approved")]' ) !== []
+		&& $location( $apPost() ) === $vLocation( 'invalid' ) );
+	\Nino\Elements::updateElement( $appData, '/projekte/'. $pV, [ 'done' => false ], '*' );
+
+	// two posts of one page: the second looks at the records again inside the write, so that the files it was handed do not approve the project a second time
+	$folderVRace = $store::addFolder( $appData, $a['group'], 'Doppelt' );
+	$vRaceFile = $put( $folderVRace, 'Doppelt.wav', 'wav', 'audio/wav', true, $owner, $ago( 7000 ) );
+	$pVRace = $made( 'Doppelt', $a['number'], [ 'folder' => $folderVRace['id'] ] );
+	$vRace = (array) \Crm\Projekte::get( $appData, $pVRace );
+	// Reflection on the private keep(), against the rule of AGENTS §10: two requests cannot meet inside one process by the public route, where standing() answers the second with invalid before the write; only the write itself shows that it looks again
+	$vKeep = new \ReflectionMethod( \Crm\Portal\Approval::class, 'keep' );
+	$vKeepArgs = [ &$appData, $vClient, $vRace, [ $vRaceFile ], [ 'id' => $accounts['anna']['id'], 'email' => 'anna@example.org', 'name' => 'Anna Nord' ], '{"project":"race"}', [] ];
+	$vFirst = $vKeep->invokeArgs( null, $vKeepArgs );
+	$vSecond = $vKeep->invokeArgs( null, $vKeepArgs );
+	check( 'two posts that both found the project open keep one record: the second is turned away inside the write', is_array( $vFirst ) === true && $vSecond === 'state' );
+	check( '...and the table holds that one record for the project', count( array_filter( $vApprovals(), static fn( array $record ): bool => $record['project'] === $pVRace ) ) === 1 );
+
+	// the names in the subject: no control and no format character, whatever the kernel does with a subject
+	$reset();
+	$vBefore = count( portalMailsFrom( 0 ) );
+	\Crm\Documents\Mail::approved( $appData, [ 'id' => '00099', 'title' => "Ein\x07Zwei\u{202E}Drei\u{200B}Vier" ], [ 'member_name' => "Anna\x1BNord", 'member_email' => 'anna@example.org' ], $vClient, 1 );
+	$vSent = portalMailsFrom( $vBefore );
+	check( 'the mail to the owner takes the title of the project and the name of the account into its subject as one line: a control character, a mark that turns the text round or has no width is a blank', count( $vSent ) === 1 && ( $vSent[0]['subject'] ?? '' ) === 'Projekt abgenommen: 00099 Ein Zwei Drei Vier von Kunde '. $vClient['number']. ' '. $vClient['title']. ' durch Anna Nord' );
+
+	// the words
+	$wordsApproval = array_merge( array_map( static fn( string $name ): string => '[[/project/crm-portal/approval/'. $name. ']]', [ 'heading', 'sentence', 'button', 'done', 'by', 'news', 'state-approved', 'state-nomail', 'state-invalid', 'state-unchecked', 'state-expired', 'state-changed' ] ),
+		[ '[[/project/crm-portal/projects/state-approved]]', '[[/project/crm-portal/pay/paypal]]', '[[/project/crm-portal/pay/paypal-button]]', '[[/project/crm-portal/pay/paypal-purpose]]' ] );
+	check( 'the new words are in German and English, and the sentence of the box and the one beside the button carry their place for the title and for the number', array_diff( $wordsApproval, array_keys( $wordsDe ), array_keys( $wordsEn ) ) === [] && array_filter( $wordsApproval, static fn( string $key ): bool => trim( $wordsDe[$key] ) === '' || trim( $wordsEn[$key] ) === '' ) === []
+		&& str_contains( $wordsDe['[[/project/crm-portal/approval/sentence]]'], '{title}' ) && str_contains( $wordsEn['[[/project/crm-portal/approval/sentence]]'], '{title}' ) && str_contains( $wordsDe['[[/project/crm-portal/pay/paypal-purpose]]'], '{number}' ) && str_contains( $wordsEn['[[/project/crm-portal/pay/paypal-purpose]]'], '{number}' ) );
+	check( '...the states of the approval are the states of the page, each with its word', array_diff( array_keys( \Crm\Portal\Approval::STATES ), array_map( static fn( string $key ): string => substr( $key, strlen( '[[/project/crm-portal/approval/state-' ), -2 ), array_filter( $wordsApproval, static fn( string $key ): bool => str_contains( $key, '/state-' ) && str_contains( $key, '/approval/' ) ) ) ) === [] );
+	check( '...the mail words are German with Du', array_filter( [ 'approval.owner.subject', 'approval.owner.title', 'approval.owner.intro', 'approval.owner.project', 'approval.owner.client', 'approval.owner.files', 'approval.owner.account', 'approval.owner.button', 'approval.owner.notice' ], static fn( string $key ): bool => trim( \Crm\Documents\Mail::text( $key, '', '', '' ) ) === '' ) === [] );
+	check( '...the route is registered once and only for the POST', ( $appData['/nino/http/routes']['POST://.crm/abnahme']['uri'] ?? '' ) === \Crm\Portal\Approval::ROUTE && isset( $appData['/nino/http/routes']['GET://.crm/abnahme'] ) === false );
+}
+
+portalApprovalChecks( $appData, $a, $b, $accounts, $stray, $owner, $invoiceA, $p1, $p4, $today, $store, $wordsDe, $wordsEn, $hold, $reset, $asAdmin, $asVisitor, $put, $made, $final, $line, $ago, $recordsOf, $location );
+
+$resume();
 
 // The rest of the suite runs as it did before: Review and Events off
 foreach( [ 'events', 'review' ] as $key )

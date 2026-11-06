@@ -1564,6 +1564,29 @@ body:has(.crm-bar) .crm-offer {
 	font-size: var(--crm-text-l);
 }
 
+.crm-pay__fact--paypal {
+	grid-column: 1 / -1;
+}
+
+.crm-pay__fact--paypal dd {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--crm-2) var(--crm-4);
+}
+
+.crm-pay__hint {
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	font-weight: 400;
+}
+
+.crm-pay__number {
+	font-family: var(--fontfamily-code);
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
 /*	The facts of a stacked line are one line of words; a dot stands behind a fact that another follows, so that a line that breaks never
 	begins with one	*/
 @media (max-width: 1023.98px) {
@@ -1841,6 +1864,48 @@ body:has(.crm-bar) .crm-offer {
 
 .crm-order--privacy .crm-note__text {
 	flex: 1 1 14rem;
+}
+
+/*	11 Parts - the approval	*/
+
+.crm-approval {
+	margin: var(--crm-5) 0 0;
+}
+
+.crm-approval__heading {
+	margin: 0 0 var(--crm-3);
+	color: var(--crm-ink);
+	font-size: var(--crm-text-m);
+	font-weight: 600;
+}
+
+.crm-approval__state,
+.crm-approval__done {
+	margin: 0 0 var(--crm-3);
+	scroll-margin-top: var(--crm-5);
+}
+
+.crm-approval__form {
+	margin: 0;
+	padding: var(--crm-4) var(--crm-5);
+}
+
+.crm-approval__news {
+	margin: 0 0 var(--crm-3);
+	color: var(--crm-ink);
+	font-weight: 600;
+}
+
+.crm-approval__field {
+	margin: 0 0 var(--crm-2);
+}
+
+.crm-approval__sentence {
+	overflow-wrap: anywhere;
+}
+
+.crm-approval__actions {
+	margin: 0;
 }
 
 /*	11 Parts - the files	*/
@@ -3182,6 +3247,7 @@ a.crm-nav__link[aria-current="page"] .crm-icon {
 	.crm-data__also,
 	.crm-order--form,
 	.crm-order--privacy,
+	.crm-approval__form,
 	.files-upload.crm-upload,
 	.crm-project__nav,
 	.crm-kpis {

@@ -16,7 +16,7 @@ declare(strict_types=1);
  *
  *												The files are the owner's to give: while an offer of the project waits for the order (Projekte::waiting()) the tab Dateien is a note that
  *												leads to the offer - no list, no player, no count -, and while the download of the project is not switched on the list says it is for
- *												listening and its rows have no download (Portal\Files).
+ *												listening and its rows have no download (Portal\Files). Under the list of files stands the block Abnahme (Portal\Approval).
  *
  *												Nothing here is stored or sent, and every value enters the markup escaped. A project of another client and an id that is none
  *												are the list with a sentence that the project is unknown. The player of Review returns to the page it stands on without the
@@ -408,10 +408,26 @@ class Projects {
 				}
 
 		return [ Portal::render( 'project-files', [
-			'[[note]]'   => $project['download'] === true ? '' : Portal::render( 'note', [ '[[classes]]' => 'crm-project__locked', '[[tone]]' => 'info', '[[role]]' => 'note', '[[icon]]' => 'lock', '[[text]]' => '[[/project/crm-portal/projects/files-locked]]' ] ),
-			'[[player]]' => $player,
-			'[[rows]]'   => Files::titles( $appData, $files, $page. '?projekt='. rawurlencode( $project['id'] ). '&review=', $playing, $project['download'] ),
+			'[[note]]'     => $project['download'] === true ? '' : Portal::render( 'note', [ '[[classes]]' => 'crm-project__locked', '[[tone]]' => 'info', '[[role]]' => 'note', '[[icon]]' => 'lock', '[[text]]' => '[[/project/crm-portal/projects/files-locked]]' ] ),
+			'[[player]]'   => $player,
+			'[[rows]]'     => Files::titles( $appData, $files, $page. '?projekt='. rawurlencode( $project['id'] ). '&review=', $playing, $project['download'] ),
+			'[[approval]]' => Approval::block( $appData, $client, $project, $files, \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) ) ),
 		] ), count( $files ) ];
+	}
+
+	/**
+	 *	The files of the folder of a project that the member signed in may see: what the page of the project lists and what an approval is of
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$project			As Projekte::get() has it
+	 *
+	 *	@return 	array|null								As Files::files() has them; null where the project has no folder of the member's group or Files is off
+	 */
+	public static function visibleOf( array &$appData, array $project ): ?array {
+
+		$folder = self::folder( $appData, $project );
+
+		return $folder === null ? null : Files::visible( $appData, $folder['id'] );
 	}
 
 	/**

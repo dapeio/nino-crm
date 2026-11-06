@@ -1,0 +1,1 @@
+<div class="crm-pay__fact crm-pay__fact--paypal"><dt>[[/project/crm-portal/pay/paypal]]</dt><dd><a class="crm-btn crm-btn--secondary crm-pay__paypal" href="[[link]]" target="_blank" rel="noopener noreferrer">[[icon:external-link]]<span>[[/project/crm-portal/pay/paypal-button]]</span></a><span class="crm-pay__hint">[[purpose]]</span></dd></div>

@@ -287,7 +287,7 @@ class Projekte {
 	}
 
 	/**
-	 *	The veto of the kernel for a delete in the type /projekte ('/nino/elements/delete/projekte'): a project that a document names is not deleted - in the
+	 *	The veto of the kernel for a delete in the type /projekte ('/nino/elements/delete/projekte'): a project that a document names or that a customer approved is not deleted - in the
 	 *	Elements panel of the workbench as in the surface, and anywhere else. The kernel hands over the type file as it will be written; what is gone from it is
 	 *	what is being deleted
 	 *
@@ -308,6 +308,12 @@ class Projekte {
 
 				if( self::documentsOf( $appData, (string) $id ) > 0 ) {
 					trigger_error( 'Documents name the project '. $id. '.' );
+					return false;
+				}
+
+				// The approval of a customer is evidence that names the project: the project stays as long as the record does
+				if( Records::approval( $appData, (string) $id ) !== null ) {
+					trigger_error( 'The customer approved the project '. $id. '.' );
 					return false;
 				}
 			}

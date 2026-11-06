@@ -1589,6 +1589,10 @@ check( '...and the client of the project does not change then: 409 crm_project_c
 [ $status, $answer ] = surfaceApi( $appData, 'elements/delete', [ 'type' => 'projekte', 'uri' => '00001' ] );
 check( 'a project that a document names is not deleted: 409 crm_project_documents with the count - the element is there, and nothing was asked of the panel', $status === 409 && $answer['code'] === 'crm_project_documents' && $answer['params'] === [ 1 ] && array_keys( $answer ) === [ 'error', 'code', 'params' ] && \Crm\Projekte::get( $appData, '00001' ) !== null && $lines( 'Delete Element /projekte/00001' ) === 0 );
 check( '...a client without a document of its own may change on a project that has none', surfaceApi( $appData, 'elements/save', [ 'fields' => [ 'title' => 'Zweites', 'client' => $b['number'] ] ] + $project )[0] === 200 && surfaceApi( $appData, 'elements/save', [ 'uri' => '00002', 'isNew' => false, 'fields' => [ 'client' => $a['number'] ] ] + $project )[0] === 200 && \Crm\Projekte::get( $appData, '00002' )['client'] === $a['number'] );
+$approvedVeto = \Crm\Records::add( $appData, [ 'kind' => 'approval', 'client_id' => $a['id'], 'member' => [ 'id' => 'aaaaaaaaaaaa', 'email' => 'anna@studio-nord.example', 'name' => 'Anna Nord' ], 'project' => '00002', 'shown' => 'x' ] );
+[ $status, $answer ] = surfaceApi( $appData, 'elements/delete', [ 'type' => 'projekte', 'uri' => '00002' ] );
+check( 'a project the customer approved is not deleted: 409 crm_project_approved with its own code - the element is there, and nothing was asked of the panel', is_array( $approvedVeto ) && $status === 409 && $answer['code'] === 'crm_project_approved' && array_keys( $answer ) === [ 'error', 'code' ] && \Crm\Projekte::get( $appData, '00002' ) !== null && $lines( 'Delete Element /projekte/00002' ) === 0 );
+\Crm\Db::exec( $appData, 'DELETE FROM records WHERE kind = \'approval\' AND project = \'00002\'' );
 // The same three rules in the workbench's own panel: the kernel's vetoes, not the endpoint's check
 [ $status, ] = ninoCall( $appData, [ \Nino\Modules\Elements\Admin::class, 'apiDelete' ], [ 'type' => 'projekte', 'uri' => '00001' ], 'elements/delete' );
 check( 'the Elements panel of the workbench does not delete a project that a document names either: not 200, the project is there', $status !== 200 && $status !== 403 && \Crm\Projekte::get( $appData, '00001' ) !== null );
@@ -1659,6 +1663,48 @@ check( 'a project nobody has is 404 crm_projekte_unknown at the field id, as is 
 	&& surfaceApi( $appData, 'crm-projekte/download', [ 'id' => '../x', 'on' => true ] )[1]['code'] === 'crm_projekte_unknown' && surfaceApi( $appData, 'crm-projekte/download', [ 'id' => '', 'on' => true ] )[1]['code'] === 'crm_projekte_unknown'
 	&& \Crm\Db::row( $appData, 'SELECT project FROM project_states WHERE project NOT IN ( \'00001\' )' ) === null && count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 200 ), static fn( string $entry ): bool => str_contains( $entry, 'the download of project' ) ) ) === 2 );
 check( '...on is true or false and nothing else: "yes", 1, a missing one are 400 crm_projekte_format at the field on, and nothing is switched', array_unique( array_map( static fn( array $data ): string => ( $r = surfaceApi( $appData, 'crm-projekte/download', $data ) )[0]. ( $r[1]['code'] ?? '' ). ( $r[1]['field'] ?? '' ), [ [ 'id' => '00001', 'on' => 'yes' ], [ 'id' => '00001', 'on' => 1 ], [ 'id' => '00001' ] ] ) ) === [ '400crm_projekte_formaton' ] && \Crm\Projekte::state( $appData, '00001' )['download'] === false );
+
+// --- the approval of a project: what the surface reads of it
+echo "\nThe approval of a project\n";
+
+check( 'a project nobody approved has approval null in the list and on the card', array_unique( array_map( static fn( array $one ): bool => $one['approval'] === null, surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'] ) ) === [ true ] && surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['project']['approval'] === null );
+$approvedJson = \Crm\Records::approvalShown( [ 'id' => '00001', 'title' => 'Album 2027 neu' ], [ [ 'name' => 'Mix.wav', 'size' => 3, 'sha256' => hash( 'sha256', 'mix' ), 'created' => '2026-11-01T10:00:00Z' ] ], 'Ich nehme ab.' );
+$approved = \Crm\Records::add( $appData, [ 'kind' => 'approval', 'client_id' => $a['id'], 'member' => [ 'id' => 'aaaaaaaaaaaa', 'email' => 'anna@studio-nord.example', 'name' => 'Anna Nord' ], 'project' => '00001', 'shown' => $approvedJson, 'ip' => '203.0.113.5' ] );
+$inList = array_column( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'], 'approval', 'id' );
+check( 'the list carries the newest approval of a project - who and when, the hash, no text - and null for the others', is_array( $approved ) && $inList['00001'] === [ 'id' => $approved['id'], 'client_id' => $a['id'], 'project' => '00001', 'at' => $approved['at'], 'member_email' => 'anna@studio-nord.example', 'member_name' => 'Anna Nord', 'sha256' => $approved['sha256'] ]
+	&& $inList['00003'] === null && $inList['00004'] === null && array_column( surfaceApi( $appData, 'crm-projekte/list', [ 'client' => (string) $a['id'] ] )[1]['projects'], 'approval', 'id' )['00001'] === $inList['00001'] );
+$onCard = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['project']['approval'];
+check( '...the card carries the whole record, the JSON the customer was shown with its hash, the account and the address', $onCard === $approved && json_decode( $onCard['shown'], true )['files'][0]['name'] === 'Mix.wav' && $onCard['sha256'] === hash( 'sha256', $onCard['shown'] ) && $onCard['ip'] === '203.0.113.5' );
+\Crm\Records::add( $appData, [ 'kind' => 'approval', 'client_id' => $b['id'], 'member' => [ 'id' => 'bbbbbbbbbbbb', 'email' => 'ben@example.org', 'name' => '' ], 'project' => '00003', 'shown' => 'x' ] );
+check( '...the approval of a client is not shown on a project of another: the record of Ben for a project of Anna\'s client is none for the card', surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00003' ] )[1]['project']['approval'] === ( \Crm\Projekte::get( $appData, '00003' )['client'] === $b['number'] ? \Crm\Records::approval( $appData, '00003' ) : null ) );
+\Crm\Records::add( $appData, [ 'kind' => 'approval', 'client_id' => $b['id'], 'member' => [ 'id' => 'bbbbbbbbbbbb', 'email' => 'ben@example.org', 'name' => '' ], 'project' => '00001', 'shown' => 'x' ] );
+check( '...a newer approval of the same project by another client is none for the project: the list and the card say null', array_column( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'], 'approval', 'id' )['00001'] === null && surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['project']['approval'] === null );
+\Crm\Db::exec( $appData, 'DELETE FROM records WHERE kind = \'approval\' AND client_id = :c AND project = \'00001\'', [ 'c' => $b['id'] ] );
+[ , $portalApproved ] = surfaceApi( $appData, 'crm-clients/portal', [ 'id' => (string) $a['id'] ] );
+check( 'the Portal tab of the client lists the approval among its records, newest first, with the project and no document', array_column( $portalApproved['records'], 'kind' )[0] === 'approval' && $portalApproved['records'][0]['project'] === '00001' && $portalApproved['records'][0]['document_id'] === null && $portalApproved['records'][0]['document_number'] === '' && $portalApproved['records'][0]['shown'] === $approvedJson );
+\Crm\Records::add( $appData, [ 'kind' => 'approval', 'client_id' => $a['id'], 'member' => [ 'id' => 'aaaaaaaaaaaa', 'email' => 'anna@studio-nord.example', 'name' => 'Anna Nord' ], 'project' => '00004', 'shown' => 'x' ] );
+$approvedLine = static fn(): array => array_values( array_filter( surfaceApi( $appData, 'crm-documents/overview' )[1]['needs'], static fn( array $need ): bool => $need['kind'] === 'approved' ) );
+$invoiceOf1 = (int) \Crm\Db::row( $appData, 'SELECT id FROM documents WHERE category = \'invoice\' AND project = \'00001\' ORDER BY id LIMIT 1' )['id'];
+$needsNow = surfaceApi( $appData, 'crm-documents/overview' )[1]['needs'];
+check( 'the overview has one line for the projects approved in the last 30 days that no invoice names - how many, no sum, no document - after the orders and before the rest: of three approved, the one an invoice names is not counted', count( $approvedLine() ) === 1 && $approvedLine()[0]['count'] === 2 && $approvedLine()[0]['id'] === 0 && $approvedLine()[0]['gross'] === 0
+	&& array_search( 'approved', array_column( $needsNow, 'kind' ), true ) === count( array_filter( $needsNow, static fn( array $need ): bool => in_array( $need['kind'], [ 'overdue', 'orders' ], true ) ) ) );
+Documents::setProject( $appData, $invoiceOf1, '' );
+$withoutInvoice = $approvedLine()[0]['count'];
+Documents::setProject( $appData, $invoiceOf1, '00001' );
+check( '...an invoice that no longer names the project gives it back to the line; one that names it takes it off again', $withoutInvoice === 3 && $approvedLine()[0]['count'] === 2 );
+\Crm\Db::exec( $appData, 'UPDATE records SET at = :at WHERE kind = \'approval\' AND project = \'00004\'', [ 'at' => gmdate( 'Y-m-d\TH:i:s\Z', time() - 31 * 86400 ) ] );
+$ofThirtyOne = $approvedLine()[0]['count'];
+\Crm\Db::exec( $appData, 'UPDATE records SET at = :at WHERE kind = \'approval\' AND project = \'00004\'', [ 'at' => gmdate( 'Y-m-d\TH:i:s\Z', time() - 29 * 86400 ) ] );
+check( '...an approval of 31 days ago is not asked for, one of 29 days ago is', $ofThirtyOne === 1 && $approvedLine()[0]['count'] === 2 );
+\Crm\Db::exec( $appData, 'DELETE FROM records WHERE kind = \'approval\' AND project <> \'00001\'' );
+check( '...with no project left that no invoice names the line is gone', $approvedLine() === [] );
+$settingsSaved = surfaceApi( $appData, 'crm-documents/settings-save', [ 'paypal' => 'https://paypal.me/StudioNord' ] );
+check( 'the settings save the PayPal.me name through settings-save - an address is cut down to the name - and the screen reads it back', $settingsSaved[0] === 200 && $settingsSaved[1]['settings']['paypal'] === 'StudioNord' && surfaceApi( $appData, 'crm-documents/settings-get' )[1]['settings']['paypal'] === 'StudioNord' );
+$settingsBad = surfaceApi( $appData, 'crm-documents/settings-save', [ 'paypal' => '<b>Studio</b>', 'payment_days' => '30' ] );
+check( '...a name that is none is 400 crm_documents_particular_paypal at the field paypal, and nothing of the same post is written', $settingsBad[0] === 400 && $settingsBad[1]['code'] === 'crm_documents_particular_paypal' && $settingsBad[1]['field'] === 'paypal' && \Crm\Settings::get( $appData, 'paypal' ) === 'StudioNord' && \Crm\Settings::get( $appData, 'payment_days' ) !== '30' );
+surfaceApi( $appData, 'crm-documents/settings-save', [ 'paypal' => '' ] );
+check( '...the sentences of the refusal are in both languages of the panel', str_contains( (string) file_get_contents( $root. '/app/Crm/Documents/Admin/text/de_DE.php' ), 'crm_documents_particular_paypal' ) && str_contains( (string) file_get_contents( $root. '/app/Crm/Documents/Admin/text/en_US.php' ), 'crm_documents_particular_paypal' ) && \Crm\Settings::get( $appData, 'paypal' ) === '' );
+\Crm\Db::exec( $appData, 'DELETE FROM records WHERE kind = \'approval\'' );
 
 // --- the Files panel's actions, for the folders of the clients
 echo "\nDateien\n";

@@ -41,6 +41,7 @@ return [
 	'[[/_admin/error/crm_documents_particular_bank_name]]' => 'Der Name der Bank darf bis zu 80 Zeichen haben, ohne Steuerzeichen.',
 	'[[/_admin/error/crm_documents_particular_iban]]' => 'Das ist keine gültige IBAN: Ländercode, zwei Prüfziffern und die Kontonummer, zum Beispiel DE89 3704 0044 0532 0130 00.',
 	'[[/_admin/error/crm_documents_particular_bic]]' => 'Das ist keine gültige BIC: 8 oder 11 Zeichen, zum Beispiel COBADEFFXXX.',
+	'[[/_admin/error/crm_documents_particular_paypal]]' => 'Das ist kein PayPal.me-Name: Buchstaben und Ziffern, bis zu 20 Zeichen, oder die Adresse https://paypal.me/DeinName.',
 	'[[/_admin/error/crm_documents_particular_seller_name]]' => 'Der Name darf bis zu 120 Zeichen haben, ohne Steuerzeichen.',
 	'[[/_admin/error/crm_documents_particular_seller_street]]' => 'Die Straße darf bis zu 120 Zeichen haben, ohne Steuerzeichen.',
 	'[[/_admin/error/crm_documents_particular_seller_zip]]' => 'Die Postleitzahl darf Buchstaben, Ziffern, Leerzeichen und Bindestrich haben, bis zu 12 Zeichen.',

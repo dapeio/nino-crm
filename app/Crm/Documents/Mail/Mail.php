@@ -5,7 +5,7 @@ declare(strict_types=1);
  *												account of the client, in German (a document is the owner's letter to his client, and an account of
  *												Members has no language of its own), with the absolute link to the document in the portal (Portal::documentHref(): its row in the list of documents, for a document of a project its card on the page of the project) and no attachment.
  *												All mails are one call of the kernel's mail, which counts a call against the cap of mails an hour and not
- *												a mail. The words are in text/de_DE.php, the markup in templates/release.tpl (changed.tpl for the mail to the owner about changed data, order-owner.tpl and order-confirm.tpl for the order of an offer); a value enters the
+ *												a mail. The words are in text/de_DE.php, the markup in templates/release.tpl (changed.tpl for the mail to the owner about changed data, order-owner.tpl and order-confirm.tpl for the order of an offer, approval-owner.tpl for the approval of a project); a value enters the
  *												template after it was rendered, escaped, so that nothing in it is read as a fill or a shortcode. The same
  *												mail, in the words of a reminder (text/de_DE.php, remind.*), asks for the payment of an invoice that is overdue.
  */
@@ -332,6 +332,84 @@ class Mail {
 
 		if( $delivered === false )
 			trigger_error( 'Crm: the mails about the order of document '. Render::name( $document ). ' were not all delivered', E_USER_WARNING );
+
+		return count( array_filter( (array) ( $appData['./nino/mail/results'] ?? [] ), static fn( mixed $result ): bool => $result === true ) );
+	}
+
+	/**
+	 *	Mail the owner that a client approved a project in the portal: one mail to the contact address of the company (subject "Projekt abgenommen: <id and title> von Kunde <number and
+	 *	title> durch <account>", the reply to the account, the link to the card of the project in the surface). The customer gets no mail. Own template (templates/approval-owner.tpl) and own
+	 *	words (text/de_DE.php, approval.*); the names enter the subject without control characters
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$project			As Projekte::get() has it
+	 *	@param		array 		$record				The record of the approval, as Records::of() has it
+	 *	@param		array 		$client				As Clients::get() has it
+	 *	@param		int				$files				How many files the approval was of
+	 *
+	 *	@return 	int|string								How many mails were delivered; 'address' where the site has no address to link to, 'limit' where the cap of mails an hour refused it
+	 */
+	public static function approved( array &$appData, array $project, array $record, array $client, int $files ): int|string {
+
+		$link = \Nino\Html::absoluteUrl( $appData, \Crm\Surface::ROUTE. '#projekt-'. rawurlencode( (string) $project['id'] ) );
+
+		if( $link === '' ) {
+			trigger_error( 'Crm: the mail about the approval of project '. $project['id']. ' was not sent: the site has no address to link to', E_USER_WARNING );
+
+			return 'address';
+		}
+
+		$locale = \Nino\Locales::getCurrentLocale( $appData );
+
+		\Nino\Locales::useLocale( $appData, \Nino\Locales::getNativeLocale( $appData ) );
+
+		try {
+			$markup = \Nino\Html::renderHtml( $appData, self::template( 'approval-owner' ) );
+			$owner = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ) );
+		}
+		finally {
+			\Nino\Locales::useLocale( $appData, $locale );
+		}
+
+		if( filter_var( $owner, FILTER_VALIDATE_EMAIL ) === false ) {
+			trigger_error( 'Crm: the mail about the approval of project '. $project['id']. ' was not sent: the company has no contact address', E_USER_WARNING );
+
+			return 'address';
+		}
+
+		$line = static fn( string $text ): string => trim( (string) preg_replace( '/[\s\p{C}]+/u', ' ', $text ) );
+		$escape = static fn( string $value ): string => \Nino\Modules\Components::escape( $value );
+		$name = $line( (string) $project['id']. ( (string) $project['title'] !== '' ? ' '. $project['title'] : '' ) );
+		$customer = $line( (string) $client['number']. ' '. (string) $client['title'] );
+		$who = $line( (string) $record['member_name'] !== '' ? (string) $record['member_name'] : (string) $record['member_email'] );
+		$account = $line( (string) $record['member_name'] !== '' ? $record['member_name']. ' <'. $record['member_email']. '>' : (string) $record['member_email'] );
+		$values = [
+			'[[heading]]' => self::text( 'approval.owner.title' ),
+			'[[intro]]'   => self::text( 'approval.owner.intro' ),
+			'[[project]]' => self::text( 'approval.owner.project', $name ),
+			'[[client]]'  => self::text( 'approval.owner.client', $customer ),
+			'[[files]]'   => self::text( 'approval.owner.files', (string) $files ),
+			'[[account]]' => self::text( 'approval.owner.account', $account ),
+			'[[link]]'    => $link,
+			'[[cta]]'     => self::text( 'approval.owner.button' ),
+			'[[notice]]'  => self::text( 'approval.owner.notice' ),
+		];
+
+		$delivered = \Nino\Mail::sendAll( $appData, [ [
+			'to'      => $owner,
+			'subject' => self::text( 'approval.owner.subject', $name, $customer, $who ),
+			'body'    => str_replace( array_keys( $values ), array_map( $escape, array_values( $values ) ), $markup ),
+			'replyTo' => filter_var( $record['member_email'], FILTER_VALIDATE_EMAIL ) === false ? '' : (string) $record['member_email'],
+		] ] );
+
+		if( \Nino\Mail::rateLimited( $appData ) === true ) {
+			trigger_error( 'Crm: the mail about the approval of project '. $project['id']. ' was refused by the cap of mails an hour', E_USER_WARNING );
+
+			return 'limit';
+		}
+
+		if( $delivered === false )
+			trigger_error( 'Crm: the mail about the approval of project '. $project['id']. ' was not delivered', E_USER_WARNING );
 
 		return count( array_filter( (array) ( $appData['./nino/mail/results'] ?? [] ), static fn( mixed $result ): bool => $result === true ) );
 	}

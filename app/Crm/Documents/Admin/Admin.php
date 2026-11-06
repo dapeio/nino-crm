@@ -58,7 +58,7 @@ class Admin {
 	// What Sign refuses a request with, as the status and the code a person is answered
 	// A setting that is one of the invoice particulars, or the message to the clients, has a sentence of its own for a wrong value
 	private const array PARTICULARS = [
-		'tax_id' => 'crm_documents_particular_tax_id', 'bank_name' => 'crm_documents_particular_bank_name', 'iban' => 'crm_documents_particular_iban', 'bic' => 'crm_documents_particular_bic',
+		'tax_id' => 'crm_documents_particular_tax_id', 'bank_name' => 'crm_documents_particular_bank_name', 'iban' => 'crm_documents_particular_iban', 'bic' => 'crm_documents_particular_bic', 'paypal' => 'crm_documents_particular_paypal',
 		'seller_name' => 'crm_documents_particular_seller_name', 'seller_street' => 'crm_documents_particular_seller_street', 'seller_zip' => 'crm_documents_particular_seller_zip', 'seller_city' => 'crm_documents_particular_seller_city',
 		'seller_country' => 'crm_documents_particular_seller_country', 'seller_contact' => 'crm_documents_particular_seller_contact', 'seller_phone' => 'crm_documents_particular_seller_phone', 'seller_email' => 'crm_documents_particular_seller_email',
 		'vat_id' => 'crm_documents_particular_vat_id', 'vat_exempt_text' => 'crm_documents_particular_vat_exempt_text',

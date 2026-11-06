@@ -5,7 +5,7 @@ declare(strict_types=1);
  *						init() registers behaviour and writes nothing: the panel CRM (adminPanels()), the
  *						components [crm-portal-head], [crm-portal-door], [crm-client], [crm-documents], [crm-portal-nav], [crm-portal-start], [crm-portal-dates], [crm-projects], [crm-uploads], [crm-client-data] and [crm-privacy], the callbacks that keep the portal's lookup true when a member signs in or
  *						out, the one that takes the portal's pages out of the menus of a visitor, the gate of the client (every page of the portal sends a member whose client has not taken note of the Datenschutz or given the data of the invoice to that step, and a file is withheld from such a member) and the ones that let a document follow its request in Sign, the style sheet and the script of the portal, the route
- *						/.crm/pdf/<id> that answers the PDF of a finalised document, /.crm/xml/<id> that answers its electronic invoice and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/anmeldeadresse and POST /.crm/anmeldeadresse/code of the block Anmeldeadresse on that page, POST /.crm/datenschutz of the page Datenschutz and POST /.crm/auftrag of the order under an offer, and the callback that mails the owner when a member has changed the address the account signs in with; and the surface at /crm, one page of the project with its
+ *						/.crm/pdf/<id> that answers the PDF of a finalised document, /.crm/xml/<id> that answers its electronic invoice and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/anmeldeadresse and POST /.crm/anmeldeadresse/code of the block Anmeldeadresse on that page, POST /.crm/datenschutz of the page Datenschutz, POST /.crm/auftrag of the order under an offer and POST /.crm/abnahme of the approval under the files of a project, and the callback that mails the owner when a member has changed the address the account signs in with; and the surface at /crm, one page of the project with its
  *						endpoint and assets (Surface::init()). The database is opened on first use, the portal pages come with the install unit
  *						the wizard applies, and the screen Einrichtung of the surface completes the product (see Admin::apiSetup()).
  */
@@ -257,6 +257,10 @@ class Crm {
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/datenschutz', [ Portal\Privacy::class, 'callbackAgree' ] );
 		$appData['/nino/http/routes']['POST://.crm/auftrag'] = [ 'uri' => Portal\Order::ROUTE ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/auftrag', [ Portal\Order::class, 'callbackOrder' ] );
+
+		// The approval of a project: the form under its files posts here, a member of a client accepts the project as its files stand (see Portal\Approval::callbackApprove())
+		$appData['/nino/http/routes']['POST://.crm/abnahme'] = [ 'uri' => Portal\Approval::ROUTE ];
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/abnahme', [ Portal\Approval::class, 'callbackApprove' ] );
 
 		// The projects: a project that a document names is not deleted, and its client is a client that is there and stays - the kernel's vetoes, so that
 		// the Elements panel of the workbench refuses as the endpoint of the surface does
