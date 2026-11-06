@@ -24,6 +24,9 @@ declare(strict_types=1);
  *												are the list with a sentence that the project is unknown. The player of Review returns to the page it stands on without the
  *												query (its form posts the path alone and is redirected to ?review=<file>), so a request with a file and no project is
  *												answered with the project whose folder holds that file.
+ *
+ *												The player is drawn by player() for the page and for the route GET /.crm/player?file=<id> (callbackPlayer()), which the script of the portal asks to open
+ *												a file or another version without the page loading again; the page with ?review=<id> stays the way without the script.
  */
 namespace Crm\Portal;
 
@@ -42,6 +45,9 @@ class Projects {
 
 	// The tabs of the page of a project: the value of ?tab= and the name of the section (its id is projekt-<name>) it opens; their order on the page is that of the sections in page()
 	public const array TABS = [ 'angebot' => 'offer', 'dateien' => 'files', 'belege' => 'documents', 'uebersicht' => 'overview' ];
+
+	// The route that answers the player of a file (see callbackPlayer())
+	public const string ROUTE = '/.crm/player';
 
 	// The project of this request, once it was looked up
 	private const string CURRENT = './crm/portal/project';
@@ -493,33 +499,17 @@ class Projects {
 		if( $files === [] )
 			return [ self::message( $appData, 'files-empty', '', 'project-message' ), 0, [] ];
 
-		$player = '';
-		$playing = '';
 		$page = \Nino\Filesystem::getDir( $appData ). self::PAGE;
 		$review = $review !== '' && Crm::featureOn( $appData, 'review' ) === true ? $review : '';
+		$found = $review === '' ? null : self::locate( $files, $review );
+		$player = $found === null ? '' : self::player( $appData, $client, $project, $review, $files );
 
-		if( $review !== '' )
-			foreach( \Nino\Modules\Files::grouped( $files ) as $title )
-				foreach( $title['versions'] as $file ) {
-
-					if( $file['id'] !== $review || \Nino\Modules\Review::kind( $file['mime'] ) === '' )
-						continue;
-
-					// The versions of the title stand over the player: the folder of this project holds them, and no file of another project or client can be among them
-					$versions = Files::versions( $appData, $title, $file['id'], $project['id'], $page );
-
-					// A file that was removed from the server has its comments and no medium: the sentence stands over them
-					if( isset( $file['gone'] ) === true )
-						$player = Files::goneNote( $appData ). Files::beside( \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'versions' => $versions ] ) );
-					elseif( \Nino\Modules\Files::path( $appData, $file['id'] ) !== null ) {
-						$player = Files::beside( \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'versions' => $versions ] ) );
-						$playing = $file['id'];
-					}
-				}
+		// The row of the file that plays is marked: a file that was removed from the server has its comments and no medium, and nothing plays
+		$playing = $found !== null && isset( $found['gone'] ) === false && \Nino\Modules\Files::path( $appData, $found['id'] ) !== null ? $found['id'] : '';
 
 		// The player is a column beside the list (over it on a narrow screen); with no file chosen it is an empty card that says how to open one. Without Review there is no player
 		if( Crm::featureOn( $appData, 'review' ) === true )
-			$player = Portal::render( 'project-player', [ '[[state]]' => $player === '' ? ' crm-player--empty' : '', '[[player]]' => $player === '' ? Portal::template( 'project-player-empty' ) : $player ] );
+			$player = Portal::render( 'project-player', [ '[[state]]' => $player === '' ? ' crm-player--empty' : '', '[[source]]' => \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ). self::ROUTE ), '[[player]]' => $player === '' ? Portal::template( 'project-player-empty' ) : $player ] );
 
 		// The note over the list is for the media: they are there to listen to until the project's download is switched on
 		$locked = $project['download'] === false && array_filter( $files, static fn( array $file ): bool => Portal::medium( $appData, $file['mime'] ) === true ) !== [];
@@ -527,9 +517,126 @@ class Projects {
 		return [ Portal::render( 'project-files', [
 			'[[note]]'     => $locked === false ? '' : Portal::render( 'note', [ '[[classes]]' => 'crm-project__locked', '[[tone]]' => 'info', '[[role]]' => 'note', '[[icon]]' => 'lock', '[[text]]' => '[[/project/crm-portal/projects/files-locked]]' ] ),
 			'[[player]]'   => $player,
+			'[[mark]]'     => Portal::template( 'file-playing' ),
 			'[[rows]]'     => Files::titles( $appData, $files, $page. '?projekt='. rawurlencode( $project['id'] ). '&review=', $playing, $project['download'] ),
 			'[[approval]]' => Approval::block( $appData, $client, $project, $files, \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) ) ),
 		] ), count( $files ), $files ];
+	}
+
+	/**
+	 *	The player of one file of a project as the page puts it in the column beside the list and as the route /.crm/player answers it: the versions of the title over the
+	 *	player of Review with its comments and the form, and over all of it the sentence that a file which was removed from the server is gone. While an offer of the project
+	 *	waits for the order it is the note that leads to the offer instead, as the page puts it in the place of the files. Nothing where Review is off, the file is none of
+	 *	these files, is no audio or video, or has no bytes and is not a removed one
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client
+	 *	@param		array 		$project			As Projekte::get() has it, one of the client's
+	 *	@param		string		$review				The id of the file, as the query has it
+	 *	@param		array 		$files				The files the member may see, as Files::visible() has them
+	 *
+	 *	@return 	string										Markup; '' for no player
+	 */
+	public static function player( array &$appData, array $client, array $project, string $review, array $files ): string {
+
+		$waiting = Projekte::waiting( $appData, $project['id'], (int) $client['id'] );
+
+		// While an offer waits no file is given, so the list is empty: the note stands only in the place of the player of a medium that the member would see otherwise
+		if( $waiting !== null ) {
+
+			$entry = preg_match( \Nino\Modules\Files\Store::ID, $review ) === 1 ? \Nino\Modules\Files::file( $appData, $review ) : null;
+			$member = \Nino\Modules\Members::current( $appData );
+			$own = $entry !== null && $member !== null && ( $entry['by']['kind'] ?? '' ) === 'member' && ( $entry['by']['id'] ?? '' ) === $member['id'];
+			$folder = $entry === null ? null : \Nino\Modules\Files\Store::folder( $appData, (string) $entry['folder'] );
+			// The rule of Files::allowed(): the member's own upload, or a visible file in a folder of the member's group
+			$grouped = $member !== null && $member['group'] !== '' && $folder !== null && $folder['group'] === $member['group'];
+			$shown = $entry !== null && $entry['folder'] === $project['folder'] && ( $own === true || ( ( $entry['visible'] ?? false ) === true && $grouped === true ) ) && \Nino\Modules\Review::kind( $entry['mime'] ) !== '';
+
+			return Crm::featureOn( $appData, 'review' ) === true && $shown === true ? self::waitingNote( $appData, $project, $waiting ) : '';
+		}
+
+		$file = Crm::featureOn( $appData, 'review' ) === true ? self::locate( $files, $review ) : null;
+
+		if( $file === null )
+			return '';
+
+		// The versions of the title stand over the player: the folder of this project holds them, and no file of another project or client can be among them
+		foreach( \Nino\Modules\Files::grouped( $files ) as $title ) {
+
+			if( in_array( $file['id'], array_column( $title['versions'], 'id' ), true ) === false )
+				continue;
+
+			$versions = Files::versions( $appData, $title, $file['id'], $project['id'], \Nino\Filesystem::getDir( $appData ). self::PAGE );
+			$player = Files::beside( \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'versions' => $versions, 'file' => $file['id'], 'path' => self::PAGE ] ) );
+
+			// A file that was removed from the server has its comments and no medium: the sentence stands over them
+			if( isset( $file['gone'] ) === true )
+				return Files::goneNote( $appData ). $player;
+
+			return \Nino\Modules\Files::path( $appData, $file['id'] ) !== null ? $player : '';
+		}
+
+		return '';
+	}
+
+	/**
+	 *	The file of a list that the player plays: the one with this id, if it is audio or video
+	 *
+	 *	@param		array 		$files				As Files::visible() has them
+	 *	@param		string		$review				An id as the query has it
+	 *
+	 *	@return 	array|null
+	 */
+	private static function locate( array $files, string $review ): ?array {
+
+		foreach( $files as $file )
+			if( $file['id'] === $review && \Nino\Modules\Review::kind( $file['mime'] ) !== '' )
+				return $file;
+
+		return null;
+	}
+
+	/**
+	 *	GET /.crm/player?file=<id>: the player of a file as the page of the project puts it beside the list (see player()), for the script that opens a file or another
+	 *	version without leaving the page. Only a member of a client is answered, and only for a file in the folder of a project of the client that the member may see;
+	 *	a visitor, a member of no client, a member whose client has a step of the gate pending, an id that is none or a list, a file of another client and a file that
+	 *	is no audio or video are the 404 with a plain body. While an offer of the project waits for the order the answer is its note. The answer is the markup alone -
+	 *	no frame, no script - and is never kept
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackPlayer( array &$appData, array &$request ): void {
+
+		$client = Portal::client( $appData );
+		$query = $request['/nino/http/request']['query'] ?? [];
+		$file = is_array( $query ) === true && is_string( $query['file'] ?? null ) === true ? $query['file'] : '';
+		$project = $client === null || Crm::featureOn( $appData, 'review' ) === false || Portal::pending( $appData, $client ) !== '' ? null : self::ofFile( $appData, $client, $file );
+		$html = '';
+
+		if( $client !== null && $project !== null ) {
+
+			Portal::words( $appData );
+			$html = self::player( $appData, $client, $project, $file, self::visibleOf( $appData, $project ) ?? [] );
+			$html = $html === '' ? '' : \Nino\Html::renderHtml( $appData, $html );
+		}
+
+		$request['/nino/http/response']['header']['Cache-Control'] = 'no-store';
+		$request['/nino/http/response']['header']['X-Content-Type-Options'] = 'nosniff';
+
+		if( $html === '' ) {
+			$request['/nino/http/response']['statusCode'] = 404;
+			$request['/nino/http/response']['body'] = 'Not Found';
+			$request['/nino/http/response']['header']['Content-Type'] = 'text/plain; charset=utf-8';
+
+			return;
+		}
+
+		$request['/nino/http/response']['statusCode'] = 200;
+		$request['/nino/http/response']['body'] = $html;
+		$request['/nino/http/response']['header']['Content-Type'] = 'text/html; charset=utf-8';
 	}
 
 	/**

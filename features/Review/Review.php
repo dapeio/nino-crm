@@ -396,7 +396,7 @@ namespace Nino\Modules {
 		 *	the list) when it is one of STATES. Nothing for a visitor
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
-		 *	@param		array			$args					The resolved arguments (see \Nino\Modules\Components::dispatch()); a caller in php may add 'versions', the markup of its own that stands between the title and the medium of the player - a shortcode has no such argument, only the attributes of the schema reach this function
+		 *	@param		array			$args					The resolved arguments (see \Nino\Modules\Components::dispatch()); a caller in php may add 'versions', the markup of its own that stands between the title and the medium of the player, 'file', the id of the file to play where the request does not carry it as ?review=, and 'path', the page the form returns to where that is not the path of the request - a shortcode has no such argument, only the attributes of the schema reach this function
 		 *
 		 *	@return 	string
 		 */
@@ -407,8 +407,8 @@ namespace Nino\Modules {
 
 			$request = \Nino\Http::getRequest( $appData );
 			$query = $request === false || is_array( $request['/nino/http/request']['query'] ?? null ) === false ? [] : $request['/nino/http/request']['query'];
-			$path = $request === false ? '' : (string) ( $request['/nino/http/request']['uri'] ?? '' );
-			$asked = is_string( $query['review'] ?? null ) === true ? $query['review'] : '';
+			$path = is_string( $args['path'] ?? null ) === true ? $args['path'] : ( $request === false ? '' : (string) ( $request['/nino/http/request']['uri'] ?? '' ) );
+			$asked = is_string( $args['file'] ?? null ) === true ? $args['file'] : ( is_string( $query['review'] ?? null ) === true ? $query['review'] : '' );
 			$said = is_string( $query['review-state'] ?? null ) === true && in_array( $query['review-state'], self::STATES, true ) === true ? $query['review-state'] : '';
 
 			if( $asked !== '' ) {

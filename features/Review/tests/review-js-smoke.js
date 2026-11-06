@@ -5,8 +5,8 @@
  *											php of the feature reads them, the move of the player to a second over a
  *											stand-in for the media element, and the player it takes over - a click on
  *											the time of a comment takes the player there and plays, the time field
- *											follows the player while the switch beside it is on - when the player stops or
- *											is moved and at each keystroke in the comment -, goes off when a time is typed
+ *											follows the player while the switch beside it is on - when the comment gets
+ *											the focus, and not when the player stops or is moved or at a keystroke -, goes off when a time is typed
  *											and writes the position when it is set on again, the controls that do nothing
  *											without the script are shown, an answer fills the parent, says who is answered
  *											and can be given up, and the form is sent with fetch(): the list of the comments
@@ -316,7 +316,19 @@ function site( options ) {
 	check( 'a player is taken over once, and the buttons that answer a comment and the switch of the time are shown', s.box.dataset.reviewBound === '1' && ( s.box.listeners.click || [] ).length === 1 && s.first.reply.hidden === false && s.second.reply.hidden === false
 		&& s.answerTimed.reply.hidden === false && s.answerPlain.reply.hidden === false && s.followLabel.hidden === false && s.follow.checked === true );
 	s.review.init();
-	check( '...and not twice', ( s.box.listeners.click || [] ).length === 1 && ( s.media.listeners.pause || [] ).length === 1 );
+	check( '...and not twice', ( s.box.listeners.click || [] ).length === 1 && ( s.textarea.listeners.focus || [] ).length === 1 );
+
+	// A page that puts a player in its place after it was loaded has it taken over by naming where it is
+	const late = site();
+	const column = element('aside');
+	const elsewhere = element('div');
+	column.appendChild( late.box );
+	late.review.init( elsewhere );
+	const untouched = late.box.dataset.reviewBound === undefined;
+	late.review.init( column );
+	late.review.init( column );
+	check( 'init( root ) takes over the players below that node and no other, once: a node that holds none leaves the player alone', untouched === true && late.box.dataset.reviewBound === '1' && ( late.box.listeners.click || [] ).length === 1 && ( late.textarea.listeners.focus || [] ).length === 1 );
+	check( '...the ready event of Nino calls it for the whole page, whatever that event hands over - even a node that holds no player', ( function() { const page = site(); page.ready[0].callback( { querySelectorAll : function() { return [] } } ); return page.box.dataset.reviewBound === '1'; } )() === true );
 
 	const list = site( { list : true } );
 	const taken = attempt( function() { list.start() } );
@@ -353,47 +365,42 @@ function site( options ) {
 	const s = site();
 	s.start();
 
+	// The field takes the position of the player when the comment gets the focus, and not on the events of the player
 	s.media.currentTime = 65.7;
-	fire( s.media, 'pause' );
-	check( 'with the switch on, the time field says where the player is when it stops - m:ss and the tenth of a second', s.at.value === '1:05.7' );
+	fire( s.textarea, 'focus' );
+	check( 'with the switch on, the time field says where the player is when the comment gets the focus - m:ss and the tenth of a second', s.at.value === '1:05.7' );
 	s.media.currentTime = 140;
-	fire( s.media, 'seeked' );
-	check( '...and when it is moved', s.at.value === '2:20' );
-	s.media.currentTime = 200;
-	fire( s.media, 'ended' );
-	check( '...and when it ends', s.at.value === '3:20' );
+	fire( s.textarea, 'focus' );
+	check( '...each time it gets it, with the position it has by then', s.at.value === '2:20' );
 	s.media.currentTime = 2.5;
-	fire( s.media, 'pause' );
-	check( '...a position with a tenth keeps it: at 2.5 the field reads 0:02.5, at 4.0 it reads 0:04', s.at.value === '0:02.5' && ( s.media.currentTime = 4.0, fire( s.media, 'pause' ), s.at.value === '0:04' ) );
+	fire( s.textarea, 'focus' );
+	check( '...a position with a tenth keeps it: at 2.5 the field reads 0:02.5, at 4.0 it reads 0:04', s.at.value === '0:02.5' && ( s.media.currentTime = 4.0, fire( s.textarea, 'focus' ), s.at.value === '0:04' ) );
 
 	s.media.currentTime = 31.5;
+	[ 'pause', 'seeked', 'ended' ].forEach( function( name ) { fire( s.media, name ) } );
 	s.textarea.value = 'Snare';
 	fire( s.textarea, 'input' );
-	check( 'at every keystroke in the comment the field says where the player is - while it plays as well - and the switch stays on', s.at.value === '0:31.5' && s.follow.checked === true );
-	s.media.currentTime = 33;
-	fire( s.textarea, 'input' );
-	check( '...each keystroke takes the position it has by then', s.at.value === '0:33' );
-	check( '...and nothing but those events moves the field: not the time the player says while it plays, which would never keep still', ( s.media.listeners.timeupdate || [] ).length === 0 && ( s.media.listeners.pause || [] ).length === 1 && ( s.textarea.listeners.input || [] ).length === 1 );
+	check( 'the player stopping, being moved or ending, and a keystroke in the comment, leave the field as it was: a time that changes under the person who writes is none they chose', s.at.value === '0:04' && s.follow.checked === true );
+	check( '...there is nothing that listens to them: no listener on the player, none on the keystrokes, one on the focus of the comment and one on the switch', Object.keys( s.media.listeners ).every( function( name ) { return ( s.media.listeners[name] || [] ).length === 0 } ) && ( s.textarea.listeners.input || [] ).length === 0 && ( s.textarea.listeners.focus || [] ).length === 1 && ( s.follow.listeners.change || [] ).length === 1 );
 
 	s.at.value = '9:99';
 	fire( s.at, 'input' );
 	check( 'a time typed in the field is the person\'s: the switch goes off', s.follow.checked === false && s.at.value === '9:99' );
 	s.media.currentTime = 5;
-	fire( s.media, 'pause' );
-	fire( s.textarea, 'input' );
-	check( '...and with it off the field follows nothing - not when the player stops, not at a keystroke - what stands in it stays', s.at.value === '9:99' );
+	fire( s.textarea, 'focus' );
+	check( '...and with it off the field follows nothing - not when the comment gets the focus - what stands in it stays', s.at.value === '9:99' );
 
 	s.follow.checked = true;
 	fire( s.follow, 'change' );
 	check( 'the switch set on again writes the position of the player at once, whatever was in the field', s.at.value === '0:05' );
 	s.media.currentTime = 7.3;
-	fire( s.textarea, 'input' );
-	check( '...and the field follows again - with its tenth where it has one', s.at.value === '0:07.3' && s.review.seconds( s.at.value ) === 7.3 );
+	fire( s.textarea, 'focus' );
+	check( '...and the field follows again at the focus - with its tenth where it has one', s.at.value === '0:07.3' && s.review.seconds( s.at.value ) === 7.3 );
 
 	s.follow.checked = false;
 	fire( s.follow, 'change' );
 	s.media.currentTime = 90;
-	fire( s.media, 'pause' );
+	fire( s.textarea, 'focus' );
 	check( 'the switch set off by the person leaves the field as it is', s.at.value === '0:07.3' );
 }
 
@@ -412,8 +419,8 @@ function site( options ) {
 	check( '...the name is put in as text: nothing in it is read as a pattern', label.textContent.indexOf('Ada $& Lovelace') !== -1 && label.textContent.indexOf('%s') === -1 && s.form.children.indexOf( line ) < s.form.children.indexOf( s.textarea.parentNode ) );
 
 	s.media.currentTime = 12;
-	fire( s.media, 'pause' );
-	check( '...and an answer has no time unless one is typed: the player does not fill it', s.at.value === '' );
+	fire( s.textarea, 'focus' );
+	check( '...and an answer has no time unless one is typed: the player does not fill it, not even at the focus', s.at.value === '' );
 
 	s.click( s.answerTimed.reply );
 	check( 'answering an answer takes the id of that answer - the server files it under the comment - and the line says who', s.parent.value === 'cccccccccccc' && label.textContent === s.word('/feature/review/script/answering').split('%s').join('Cyd')+ ' ' && s.form.children.filter( function( el ) { return el.className === 'review-form__answering' } ).length === 1 );
@@ -434,17 +441,17 @@ function site( options ) {
 	const cancel = line.children[1];
 
 	s.media.currentTime = 12;
-	fire( s.media, 'pause' );
+	fire( s.textarea, 'focus' );
 	const whileAnswering = s.at.value;
 	cancel.click();
 	s.media.currentTime = 31.5;
-	fire( s.media, 'pause' );
+	fire( s.textarea, 'focus' );
 	check( 'once an answer is given up the time field follows the player again: the comment is one of its own, and its time is the player\'s - while the answer was prepared the player did not fill it', whileAnswering === '' && s.parent.value === '' && s.at.value === '0:31.5' );
 
 	s.click( s.second.reply );
 	s.textarea.value = 'Half written';
-	fire( s.textarea, 'input' );
-	check( 'while an answer is prepared the switch is off and a keystroke in the comment writes no time', s.follow.checked === false && s.at.value === '' );
+	fire( s.textarea, 'focus' );
+	check( 'while an answer is prepared the switch is off and the focus in the comment writes no time', s.follow.checked === false && s.at.value === '' );
 	s.media.currentTime = 90;
 	cancel.click();
 	check( '...giving the answer up sets the switch on again when the time field is empty, whatever has been written, and the field says where the player is at once', s.parent.value === '' && s.follow.checked === true && s.at.value === '1:30' );
@@ -455,7 +462,7 @@ function site( options ) {
 	fire( s.at, 'input' );
 	cancel.click();
 	s.media.currentTime = 150;
-	fire( s.media, 'pause' );
+	fire( s.textarea, 'focus' );
 	check( '...a time typed in the answer is theirs: giving it up leaves the switch off and the field as it was', s.follow.checked === false && s.at.value === '2:00' );
 }
 

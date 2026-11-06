@@ -7,7 +7,7 @@
  *							leave the page); the open tab is scrolled into the row of tabs where the row is wider than the window; a message the address carries (?state=..., ?sign-state=...) is taken out of the address once the page has shown it,
  *							so that a reload does not say it again; the card or the row an anchor names (#angebot-<id>, #beleg-<id>), or the row of the document
  *							Sign has just brought back (data-sign-state), is unfolded and brought into view, also when it stands in a tab the kernel's script has
- *							hidden; the field of Meine Daten the server refused gets the focus; the drop zone of the upload says that a file hangs over it; and the select of the versions over a player sends its form when the choice changes - at once for the mouse and touch, on Enter or on leaving for the keyboard - and gets the focus back after the page is loaded (the button that does it without the script is taken away). The pills over the list of documents are shown and filter its rows (a row that does not fit is hidden, the number over the list says how many are shown; the pill the server pressed is the one that applies at first, and a row that is hidden is not unfolded by an anchor); a message of the owner is put away by posting the form on its card, and the card goes from the page once the server has answered (it stays where the post fails). No markup is made here, nothing is sent but those two forms (a plain GET, a post to the same site) and nothing is stored.
+ *							hidden; the field of Meine Daten the server refused gets the focus; the drop zone of the upload says that a file hangs over it; and the select of the versions over a player sends its form when the choice changes - at once for the mouse and touch, on Enter or on leaving for the keyboard - and gets the focus back after the page is loaded (the button that does it without the script is taken away). The player does not need the page to load again: a click on *Anhören* (or on the name of a file that is played) and the choice of another version ask the route /.crm/player, whose address the column of the player carries (data-crm-player), for the player of that file, and put the answer - the markup the server draws, parsed and taken over as nodes, only where it comes from this origin, from the path of that route and holds a player - in the column; the list marks the row that plays from a template of the page, the address follows (replaceState), and Review binds the new player (Nino.review.init). A version takes over the position of the player it replaces and plays on where that played; the focus stays in the select. Where the answer is anything else, or the network fails, the link is followed and the form is sent the plain way. The pills over the list of documents are shown and filter its rows (a row that does not fit is hidden, the number over the list says how many are shown; the pill the server pressed is the one that applies at first, and a row that is hidden is not unfolded by an anchor); a message of the owner is put away by posting the form on its card, and the card goes from the page once the server has answered (it stays where the post fails). No markup is made here, nothing is sent but those two forms (a plain GET, a post to the same site) and the request for a player (a GET of the route the column names) and nothing is stored.
  */
 ( function() {
 
@@ -144,8 +144,8 @@
 	// made with the mouse or by touch sends the form at once; a choice made with the keyboard (arrows, Home, End, PageUp, PageDown, a letter) only marks it, and
 	// the form is sent on Enter or when the select is left with another version than the page has chosen - every arrow would otherwise load a page and drop the
 	// focus
-	function watchVersions() {
-		dc.querySelectorAll( '.crm-versions' ).forEach( function( form ) {
+	function watchVersions( root ) {
+		( root || dc ).querySelectorAll( '.crm-versions' ).forEach( function( form ) {
 			const select = form.querySelector( 'select' );
 			const button = form.querySelector( '.crm-versions__go' );
 			if( select === null )
@@ -186,7 +186,153 @@
 				if( was === true && changed() )
 					send();
 			} );
+			// With the player at hand the choice is not a page that loads again: the player of that version comes in its place, and the form is sent the plain way only where it cannot
+			form.addEventListener( 'submit', function( event ) {
+				if( player === null )
+					return;
+				event.preventDefault();
+				player.version( form, select );
+			} );
 		} );
+	}
+
+	// The player of the page that asks the route for a file (see watchPlayer()); null where there is none or the browser cannot do it
+	let player = null;
+
+	// The route's answer, or null: a status that is not 200, an answer from another origin or another path (a redirect to the door, say), a type that is no html
+	// and a network that fails are all null, and the caller takes the way the page has always had
+	function ask( source, file ) {
+		const route = new URL( source, location.href );
+		return window.fetch( source + '?file=' + encodeURIComponent( file ), { credentials: 'same-origin', headers: { Accept: 'text/html' } } ).then( function( response ) {
+			if( response.status !== 200 )
+				return null;
+			const at = new URL( response.url, location.href );
+			if( at.origin !== location.origin || at.pathname !== route.pathname || /^text\/html/i.test( response.headers.get( 'Content-Type' ) || '' ) === false )
+				return null;
+			return response.text();
+		} ).catch( function() { return null; } );
+	}
+
+	// The list marks the row of the title that plays: its class, aria-current and the pill, which is cloned from the template of the page and not written here
+	function mark( ids ) {
+		const template = dc.getElementById( 'crm-files-playing' );
+		dc.querySelectorAll( '.crm-files__row' ).forEach( function( row ) {
+			const on = ids.indexOf( row.getAttribute( 'data-files-id' ) ) !== -1;
+			const pill = row.querySelector( '.crm-files__playing' );
+			row.classList.toggle( 'crm-files__row--playing', on );
+			if( on )
+				row.setAttribute( 'aria-current', 'true' );
+			else
+				row.removeAttribute( 'aria-current' );
+			if( on === false && pill !== null )
+				pill.remove();
+			if( on === true && pill === null && template !== null ) {
+				const text = row.querySelector( '.crm-files__text' );
+				if( text !== null )
+					text.insertBefore( template.content.cloneNode( true ), row.querySelector( '.crm-files__open' ) );
+			}
+		} );
+	}
+
+	// The player of the page, which takes the files and the versions without the page loading again
+	function watchPlayer() {
+		const aside = dc.querySelector( 'aside.crm-player[data-crm-player]' );
+		if( aside === null || typeof window.fetch !== 'function' || typeof window.DOMParser !== 'function' || typeof URL !== 'function' )
+			return;
+		const source = aside.getAttribute( 'data-crm-player' );
+		let latest = 0;
+
+		// The answer is parsed and its nodes are taken over: it is the markup of the route of this origin, every value in it escaped on the server; null where it holds no player
+		const place = function( html ) {
+			const parsed = new window.DOMParser().parseFromString( html, 'text/html' );
+			if( parsed.querySelector( '.review-player' ) === null )
+				return null;
+			const nodes = Array.from( parsed.body.childNodes ).map( function( node ) { return dc.importNode( node, true ); } );
+			const ids = Array.from( parsed.querySelectorAll( '.review-player, option' ) ).map( function( node ) { return node.getAttribute( 'data-review-file' ) || node.value; } );
+			aside.replaceChildren.apply( aside, nodes );
+			aside.classList.remove( 'crm-player--empty' );
+			if( window.Nino && window.Nino.review && typeof window.Nino.review.init === 'function' )
+				window.Nino.review.init( aside );
+			watchVersions( aside );
+			mark( ids );
+			return aside;
+		};
+
+		const address = function( file, hash ) {
+			const params = cleanQuery( new URLSearchParams( location.search ), true );
+			params.delete( 'review-state' );
+			params.set( 'review', file );
+			params.set( 'tab', 'dateien' );
+			replaceAddress( params, hash );
+		};
+
+		// A file is opened: the page goes on where the route fails
+		const open = function( file, link ) {
+			const turn = ++latest;
+			ask( source, file ).then( function( html ) {
+				if( turn !== latest )
+					return;
+				if( html === null || place( html ) === null ) {
+					location.assign( link.href );
+					return;
+				}
+				address( file, '' );
+				if( typeof window.matchMedia === 'function' && window.matchMedia( '(max-width: 1023.98px)' ).matches )
+					aside.scrollIntoView( { block: 'start' } );
+			} );
+		};
+
+		// Another version of the title: the position of the player it replaces goes with it, and it plays on where that played
+		const version = function( form, select ) {
+			const file = select.value;
+			const old = aside.querySelector( 'audio, video' );
+			const at = old !== null ? old.currentTime : 0;
+			const playing = old !== null && old.paused === false;
+			const turn = ++latest;
+			ask( source, file ).then( function( html ) {
+				if( turn !== latest )
+					return;
+				if( html === null || place( html ) === null ) {
+					form.submit();
+					return;
+				}
+				address( file, '#crm-versions' );
+				const media = aside.querySelector( 'audio, video' );
+				const next = aside.querySelector( '.crm-versions__select' );
+				if( next !== null )
+					next.focus( { preventScroll: true } );
+				if( media === null )
+					return;
+				const carry = function() {
+					media.currentTime = Number.isFinite( media.duration ) ? Math.min( at, media.duration ) : at;
+					if( playing === true ) {
+						const promise = media.play();
+						if( promise !== undefined && promise !== null && typeof promise.catch === 'function' )
+							promise.catch( function() {} );
+					}
+				};
+				if( at > 0 || playing === true ) {
+					if( media.readyState >= 1 )
+						carry();
+					else
+						media.addEventListener( 'loadedmetadata', carry, { once: true } );
+				}
+			} );
+		};
+
+		dc.addEventListener( 'click', function( event ) {
+			const link = event.target.closest ? event.target.closest( 'a.crm-files__listen, a.crm-files__name' ) : null;
+			if( link === null || event.defaultPrevented === true || event.button > 0 || event.metaKey === true || event.ctrlKey === true || event.shiftKey === true || event.altKey === true )
+				return;
+			const target = new URL( link.href, location.href );
+			const file = target.searchParams.get( 'review' );
+			if( target.origin !== location.origin || target.pathname !== location.pathname || file === null || /^[a-f0-9]{12}$/.test( file ) === false )
+				return;
+			event.preventDefault();
+			open( file, link );
+		} );
+
+		player = { version: version };
 	}
 
 	// A field the server refused is where the person goes on: the form of Meine Daten marks it, and the focus is put there
@@ -279,6 +425,7 @@
 		showOpenTab();
 		window.addEventListener( 'load', showOpenTab );
 		watchDrop();
+		watchPlayer();
 		watchVersions();
 		watchFilter();
 		watchMessages();

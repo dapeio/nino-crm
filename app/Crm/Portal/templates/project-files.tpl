@@ -10,4 +10,5 @@
 				[[approval]]
 			</div>
 			[[player]]
+			<template id="crm-files-playing">[[mark]]</template>
 		</div>

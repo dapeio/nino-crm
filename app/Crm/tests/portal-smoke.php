@@ -2968,7 +2968,7 @@ check( 'the list of the uploads is a list of files: Take.01.txt and Take.02.txt 
 $portalScript = (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.js' );
 $versionsScript = (string) preg_replace( '/^\s*\/\/.*$/m', '', $portalScript );
 check( 'the script of the portal takes the button of the select of the versions away and sends its form - a plain GET, with requestSubmit so that a browser that checks the form does - when the choice changes with the mouse or by touch',
-	preg_match( '/function watchVersions\(\)[\s\S]*?\.hidden\s*=\s*true[\s\S]*?form\.requestSubmit\(\)[\s\S]*?addEventListener\(\s*[\'"]change[\'"][\s\S]{0,120}?keyboard === false[\s\S]{0,40}?send\(\)/', $versionsScript ) === 1 );
+	preg_match( '/function watchVersions\(\s*\w*\s*\)[\s\S]*?\.hidden\s*=\s*true[\s\S]*?form\.requestSubmit\(\)[\s\S]*?addEventListener\(\s*[\'"]change[\'"][\s\S]{0,120}?keyboard === false[\s\S]{0,40}?send\(\)/', $versionsScript ) === 1 );
 check( '...a choice with the keyboard - the arrows, Home, End, PageUp, PageDown, a letter - only marks the select (a keydown branch), the change that follows sends nothing, and the form is sent on Enter and when the select is left (blur) with another option than the page has chosen (defaultSelected)',
 	preg_match( '/addEventListener\(\s*[\'"]keydown[\'"][\s\S]{0,900}?\'ArrowDown\'[\s\S]{0,200}?\'PageDown\'[\s\S]{0,200}?keyboard = true/', $versionsScript ) === 1 && preg_match( '/event\.key === \'Enter\'[\s\S]{0,200}?changed\(\)[\s\S]{0,120}?send\(\)/', $versionsScript ) === 1
 	&& preg_match( '/addEventListener\(\s*[\'"]blur[\'"][\s\S]{0,200}?changed\(\)[\s\S]{0,60}?send\(\)/', $versionsScript ) === 1 && str_contains( $versionsScript, 'defaultSelected' ) === true );
@@ -4262,6 +4262,7 @@ function portalApprovalChecks( array &$appData, array $a, array $b, array $accou
 
 portalApprovalChecks( $appData, $a, $b, $accounts, $stray, $owner, $invoiceA, $p1, $p4, $today, $store, $wordsDe, $wordsEn, $hold, $reset, $asAdmin, $asVisitor, $put, $made, $final, $line, $ago, $recordsOf, $location );
 portalOverviewChecks( $appData, $a, $accounts, $owner, $today, $store, $wordsDe, $wordsEn, $hold, $reset, $asAdmin, $put, $made, $final, $line, $ago, $recordsOf, $location );
+portalPlayerChecks( $appData, $a, $b, $accounts, $stray, $owner, $store, $today, $hold, $reset, $asAdmin, $asVisitor, $put, $made, $final, $line, $ago );
 
 $resume();
 
@@ -4520,3 +4521,201 @@ $asAdmin();
 check( '...and the panel has no accounts to offer for a signature', $post( 'crm-documents/get', [ 'id' => (string) $privacyA['id'] ] )[1]['accounts'] === [] );
 
 ninoDone( $appData );
+
+// --- Der Player als Fragment: GET /.crm/player ------------------------------------------------------------------------------
+
+/**
+ *	The markup of a fragment or of the aside of a page the way a parser keeps it: re-serialised, so that the two are compared by what they hold and not by the white space of a template; the number a request gives the form of the comment is left out, as it counts the forms of the request
+ *
+ *	@param		string		$html
+ *
+ *	@return 	string
+ */
+function portalCanon( string $html ): string {
+
+	$body = portalFind( $html, '//body' );
+
+	return $body === [] ? '' : trim( (string) preg_replace( [ '/>\s+</', '/review-form-\d+/' ], [ '><', 'review-form-n' ], implode( '', array_map( static fn( \DOMNode $node ): string => $node->ownerDocument->saveHTML( $node ), iterator_to_array( $body[0]->childNodes ) ) ) ) );
+}
+
+/**
+ *	What the column beside the list of a page holds, canonical
+ *
+ *	@param		string		$page
+ *
+ *	@return 	string										'' for no column
+ */
+function portalAsideOf( string $page ): string {
+
+	$aside = portalFind( $page, '//aside[contains(concat(" ", normalize-space(@class), " "), " crm-player ")]' );
+
+	return $aside === [] ? '' : portalCanon( implode( '', array_map( static fn( \DOMNode $node ): string => $node->ownerDocument->saveHTML( $node ), iterator_to_array( $aside[0]->childNodes ) ) ) );
+}
+
+/**
+ *	The route of the player as a member asks it
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$query				The query string after the path, with its ?
+ *
+ *	@return 	array										The response
+ */
+function portalPlayerAsk( array &$appData, string $query ): array {
+
+	return portalServe( $appData, '/.crm/player'. $query );
+}
+
+/**
+ *	The checks of the route /.crm/player: who is answered, what the answer holds and that it is the player of the page
+ */
+function portalPlayerChecks( array &$appData, array $a, array $b, array $accounts, array $stray, array $owner, string $store, string $today, \Closure $hold, \Closure $reset, \Closure $asAdmin, \Closure $asVisitor, \Closure $put, \Closure $made, \Closure $final, \Closure $line, \Closure $ago ): void {
+
+	echo "\nThe player as a fragment: GET /.crm/player\n";
+
+	$hold();
+	$reset();
+	$asAdmin();
+	$byAnna = [ 'kind' => 'member', 'id' => $accounts['anna']['id'] ];
+	$folder = $store::addFolder( $appData, $a['group'], 'Player-Fragment' );
+	$one = $put( $folder, 'Lied.01.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 5000 ) );
+	$two = $put( $folder, 'Lied.02.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 4000 ) );
+	$clip = $put( $folder, 'Film.mp4', 'mp4', 'video/mp4', true, $owner, $ago( 3000 ) );
+	$pdf = $put( $folder, 'Plan.pdf', 'pdf', 'application/pdf', true, $owner, $ago( 2000 ) );
+	$hidden = $put( $folder, 'Geheim.mp3', 'mp3', 'audio/mpeg', false, $owner, $ago( 1000 ) );
+	$gone = $put( $folder, 'Weg.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 900 ) );
+	$projectA = $made( 'Fragment', $a['number'], [ 'folder' => $folder['id'] ], false );
+	$strayFolder = $store::addFolder( $appData, $a['group'], 'Ohne Projekt' );
+	$loose = $put( $strayFolder, 'Lose.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 800 ) );
+	$folderB = $store::addFolder( $appData, $b['group'], 'Fragment-B' );
+	$ofB = $put( $folderB, 'Fremd.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 700 ) );
+	$made( 'Fragment B', $b['number'], [ 'folder' => $folderB['id'] ], false );
+	$folderW = $store::addFolder( $appData, $a['group'], 'Fragment-wartet' );
+	$waits = $put( $folderW, 'Wartet.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 600 ) );
+	$waitsHidden = $put( $folderW, 'Wartet-geheim.mp3', 'mp3', 'audio/mpeg', false, $owner, $ago( 590 ) );
+	$waitsPdf = $put( $folderW, 'Wartet.pdf', 'pdf', 'application/pdf', true, $owner, $ago( 580 ) );
+	$waitsOwn = $put( $folderW, 'Wartet-eigen.mp3', 'mp3', 'audio/mpeg', false, $byAnna, $ago( 585 ) );
+	$waitsCarl = $put( $folderW, 'Wartet-carl.mp3', 'mp3', 'audio/mpeg', false, [ 'kind' => 'member', 'id' => $accounts['carl']['id'] ], $ago( 584 ) );
+	$folderX = $store::addFolder( $appData, $b['group'], 'Fremde Gruppe' );
+	$foreign = $put( $folderX, 'Fremd-gruppe.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 583 ) );
+	$projectX = $made( 'Fragment fremde Gruppe', $a['number'], [ 'folder' => $folderX['id'] ], false );
+	$offerX = $final( 'offer', $a['id'], [ 'date' => $today, 'valid_until' => '2099-12-31', 'project' => $projectX, 'template_key' => 'angebot', 'lines' => [ $line( 'Auftrag X' ) ] ] );
+	Documents::release( $appData, $offerX['id'], false );
+	$lost = $put( $folder, 'Verloren.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 570 ) );
+	@unlink( (string) \Nino\Modules\Files\Store::bytes( $appData, $lost['id'], 'mp3' ) );
+	$projectW = $made( 'Fragment wartet', $a['number'], [ 'folder' => $folderW['id'] ], false );
+	$offer = $final( 'offer', $a['id'], [ 'date' => $today, 'valid_until' => '2099-12-31', 'project' => $projectW, 'template_key' => 'angebot', 'lines' => [ $line( 'Auftrag' ) ] ] );
+	Documents::release( $appData, $offer['id'], false );
+	$injected = \Nino\Modules\Review::add( $appData, $two['id'], $byAnna, 7.5, "<script>alert(1)</script> [[/nino/dir]] [crm-projects] \"x\" onload=\"y" );
+	\Nino\Modules\Review::add( $appData, $gone['id'], $byAnna, 3.0, 'Kommentar zur entfernten Datei' );
+	\Nino\Modules\Files\Store::removeBytes( $appData, $gone['id'] );
+	portalSignIn( $appData, $accounts['anna'] );
+
+	$ask = static function( string $file ) use ( &$appData ): array {
+		return portalPlayerAsk( $appData, '?file='. $file );
+	};
+	$token = static fn( string $name ): string => 'contains(concat(" ", normalize-space(@class), " "), " '. $name. ' ")';
+	$page = static function( string $file ) use ( &$appData, $projectA ): string {
+		return portalPage( $appData, '/portal/projekte?projekt='. $projectA. '&review='. $file )[1];
+	};
+	$answer = $ask( $two['id'] );
+
+	$body = (string) ( $answer['body'] ?? '' );
+
+	check( 'the route is registered for the GET alone, and a member of the client is answered 200 with the markup of the player', ( $appData['/nino/http/routes']['GET://.crm/player']['uri'] ?? '' ) === \Crm\Portal\Projects::ROUTE && isset( $appData['/nino/http/routes']['POST://.crm/player'] ) === false
+		&& $answer['statusCode'] === 200 && portalFind( $body, '//div['. $token( 'review-player' ). '][@data-review-file="'. $two['id']. '"]//audio' ) !== [] );
+	check( '...as html in utf-8 that is never kept and never sniffed', $answer['header']['Content-Type'] === 'text/html; charset=utf-8' && $answer['header']['Cache-Control'] === 'no-store' && $answer['header']['X-Content-Type-Options'] === 'nosniff' );
+	check( '...the markup alone: no frame of a page, no script, no head, no word left unresolved', portalFind( $body, '//body//html | //body//head | //script | //body//body | //*[@onload] | //*[@onclick]' ) === [] && stripos( $body, '<script' ) === false && portalLeft( $body ) === false && str_contains( $body, '[[' ) === false );
+	check( '...it is what the page puts beside the list for that file, byte for byte once parsed: the versions over the player, the player with its comments, the form', portalCanon( $body ) === portalAsideOf( $page( $two['id'] ) ) && portalCanon( $body ) !== '' && portalFind( $body, '//form['. $token( 'crm-versions' ). ']//option' ) !== [] );
+	check( '...the form of the comment returns to the page of the projects, as it does on the page, and the player stands for the file asked', portalFind( $body, '//form['. $token( 'review-form' ). ']//input[@name="return"]/@value' )[0]->nodeValue === '/portal/projekte' && portalFind( $body, '//form['. $token( 'review-form' ). ']//input[@name="file"]/@value' )[0]->nodeValue === $two['id']
+		&& count( portalFind( $body, '//form['. $token( 'crm-versions' ). ']//option[@selected]/@value' ) ) === 1 && portalFind( $body, '//form['. $token( 'crm-versions' ). ']//option[@selected]/@value' )[0]->nodeValue === $two['id'] );
+	check( '...the other version is the player of that version, and a video is a video', portalCanon( $ask( $one['id'] )['body'] ) === portalAsideOf( $page( $one['id'] ) ) && portalFind( $ask( $clip['id'] )['body'], '//div['. $token( 'review-player' ). ']//video' ) !== [] && portalCanon( $ask( $clip['id'] )['body'] ) === portalAsideOf( $page( $clip['id'] ) ) );
+	check( '...a comment is text: the markup, the brackets and the quotes of it are escaped as they are on the page', portalFind( $body, '//script' ) === [] && str_contains( $body, '&lt;script&gt;' ) === true && str_contains( $body, '&#91;crm-projects]' ) === true && is_array( $injected ) === true );
+	$removed = $ask( $gone['id'] );
+	check( 'a file that was removed from the server is answered with the sentence over its comments and no medium, no form, as on the page', $removed['statusCode'] === 200 && portalFind( $removed['body'], '//audio | //video | //form['. $token( 'review-form' ). ']' ) === [] && portalFind( $removed['body'], '//p['. $token( 'crm-files__gone-note' ). ']' ) !== [] && portalCanon( $removed['body'] ) === portalAsideOf( $page( $gone['id'] ) ) );
+
+	// what the script needs of the page: the address of the route on the column, with and without a player, and the pill of a row that plays in a template of the page
+	$empty = portalPage( $appData, '/portal/projekte?projekt='. $projectA. '&tab=dateien' )[1];
+	$playingPage = $page( $two['id'] );
+	$column = static fn( string $html ): array => portalFind( $html, '//aside['. $token( 'crm-player' ). ']/@data-crm-player' );
+	$pill = static fn( string $html ): string => portalCanon( implode( '', array_map( static fn( \DOMNode $node ): string => $node->ownerDocument->saveHTML( $node ), portalFind( $html, '//li[@data-files-id="'. $two['id']. '"]//span['. $token( 'crm-files__playing' ). ']' ) ) ) );
+	$kept = portalFind( $playingPage, '//template[@id="crm-files-playing"]' );
+	check( 'the column of the player names the route that answers it, with a player in it and empty, so that the script finds it where no file is chosen yet', count( $column( $empty ) ) === 1 && $column( $empty )[0]->nodeValue === \Crm\Portal\Projects::ROUTE && count( $column( $playingPage ) ) === 1 && $column( $playingPage )[0]->nodeValue === \Crm\Portal\Projects::ROUTE );
+	check( '...and the page holds the pill of the row that plays in a template, outside the list and the same as the row draws it, in either state of the column: the script clones it and writes no word', count( $kept ) === 1 && $pill( $playingPage ) !== '' && portalCanon( implode( '', array_map( static fn( \DOMNode $node ): string => $node->ownerDocument->saveHTML( $node ), iterator_to_array( $kept[0]->childNodes ) ) ) ) === $pill( $playingPage )
+		&& portalFind( $playingPage, '//ul['. $token( 'crm-files__list' ). ']//template' ) === [] && count( portalFind( $empty, '//template[@id="crm-files-playing"]' ) ) === 1 );
+
+	$both = portalPlayerAsk( $appData, '?file='. $one['id']. '&review='. $two['id'] );
+	check( 'the file the route is asked for wins over a ?review= in the same query', $both['statusCode'] === 200 && portalFind( $both['body'], '//div['. $token( 'review-player' ). ']/@data-review-file' )[0]->nodeValue === $one['id'] );
+	check( 'a file whose bytes are gone from the disk and that is not marked as removed has no player: the 404', $ask( $lost['id'] )['statusCode'] === 404 );
+
+	// what the route itself puts on its answers, whatever a layer around it adds: asked as the output asks it, with no other layer in between
+	$direct = static function( string $file ) use ( &$appData ): array {
+
+		$request = [ '/nino/http/request' => [ 'query' => [ 'file' => $file ] ], '/nino/http/response' => [ 'header' => [] ] ];
+		\Crm\Portal\Projects::callbackPlayer( $appData, $request );
+
+		return $request['/nino/http/response'];
+	};
+	$given = $direct( $two['id'] );
+	$turned = $direct( '0123456789ab' );
+	check( 'the route sets its headers itself, on the answer and on the refusal alike: never kept, never sniffed, html in utf-8 for the player and plain text for the refusal', $given['statusCode'] === 200 && $given['header'] === [ 'Cache-Control' => 'no-store', 'X-Content-Type-Options' => 'nosniff', 'Content-Type' => 'text/html; charset=utf-8' ]
+		&& $turned['statusCode'] === 404 && $turned['body'] === 'Not Found' && $turned['header'] === [ 'Cache-Control' => 'no-store', 'X-Content-Type-Options' => 'nosniff', 'Content-Type' => 'text/plain; charset=utf-8' ] );
+
+	// who is turned away
+	$refused = [
+		'no file'                    => $ask( '' ), 'a PDF'                         => $ask( $pdf['id'] ), 'a file the member may not see' => $ask( $hidden['id'] ), 'a file of another client' => $ask( $ofB['id'] ),
+		'a file of a folder of no project' => $ask( $loose['id'] ), 'an id nobody has' => $ask( '0123456789ab' ), 'a path' => $ask( '..%2F..%2Fdata%2Fconfig' ), 'a path with dots' => $ask( '../'. $two['id'] ),
+		'a null byte'                => $ask( $two['id']. '%00' ), 'a null byte inside' => $ask( substr( $two['id'], 0, 6 ). '%00'. substr( $two['id'], 6 ) ), 'a list' => portalPlayerAsk( $appData, '?file[]='. $two['id'] ), 'a keyed list' => portalPlayerAsk( $appData, '?file[a]='. $two['id'] ),
+		'a long id'                  => $ask( $two['id']. 'a' ), 'upper case' => $ask( strtoupper( $two['id'] ) ), 'a blank' => $ask( '%20'. $two['id'] ), 'a new line behind' => $ask( $two['id']. '%0A' ), 'the query of the page' => portalPlayerAsk( $appData, '?review='. $two['id'] ),
+		'no query'                   => portalServe( $appData, '/.crm/player' ), 'a post' => portalServe( $appData, '/.crm/player?file='. $two['id'], 'POST' ),
+	];
+	check( 'a post to the route is no route', $refused['a post']['statusCode'] === 404 );
+	unset( $refused['a post'] );
+	check( 'a PDF, a file the member may not see, a file of another client or of a folder of no project, an id nobody has, a path, a null byte, a list, an id that is not twelve of 0-9a-f, an empty query and a post are the 404 with a plain body', array_filter( $refused, static fn( array $response ): bool => $response['statusCode'] === 200 || ( $response['body'] ?? '' ) !== 'Not Found' ) === [] );
+	check( '...and a refusal is never kept or sniffed either, and is plain text', array_filter( $refused, static fn( array $response ): bool => ( $response['header']['Cache-Control'] ?? '' ) !== 'no-store' || ( $response['header']['X-Content-Type-Options'] ?? '' ) !== 'nosniff' || ( $response['header']['Content-Type'] ?? '' ) !== 'text/plain; charset=utf-8' ) === [] );
+
+	$asVisitor();
+	$visitor = $ask( $two['id'] );
+	check( 'a visitor is turned away, and what the visitor learns is the same as for an id nobody has', $visitor['statusCode'] === 404 && ( $visitor['body'] ?? '' ) === 'Not Found' && $visitor['header'] === $refused['an id nobody has']['header'] );
+	portalSignIn( $appData, $stray );
+	check( 'a member of no client is turned away', $ask( $two['id'] )['statusCode'] === 404 && ( $ask( $two['id'] )['body'] ?? '' ) === 'Not Found' );
+	portalSignIn( $appData, $accounts['ben'] );
+	check( 'a member of another client is turned away for the files of this one and is served the player of his own', $ask( $two['id'] )['statusCode'] === 404 && $ask( $ofB['id'] )['statusCode'] === 200 && portalFind( $ask( $ofB['id'] )['body'], '//div[@data-review-file="'. $ofB['id']. '"]' ) !== [] );
+	portalSignIn( $appData, $accounts['anna'] );
+
+	// the gate and the offer that waits
+	\Crm\Settings::set( $appData, 'privacy_text', 'Text zur Prüfung des Players.' );
+	check( 'while a step of the gate is pending the player is not given - nor the note of an offer that waits, which would tell the project of a file to somebody who has not taken note of the Datenschutz', $ask( $two['id'] )['statusCode'] === 404 && ( $ask( $two['id'] )['body'] ?? '' ) === 'Not Found' && $ask( $waits['id'] )['statusCode'] === 404 );
+	\Crm\Settings::set( $appData, 'privacy_text', '' );
+	check( '...and is given again when the step is done', $ask( $two['id'] )['statusCode'] === 200 );
+	$waiting = $ask( $waits['id'] );
+	check( 'while an offer of the project waits for the order the answer is the note that leads to the offer, in the place of the player: no medium, no comments, no form', $waiting['statusCode'] === 200 && portalFind( $waiting['body'], '//p['. $token( 'crm-project__waiting' ). ']//a/@href' )[0]->nodeValue === '/portal/projekte?projekt='. $projectW. '&tab=angebot#angebot-'. $offer['id'] && portalFind( $waiting['body'], '//audio | //video | //form | //div['. $token( 'review-player' ). ']' ) === []
+		&& portalCanon( $waiting['body'] ) === portalCanon( implode( '', array_map( static fn( \DOMNode $node ): string => $node->ownerDocument->saveHTML( $node ), portalFind( portalPage( $appData, '/portal/projekte?projekt='. $projectW. '&review='. $waits['id'] )[1], '//section[@id="projekt-files"]/p['. $token( 'crm-project__waiting' ). ']' ) ) ) ) );
+	check( '...but only in the place of the player of a medium the member would see: a file that is hidden from the member and a PDF of that project are the 404, and so is one the member may see that is no medium - the note tells nothing about what the folder holds', $ask( $waitsHidden['id'] )['statusCode'] === 404 && $ask( $waitsPdf['id'] )['statusCode'] === 404 );
+	check( '...a hidden upload of the member itself is a file the member sees, so it has the note; the hidden upload of another member of the client is the 404', $ask( $waitsOwn['id'] )['statusCode'] === 200 && $ask( $waitsCarl['id'] )['statusCode'] === 404 );
+	check( '...and a project whose folder is one of another group has no note for the files in it, whatever they are: the rule of the group is the rule of Files', $ask( $foreign['id'] )['statusCode'] === 404 );
+	check( '...and for a file that is none of the project the note is not given either', $ask( $ofB['id'] )['statusCode'] === 404 );
+	$off = [ \Nino\Features::deactivate( $appData, 'events' ), \Nino\Features::deactivate( $appData, 'review' ) ];
+		check( 'with Review off there is no player to give - and no note in its place', $off === [ true, true ] && $ask( $two['id'] )['statusCode'] === 404 && $ask( $waits['id'] )['statusCode'] === 404 );
+	\Nino\Features::activate( $appData, 'review' );
+	\Nino\Features::activate( $appData, 'events' );
+	$off = [ \Nino\Features::deactivate( $appData, 'events' ), \Nino\Features::deactivate( $appData, 'review' ), \Nino\Features::deactivate( $appData, 'files' ) ];
+	check( '...and with Files off', $off === [ true, true, true ] && $ask( $two['id'] )['statusCode'] === 404 );
+	foreach( [ 'files', 'review', 'events' ] as $key )
+		\Nino\Features::activate( $appData, $key );
+
+
+	// one function for the page and the route
+	$project = (array) \Crm\Projekte::get( $appData, $projectA );
+	$client = (array) \Crm\Portal::client( $appData );
+	$files = \Crm\Portal\Files::visible( $appData, $folder['id'] );
+	$direct = \Crm\Portal\Projects::player( $appData, $client, $project, $two['id'], $files );
+	check( 'Projects::player() draws the player for the page and for the route alike; for a file that is none of the list it draws nothing', $direct !== '' && portalFind( $direct, '//div['. $token( 'review-player' ). '][@data-review-file="'. $two['id']. '"]' ) !== [] && \Crm\Portal\Projects::player( $appData, $client, $project, $pdf['id'], $files ) === '' && \Crm\Portal\Projects::player( $appData, $client, $project, $ofB['id'], $files ) === '' && \Crm\Portal\Projects::player( $appData, $client, $project, '', $files ) === '' );
+
+	// the player of Review takes the file and the page it returns to from its caller
+	ninoVisit( $appData, '/portal/projekte' );
+	$given = \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'file' => $two['id'], 'path' => '/portal/projekte' ] );
+	$plain = \Nino\Modules\Review::componentReviewPlayer( $appData, [] );
+	check( 'Review draws the player of the file a caller names when the request names none, and the list where nothing is named', portalFind( $given, '//div['. $token( 'review-player' ). '][@data-review-file="'. $two['id']. '"]//input[@name="return"]/@value' )[0]->nodeValue === '/portal/projekte' && portalFind( $plain, '//*[@data-review-file]' ) === [] && \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'file' => $pdf['id'] ] ) === \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'file' => '0123456789ab' ] ) );
+	$asVisitor();
+	check( '...and a visitor gets nothing, however the caller names it', \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'file' => $two['id'] ] ) === '' );
+}

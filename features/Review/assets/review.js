@@ -5,8 +5,9 @@
  *						reloads the page, and the time field is typed as m:ss or left empty. With it, a click
  *						on the time of a comment takes the player there and plays from it, and the switch beside
  *						the time field - on to begin with - makes the field say where the player is: when the
- *						player stops, is moved or ends, and at every keystroke in the comment, as m:ss and the
- *						tenth of a second after a point where there is one. A person who types in the field has
+ *						comment gets the focus and when the switch is set on, as m:ss and the tenth of a
+ *						second after a point where there is one - while the person writes, the field keeps
+ *						the time it took. A person who types in the field has
  *						the time for themself, and the switch goes off; set on again, it writes the position at
  *						once. A button on each comment prepares an answer: the id of the comment goes into the
  *						hidden field parent, a line says who is answered and has a button to give that up, and
@@ -14,7 +15,9 @@
  *						leaving the page, so that the player plays on: the script posts it with fetch() and
  *						takes the list of the comments and the line of the state from the page the post is
  *						answered with - the media element is never touched. Where that fails, or the answer is
- *						not the page of the player, the form is posted the plain way.
+ *						not the page of the player, the form is posted the plain way. A page that puts a player
+ *						in its place later, from an answer of its own, has it taken over with
+ *						Nino.review.init( root ): every player below root that is not bound yet.
  *
  *						Bundled into the project's script bundle by the manifest's assets, so it is a static
  *						file that is never rendered through the fill engine: every word is asked for with
@@ -158,14 +161,13 @@
 		let line = null;
 		let sending = false;
 
-		// With the switch on the field says where the player is; a timeupdate is left out on purpose - the number would never keep still
+		// With the switch on the field says where the player is - when the comment gets the focus, and when the switch is set on: the number would never keep still on the player's own events, and a time that changes under a person who writes is no time they chose
 		const update = function() {
 			if( follow.checked === true )
 				at.value = position( media.currentTime );
 		};
 
-		[ 'pause', 'seeked', 'ended' ].forEach( function( name ) { media.addEventListener( name, update ) } );
-		text.addEventListener( 'input', update );
+		text.addEventListener( 'focus', update );
 
 		// A time typed is the person's own; the switch set on again takes the player's at once
 		at.addEventListener( 'input', function() { follow.checked = false } );
@@ -389,16 +391,20 @@
 	};
 
 	/**
-	 *	Take over every player of the page
+	 *	Take over every player below a node that is not taken over yet: the page, or the column a page puts a player in
+	 *	after it was loaded
+	 *
+	 *	@param		{Element|Document}	[root]	Where to look; the page where there is none
 	 *
 	 *	@return		void
 	 */
-	const init = function() {
-		Array.from( dc.querySelectorAll('.review-player') ).forEach( take );
+	const init = function( root ) {
+		const where = root !== undefined && root !== null && typeof root.querySelectorAll === 'function' ? root : dc;
+		Array.from( where.querySelectorAll('.review-player') ).forEach( take );
 	};
 
 	wn.Nino.review = { seconds : seconds, clock : clock, position : position, seek : seek, init : init };
 
-	Nino.events.bindCallback( 'ready', init );
+	Nino.events.bindCallback( 'ready', function() { init() } );
 
 } )(window,document);
