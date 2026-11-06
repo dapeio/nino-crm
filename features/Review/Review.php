@@ -23,9 +23,11 @@ namespace Nino\Modules {
 	 *										under them and a form to write one: at the second the player is at, or at a time typed
 	 *										as m:ss, or at none.
 	 *
-	 *										A comment is POST /.review/comment, a plain form post (the script helps with the time
-	 *										and with answering and posts nothing): a refusal or the success is answered with a
-	 *										redirect to the page the form was on, ?review=<id>&review-state=<state>. The owner
+	 *										A comment is POST /.review/comment, a form post - a plain one that reloads the page
+	 *										without the script, and with it sent by fetch() so that the player plays on, the script
+	 *										taking the list and the state from the page the redirect leads to: a refusal or the
+	 *										success is answered with a redirect to the page the form was on,
+	 *										?review=<id>&review-state=<state>. The owner
 	 *										reads, answers, marks as done and deletes in the panel (Review\Admin). The data is
 	 *										Review\Store's, /data/review.php.
 	 *

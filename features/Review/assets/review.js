@@ -1,16 +1,20 @@
 /**
  *	Nino - Review
  *	review.js	The script of the player [review-player] on the site. The page works without it: the
- *						time of a comment is a link to the file at that second, the form is a plain post, and
- *						the time field is typed as m:ss or left empty. With it, a click on the time of a comment
- *						takes the player there and plays from it, the time field follows the player - it is
- *						filled when the player stops or is moved, until the person has typed in it or in the
- *						comment, and a button writes the position of the player into it on demand, as m:ss
- *						and the tenth of a second after a point where there is one - and a
- *						button on each comment prepares an answer: the id of the comment goes into the hidden
- *						field parent, a line says who is answered and has a button to give that up, and the
- *						comment is written without a time unless one is typed. The form is posted by the
- *						browser, never by this script.
+ *						time of a comment is a link to the file at that second, the form is a plain post that
+ *						reloads the page, and the time field is typed as m:ss or left empty. With it, a click
+ *						on the time of a comment takes the player there and plays from it, and the switch beside
+ *						the time field - on to begin with - makes the field say where the player is: when the
+ *						player stops, is moved or ends, and at every keystroke in the comment, as m:ss and the
+ *						tenth of a second after a point where there is one. A person who types in the field has
+ *						the time for themself, and the switch goes off; set on again, it writes the position at
+ *						once. A button on each comment prepares an answer: the id of the comment goes into the
+ *						hidden field parent, a line says who is answered and has a button to give that up, and
+ *						the comment is written without a time unless one is typed. The form is sent without
+ *						leaving the page, so that the player plays on: the script posts it with fetch() and
+ *						takes the list of the comments and the line of the state from the page the post is
+ *						answered with - the media element is never touched. Where that fails, or the answer is
+ *						not the page of the player, the form is posted the plain way.
  *
  *						Bundled into the project's script bundle by the manifest's assets, so it is a static
  *						file that is never rendered through the fill engine: every word is asked for with
@@ -140,44 +144,43 @@
 		const at = form.querySelector('input[name="at"]');
 		const parent = form.querySelector('input[name="parent"]');
 		const text = form.querySelector('textarea');
-		const now = form.querySelector('.review-form__now');
+		const follow = form.querySelector('.review-form__follow-input');
+		const send = form.querySelector('button[type="submit"]');
 
-		if( at === null || parent === null || text === null )
+		if( at === null || parent === null || text === null || follow === null )
 			return;
 
 		root.dataset.reviewBound = '1';
 
 		// The controls that do nothing without the script are drawn hidden, and shown now
-		Array.from( root.querySelectorAll('[data-review-reply], .review-form__now') ).forEach( function( control ) { control.hidden = false } );
+		Array.from( root.querySelectorAll('[data-review-reply], .review-form__follow') ).forEach( function( control ) { control.hidden = false } );
 
-		// Whether the time field is the person's now: typed in, or the comment is under way
-		let typed = false;
 		let line = null;
+		let sending = false;
 
-		const follow = function() {
-			if( typed === false )
+		// With the switch on the field says where the player is; a timeupdate is left out on purpose - the number would never keep still
+		const update = function() {
+			if( follow.checked === true )
 				at.value = position( media.currentTime );
 		};
 
-		[ 'pause', 'seeked', 'ended' ].forEach( function( name ) { media.addEventListener( name, follow ) } );
-		at.addEventListener( 'input', function() { typed = true } );
-		text.addEventListener( 'input', function() { typed = true } );
+		[ 'pause', 'seeked', 'ended' ].forEach( function( name ) { media.addEventListener( name, update ) } );
+		text.addEventListener( 'input', update );
 
-		if( now !== null )
-			now.addEventListener( 'click', function() {
-				at.value = position( media.currentTime );
-				typed = false;
-			} );
+		// A time typed is the person's own; the switch set on again takes the player's at once
+		at.addEventListener( 'input', function() { follow.checked = false } );
+		follow.addEventListener( 'change', update );
 
 		/**
-		 *	Give up the answer: the comment is one of its own again, and the time field follows the player again - unless the
-		 *	person has typed a time or a comment since, which is theirs
+		 *	Give up the answer: the comment is one of its own again, and the switch is on again, with the position of the player
+		 *	in the field - unless a time is typed in it, which is the person's
 		 *
 		 *	@return		void
 		 */
 		const cancel = function() {
 			parent.value = '';
-			typed = at.value.trim() !== '' || text.value.trim() !== '';
+			follow.checked = at.value.trim() === '';
+			update();
 
 			if( line !== null )
 				line.box.hidden = true;
@@ -185,7 +188,7 @@
 
 		/**
 		 *	Prepare an answer to a comment or to an answer: its id into the field parent, who is answered in the line above
-		 *	the comment, no time unless one is typed, and the focus in the comment
+		 *	the comment, no time unless one is typed - the switch goes off and the field is emptied -, and the focus in the comment
 		 *
 		 *	@param		{Element}	item						The element with the data-review-id of the comment answered
 		 *
@@ -213,9 +216,155 @@
 			line.label.textContent = word('answering').split('%s').join( who !== null ? who.textContent : '' )+ ' ';
 			line.box.hidden = false;
 			at.value = '';
-			typed = true;
+			follow.checked = false;
 			text.focus();
 		};
+
+		/**
+		 *	The element of the player that is the list of the comments, or the line that says there are none
+		 *
+		 *	@param		{Element}	box						A .review-player
+		 *
+		 *	@return		{Element|null}
+		 */
+		const listOf = function( box ) {
+			return Array.from( box.children ).find( function( child ) { return child.classList.contains('review-comments') } ) || null;
+		};
+
+		/**
+		 *	The player of this file in the page the post was answered with: the one that has the form, whatever else the page holds
+		 *
+		 *	@param		{Document}	page
+		 *
+		 *	@return		{Element|null}
+		 */
+		const blockOf = function( page ) {
+			return Array.from( page.querySelectorAll('.review-player') ).find( function( box ) {
+				return box.getAttribute('data-review-file') === root.getAttribute('data-review-file') && listOf( box ) !== null && box.querySelector('form.review-form') !== null;
+			} ) || null;
+		};
+
+		/**
+		 *	Take the list of the comments, the count and the line of the state from the player of the page the post was
+		 *	answered with. What is put in is no markup made from data here: it is the nodes of the page that Review draws, from
+		 *	the address the form posted to and the redirect it was answered with - the same origin - and exactly what a reload of
+		 *	this page would show, every value in it escaped on the server. The media element is not among them, and nothing of
+		 *	the form but the line of the state
+		 *
+		 *	@param		{Element}	fresh					The .review-player of the answer
+		 *
+		 *	@return		void
+		 */
+		const renew = function( fresh ) {
+
+			const list = listOf( root );
+			const next = listOf( fresh );
+			const count = root.querySelector('.review-player__count');
+			const counted = fresh.querySelector('.review-player__count');
+			const state = form.querySelector('.review-state');
+			const issuing = fresh.querySelector('form.review-form');
+			const stated = issuing !== null ? issuing.querySelector('.review-state') : null;
+
+			const token = form.querySelector('input[name="_csrf"]');
+			const issued = issuing !== null ? issuing.querySelector('input[name="_csrf"]') : null;
+
+			// The token of the session as the page now holds it: a form that stood open past a login in another tab posts again with it
+			if( token !== null && issued !== null )
+				token.value = issued.value;
+
+			Array.from( next.querySelectorAll('[data-review-reply]') ).forEach( function( control ) { control.hidden = false } );
+
+			if( list !== null )
+				list.replaceWith( next );
+
+			if( count !== null && counted !== null )
+				count.textContent = counted.textContent;
+
+			if( state !== null && stated !== null )
+				state.replaceWith( stated );
+			else if( stated !== null && send !== null )
+				form.insertBefore( stated, send );
+			else if( state !== null )
+				state.remove();
+		};
+
+		/**
+		 *	The answer to the post is in: a comment that was saved empties the form, whatever else the page said stays under
+		 *	the comment for the person to put right. The focus is in the comment, ready for the next
+		 *
+		 *	@param		{Element}	fresh					The .review-player of the answer
+		 *	@param		{boolean}	saved					Whether the state of the answer is sent
+		 *
+		 *	@return		void
+		 */
+		const settle = function( fresh, saved ) {
+
+			try {
+				renew( fresh );
+
+				if( saved === true ) {
+					text.value = '';
+					at.value = '';
+					cancel();
+				}
+			}
+			finally {
+				sending = false;
+
+				if( send !== null )
+					send.disabled = false;
+			}
+
+			text.focus();
+		};
+
+		/**
+		 *	Post the form the plain way, which the page answers with a reload: nothing is lost, and the page says what is wrong
+		 *
+		 *	@return		void
+		 */
+		const plain = function() {
+			form.submit();
+		};
+
+		form.addEventListener( 'submit', function( event ) {
+
+			// A browser that cannot do it posts the form as it always did
+			if( typeof wn.fetch !== 'function' || typeof wn.FormData !== 'function' || typeof wn.DOMParser !== 'function' )
+				return;
+
+			event.preventDefault();
+
+			if( sending === true )
+				return;
+
+			sending = true;
+
+			if( send !== null )
+				send.disabled = true;
+
+			// The answer is read first; only what is wrong with it - and not what is wrong in this script - posts the form again, as a comment that is saved is not to be posted twice
+			wn.fetch( form.getAttribute('action'), { method : 'POST', body : new wn.FormData( form ), credentials : 'same-origin', redirect : 'follow' } ).then( function( response ) {
+
+				if( response.ok !== true )
+					return null;
+
+				return response.text().then( function( html ) {
+
+					const fresh = blockOf( new wn.DOMParser().parseFromString( html, 'text/html' ) );
+					// The state the redirect ended on: the answer is a saved comment only when it says sent
+					const said = /[?&]review-state=([a-z]+)(?:[&#]|$)/.exec( String( response.url ) );
+
+					return fresh === null ? null : { fresh : fresh, saved : said !== null && said[1] === 'sent' };
+				} );
+			} ).then( function( result ) {
+
+				if( result === null )
+					plain();
+				else
+					settle( result.fresh, result.saved );
+			}, plain );
+		} );
 
 		root.addEventListener( 'click', function( event ) {
 

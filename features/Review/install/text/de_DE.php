@@ -26,7 +26,7 @@ return [
 
 	// Das Formular
 	'[[/feature/review/form/at]]'				=> 'Zeit im Stück (m:ss, darf leer bleiben)',
-	'[[/feature/review/form/now]]'				=> 'An der aktuellen Stelle',
+	'[[/feature/review/form/follow]]'			=> 'Zeit aktualisieren',
 	'[[/feature/review/form/text]]'				=> 'Dein Kommentar',
 	'[[/feature/review/form/button]]'			=> 'Senden',
 

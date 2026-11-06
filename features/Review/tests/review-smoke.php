@@ -988,16 +988,16 @@ check( '...the answers stand under the comment they answer in the order they wer
 	&& $answers[0]->hasAttribute( 'data-review-at' ) === false && $answers[1]->getAttribute( 'data-review-at' ) === '70' && $timeLink( $answers[1] )?->textContent === '1:10' && reviewClasses( $answers[0] ) === [ 'review-answer' ]
 	&& count( reviewFind( $html, '//ul[@class="review-answers"]' ) ) === 1 && $who( $answers[1] ) === $who( $byComment[$k2['id']] ) );
 $replies = reviewFind( $html, '//button[@data-review-reply]' );
-check( '...every comment and every answer has a button to answer it - drawn hidden, since it does nothing without the script - and the form\'s button for the position of the player is hidden as well', count( $replies ) === 6
-	&& array_filter( $replies, static fn( DOMElement $button ): bool => $button->hasAttribute( 'hidden' ) === false || $button->getAttribute( 'type' ) !== 'button' ) === [] && reviewFind( $html, '//button[contains(@class, "review-form__now")][@hidden][@type="button"]' ) !== [] );
+check( '...every comment and every answer has a button to answer it - drawn hidden, since it does nothing without the script - and so is the form\'s switch of the time, a checked checkbox in a label beside the time field', count( $replies ) === 6
+	&& array_filter( $replies, static fn( DOMElement $button ): bool => $button->hasAttribute( 'hidden' ) === false || $button->getAttribute( 'type' ) !== 'button' ) === [] && count( reviewFind( $html, '//form//p[input[@name="at"]]/label[contains(@class, "review-form__follow")][@hidden]/input[contains(@class, "review-form__follow-input")][@type="checkbox"][@checked]' ) ) === 1 );
 
 // The form
 $form = reviewFind( $html, '//form' );
 $fields = [];
 foreach( reviewFind( $html, '//form//input | //form//textarea' ) as $field )
 	$fields[ $field->getAttribute( 'name' ) ] = $field;
-check( 'the form posts to /.review/comment: the hidden file, the page it stands on and an empty parent, the csrf field of the session, the time as text, the comment as a textarea that is required, and one button that submits',
-	count( $form ) === 1 && strtolower( $form[0]->getAttribute( 'method' ) ) === 'post' && $form[0]->getAttribute( 'action' ) === '/.review/comment' && array_keys( $fields ) === [ 'file', 'return', 'parent', '_csrf', 'at', 'text' ]
+check( 'the form posts to /.review/comment: the hidden file, the page it stands on and an empty parent, the csrf field of the session, the time as text, the switch of the time as a checkbox that has no name and so posts nothing, the comment as a textarea that is required, and one button that submits',
+	count( $form ) === 1 && strtolower( $form[0]->getAttribute( 'method' ) ) === 'post' && $form[0]->getAttribute( 'action' ) === '/.review/comment' && array_keys( $fields ) === [ 'file', 'return', 'parent', '_csrf', 'at', '', 'text' ] && $fields['']->getAttribute( 'type' ) === 'checkbox'
 	&& $fields['file']->getAttribute( 'value' ) === $track['id'] && $fields['file']->getAttribute( 'type' ) === 'hidden' && $fields['return']->getAttribute( 'value' ) === '/club/review' && $fields['return']->getAttribute( 'type' ) === 'hidden'
 	&& $fields['parent']->getAttribute( 'value' ) === '' && $fields['parent']->getAttribute( 'type' ) === 'hidden' && $fields['_csrf']->getAttribute( 'value' ) === \Nino\Csrf::getToken( $appData ) && $fields['at']->getAttribute( 'type' ) === 'text'
 	&& $fields['at']->getAttribute( 'value' ) === '' && $fields['text']->tagName === 'textarea' && $fields['text']->hasAttribute( 'required' ) === true && count( reviewFind( $html, '//form//button[@type="submit"]' ) ) === 1 );
@@ -1031,7 +1031,7 @@ check( 'a file nobody has written on has the line that says so in place of the l
 	&& count( reviewFind( $quietHtml, '//form' ) ) === 1 && trim( $cell( reviewFind( $quietHtml, '//h4' )[0], 'review-player__count' )->textContent ) === '0' );
 
 $twice = \Nino\Html::renderHtml( $appData, '[review-player][review-player]' );
-$labels = array_map( static fn( DOMElement $label ): string => $label->getAttribute( 'for' ), reviewFind( $twice, '//label' ) );
+$labels = array_map( static fn( DOMElement $label ): string => $label->getAttribute( 'for' ), reviewFind( $twice, '//label[@for]' ) );
 check( 'two players on a page do not share an id', count( reviewFind( $twice, '//form' ) ) === 2 && count( array_unique( $labels ) ) === 4 && count( reviewFind( $twice, '//input[@id="'. $labels[0]. '"]' ) ) === 1 );
 check( 'a hand-written call with an attribute nobody declared still renders', count( reviewFind( \Nino\Html::renderHtml( $appData, '[review-player nonsense="1"]' ), '//form' ) ) === 1 );
 

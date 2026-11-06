@@ -5,9 +5,14 @@
  *											php of the feature reads them, the move of the player to a second over a
  *											stand-in for the media element, and the player it takes over - a click on
  *											the time of a comment takes the player there and plays, the time field
- *											follows the player until the person types, the button for the position
- *											writes it, the buttons that do nothing without the script are shown, and an
- *											answer fills the parent, says who is answered and can be given up. The
+ *											follows the player while the switch beside it is on - when the player stops or
+ *											is moved and at each keystroke in the comment -, goes off when a time is typed
+ *											and writes the position when it is set on again, the controls that do nothing
+ *											without the script are shown, an answer fills the parent, says who is answered
+ *											and can be given up, and the form is sent with fetch(): the list of the comments
+ *											and the line of the state are taken from the answer and the media element is
+ *											left alone, a comment that is saved empties the form, and an answer that is no
+ *											page of the player posts the form the plain way. The
  *											panel's (admin.js) over the kernel's own Nino.admin.js: it asks for
  *											review/list when the pane is first shown and draws the answer with
  *											textContent only - the files by group and folder with their counts -, opens a
@@ -138,7 +143,7 @@ function item( id, at, who ) {
  */
 function site( options ) {
 
-	options = Object.assign( { locale : 'en_US', list : false, rejects : false }, options );
+	options = Object.assign( { locale : 'en_US', list : false, rejects : false, fetch : true }, options );
 
 	const words = fills( own( 'install/text/'+ options.locale+ '.php' ) );
 	const asked = [];
@@ -157,6 +162,7 @@ function site( options ) {
 	};
 
 	const comments = element('ol');
+	comments.className = 'review-comments';
 	const first = item( 'aaaaaaaaaaaa', 65, 'Ada $& Lovelace' );
 	const second = item( 'bbbbbbbbbbbb', null, 'Owner' );
 	const answers = element('ul');
@@ -166,17 +172,33 @@ function site( options ) {
 	const parent = element('input');
 	const atField = element('p');
 	const at = element('input');
-	const now = element('button');
+	const followLabel = element('label');
+	const follow = element('input');
+	const token = element('input');
 	const textField = element('p');
 	const textarea = element('textarea');
+	const send = element('button');
 
 	form.className = 'review-form';
 	parent.setAttribute( 'name', 'parent' );
 	parent.value = '';
 	at.setAttribute( 'name', 'at' );
 	at.value = '';
-	now.className = 'review-form__now';
-	now.hidden = true;
+	followLabel.className = 'review-form__follow';
+	followLabel.hidden = true;
+	follow.className = 'review-form__follow-input';
+	follow.type = 'checkbox';
+	follow.checked = true;
+	token.setAttribute( 'name', '_csrf' );
+	token.value = 'token-one';
+	send.setAttribute( 'type', 'submit' );
+	form.setAttribute( 'action', '/.review/comment' );
+	form.submitted = 0;
+	form.submit = function() { form.submitted++ };
+	box.setAttribute( 'data-review-file', 'ffffffffffff' );
+	const count = element('span');
+	count.className = 'review-player__count';
+	count.textContent = '4';
 	textarea.setAttribute( 'name', 'text' );
 
 	answers.appendChild( answerTimed );
@@ -184,18 +206,34 @@ function site( options ) {
 	first.appendChild( answers );
 	comments.appendChild( first );
 	comments.appendChild( second );
+	followLabel.appendChild( follow );
 	atField.appendChild( at );
-	atField.appendChild( now );
+	atField.appendChild( followLabel );
 	textField.appendChild( textarea );
 	form.appendChild( parent );
+	form.appendChild( token );
 	form.appendChild( atField );
 	form.appendChild( textField );
+	form.appendChild( send );
 
 	if( options.list === false ) {
 		box.appendChild( media );
+		box.appendChild( count );
 		box.appendChild( comments );
 		box.appendChild( form );
 	}
+
+	// What the browser gives a script that sends a form: a fetch() whose answer the test prepares, a FormData that keeps the form it was made of and a DOMParser that hands back the page the test prepared
+	const sent = [];
+	const world = { answer : null, fails : false };
+	const fetchStandIn = function( url, init ) {
+		sent.push( { url : url, init : init } );
+		return world.fails === true ? Promise.reject( new Error('offline') ) : Promise.resolve( world.answer );
+	};
+	const FormDataStandIn = function( of ) { this.of = of };
+	const DOMParserStandIn = function() {};
+	DOMParserStandIn.prototype.parseFromString = function( html, type ) { return world.parsed[ html ] };
+	world.parsed = {};
 
 	const page = documentOf( box );
 	page.querySelectorAll = function( selector ) { return selector === '.review-player' ? [ box ] : [] };
@@ -210,13 +248,13 @@ function site( options ) {
 		events : { bindCallback : function( event, callback ) { ready.push( { event : event, callback : callback } ) } },
 	};
 
-	const window = { Nino : Nino };
+	const window = options.fetch === false ? { Nino : Nino } : { Nino : Nino, fetch : fetchStandIn, FormData : FormDataStandIn, DOMParser : DOMParserStandIn };
 	const context = vm.createContext( { console : console, document : page, Nino : Nino, window : window } );
 
 	load( own( 'assets/review.js' ), context, 'review.js' );
 
 	return {
-		Nino : Nino, box : box, media : media, form : form, parent : parent, at : at, now : now, textarea : textarea, first : first, second : second, answerTimed : answerTimed, answerPlain : answerPlain,
+		Nino : Nino, box : box, media : media, form : form, parent : parent, at : at, follow : follow, followLabel : followLabel, token : token, send : send, count : count, comments : comments, sent : sent, world : world, textarea : textarea, first : first, second : second, answerTimed : answerTimed, answerPlain : answerPlain,
 		review : window.Nino.review, ready : ready, asked : asked, missing : missing, word : function( key ) { return words[key] },
 		click : function( target ) {
 			const result = { prevented : false };
@@ -273,10 +311,10 @@ function site( options ) {
 	const s = site();
 
 	check( 'the script waits for the page: it binds its init to the ready event of Nino and takes nothing over before - the controls that do nothing without it are still hidden', s.ready.length === 1 && s.ready[0].event === 'ready' && s.box.dataset.reviewBound === undefined
-		&& s.first.reply.hidden === true && s.now.hidden === true && ( s.box.listeners.click || [] ).length === 0 );
+		&& s.first.reply.hidden === true && s.followLabel.hidden === true && ( s.box.listeners.click || [] ).length === 0 );
 	s.start();
-	check( 'a player is taken over once, and the buttons that answer a comment and take the position of the player are shown', s.box.dataset.reviewBound === '1' && ( s.box.listeners.click || [] ).length === 1 && s.first.reply.hidden === false && s.second.reply.hidden === false
-		&& s.answerTimed.reply.hidden === false && s.answerPlain.reply.hidden === false && s.now.hidden === false );
+	check( 'a player is taken over once, and the buttons that answer a comment and the switch of the time are shown', s.box.dataset.reviewBound === '1' && ( s.box.listeners.click || [] ).length === 1 && s.first.reply.hidden === false && s.second.reply.hidden === false
+		&& s.answerTimed.reply.hidden === false && s.answerPlain.reply.hidden === false && s.followLabel.hidden === false && s.follow.checked === true );
 	s.review.init();
 	check( '...and not twice', ( s.box.listeners.click || [] ).length === 1 && ( s.media.listeners.pause || [] ).length === 1 );
 
@@ -317,7 +355,7 @@ function site( options ) {
 
 	s.media.currentTime = 65.7;
 	fire( s.media, 'pause' );
-	check( 'when the player stops, the time field says where it is - m:ss and the tenth of a second', s.at.value === '1:05.7' );
+	check( 'with the switch on, the time field says where the player is when it stops - m:ss and the tenth of a second', s.at.value === '1:05.7' );
 	s.media.currentTime = 140;
 	fire( s.media, 'seeked' );
 	check( '...and when it is moved', s.at.value === '2:20' );
@@ -328,27 +366,35 @@ function site( options ) {
 	fire( s.media, 'pause' );
 	check( '...a position with a tenth keeps it: at 2.5 the field reads 0:02.5, at 4.0 it reads 0:04', s.at.value === '0:02.5' && ( s.media.currentTime = 4.0, fire( s.media, 'pause' ), s.at.value === '0:04' ) );
 
+	s.media.currentTime = 31.5;
+	s.textarea.value = 'Snare';
+	fire( s.textarea, 'input' );
+	check( 'at every keystroke in the comment the field says where the player is - while it plays as well - and the switch stays on', s.at.value === '0:31.5' && s.follow.checked === true );
+	s.media.currentTime = 33;
+	fire( s.textarea, 'input' );
+	check( '...each keystroke takes the position it has by then', s.at.value === '0:33' );
+	check( '...and nothing but those events moves the field: not the time the player says while it plays, which would never keep still', ( s.media.listeners.timeupdate || [] ).length === 0 && ( s.media.listeners.pause || [] ).length === 1 && ( s.textarea.listeners.input || [] ).length === 1 );
+
 	s.at.value = '9:99';
 	fire( s.at, 'input' );
+	check( 'a time typed in the field is the person\'s: the switch goes off', s.follow.checked === false && s.at.value === '9:99' );
 	s.media.currentTime = 5;
 	fire( s.media, 'pause' );
-	check( 'a time the person typed is theirs: the player does not write over it', s.at.value === '9:99' );
-
-	s.now.click();
-	check( 'the button for the position writes the position of the player into the field, as m:ss, whatever was in it', s.at.value === '0:05' );
-	s.media.currentTime = 7.3;
-	s.now.click();
-	check( '...with its tenth where it has one', s.at.value === '0:07.3' && s.review.seconds( s.at.value ) === 7.3 );
-	s.media.currentTime = 31;
-	fire( s.media, 'pause' );
-	check( '...and the field follows the player again', s.at.value === '0:31' );
-
 	fire( s.textarea, 'input' );
+	check( '...and with it off the field follows nothing - not when the player stops, not at a keystroke - what stands in it stays', s.at.value === '9:99' );
+
+	s.follow.checked = true;
+	fire( s.follow, 'change' );
+	check( 'the switch set on again writes the position of the player at once, whatever was in the field', s.at.value === '0:05' );
+	s.media.currentTime = 7.3;
+	fire( s.textarea, 'input' );
+	check( '...and the field follows again - with its tenth where it has one', s.at.value === '0:07.3' && s.review.seconds( s.at.value ) === 7.3 );
+
+	s.follow.checked = false;
+	fire( s.follow, 'change' );
 	s.media.currentTime = 90;
 	fire( s.media, 'pause' );
-	check( 'a person who has begun to write the comment has settled where it belongs: the field stays where it was', s.at.value === '0:31' );
-	s.now.click();
-	check( '...until they ask for the position again', s.at.value === '1:30' );
+	check( 'the switch set off by the person leaves the field as it is', s.at.value === '0:07.3' );
 }
 
 {
@@ -398,10 +444,10 @@ function site( options ) {
 	s.click( s.second.reply );
 	s.textarea.value = 'Half written';
 	fire( s.textarea, 'input' );
-	cancel.click();
+	check( 'while an answer is prepared the switch is off and a keystroke in the comment writes no time', s.follow.checked === false && s.at.value === '' );
 	s.media.currentTime = 90;
-	fire( s.media, 'pause' );
-	check( '...but not where the person has begun to write since: that comment has settled where it belongs, and the field stays as it is', s.parent.value === '' && s.at.value === '' );
+	cancel.click();
+	check( '...giving the answer up sets the switch on again when the time field is empty, whatever has been written, and the field says where the player is at once', s.parent.value === '' && s.follow.checked === true && s.at.value === '1:30' );
 
 	s.textarea.value = '';
 	s.click( s.first.reply );
@@ -410,7 +456,7 @@ function site( options ) {
 	cancel.click();
 	s.media.currentTime = 150;
 	fire( s.media, 'pause' );
-	check( '...nor where a time was typed since: it is theirs', s.at.value === '2:00' );
+	check( '...a time typed in the answer is theirs: giving it up leaves the switch off and the field as it was', s.follow.checked === false && s.at.value === '2:00' );
 }
 
 {
@@ -425,10 +471,179 @@ function site( options ) {
 		&& en.asked.filter( function( key ) { return key.indexOf('/feature/review/script/') !== 0 } ).length === 0 && en.word('/feature/review/script/answering') !== de.word('/feature/review/script/answering') && en.word('/feature/review/script/answering').indexOf('%s') !== -1 && de.word('/feature/review/script/answering').indexOf('%s') !== -1 );
 
 	const source = text('assets/review.js');
-	check( 'the script writes text and nothing else: no innerHTML, no outerHTML, no insertAdjacentHTML, no document.write, no inline handler, no eval - and it posts nothing: no request of its own', /innerHTML|outerHTML|insertAdjacentHTML|document\.write|\son[a-z]+\s*=|\beval\s*\(|new Function/.test( source ) === false
-		&& /sendRequest|XMLHttpRequest|fetch\s*\(|FormData|\.submit\s*\(/.test( source ) === false );
+	const code = source.replace( /\/\*[\s\S]*?\*\//g, '' ).replace( /^\s*\/\/.*$/gm, '' );
+	check( 'the script writes text and nothing else: no innerHTML, no outerHTML, no insertAdjacentHTML, no document.write, no inline handler, no eval - and its one request is the fetch() of the form to the address of the form: no sendRequest, no XMLHttpRequest, no beacon', /innerHTML|outerHTML|insertAdjacentHTML|document\.write|\son[a-z]+\s*=|\beval\s*\(|new Function/.test( source ) === false
+		&& /sendRequest|XMLHttpRequest|sendBeacon/.test( source ) === false && ( code.match( /\bfetch\s*\(/g ) || [] ).length === 1 && code.indexOf("wn.fetch( form.getAttribute('action')") !== -1 );
 }
 
+
+// --- The form is sent without leaving the page ------------------------------------------
+
+console.log( '\nreview.js - sending the form\n' );
+
+// The checks of the block that waits for the answers; the run ends when they have all been made
+const later = [];
+
+/**
+ *	The page a post is answered with, as the stand-in of DOMParser hands it back: a player of the same file whose list holds the
+ *	comments given, whose form carries the token and the line of the state, if any
+ *
+ *	@param		{Object}		s					A site()
+ *	@param		{Object}		[options]	{ state, token, file, form, saved }
+ *
+ *	@return		{Object}							The response of the stand-in of fetch()
+ */
+function answerWith( s, options ) {
+
+	options = Object.assign( { state : 'sent', token : 'token-two', file : 'ffffffffffff', form : true, ok : true, url : null }, options );
+
+	const wrapper = element('div');
+	const fresh = element('div');
+	const list = element('ol');
+	const added = item( 'eeeeeeeeeeee', 12, 'Me' );
+	const count = element('span');
+	const form = element('form');
+	const token = element('input');
+
+	fresh.className = 'review-player';
+	fresh.setAttribute( 'data-review-file', options.file );
+	list.className = 'review-comments';
+	count.className = 'review-player__count';
+	count.textContent = '5';
+	form.className = 'review-form';
+	token.setAttribute( 'name', '_csrf' );
+	token.value = options.token;
+	list.appendChild( added );
+	form.appendChild( token );
+
+	if( options.state !== '' ) {
+		const line = element('p');
+		line.className = 'review-state';
+		line.textContent = options.state;
+		form.appendChild( line );
+	}
+
+	fresh.appendChild( count );
+	fresh.appendChild( list );
+
+	if( options.form === true )
+		fresh.appendChild( form );
+
+	wrapper.appendChild( fresh );
+
+	const page = documentOf( wrapper );
+	s.world.parsed['page'] = page;
+	s.world.answer = { ok : options.ok, url : options.url ?? 'https://example.test/page?review=ffffffffffff&review-state='+ options.state, text : function() { return Promise.resolve('page') } };
+
+	return { list : list, added : added, count : count, fresh : fresh };
+}
+
+/**
+ *	Submit the form of a site() the way the browser does and say whether the script took it over
+ *
+ *	@param		{Object}		s
+ *
+ *	@return		{{ prevented: boolean }}
+ */
+function submit( s ) {
+	const result = { prevented : false };
+	fire( s.form, 'submit', { preventDefault : function() { result.prevented = true } } );
+	return result;
+}
+
+/**
+ *	Let the promises of a post run out
+ *
+ *	@return		{Promise}
+ */
+function settled() {
+	return new Promise( function( resolve ) { setImmediate( resolve ) } );
+}
+
+later.push( ( async function() {
+
+	// A comment that is saved
+	{
+		const s = site();
+		s.start();
+		s.media.paused = false;
+		s.media.currentTime = 12.4;
+		s.textarea.value = 'Snare is late';
+		fire( s.textarea, 'input' );
+		const answered = answerWith( s );
+		const old = s.comments;
+		const media = s.media;
+
+		const first = submit( s );
+		check( 'a submit is taken over: the browser is not let post the form, fetch() is asked for the address of the form with the form\'s data, from the same origin, and the redirect is followed',
+			first.prevented === true && s.sent.length === 1 && s.sent[0].url === '/.review/comment' && s.sent[0].init.method === 'POST' && s.sent[0].init.body.of === s.form && s.sent[0].init.credentials === 'same-origin' && s.sent[0].init.redirect === 'follow' && s.form.submitted === 0 );
+		check( '...the button waits while the post is out, and a second submit sends nothing and posts nothing the plain way either', s.send.disabled === true && submit( s ).prevented === true && s.sent.length === 1 && s.form.submitted === 0 );
+
+		await settled();
+
+		check( 'the list of the comments is the one of the answer, put where the old one stood - and the count of them with it', s.box.children.indexOf( answered.list ) !== -1 && s.box.children.indexOf( old ) === -1 && s.count.textContent === '5' );
+		check( '...the media element is the very same one, still in the player, and nothing was done to it: it was not moved, not stopped, not played again', s.box.children.indexOf( media ) !== -1 && s.media === media && media.currentTime === 12.4 && media.paused === false && media.plays === 0 );
+		check( '...the buttons that answer, in the list that came, are shown - they do nothing in the markup without the script', answered.added.reply.hidden === false );
+		check( '...the comment is empty, the switch is on and the time field says where the player is, the line of an answer is gone', s.textarea.value === '' && s.follow.checked === true && s.at.value === '0:12.4' && s.parent.value === '' );
+		check( '...the focus is in the comment for the next, the button is given back, and the line of the state the page said is in the form above the button', s.textarea.focused === true && s.send.disabled === false && s.form.children.filter( function( el ) { return el.className === 'review-state' } ).length === 1
+			&& s.form.children.indexOf( s.form.children.find( function( el ) { return el.className === 'review-state' } ) ) === s.form.children.indexOf( s.send ) - 1 );
+		check( '...nothing was posted the plain way', s.form.submitted === 0 );
+		check( '...and the token of the page the answer is - the session\'s, as the page holds it now - is the form\'s', s.token.value === 'token-two' );
+
+		// The next one, over the state line that stands now
+		answerWith( s, { state : 'invalid', token : 'token-three' } );
+		s.textarea.value = '   ';
+		submit( s );
+		await settled();
+		check( 'a second post replaces the line of the state and does not add one', s.form.children.filter( function( el ) { return el.className === 'review-state' } ).length === 1 && s.form.children.find( function( el ) { return el.className === 'review-state' } ).textContent === 'invalid' );
+		check( '...a post that was refused keeps what was written: the comment, the time and the answer stand, to be put right', s.textarea.value === '   ' && s.follow.checked === true && s.send.disabled === false && s.form.submitted === 0 );
+	}
+
+	// An answer that was written and saved
+	{
+		const s = site();
+		s.start();
+		s.media.currentTime = 40;
+		s.click( s.first.reply );
+		s.textarea.value = 'Agreed';
+		s.at.value = '0:30';
+		fire( s.at, 'input' );
+		answerWith( s );
+		submit( s );
+		await settled();
+		check( 'a saved answer gives the answer up by itself: the id of the comment is gone from the form, the line is hidden, the switch is on, the field says where the player is - a time that was typed goes with the post',
+			s.parent.value === '' && s.follow.checked === true && s.at.value === '0:40' && s.textarea.value === '' && s.form.children.find( function( el ) { return el.className === 'review-form__answering' } ).hidden === true );
+	}
+
+	// A post that cannot be read posts the form the plain way, once
+	{
+		const refused = [
+			[ 'an answer that is no success (a status of 4xx or 5xx)', function( s ) { answerWith( s, { ok : false } ) } ],
+			[ 'an answer with no player of this file (a login page after the session ran out)', function( s ) { answerWith( s, { file : 'aaaaaaaaaaaa' } ) } ],
+			[ 'an answer whose player has no form', function( s ) { answerWith( s, { form : false } ) } ],
+			[ 'a request that does not get through', function( s ) { s.world.fails = true } ],
+		];
+
+		for( const [ label, prepare ] of refused ) {
+			const s = site();
+			s.start();
+			s.textarea.value = 'Keep this';
+			const old = s.comments;
+			prepare( s );
+			submit( s );
+			await settled();
+			check( label+ ' posts the form the plain way, once - and the page keeps its list and what was typed until the browser has taken it', s.form.submitted === 1 && s.sent.length === 1 && s.box.children.indexOf( old ) !== -1 && s.textarea.value === 'Keep this' );
+		}
+	}
+
+	// A browser without what it needs
+	{
+		const s = site( { fetch : false } );
+		s.start();
+		const plain = submit( s );
+		check( 'a browser with no fetch(), FormData or DOMParser is left to post the form: nothing is prevented, nothing is sent', plain.prevented === false && s.sent.length === 0 && s.form.submitted === 0 && s.send.disabled === false );
+	}
+} )() );
 
 // --- The panel -----------------------------------------------------------------------
 
@@ -968,7 +1183,7 @@ console.log( '\nNino.admin.review - the words\n' );
 }
 
 // The refused plays of the panel and of the site were rejected promises: the event for one nobody handled comes after this turn
-setImmediate( function() {
+Promise.all( later ).then( function() { return new Promise( function( resolve ) { setImmediate( resolve ) } ) } ).then( function() {
 	check( 'no refused play is left unhandled: the player of the site and the one of the panel both take a promise that is rejected without a word', unhandled === 0 );
 	done();
 } );

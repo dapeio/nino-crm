@@ -6,7 +6,7 @@
 	<p class="review-form__field">
 		<label for="[[id]]-at" class="review-form__label">[[/feature/review/form/at]]</label>
 		<input type="text" id="[[id]]-at" name="at" class="review-form__at" value="" size="8" maxlength="12" autocomplete="off" placeholder="0:00">
-		<button type="button" class="review-form__now" hidden>[[/feature/review/form/now]]</button>
+		<label class="review-form__follow" hidden><input type="checkbox" class="review-form__follow-input" checked> [[/feature/review/form/follow]]</label>
 	</p>
 	<p class="review-form__field">
 		<label for="[[id]]-text" class="review-form__label">[[/feature/review/form/text]]</label>

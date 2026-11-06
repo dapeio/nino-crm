@@ -26,7 +26,7 @@ return [
 
 	// The form
 	'[[/feature/review/form/at]]'				=> 'Time in the track (m:ss, may stay empty)',
-	'[[/feature/review/form/now]]'				=> 'At the current position',
+	'[[/feature/review/form/follow]]'			=> 'Update the time',
 	'[[/feature/review/form/text]]'				=> 'Your comment',
 	'[[/feature/review/form/button]]'			=> 'Send',
 
