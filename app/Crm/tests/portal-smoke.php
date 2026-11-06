@@ -815,7 +815,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 155 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 172 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -1587,20 +1587,20 @@ portalSignIn( $appData, $accounts['anna'] );
 \Crm\Clients::change( $appData, $a['id'], [ 'company' => 'Nord "A&B" <x> [members-name]', 'city' => 'Kiel', 'phone' => '+49 40 123', 'vat_id' => 'DE123456789' ] );
 $client = (array) \Crm\Clients::get( $appData, $a['id'] );
 $data = portalPage( $appData, '/portal/meine-daten' )[1];
-$inputs = portalFind( $data, '//form[contains(@class, "crm-data")]//input[@name]' );
+$inputs = portalFind( $data, '//form[@class="crm-data__form"]//input[@name]' );
 $values = array_column( array_map( static fn( \DOMElement $input ): array => [ $input->getAttribute( 'name' ), $input->getAttribute( 'value' ) ], $inputs ), 1, 0 );
-check( 'the form posts to /.crm/daten and has the fields Firma, Name, Straße, PLZ, Ort, Land (a select), Telefon, USt-IdNr. with the values of the client - and the csrf token', portalFind( $data, '//form[contains(@class, "crm-data")]/@action' )[0]->nodeValue === '/.crm/daten' && portalFind( $data, '//form[contains(@class, "crm-data")]/@method' )[0]->nodeValue === 'post'
+check( 'the form posts to /.crm/daten and has the fields Firma, Name, Straße, PLZ, Ort, Land (a select), Telefon, USt-IdNr. with the values of the client - and the csrf token', portalFind( $data, '//form[@class="crm-data__form"]/@action' )[0]->nodeValue === '/.crm/daten' && portalFind( $data, '//form[@class="crm-data__form"]/@method' )[0]->nodeValue === 'post'
 	&& array_keys( $values ) === [ '_csrf', 'company', 'name', 'street', 'zip', 'city', 'phone', 'vat_id' ] && $values['_csrf'] === \Nino\Csrf::getToken( $appData )
 	&& array_diff_key( $values, [ '_csrf' => 1 ] ) === array_intersect_key( $client, array_flip( [ 'company', 'name', 'street', 'zip', 'city', 'phone', 'vat_id' ] ) )
 	&& portalFind( $data, '//form//select[@name="country"]/option[@selected]/@value' )[0]->nodeValue === $client['country'] && portalFind( $data, '//form//select[@name="country"]/option[@value="DE"]' ) !== [] );
 check( '...every value is text: markup and a shortcode in the company are escaped, and each field has its label and the length the client takes', str_contains( $data, 'Nord &quot;A&amp;B&quot; &lt;x&gt; &#91;members-name]' ) === true && str_contains( $data, '<x>' ) === false
-	&& count( portalFind( $data, '//form[contains(@class, "crm-data")]//label[@for]' ) ) === 9 &&  portalFind( $data, '//input[@name="company"]/@maxlength' )[0]->nodeValue === '120' && portalFind( $data, '//input[@name="phone"]/@type' )[0]->nodeValue === 'tel' );
-$email = portalFind( $data, '//form[contains(@class, "crm-data")]//input[@readonly]' );
-check( '...the e-mail of the account is shown and cannot be sent: readonly, no name, with its own sentence', count( $email ) === 1 && $email[0]->getAttribute( 'value' ) === 'anna@example.org' && $email[0]->getAttribute( 'name' ) === '' && portalFind( $data, '//*[@id="crm-data-email-hint"]' ) !== [] && portalFind( $data, '//form[contains(@class, "crm-data")]//button[@type="submit"]' ) !== [] );
-check( '...the form is a plain form (no .nino-form: the kernel\'s script would post it as a contact form), every input of it - the e-mail among them - the kernel\'s .nino-form-input or .nino-form-select, the fields stand in one .crm-card, and the button is the portal\'s primary one (.crm-btn)', count( portalFind( $data, '//form[contains(concat(" ", normalize-space(@class), " "), " crm-data__form ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-form "))]' ) ) === 1
-	&& count( portalFind( $data, '//form//input[not(@type="hidden")]' ) ) === 8 && count( portalFind( $data, '//form//input[not(@type="hidden")][contains(concat(" ", normalize-space(@class), " "), " nino-form-input ")]' ) ) === 8 && count( portalFind( $data, '//form//select[contains(concat(" ", normalize-space(@class), " "), " nino-form-select ")]' ) ) === 1
-	&& count( portalFind( $data, '//form//div[contains(concat(" ", normalize-space(@class), " "), " crm-data__card ")][contains(concat(" ", normalize-space(@class), " "), " crm-card ")]/div[contains(concat(" ", normalize-space(@class), " "), " crm-fields ")]//input[contains(concat(" ", normalize-space(@class), " "), " nino-form-input ")]' ) ) === 8
-	&& count( portalFind( $data, '//form//button[@type="submit"][contains(concat(" ", normalize-space(@class), " "), " crm-btn ")][contains(concat(" ", normalize-space(@class), " "), " crm-btn--primary ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-btn "))]' ) ) === 1 );
+	&& count( portalFind( $data, '//form[@class="crm-data__form"]//label[@for]' ) ) === 8 &&  portalFind( $data, '//input[@name="company"]/@maxlength' )[0]->nodeValue === '120' && portalFind( $data, '//input[@name="phone"]/@type' )[0]->nodeValue === 'tel' );
+check( '...the e-mail of the account is no field of this form: the address it signs in with stands as text in the block Anmeldeadresse, and the form has no input that is read only, none that is an address and none that is not one of its eight fields', portalFind( $data, '//form[@class="crm-data__form"]//input[@readonly or @type="email"]' ) === []
+	&& portalText( $data, '//section[contains(@class, "crm-login")]//strong[@class="crm-login__address"]' ) === 'anna@example.org' && portalFind( $data, '//form[@class="crm-data__form"]//button[@type="submit"]' ) !== [] );
+check( '...the form is a plain form (no .nino-form: the kernel\'s script would post it as a contact form), every input of it the kernel\'s .nino-form-input or .nino-form-select, the fields stand in one .crm-card, and the button is the portal\'s primary one (.crm-btn)', count( portalFind( $data, '//form[contains(concat(" ", normalize-space(@class), " "), " crm-data__form ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-form "))]' ) ) === 1
+	&& count( portalFind( $data, '//form[@class="crm-data__form"]//input[not(@type="hidden")]' ) ) === 7 && count( portalFind( $data, '//form[@class="crm-data__form"]//input[not(@type="hidden")][contains(concat(" ", normalize-space(@class), " "), " nino-form-input ")]' ) ) === 7 && count( portalFind( $data, '//form[@class="crm-data__form"]//select[contains(concat(" ", normalize-space(@class), " "), " nino-form-select ")]' ) ) === 1
+	&& count( portalFind( $data, '//form//div[contains(concat(" ", normalize-space(@class), " "), " crm-data__card ")][contains(concat(" ", normalize-space(@class), " "), " crm-card ")]/div[contains(concat(" ", normalize-space(@class), " "), " crm-fields ")]//input[contains(concat(" ", normalize-space(@class), " "), " nino-form-input ")]' ) ) === 7
+	&& count( portalFind( $data, '//form[@class="crm-data__form"]//button[@type="submit"][contains(concat(" ", normalize-space(@class), " "), " crm-btn ")][contains(concat(" ", normalize-space(@class), " "), " crm-btn--primary ")][not(contains(concat(" ", normalize-space(@class), " "), " nino-btn "))]' ) ) === 1 );
 check( '...no state and no error before anything was posted', portalFind( $data, '//*[contains(@class, "crm-data__state") or contains(@class, "crm-data__error")]' ) === [] && portalFind( $data, '//*[@aria-invalid]' ) === [] );
 $saved = portalPage( $appData, '/portal/meine-daten?state=saved' )[1];
 $expired = portalPage( $appData, '/portal/meine-daten?state=expired' )[1];
@@ -1683,6 +1683,264 @@ $delivery = true;
 check( 'a mail the transport refuses does not undo the save: ?state=saved, the data is the new one, and the log has a line that names the client', $undelivered['statusCode'] === 303 && $location( $undelivered ) === '/portal/meine-daten?state=saved' && \Crm\Clients::get( $appData, $a['id'] )['city'] === 'Rostock' && str_contains( implode( ' ', ninoWarnings() ), 'K-0001' ) === true );
 check( 'the page of the data shows the new values after the redirect, and says it is saved', portalFind( portalPage( $appData, '/portal/meine-daten?state=saved' )[1], '//input[@name="city"]/@value' )[0]->nodeValue === 'Rostock' );
 
+// --- The block Anmeldeadresse: the address the account signs in with, changed with a code to the new one ---------------------------------
+
+echo "\nThe block Anmeldeadresse, POST /.crm/anmeldeadresse and POST /.crm/anmeldeadresse/code\n";
+
+$lgFresh = static function() use ( &$appData ): void {
+	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+};
+$lgCode = static function( int $index ): string {
+	$body = (string) ( portalMail( $index )['body'] ?? '' );
+
+	return preg_match( '~(\d{3}) (\d{3})~', strip_tags( $body ), $found ) === 1 ? $found[1]. $found[2] : '';
+};
+$lgBlock = static fn( string $html, string $query ): array => portalFind( $html, '//section[contains(concat(" ", normalize-space(@class), " "), " crm-login ")]'. $query );
+$lgStep = static function( string $query = '' ) use ( &$appData ): string {
+	return portalPage( $appData, '/portal/meine-daten'. $query )[1];
+};
+$lgTrunk = [ '/.crm/anmeldeadresse', '/.crm/anmeldeadresse/code' ];
+$lgPersons = [ 'visitor' => $asVisitor, 'stray' => static function() use ( &$appData, $stray ): void { portalSignIn( $appData, $stray ); } ];
+$lgMembers = count( \Nino\Modules\Members::accounts( $appData ) );
+$lgClientBefore = (array) \Crm\Clients::get( $appData, $a['id'] );
+$lgAnswers = [];
+$lgMails = 0;
+
+foreach( $lgPersons as $who => $become ) {
+	$become();
+	$lgMails = count( $mails );
+	foreach( $lgTrunk as $route ) {
+		$lgAnswers[$who. ' '. $route] = portalServe( $appData, $route, 'POST', [ 'email' => 'any@example.org', 'code' => '123456' ] )['statusCode'];
+		$lgAnswers[$who. ' '. $route. ' (get)'] = portalServe( $appData, $route )['statusCode'];
+	}
+}
+
+check( 'a visitor and a member of no client are answered 404 by both routes, by post and by get - nothing is mailed, nothing is kept', array_values( array_unique( $lgAnswers ) ) === [ 404 ] && count( array_filter( array_keys( $lgAnswers ), static fn( string $key ): bool => str_ends_with( $key, '(get)' ) ) ) === 4 && count( $mails ) === $lgMails
+	&& \Nino\Modules\Members::account( $appData, $stray['id'] )['email'] === 'stray@example.org' && \Nino\Runtime::getSessionValue( $appData, './members/change' ) === null );
+check( '...and the page of a member of no client has no block', $lgBlock( portalPage( $appData, '/portal/meine-daten' )[1], '' ) === [] );
+
+// The first step
+$lgFresh();
+portalSignIn( $appData, $accounts['anna'] );
+$lgFresh();
+$lgOne = $_SESSION;
+$step1 = $lgStep();
+$lgSection = $lgBlock( $step1, '' );
+check( 'under the form stands the block Anmeldeadresse: a card of its own with a heading, the address the account signs in with as text - not a field -, and the way to change it, closed: a details whose button opens the form for the new address',
+	count( $lgSection ) === 1 && portalText( $step1, '//section[contains(@class, "crm-login")]//strong[@class="crm-login__address"]' ) === 'anna@example.org' && portalFind( $step1, '//section[contains(@class, "crm-login")]//h3[@id="crm-login-heading"]' ) !== [] && portalFind( $step1, '//section[@aria-labelledby="crm-login-heading"]' ) !== []
+	&& portalFind( $step1, '//section[contains(@class, "crm-login")]//details[contains(@class, "crm-login__fold")][not(@open)]/summary[contains(@class, "crm-btn")]' ) !== [] && strpos( $step1, 'crm-data__form' ) < strpos( $step1, 'crm-login' ) && portalFind( $step1, '//section[contains(@class, "crm-login")]//*[@readonly]' ) === [] );
+check( '...the form of the first step posts to /.crm/anmeldeadresse with the csrf token of the session and one field, the new address: type email, required, named email, with its sentence, and the button; no field for a code is there',
+	portalFind( $step1, '//details[contains(@class, "crm-login__fold")]//form/@action' )[0]->nodeValue === '/.crm/anmeldeadresse' && portalFind( $step1, '//details//form/@method' )[0]->nodeValue === 'post' && portalFind( $step1, '//details//form//input[@name="_csrf"]/@value' )[0]->nodeValue === \Nino\Csrf::getToken( $appData )
+	&& count( portalFind( $step1, '//details//form//input[not(@type="hidden")]' ) ) === 1 && portalFind( $step1, '//details//form//input[@name="email"][@type="email"][@required][@maxlength="254"][@autocomplete="email"]' ) !== []
+	&& portalFind( $step1, '//details//form//input[@name="email"]/@aria-describedby' )[0]->nodeValue === 'crm-login-hint' && portalText( $step1, '//span[@id="crm-login-hint"]' ) !== '' && portalFind( $step1, '//details//form//button[@type="submit"][contains(@class, "crm-btn--primary")]' ) !== []
+	&& portalFind( $step1, '//input[@name="code"]' ) === [] && portalFind( $step1, '//section[contains(@class, "crm-login")]//*[contains(@class, "crm-data__state")]' ) === [] );
+check( '...the form of the data has no field for the sign-in address: the post of the data form does not carry it, whatever it is sent', ( function() use ( &$appData, $accounts, $fields, $a ): bool {
+	$now = (array) \Crm\Clients::get( $appData, $a['id'] );
+	portalServe( $appData, '/.crm/daten', 'POST', $fields( [ 'email' => 'sneaked@example.org', 'login' => '', 'login_email' => 'sneaked@example.org' ] + array_intersect_key( $now, array_flip( [ 'company', 'name', 'street', 'zip', 'city', 'country', 'phone', 'vat_id' ] ) ) ) );
+	return \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] )['email'] === 'anna@example.org' && count( array_filter( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ), static fn( array $entry ): bool => ( $entry['account'] ?? '' ) === $accounts['anna']['id'] ) ) === 0;
+} )() );
+
+// The refusals of the first step
+$lgBefore = count( $mails );
+$lgFile = (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/members.php' ) );
+$lgBad = [];
+
+foreach( [ 'none' => '', 'text' => 'nope', 'markup' => 'a<b>@example.org', 'a null byte' => "a\x00b@example.org", 'spaces only' => '   ' ] as $kind => $typed )
+	$lgBad[$kind] = $location( portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => $typed ] ) );
+
+$lgBad['a list'] = $location( portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => [ 'a@example.org' ] ] ) );
+$lgBad['no field'] = $location( portalServe( $appData, '/.crm/anmeldeadresse', 'POST' ) );
+check( 'an address that is none - empty, text, markup, a null byte, spaces, a list, no field at all - is the redirect ?state=invalid&field=login, and nothing is mailed, written or kept in the session', array_values( array_unique( $lgBad ) ) === [ '/portal/meine-daten?state=invalid&field=login' ] && count( $mails ) === $lgBefore
+	&& (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/members.php' ) ) === $lgFile && \Nino\Runtime::getSessionValue( $appData, './members/change' ) === null );
+$lgInvalid = $lgStep( '?state=invalid&field=login' );
+check( '...the block says it as an alert in the error tone, opens the form and marks the field invalid, described by its sentence - and the form above says nothing', portalFind( $lgInvalid, '//section[contains(@class, "crm-login")]//p[@role="alert"][contains(@class, "crm-data__state--login-invalid")][contains(@class, "crm-note--error")]' ) !== []
+	&& portalFind( $lgInvalid, '//section[contains(@class, "crm-login")]//details[@open]' ) !== [] && portalFind( $lgInvalid, '//input[@name="email"]/@aria-invalid' )[0]->nodeValue === 'true' && portalFind( $lgInvalid, '//form[@class="crm-data__form"]//*[contains(@class, "crm-data__state")]' ) === [] && portalFind( $lgInvalid, '//form[@class="crm-data__form"]/p[contains(@class, "crm-data__state")]' ) === [] );
+$lgSame = $location( portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => ' ANNA@Example.org ' ] ) );
+check( 'the address the account has - in any case - is ?state=same: said in the block as a status, nothing is mailed or kept', $lgSame === '/portal/meine-daten?state=same' && count( $mails ) === $lgBefore && \Nino\Runtime::getSessionValue( $appData, './members/change' ) === null
+	&& portalFind( $lgStep( '?state=same' ), '//section[contains(@class, "crm-login")]//p[@role="status"][contains(@class, "crm-data__state--same")]' ) !== [] );
+$lgExpired = [ portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => 'late@example.org', '_csrf' => 'wrong' ] ), portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => 'late@example.org', '_csrf' => '' ] ) ];
+check( 'a token that is not the session\'s is the redirect ?state=expired&login=change, and the page says it in the block with the form open; nothing is mailed or kept', array_map( $location, $lgExpired ) === [ '/portal/meine-daten?state=expired&login=change', '/portal/meine-daten?state=expired&login=change' ] && array_column( $lgExpired, 'statusCode' ) === [ 303, 303 ]
+	&& count( $mails ) === $lgBefore && \Nino\Runtime::getSessionValue( $appData, './members/change' ) === null && portalFind( $lgStep( '?state=expired&login=change' ), '//section[contains(@class, "crm-login")]//p[@role="alert"][contains(@class, "crm-data__state--login-expired")]' ) !== []
+	&& portalFind( $lgStep( '?state=expired&login=change' ), '//section[contains(@class, "crm-login")]//details[@open]' ) !== [] && portalFind( $lgStep( '?state=expired' ), '//form[@class="crm-data__form"]/p[contains(@class, "crm-data__state--expired")]' ) !== [] );
+
+// The second step
+$lgSent = portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => ' Anna.New@Example.org ' ] );
+$lgMail = portalMailsFrom( $lgBefore );
+check( 'a free address is sent: the redirect ?login=code, and one mail goes to the new address - six digits, no link - and nowhere else', $lgSent['statusCode'] === 303 && $location( $lgSent ) === '/portal/meine-daten?login=code' && count( $lgMail ) === 1 && $lgMail[0]['to'] === 'anna.new@example.org'
+	&& $lgCode( $lgBefore ) !== '' && preg_match( '~^\d{6}$~D', $lgCode( $lgBefore ) ) === 1 && str_contains( (string) $lgMail[0]['body'], '.members/login' ) === false && str_contains( (string) $lgMail[0]['body'], 'href=' ) === false );
+$step2 = $lgStep( '?login=code' );
+check( 'the second step names the new address as text, from the session, and asks for the code: a form to /.crm/anmeldeadresse/code with the csrf token, one field - text, inputmode numeric, one-time-code, autofocus, required, named code - and the button; the first step is gone',
+	portalText( $step2, '//section[contains(@class, "crm-login")]//form//strong[@class="crm-login__address"]' ) === 'anna.new@example.org' && portalText( $step2, '//section[contains(@class, "crm-login")]/p/strong' ) === 'anna@example.org' && portalFind( $step2, '//section[contains(@class, "crm-login")]//form/@action' )[0]->nodeValue === '/.crm/anmeldeadresse/code'
+	&& portalFind( $step2, '//section[contains(@class, "crm-login")]//form//input[@name="_csrf"]/@value' )[0]->nodeValue === \Nino\Csrf::getToken( $appData ) && count( portalFind( $step2, '//section[contains(@class, "crm-login")]//form//input[not(@type="hidden")]' ) ) === 1
+	&& portalFind( $step2, '//input[@name="code"][@type="text"][@inputmode="numeric"][@autocomplete="one-time-code"][@autofocus][@required]' ) !== [] && portalFind( $step2, '//section[contains(@class, "crm-login")]//form//button[@type="submit"][contains(@class, "crm-btn--primary")]' ) !== []
+	&& portalFind( $step2, '//details[contains(@class, "crm-login__fold")]' ) === [] && portalFind( $step2, '//input[@name="email"]' ) === [] && portalFind( $step2, '//section[contains(@class, "crm-login")]//a[contains(@class, "crm-btn")][@href="/portal/meine-daten"]' ) !== [] );
+check( '...the address of the second step is the session\'s and never the address bar\'s: a query that names another one changes nothing, and the address of a request that ran out is not shown', portalText( $lgStep( '?login=code&email=evil%40example.org&new=evil%40example.org' ), '//section[contains(@class, "crm-login")]//form//strong[@class="crm-login__address"]' ) === 'anna.new@example.org'
+	&& str_contains( $lgStep( '?login=code&email=evil%40example.org' ), 'evil' ) === false );
+
+// Someone else's browser has no request: the second step is the first, with gone
+$lgBrowserOne = $_SESSION;
+portalSignIn( $appData, $accounts['carl'] );
+$lgCarl = $lgStep( '?login=code' );
+$lgGone = portalServe( $appData, '/.crm/anmeldeadresse/code', 'POST', [ 'code' => $lgCode( $lgBefore ) ] );
+check( 'a member in another browser, with no request of his own, has the first step with the state gone for ?login=code and ?state=wrong, and a post of the code that was sent to the other one is ?state=gone - the account of the first is not changed', portalFind( $lgCarl, '//section[contains(@class, "crm-login")]//details[@open]' ) !== [] && portalFind( $lgCarl, '//input[@name="code"]' ) === []
+	&& portalFind( $lgCarl, '//section[contains(@class, "crm-login")]//p[@role="alert"][contains(@class, "crm-data__state--gone")]' ) !== [] && portalFind( $lgStep( '?state=wrong&login=code' ), '//p[contains(@class, "crm-data__state--gone")]' ) !== []
+	&& $location( $lgGone ) === '/portal/meine-daten?state=gone' && \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] )['email'] === 'anna@example.org' && \Nino\Modules\Members::account( $appData, $accounts['carl']['id'] )['email'] === 'carl@example.org' );
+$_SESSION = $lgBrowserOne;
+check( '...and in the browser that asked, the request is still there and the code still works', \Nino\Modules\Members::changePending( $appData, (array) \Nino\Modules\Members::current( $appData ) ) === 'anna.new@example.org' );
+
+// A browser of the account that is open besides
+$_SESSION = [];
+portalSignIn( $appData, $accounts['anna'] );
+$lgBrowserTwo = $_SESSION;
+$_SESSION = $lgBrowserOne;
+$lgWrong = portalServe( $appData, '/.crm/anmeldeadresse/code', 'POST', [ 'code' => '000000' === $lgCode( $lgBefore ) ? '111111' : '000000' ] );
+$lgWrongPage = $lgStep( '?state=wrong&login=code' );
+check( 'a wrong code is ?state=wrong&login=code: the second step again, the field marked invalid and described, an alert in the error tone in the block - and the address is as it was', $location( $lgWrong ) === '/portal/meine-daten?state=wrong&login=code' && portalFind( $lgWrongPage, '//input[@name="code"]/@aria-invalid' )[0]->nodeValue === 'true'
+	&& portalFind( $lgWrongPage, '//section[contains(@class, "crm-login")]//p[@role="alert"][contains(@class, "crm-data__state--wrong")][contains(@class, "crm-note--error")]' ) !== [] && \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] )['email'] === 'anna@example.org' );
+check( '...a code that is none - text, seven digits, a null byte - is wrong as well, and each one is a try', array_values( array_unique( array_map( static fn( string $typed ): string => $location( portalServe( $GLOBALS['appData'], '/.crm/anmeldeadresse/code', 'POST', [ 'code' => $typed ] ) ), [ 'abcdef', '1234567', "12\x00456" ] ) ) ) === [ '/portal/meine-daten?state=wrong&login=code' ] );
+$lgFifth = $location( portalServe( $appData, '/.crm/anmeldeadresse/code', 'POST', [ 'code' => [ '123456' ] ] ) );
+check( '...so the fifth wrong try (a list is one) ends the request - gone, and the right code is gone after it - and the second step is the first again', $lgFifth === '/portal/meine-daten?state=gone' && $location( portalServe( $appData, '/.crm/anmeldeadresse/code', 'POST', [ 'code' => $lgCode( $lgBefore ) ] ) ) === '/portal/meine-daten?state=gone'
+	&& portalFind( $lgStep( '?login=code' ), '//input[@name="code"]' ) === [] && \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] )['email'] === 'anna@example.org' );
+
+// The token of the form
+$lgFresh();
+portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => 'anna.new@example.org' ] );
+$lgIndex = count( $mails ) - 1;
+$lgCodeNow = $lgCode( $lgIndex );
+$lgLate = portalServe( $appData, '/.crm/anmeldeadresse/code', 'POST', [ 'code' => $lgCodeNow, '_csrf' => 'wrong' ] );
+check( 'a token that is not the session\'s is ?login=code&state=expired for the second step, the right code is not taken, the address is as it was and the request stands', $location( $lgLate ) === '/portal/meine-daten?state=expired&login=code' && \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] )['email'] === 'anna@example.org'
+	&& \Nino\Modules\Members::changePending( $appData, (array) \Nino\Modules\Members::current( $appData ) ) === 'anna.new@example.org' && portalFind( $lgStep( '?state=expired&login=code' ), '//input[@name="code"]' ) !== [] && portalFind( $lgStep( '?state=expired&login=code' ), '//p[contains(@class, "crm-data__state--login-expired")]' ) !== [] );
+
+// The right code
+$lgOwnerBefore = count( $mails );
+$lgDone = portalServe( $appData, '/.crm/anmeldeadresse/code', 'POST', [ 'code' => substr( $lgCodeNow, 0, 3 ). ' '. substr( $lgCodeNow, 3 ) ] );
+$lgDoneMails = portalMailsFrom( $lgOwnerBefore );
+$lgAnna = \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] );
+check( 'the right code - with a space in it, as the mail sets it - is ?state=login-changed: the account signs in with the new address, the name and the group are as they were, and the request is over', $location( $lgDone ) === '/portal/meine-daten?state=login-changed' && $lgAnna['email'] === 'anna.new@example.org' && $lgAnna['name'] === 'Anna Nord' && $lgAnna['group'] === $a['group']
+	&& \Nino\Runtime::getSessionValue( $appData, './members/change' ) === null && ( \Nino\Modules\Members::current( $appData )['email'] ?? '' ) === 'anna.new@example.org' && \Crm\Clients::ofMember( $appData, $accounts['anna']['id'] )['id'] === $a['id'] );
+$lgAfter = $lgStep( '?state=login-changed' );
+check( '...the page says it as a status in the success tone in the block - and the new address stands there as text', portalFind( $lgAfter, '//section[contains(@class, "crm-login")]//p[@role="status"][contains(@class, "crm-data__state--login-changed")][contains(@class, "crm-note--success")]' ) !== [] && portalText( $lgAfter, '//section[contains(@class, "crm-login")]/p/strong' ) === 'anna.new@example.org'
+	&& portalFind( $lgAfter, '//form[@class="crm-data__form"]/p[contains(@class, "crm-data__state")]' ) === [] );
+$lgToOld = array_values( array_filter( $lgDoneMails, static fn( array $mail ): bool => $mail['to'] === 'anna@example.org' ) );
+$lgToOwner = array_values( array_filter( $lgDoneMails, static fn( array $mail ): bool => $mail['to'] === 'owner@example.org' ) );
+check( 'the old address is told, once, without the new address and without a code or a link; the owner is mailed once: the number and the company, a row Anmeldeadresse with the old address and the new one, and the reply goes to the account at the new address; nobody else is mailed',
+	count( $lgDoneMails ) === 2 && count( $lgToOld ) === 1 && str_contains( (string) $lgToOld[0]['body'], 'anna.new' ) === false && str_contains( (string) $lgToOld[0]['body'], '.members/login' ) === false && preg_match( '~\d{3} \d{3}~', strip_tags( (string) $lgToOld[0]['body'] ) ) !== 1
+	&& count( $lgToOwner ) === 1 && $lgToOwner[0]['replyTo'] === 'anna.new@example.org' && str_contains( (string) $lgToOwner[0]['body'], 'K-0001' ) === true && str_contains( (string) $lgToOwner[0]['body'], 'anna@example.org' ) === true && str_contains( (string) $lgToOwner[0]['body'], 'anna.new@example.org' ) === true
+	&& count( portalFind( (string) $lgToOwner[0]['body'], '//tbody/tr' ) ) === 1 && str_contains( (string) $lgToOwner[0]['body'], '[[' ) === false );
+$lgBrowserOne = $_SESSION;
+$_SESSION = $lgBrowserTwo;
+check( '...the other browser of the account is signed out, where the one that confirmed is not; a code the old address let in is dead', \Nino\Modules\Members::current( $appData ) === null );
+$_SESSION = $lgBrowserOne;
+check( '...and the browser that confirmed is still the member, with the same token of the form', ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $accounts['anna']['id'] && portalFind( $lgStep(), '//form[@class="crm-data__form"]//input[@name="_csrf"]/@value' )[0]->nodeValue === \Nino\Csrf::getToken( $appData ) );
+$lgAgain = portalServe( $appData, '/.crm/anmeldeadresse/code', 'POST', [ 'code' => $lgCodeNow ] );
+check( 'the code is spent: posted again it is ?state=gone, and the address stays', $location( $lgAgain ) === '/portal/meine-daten?state=gone' && \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] )['email'] === 'anna.new@example.org' );
+
+// An address another account has: the same answers, and no code
+$lgFresh();
+$lgTakenBefore = count( $mails );
+$lgFreeSent = portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => 'free.again@example.org' ] );
+$lgFreePage = $lgStep( '?login=code' );
+$lgTakenSent = portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => ' CARL@example.org ' ] );
+$lgTakenPage = $lgStep( '?login=code' );
+check( 'an address another account has - in any case - gets the same answer as a free one: the same redirect and the same page but for the address, the second step; the free one is mailed a code, the taken one nothing', $location( $lgTakenSent ) === $location( $lgFreeSent ) && $lgTakenSent['statusCode'] === $lgFreeSent['statusCode']
+	&& str_replace( 'free.again@example.org', 'X', $lgFreePage ) === str_replace( 'carl@example.org', 'X', $lgTakenPage ) && count( $mails ) === $lgTakenBefore + 1 && portalMail( $lgTakenBefore )['to'] === 'free.again@example.org' );
+$lgTakenTries = [];
+
+for( $try = 0; $try < 5; $try++ )
+	$lgTakenTries[] = $location( portalServe( $appData, '/.crm/anmeldeadresse/code', 'POST', [ 'code' => $lgCode( $lgTakenBefore ) ] ) );
+
+check( '...a code, even the one of the free address, does not change a taken one: four times wrong, the fifth gone, and the account keeps its address', $lgTakenTries === [ '/portal/meine-daten?state=wrong&login=code', '/portal/meine-daten?state=wrong&login=code', '/portal/meine-daten?state=wrong&login=code', '/portal/meine-daten?state=wrong&login=code', '/portal/meine-daten?state=gone' ]
+	&& \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] )['email'] === 'anna.new@example.org' && \Nino\Modules\Members::account( $appData, $accounts['carl']['id'] )['email'] === 'carl@example.org' );
+portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => 'race@example.org' ] );
+$lgRaceCode = $lgCode( count( $mails ) - 1 );
+\Nino\Modules\Members::change( $appData, $accounts['carl']['id'], [ 'email' => 'race@example.org' ] );
+check( '...an address another account took after the code was sent is gone for the right code, and nothing is changed, deleted or told', $location( portalServe( $appData, '/.crm/anmeldeadresse/code', 'POST', [ 'code' => $lgRaceCode ] ) ) === '/portal/meine-daten?state=gone' && \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] )['email'] === 'anna.new@example.org'
+	&& \Nino\Modules\Members::account( $appData, $accounts['carl']['id'] )['email'] === 'race@example.org' );
+\Nino\Modules\Members::change( $appData, $accounts['carl']['id'], [ 'email' => 'carl@example.org' ] );
+
+// The caps
+$lgFresh();
+$lgLimits = [];
+
+for( $round = 0; $round < 4; $round++ )
+	$lgLimits[] = $location( portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => 'many@example.org' ] ) );
+
+check( 'the caps of Members count here: the fourth request for one address in an hour is ?state=limit, said in the block as an alert, and the request of the session stays the third\'s', $lgLimits === [ '/portal/meine-daten?login=code', '/portal/meine-daten?login=code', '/portal/meine-daten?login=code', '/portal/meine-daten?state=limit' ]
+	&& portalFind( $lgStep( '?state=limit' ), '//section[contains(@class, "crm-login")]//p[@role="alert"][contains(@class, "crm-data__state--limit")]' ) !== [] && \Nino\Modules\Members::changePending( $appData, (array) \Nino\Modules\Members::current( $appData ) ) === 'many@example.org' );
+
+// Markup, a bracket
+$lgFresh();
+$lgHostile = [];
+
+foreach( [ 'a bracket' => '"a[members-name]"@example.org', 'markup in quotes' => '"<b>x</b>"@example.org' ] as $kind => $typed ) {
+	$lgFresh();
+	$sent = portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => $typed ] );
+	$page = $lgStep( '?login=code' );
+	$mail = portalMail( count( $mails ) - 1 );
+	$lgHostile[$kind] = $location( $sent ) === '/portal/meine-daten?login=code' && portalText( $page, '//section[contains(@class, "crm-login")]//form//strong' ) === $typed && str_contains( $page, '<b>x' ) === false && str_contains( $page, str_contains( $typed, '[' ) ? 'a&#91;members-name]' : '&lt;b&gt;x' ) === true && str_contains( $page, 'a[members-name]' ) === false
+		&& str_contains( (string) $mail['body'], '<b>x' ) === false && str_contains( (string) $mail['body'], '[[' ) === false && preg_match( '~\d{3} \d{3}~', strip_tags( (string) $mail['body'] ) ) === 1;
+}
+
+check( 'an address that has a bracket or markup in it and is valid all the same is text wherever it is shown: in the second step the text of the strong is the address, the page has it escaped - `[` as &#91; - and the mail with the code has no markup and no shortcode of it', array_values( $lgHostile ) === [ true, true ] );
+check( '...and the null byte, a bracket outside quotes, markup outside quotes and a list never get there - and the address bar cannot bring one in', $location( portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => "a\x00b@example.org" ] ) ) === '/portal/meine-daten?state=invalid&field=login'
+	&& $location( portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => 'a[members-name]@example.org' ] ) ) === '/portal/meine-daten?state=invalid&field=login' && $location( portalServe( $appData, '/.crm/anmeldeadresse', 'POST', [ 'email' => 'x<b>@example.org' ] ) ) === '/portal/meine-daten?state=invalid&field=login'
+	&& str_contains( $lgStep( '?login=code&email=%3Cb%3Ex&state=%3Cb%3E' ), '<b>' ) === false );
+
+// The box of the form
+portalSignIn( $appData, (array) \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] ) );
+$lgFresh();
+$lgSetEmail = static function( string $email ) use ( &$appData, $a ): void {
+	\Crm\Clients::change( $appData, $a['id'], [ 'email' => $email ] );
+	\Crm\Portal::forget( $appData );
+};
+$lgSetEmail( 'Studio@Example.NET' );
+$lgBox = $lgStep();
+check( 'where the client\'s address is another than the account\'s the form has a box: unticked, named login, value 1, with the address beside it as text; where it is the same or none the box is not there',
+	portalFind( $lgBox, '//form[@class="crm-data__form"]//input[@type="checkbox"][@name="login"][@value="1"][not(@checked)]' ) !== [] && portalText( $lgBox, '//form[@class="crm-data__form"]//strong[@class="crm-data__also-address"]' ) === 'Studio@Example.NET'
+	&& portalFind( $lgBox, '//form[@class="crm-data__form"]//label[@for="crm-data-also"]' ) !== [] && portalFind( $lgBox, '//form[@class="crm-data__form"]//input[@id="crm-data-also"]' ) !== [] );
+$lgSetEmail( 'ANNA.new@example.org' );
+check( '...the same in another case: no box', portalFind( $lgStep(), '//input[@name="login"]' ) === [] );
+$lgSetEmail( '' );
+check( '...none: no box', portalFind( $lgStep(), '//input[@name="login"]' ) === [] );
+$lgSetEmail( 'studio@example.net' );
+$lgBase = (array) \Crm\Clients::get( $appData, $a['id'] );
+$lgFields = $fields( [ 'company' => (string) $lgBase['company'], 'name' => (string) $lgBase['name'], 'street' => (string) $lgBase['street'], 'zip' => (string) $lgBase['zip'], 'city' => (string) $lgBase['city'], 'country' => (string) $lgBase['country'], 'phone' => (string) $lgBase['phone'], 'vat_id' => (string) $lgBase['vat_id'] ] );
+$lgBeforeBox = count( $mails );
+$lgNoBox = portalServe( $appData, '/.crm/daten', 'POST', $lgFields );
+check( 'saved without the box: ?state=saved, as ever - no code, no request in the session', $location( $lgNoBox ) === '/portal/meine-daten?state=saved' && count( $mails ) === $lgBeforeBox && \Nino\Runtime::getSessionValue( $appData, './members/change' ) === null );
+$lgBoxed = portalServe( $appData, '/.crm/daten', 'POST', array_replace( $lgFields, [ 'login' => '1', 'city' => 'Lübeck' ] ) );
+$lgBoxMails = portalMailsFrom( $lgBeforeBox );
+check( 'saved with the box: the data are saved first, then a code goes to the address of the client - ?state=saved&login=code, the second step under the note that it was saved - and the owner is mailed the data, not an address change yet', $location( $lgBoxed ) === '/portal/meine-daten?state=saved&login=code' && \Crm\Clients::get( $appData, $a['id'] )['city'] === 'Lübeck'
+	&& count( $lgBoxMails ) === 2 && array_column( $lgBoxMails, 'to' ) === [ 'owner@example.org', 'studio@example.net' ] && preg_match( '~^\d{6}$~D', $lgCode( $lgBeforeBox + 1 ) ) === 1 && str_contains( (string) $lgBoxMails[0]['body'], 'Anmeldeadresse' ) === false );
+$lgBoxPage = $lgStep( '?state=saved&login=code' );
+check( '...the page shows the note that it was saved above the form and the second step in the block with the address of the client; the code of it signs the account in with that address', portalFind( $lgBoxPage, '//form[@class="crm-data__form"]/p[@role="status"][contains(@class, "crm-data__state--saved")]' ) !== [] && portalText( $lgBoxPage, '//section[contains(@class, "crm-login")]//form//strong[@class="crm-login__address"]' ) === 'studio@example.net'
+	&& portalFind( $lgBoxPage, '//input[@name="code"]' ) !== [] );
+$lgBoxDone = portalServe( $appData, '/.crm/anmeldeadresse/code', 'POST', [ 'code' => $lgCode( $lgBeforeBox + 1 ) ] );
+check( '...and the address is the account\'s then; the box is gone as the two are the same', $location( $lgBoxDone ) === '/portal/meine-daten?state=login-changed' && \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] )['email'] === 'studio@example.net' && portalFind( $lgStep(), '//input[@name="login"]' ) === [] );
+$lgFields['city'] = 'Lübeck';
+$lgBefore2 = count( $mails );
+$lgBoxSame = portalServe( $appData, '/.crm/daten', 'POST', $lgFields + [ 'login' => '1' ] );
+check( 'saved with the box where the two are the same already: ?state=saved, nothing is asked, nobody is mailed', $location( $lgBoxSame ) === '/portal/meine-daten?state=saved' && count( $mails ) === $lgBefore2 && \Nino\Runtime::getSessionValue( $appData, './members/change' ) === null );
+$lgBoxHostile = [];
+
+foreach( [ 'markup' => 'x<b>@example.org', 'bracket' => 'b[1]@example.org' ] as $kind => $typed ) {
+	$lgSetEmail( $typed );
+	$lgBoxHostile[$kind] = $location( portalServe( $appData, '/.crm/daten', 'POST', $lgFields + [ 'login' => '1' ] ) );
+}
+
+check( 'an address of the client that Members cannot take is saved all the same and asks for nothing: the box with markup in it is ?state=saved; the page shows what is there as text', $lgBoxHostile['markup'] === '/portal/meine-daten?state=saved' && str_contains( $lgStep(), '<b>@example.org' ) === false );
+$lgSetEmail( '' );
+
+// The owner's own change does not mail the owner
+$lgFresh();
+$lgBefore3 = count( $mails );
+\Nino\Modules\Members::change( $appData, $accounts['anna']['id'], [ 'email' => 'anna@example.org' ] );
+check( 'the owner changing the address himself is told by Members with by owner, and the callback of the portal mails nobody but the old address: the notice, and no mail of a data change to the owner', count( portalMailsFrom( $lgBefore3 ) ) === 1 && portalMail( $lgBefore3 )['to'] === 'studio@example.net' );
+check( '...none of the addresses typed here reaches the warnings of the log', array_filter( ninoWarnings(), static fn( string $line ): bool => preg_match( '~@example\.(org|net)~', $line ) === 1 ) === [] && count( \Nino\Modules\Members::accounts( $appData ) ) === $lgMembers );
+$lgSetEmail( (string) $lgClientBefore['email'] );
+$_SESSION = [];
+
 // --- Markup and a shortcode in what a client or the owner typed: text everywhere it is drawn ---------------------------------------------
 
 echo "\nEscaping\n";
@@ -1716,7 +1974,7 @@ check( '...so is the title of an offer, the project in the cell of the documents
 	&& portalText( $oddPage, '//li[@data-files-id="'. $oddFile['id']. '"]//a[contains(@class, "crm-files__name")]' ) === $odd. '.mp3' && portalFind( $oddPage, '//details[@data-document="'. $offerOdd['id']. '"]//i | //li[@data-files-id="'. $oddFile['id']. '"]//i' ) === [] && portalFind( $oddBelege, '//a[contains(@class, "crm-documents__project")]//i' ) === [] );
 portalSignIn( $appData, $oddAccount );
 $oddData = portalPage( $appData, '/portal/meine-daten' )[1];
-check( '...and the e-mail of the account in Meine Daten is the value of its field, whatever it holds', portalFind( $oddData, '//input[@readonly]/@value' )[0]->nodeValue === $oddEmail && str_contains( $oddData, '&#91;members-name]' ) === true && str_contains( $oddData, '<b>' ) === false );
+check( '...and the e-mail of the account in Meine Daten is the text of its block, whatever it holds', portalText( $oddData, '//strong[@class="crm-login__address"]' ) === $oddEmail && str_contains( $oddData, '&#91;members-name]' ) === true && str_contains( $oddData, '<b>' ) === false );
 
 // the owner's mail is one call of the kernel's cap: at the cap the warning stands in the log
 $reset();

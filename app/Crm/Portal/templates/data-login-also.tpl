@@ -1,0 +1,1 @@
+<p class="crm-data__also"><label class="crm-check" for="crm-data-also"><input type="checkbox" id="crm-data-also" name="login" value="1"><span>[[/project/crm-portal/data/login-also]] <strong class="crm-data__also-address">[[address]]</strong></span></label></p>

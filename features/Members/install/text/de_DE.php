@@ -63,5 +63,18 @@ return [
 	'[[/feature/members/mail/invite-valid]]'	=> 'Die Einladung funktioniert einmal und ist gültig für',
 	'[[/feature/members/mail/invite-days]]'		=> 'Tage.',
 	'[[/feature/members/mail/invite-notice]]'	=> 'Wenn Du diese Einladung nicht erwartet hast, ignoriere diese E-Mail.',
+
+	// Die Mail mit dem Code für eine neue Anmeldeadresse (an die neue Adresse) und der Hinweis an die alte Adresse, dass sie geändert wurde
+	'[[/feature/members/mail/change-subject]]'	=> 'Dein Code für die neue Anmeldeadresse',
+	'[[/feature/members/mail/change-title]]'	=> 'Neue Anmeldeadresse bestätigen',
+	'[[/feature/members/mail/change-intro]]'	=> 'Jemand möchte diese E-Mail-Adresse als Anmeldeadresse eines Kontos eintragen. Gib den Code auf der Seite ein, auf der Du ihn angefordert hast, um die Adresse zu bestätigen.',
+	'[[/feature/members/mail/change-valid]]'	=> 'Der Code funktioniert einmal und ist gültig für',
+	'[[/feature/members/mail/change-minutes]]'	=> 'Minuten.',
+	'[[/feature/members/mail/change-notice]]'	=> 'Wenn Du das nicht warst, ignoriere diese E-Mail: Ohne den Code geschieht nichts.',
+	'[[/feature/members/mail/changed-subject]]'	=> 'Deine Anmeldeadresse wurde geändert',
+	'[[/feature/members/mail/changed-title]]'	=> 'Anmeldeadresse geändert',
+	'[[/feature/members/mail/changed-intro]]'	=> 'Die Anmeldeadresse Deines Kontos wurde geändert. Von nun an meldest Du Dich mit einer anderen Adresse an; Links und Codes, die für Dein Konto noch offen waren, gelten nicht mehr.',
+	'[[/feature/members/mail/changed-when]]'	=> 'Geändert am',
+	'[[/feature/members/mail/changed-notice]]'	=> 'Wenn Du das nicht warst, schreib uns:',
 	'[[/feature/members/mail/closing]]'			=> 'Viele Grüße',
 ];

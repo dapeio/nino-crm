@@ -153,7 +153,7 @@ class Mail {
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$client				As Clients::get() has it, after the change
-	 *	@param		array 		$changes			field => [ before, after ] of each field that is different
+	 *	@param		array 		$changes			field => [ before, after ] of each field that is different - the fields of the form, and login: the address the account signs in with, which the member changed
 	 *	@param		array 		$account			The account of Members that changed them: email and name
 	 *
 	 *	@return 	int|string								How many mails were delivered; 'address' where the company has no contact address that is one, 'limit' where the cap of mails an hour refused it
@@ -197,7 +197,7 @@ class Mail {
 			'[[head-before]]' => self::text( 'data.head.before' ),
 			'[[head-after]]'  => self::text( 'data.head.after' ),
 			'[[account]]' => self::text( 'data.account', $who ),
-			'[[notice]]'  => self::text( 'data.notice' ),
+			'[[notice]]'  => self::text( array_key_exists( 'login', $changes ) === true ? 'data.notice-login' : 'data.notice' ),
 		];
 		$body = str_replace( array_keys( $values ), array_map( $escape, array_values( $values ) ), $markup );
 

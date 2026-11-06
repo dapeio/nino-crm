@@ -3414,6 +3414,30 @@
 				} );
 			} } );
 
+			// Where the account signs in is the owner's to change - and, as with a link without the mail, only for whoever holds the permission of Members: the
+			// new address is where the next code goes. The box enters it as the client's own address as well, off at first: the two are not the same thing
+			if( state.perms.members === true )
+				items.push( { label : t( 'acc.email' ), run : function() {
+					dialog( { title : t( 'acc.email' ), text : t( 'acc.email-text' ), yes : t( 'acc.email-yes' ),
+						fields : [ { name : 'email', label : t( 'acc.email-field' ), value : account.email, type : 'email' }, { name : 'master', label : t( 'acc.email-master' ), type : 'checkbox', value : false } ] } ).then( function( values ) {
+
+						if( values === null )
+							return;
+
+						call( 'crm-clients/account-email', { id : String( client.id ), member : account.id, email : values.email, master : values.master }, 'error.account-email' ).then( function( answer ) {
+
+							if( answer.ok !== true )
+								return;
+
+							if( answer.body.client !== undefined )
+								adoptClientAddress( view, answer.body.client );
+
+							swap( function( list ) { return list.map( function( each ) { return each.id === account.id ? answer.body.account : each } ) } );
+							toast( t( 'acc.email-done' ) );
+						} );
+					} );
+				} } );
+
 			if( account.active === true || client.active === true )
 				items.push( { label : t( account.active === true ? 'acc.switch-off' : 'acc.switch-on' ), run : function() {
 					call( 'crm-clients/account-active', Object.assign( post(), { active : account.active === false } ), 'error.account-active' ).then( function( answer ) {
@@ -3450,6 +3474,35 @@
 			el( 'div', { class: 'who' }, el( 'b', { text: whoIs( account ) } ), ' ', badge( kind, t( 'acc.state-'+ account.state ) ),
 				gone === true ? null : el( 'div', { text: ( account.name !== '' ? account.email+ ' · ' : '' )+ ( login === '' ? t( 'acc.never' ) : t( 'acc.last', login ) ) } ) ),
 			menu( { label : '⋯', button : 'sm', aria : t( 'acc.menu' ), items : items } ) );
+	};
+
+	/**
+	 *	The client as the server has it after its address was entered with the account's: the card of the Stammdaten shows it - or, where its form is open, the field of
+	 *	the address, if nobody has typed in it - and what is typed elsewhere in the form stays
+	 *
+	 *	@param		{Object}	view
+	 *	@param		{Object}	client
+	 *
+	 *	@return		{void}
+	 */
+	const adoptClientAddress = function( view, client ) {
+
+		const was = view.client.email;
+
+		view.client = client;
+
+		if( view.editing === true ) {
+
+			const field = dc.getElementById( 'f-email' );
+
+			if( field !== null && field.value === was )
+				field.value = client.email;
+
+			return;
+		}
+
+		if( view.master !== null && view.master.parentNode !== null )
+			view.master.replaceWith( view.master = masterCard( view ) );
 	};
 
 	/**

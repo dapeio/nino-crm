@@ -304,8 +304,8 @@ check( 'the workbench has one panel of the module, in the content group, and the
 	&& \Crm\Crm::adminPanels( $appData ) === [ \Crm\Crm\Admin::class ] );
 check( 'its permission is /_admin/crm/manage, the one of the whole CRM', \Crm\Crm\Admin::perm() === '/_admin/crm/manage' && ( new \ReflectionClass( \Crm\Crm::class ) )->getConstant( 'MANAGE_PERM' ) === '/_admin/crm/manage' && ( $panels['crm']['perm'] ?? '' ) === '/_admin/crm/manage' );
 check( 'its actions are the two that moved from Kunden: the status and the setup', array_keys( \Crm\Crm\Admin::actions() ) === [ 'crm/status', 'crm/setup' ] );
-check( 'the API of the clients is the thirteen actions that remain, and has no setup and no status - and no panel in it', array_keys( \Crm\Clients\Admin::actions() ) === [ 'crm-clients/list', 'crm-clients/get', 'crm-clients/save', 'crm-clients/active', 'crm-clients/invite', 'crm-clients/accounts', 'crm-clients/unlinked',
-	'crm-clients/account-link', 'crm-clients/account-resend', 'crm-clients/account-active', 'crm-clients/account-name', 'crm-clients/account-remove', 'crm-clients/portal' ]
+check( 'the API of the clients is the fourteen actions that remain, and has no setup and no status - and no panel in it', array_keys( \Crm\Clients\Admin::actions() ) === [ 'crm-clients/list', 'crm-clients/get', 'crm-clients/save', 'crm-clients/active', 'crm-clients/invite', 'crm-clients/accounts', 'crm-clients/unlinked',
+	'crm-clients/account-link', 'crm-clients/account-resend', 'crm-clients/account-active', 'crm-clients/account-name', 'crm-clients/account-email', 'crm-clients/account-remove', 'crm-clients/portal' ]
 	&& array_filter( [ 'nav', 'icon', 'template', 'assets', 'text', 'summary', 'perm', 'apiSetup', 'apiStatus', 'unitDir' ], static fn( string $method ): bool => method_exists( \Crm\Clients\Admin::class, $method ) === true ) === [] );
 
 $assets = \Crm\Crm\Admin::assets();
@@ -339,7 +339,7 @@ ninoUser( $appData, 'admin@example.com' );
 $posts = [ 'crm-clients/list' => [], 'crm-clients/get' => [ 'id' => '1' ], 'crm-clients/save' => [ 'name' => 'Nobody' ], 'crm-clients/active' => [ 'id' => '1' ],
 	'crm-clients/invite' => [ 'id' => '1', 'email' => 'nobody@example.org' ], 'crm-clients/accounts' => [ 'id' => '1' ], 'crm-clients/unlinked' => [],
 	'crm-clients/account-link' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/account-resend' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/account-active' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ],
-	'crm-clients/account-name' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa', 'name' => 'Nobody' ], 'crm-clients/account-remove' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/portal' => [ 'id' => '1' ] ];
+	'crm-clients/account-name' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa', 'name' => 'Nobody' ], 'crm-clients/account-email' => [ 'id' => '1', 'member' => 'aaaaaaaaaaaa', 'email' => 'nobody@example.org' ], 'crm-clients/account-remove' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/portal' => [ 'id' => '1' ] ];
 $denied = [ 'signed out' => [], 'without the permission' => [] ];
 
 unset( $appData['./nino/auth/current'] );
@@ -1003,6 +1003,49 @@ check( '...a name over 120 characters is 400 crm_clients_long with its limit, th
 check( '...an account of another client is 404 crm_clients_member', $call( 'crm-clients/account-name', [ 'id' => (string) $other['id'], 'account' => (string) $neu['id'], 'name' => 'X' ] )[1]['code'] === 'crm_clients_member' && $memberOf( (string) $neu['id'] )['name'] === 'Neue Person' );
 check( '...and the log line says renamed', \Crm\Clients\Admin::log( 'crm-clients/account-name', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'], 'name' => 'Neue Person' ] ) === 'Renamed account '. $neu['id']. ' of client K-0006' );
 
+// The address the account signs in with
+$resetCap();
+$mails->exchangeArray( [] );
+$cleared = ninoWarnings();
+$linkOut = \Nino\Modules\Members::link( $appData, $memberOf( (string) $neu['id'] ), 'login', '/portal', false, false );
+$tokensOfNeu = static fn(): int => count( array_filter( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ), static fn( array $entry ): bool => ( $entry['account'] ?? '' ) === (string) $neu['id'] ) );
+$clientBefore = (array) \Crm\Clients::get( $appData, (int) $kg['id'] );
+$neuFile = static fn(): string => (string) file_get_contents( \Nino\Filesystem::path( $appData, '/data/members.php' ) );
+$fileBefore = $neuFile();
+$tokensBefore = $tokensOfNeu();
+$refused = [];
+
+foreach( [ 'none' => '', 'text' => 'nope', 'markup' => 'a<b>@example.org', 'bracket' => 'a[1]@example.org', 'null byte' => "a\x00b@example.org" ] as $kind => $typed )
+	$refused[$kind] = $call( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => (string) $neu['id'], 'email' => $typed ] );
+
+check( 'an address that is none - empty, text, markup, a bracket, a null byte - is 400 crm_clients_email on the field email, and nothing is written, deleted or mailed',
+	array_values( array_unique( array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ). ' '. ( $answer[1]['field'] ?? '' ), $refused ) ) ) === [ '400 crm_clients_email email' ] && $neuFile() === $fileBefore && $tokensOfNeu() === $tokensBefore && $tokensBefore >= 1 && count( $mails ) === 0 );
+[ $status, $body ] = $call( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => (string) $neu['id'], 'email' => ' IN-GROUP@example.org ' ] );
+check( '...one another account has - in any case - is 409 crm_clients_taken, and the links of the account are still there', $status === 409 && $body['code'] === 'crm_clients_taken' && $body['field'] === 'email' && $neuFile() === $fileBefore && $tokensOfNeu() === $tokensBefore && count( $mails ) === 0 );
+check( '...an account of another client is 404 crm_clients_member and a bad id 400 crm_clients_account', $call( 'crm-clients/account-email', [ 'id' => (string) $other['id'], 'member' => (string) $neu['id'], 'email' => 'x@example.org' ] )[1]['code'] === 'crm_clients_member'
+	&& $call( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => 'XYZ', 'email' => 'x@example.org' ] )[1]['code'] === 'crm_clients_account' && $neuFile() === $fileBefore );
+check( '...a flag that is none is 400 crm_clients_format', $call( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => (string) $neu['id'], 'email' => 'x@example.org', 'master' => 'yes' ] )[1]['code'] === 'crm_clients_format' && $neuFile() === $fileBefore );
+
+$emailOfNeu = static fn(): string => (string) ( $memberOf( (string) $neu['id'] )['email'] ?? '' );
+[ $status, $body ] = $call( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => (string) $neu['id'], 'email' => '  New.Address@Example.org ' ] );
+check( 'a new address is written by Members, lower case: the answer is the account as the card draws it, and the client\'s own address is as it was', $status === 200 && $body['account']['email'] === 'new.address@example.org' && $body['account']['id'] === (string) $neu['id'] && array_key_exists( 'client', $body ) === false
+	&& $emailOfNeu() === 'new.address@example.org' && ( \Crm\Clients::get( $appData, (int) $kg['id'] )['email'] ?? 'x' ) === $clientBefore['email'] );
+check( '...every link and code of the account died with the old address, and only the old address is mailed - the notice that it was changed, which has neither the new address nor a link', $tokensOfNeu() === 0 && is_string( $linkOut ) === true && count( $mails ) === 1 && crmMail( $mails, 0 )['to'] === 'neu@example.org'
+	&& str_contains( (string) crmMail( $mails, 0 )['body'], 'new.address' ) === false && str_contains( (string) crmMail( $mails, 0 )['body'], '.members/login' ) === false );
+check( '...the log line names the client and the account and no address', \Crm\Clients\Admin::log( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => (string) $neu['id'], 'email' => 'new.address@example.org' ] ) === 'Changed the sign-in address of account '. $neu['id']. ' of client K-0006'
+	&& str_contains( \Crm\Clients\Admin::log( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => (string) $neu['id'], 'email' => 'new.address@example.org' ] ), '@' ) === false );
+check( '...the same address again is no change: 200, nothing written, nobody mailed', ( $same = $call( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => (string) $neu['id'], 'email' => 'NEW.address@example.org' ] ) )[0] === 200 && $same[1]['account']['email'] === 'new.address@example.org' && count( $mails ) === 1 );
+check( '...and it is not logged: the line of a sign-in address names a change, so the same address writes none - and the next real change writes it again', \Crm\Clients\Admin::log( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => (string) $neu['id'], 'email' => 'NEW.address@example.org' ] ) === '' );
+
+$mails->exchangeArray( [] );
+[ $status, $body ] = $call( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => (string) $neu['id'], 'email' => 'both@example.org', 'master' => true ] );
+check( 'with master the address of the client is entered as well - through the check of the client - and the answer carries the client', $status === 200 && $body['account']['email'] === 'both@example.org' && ( $body['client']['email'] ?? '' ) === 'both@example.org' && ( \Crm\Clients::get( $appData, (int) $kg['id'] )['email'] ?? '' ) === 'both@example.org' && $emailOfNeu() === 'both@example.org' );
+$neuFile2 = $neuFile();
+[ $status, $body ] = $call( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => (string) $neu['id'], 'email' => str_repeat( 'x', 60 ). '@'. str_repeat( 'y', 60 ). '.'. str_repeat( 'z', 60 ). '.example.org', 'master' => true ] );
+check( '...an address the client cannot take - one that Members would take, and longer than the client\'s field - is 400 crm_clients_long before the account is touched: neither is changed', $status === 400 && $body['code'] === 'crm_clients_long' && $body['field'] === 'email' && $neuFile() === $neuFile2 && ( \Crm\Clients::get( $appData, (int) $kg['id'] )['email'] ?? '' ) === 'both@example.org' );
+$call( 'crm-clients/account-email', [ 'id' => (string) $kg['id'], 'member' => (string) $neu['id'], 'email' => 'neu@example.org' ] );
+check( '...the old address of the notice is the one the account had', count( $mails ) === 2 && crmMail( $mails, 1 )['to'] === 'both@example.org' );
+
 // Deactivating the client switches its accounts off
 $offOne = \Crm\Clients::invite( $appData, $kg, 'already-off@example.org', '' );
 $offId = is_array( $offOne ) ? (string) $offOne['account']['id'] : '';
@@ -1118,7 +1161,7 @@ check( '...a client without an address is made as ever', $status === 200 && arra
 $offAnswers = [];
 
 foreach( [ 'unlinked' => [], 'account-link' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa' ], 'account-resend' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa' ], 'account-active' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa' ],
-	'account-name' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa', 'name' => 'X' ], 'account-remove' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa' ] ] as $action => $data ) {
+	'account-name' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa', 'name' => 'X' ], 'account-email' => [ 'id' => (string) $first['id'], 'member' => 'aaaaaaaaaaaa', 'email' => 'x@example.org' ], 'account-remove' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa' ] ] as $action => $data ) {
 	[ $status, $body ] = ninoCall( $appData, $panel, $data, 'crm-clients/'. $action );
 	$offAnswers[$action] = [ $status, $body['code'] ?? '' ];
 }

@@ -61,10 +61,20 @@ namespace Nino\Modules {
 	 *										address, and - once a code is out, in the session of the
 	 *										visitor - the field for the code.
 	 *
+	 *										An account's address is changed by the owner (change() with
+	 *										'email') or by the member: askChange() keeps the request in the
+	 *										session of the member and mails six digits to the new address -
+	 *										whoever the address belongs to is not told -, confirmChange() takes
+	 *										them, once, in time and within five tries. Every link and code the
+	 *										account has out dies with the change, the account gets an epoch of
+	 *										its own that ends every other session of it (the one that confirms
+	 *										keeps its place), and the old address is told.
+	 *
 	 *										Other features build on it through current(), account(),
 	 *										accounts() and groups(), and by the callbacks
-	 *										'/members/login' and '/members/logout', which are fired
-	 *										with the account as their argument.
+	 *										'/members/login', '/members/logout' and '/members/changed',
+	 *										which are fired with the account as their argument (the last
+	 *										with who changed the address, too).
 	 *
 	 *	@package					Dape/Nino
 	 *	@author						David Perchermeier <mail@dape.io>
@@ -77,10 +87,11 @@ namespace Nino\Modules {
 		// NINO_FEATURES_DIR put it
 		public const string TEMPLATES = '/features/Members/templates';
 
-		// The accounts: [ 'accounts' => [ <id> => [ email, name, group, active, created, login ] ] ]
+		// The accounts: [ 'accounts' => [ <id> => [ email, name, group, active, created, login ] ] ]; an account whose address was changed has an
+		// 'epoch' besides, 32 hex characters, which the sessions of the account carry (see current())
 		public const string ACCOUNTS = '/data/members.php';
 
-		// The links and the codes that are out: [ <sha256 of the token, or of nonce|code> => [ account, kind, expires, target ] ]
+		// The links and the codes that are out: [ <sha256 of the token, or of nonce|code> => [ account, kind, expires, target ] ] - and the new address, for the code of a change
 		public const string TOKENS = '/data/members-tokens.php';
 
 		// The session epoch - what 'sign everybody out' rewrites: [ 'epoch' => <32 hex> ]
@@ -95,6 +106,9 @@ namespace Nino\Modules {
 		private const string SESSION_ACCOUNT = './members/account';
 		private const string SESSION_TARGET = './members/target';
 		private const string SESSION_PENDING = './members/pending';
+
+		// The change of an address the member asked for: [ account, email, nonce, tries, until ]
+		private const string SESSION_CHANGE = './members/change';
 
 		// Request-lifecycle keys: the state a callback of this request set for the
 		// form to say, how many forms this request has drawn, and the link a page
@@ -122,7 +136,7 @@ namespace Nino\Modules {
 		// may be: the entry of a code is made by a request for one and never by link()
 		private const array STATES = [ 'sent', 'limit', 'invalid', 'out', 'expired', 'wrong', 'gone' ];
 		private const array STATE_KEYS = [ 'sent' => 'code' ];
-		private const array KINDS = [ 'login', 'invite', 'code' ];
+		private const array KINDS = [ 'login', 'invite', 'code', 'change' ];
 		private const array LINKS = [ 'login', 'invite' ];
 
 		/**
@@ -180,7 +194,9 @@ namespace Nino\Modules {
 		 *	the session's epoch is the current one and the account exists and is
 		 *	active - a session from before 'sign everybody out', one of an account
 		 *	that was deleted and one of an account that was switched off read as
-		 *	nobody
+		 *	nobody - and one that does not carry the epoch the account has now: a change of the
+		 *	address gives the account an epoch of its own and ends every session of it but the one
+		 *	that confirmed the change. An account that has none is the account of a session that carries none
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *
@@ -198,9 +214,12 @@ namespace Nino\Modules {
 			if( $epoch === '' || hash_equals( $epoch, $session['epoch'] ) === false )
 				return null;
 
-			$account = self::account( $appData, $session['id'] );
+			$record = self::_record( $appData, $session['id'] );
 
-			return $account !== null && $account['active'] === true ? $account : null;
+			if( $record === null || $record['active'] === false || hash_equals( $record['epoch'] ?? '', is_string( $session['own'] ?? null ) === true ? $session['own'] : '' ) === false )
+				return null;
+
+			return [ 'id' => $session['id'] ] + self::_plain( $record );
 		}
 
 		/**
@@ -213,9 +232,9 @@ namespace Nino\Modules {
 		 */
 		public static function account( array &$appData, string $id ): ?array {
 
-			$record = self::_accountsOf( \Nino\Filesystem::getFileContent( $appData, self::ACCOUNTS, [] ) )[$id] ?? null;
+			$record = self::_record( $appData, $id );
 
-			return $record === null ? null : [ 'id' => $id ] + $record;
+			return $record === null ? null : [ 'id' => $id ] + self::_plain( $record );
 		}
 
 		/**
@@ -231,7 +250,7 @@ namespace Nino\Modules {
 			$accounts = [];
 
 			foreach( self::_accountsOf( \Nino\Filesystem::getFileContent( $appData, self::ACCOUNTS, [] ) ) as $id => $record )
-				$accounts[] = [ 'id' => (string) $id ] + $record;
+				$accounts[] = [ 'id' => (string) $id ] + self::_plain( $record );
 
 			usort( $accounts, static fn( array $a, array $b ): int => [ mb_strtolower( self::_label( $a ) ), $a['email'], $a['id'] ] <=> [ mb_strtolower( self::_label( $b ) ), $b['email'], $b['id'] ] );
 
@@ -359,46 +378,152 @@ namespace Nino\Modules {
 		}
 
 		/**
-		 *	Change the name, the group and whether an account is active - what
-		 *	$changes names and nothing else; the address, the times and the id stay.
-		 *	The rules of add() hold for the name and the group
+		 *	Change the name, the group, whether an account is active and its address -
+		 *	what $changes names and nothing else; the times and the id stay. The rules
+		 *	of add() hold for the name, the group and the address, which is the owner's
+		 *	to change here: the member's own way is askChange() and confirmChange(). The
+		 *	address is looked at in the lock that writes it - one that another account
+		 *	has is 'taken', whatever its case - and the address the account has already is
+		 *	no change and writes nothing. A new address deletes every link and code the
+		 *	account has out, gives the account a new epoch of its own, which ends every
+		 *	session of it (see current()), mails the old address that it was changed and
+		 *	fires '/members/changed' with by 'owner'
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$id
-		 *	@param		array 		$changes			Any of 'name' (string), 'group' (string) and 'active' (bool)
+		 *	@param		array 		$changes			Any of 'name' (string), 'group' (string), 'active' (bool) and 'email' (string)
 		 *
-		 *	@return 	array|string							The account as it is now; or why not: 'unknown' (no such id), 'long' (the name), 'write'
+		 *	@return 	array|string							The account as it is now; or why not: 'unknown' (no such id), 'long' (the name), 'invalid' (the address), 'taken' (the address is another account's), 'write'
 		 */
 		public static function change( array &$appData, string $id, array $changes ): array|string {
 
-			$name = is_string( $changes['name'] ?? null ) === true ? trim( $changes['name'] ) : null;
+			$changed = self::_rewrite( $appData, $id, $changes, 'owner' );
 
-			if( $name !== null && mb_strlen( $name, 'UTF-8' ) > self::NAME_LENGTH )
-				return 'long';
+			return is_array( $changed ) === true ? [ 'id' => $id ] + self::_plain( $changed ) : $changed;
+		}
 
-			$group = is_string( $changes['group'] ?? null ) === true ? \Nino\Feature::slug( $changes['group'] ) : null;
-			$active = is_bool( $changes['active'] ?? null ) === true ? $changes['active'] : null;
-			$ran = false;
-			$found = null;
+		/**
+		 *	Ask for the address of the signed-in member's account to be another: the new
+		 *	address gets six digits and nothing is changed until they are given back
+		 *	(confirmChange()). The request is kept in the session of the member - the new
+		 *	address, a random nonce, no tries yet and the time it is good until, the
+		 *	setting linkMinutes - and the code under sha256( nonce | code ), so that it is
+		 *	worth nothing outside that session. It is the same for an address that is
+		 *	free and for one another account has: the request is kept either way, and only
+		 *	a free address is mailed - nothing tells the member whose address it is, and
+		 *	the time the request took is all there is to see. The visitor is counted
+		 *	(the setting attempts, per hour) and so is the new address (3 per hour), as the
+		 *	request for a login code counts them. An older request of the session is replaced
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		$account			The member who is signed in, as current() has it
+		 *	@param		string		$newEmail			As typed
+		 *
+		 *	@return 	string										'sent' (a code is on its way if the address is free), 'invalid' (no address, or $account is not the member of this session), 'same' (the address the account has), 'limit'
+		 */
+		public static function askChange( array &$appData, array $account, string $newEmail ): string {
 
-			$written = \Nino\Filesystem::mutate( $appData, self::ACCOUNTS, static function( mixed $state ) use ( $id, $name, $group, $active, &$ran, &$found ): ?array {
+			$email = self::_email( $newEmail );
+			$record = self::_own( $appData, $account ) === true ? self::_record( $appData, (string) $account['id'] ) : null;
 
-				$ran = true;
-				$accounts = self::_accountsOf( $state );
+			if( $email === '' || $record === null )
+				return 'invalid';
 
-				if( isset( $accounts[$id] ) === false )
-					return null;
+			if( $email === $record['email'] )
+				return 'same';
 
-				$accounts[$id] = array_merge( $accounts[$id], array_filter( [ 'name' => $name, 'group' => $group, 'active' => $active ], static fn( mixed $value ): bool => $value !== null ) );
-				$found = [ 'id' => $id ] + $accounts[$id];
+			$attempts = (int) \Nino\Features::setting( $appData, self::FEATURE_KEY, 'attempts', self::DEFAULT_ATTEMPTS );
 
-				return [ 'accounts' => $accounts ];
-			}, [] );
+			if( \Nino\Feature::count( $appData, self::COUNTER, 'visitor|'. \Nino\Http::getClientIp( $appData ), $attempts, self::WINDOW ) === false
+				|| \Nino\Feature::count( $appData, self::COUNTER, 'address|'. $email, self::ADDRESS_LIMIT, self::WINDOW ) === false )
+				return 'limit';
 
-			if( $ran === true && $found === null )
-				return 'unknown';
+			$nonce = bin2hex( random_bytes( 16 ) );
+			$until = time() + self::_minutes( $appData ) * 60;
 
-			return $written === true && $found !== null ? $found : 'write';
+			\Nino\Runtime::setSessionValue( $appData, self::SESSION_CHANGE, [ 'account' => (string) $account['id'], 'email' => $email, 'nonce' => $nonce, 'tries' => 0, 'until' => $until ] );
+
+			if( self::_byEmail( $appData, $email ) === null )
+				self::_sendChange( $appData, (string) $account['id'], $email, $nonce, $until );
+
+			return 'sent';
+		}
+
+		/**
+		 *	The address a code was asked for, while the request of this session is live
+		 *	and the member's own: what the second step of the form names
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		$account			The member who is signed in, as current() has it
+		 *
+		 *	@return 	string|null								The new address; null for none, one that ran out and one of another account
+		 */
+		public static function changePending( array &$appData, array $account ): ?string {
+
+			$pending = self::_changePending( $appData );
+
+			return $pending !== null && self::_own( $appData, $account ) === true && $pending['account'] === $account['id'] ? $pending['email'] : null;
+		}
+
+		/**
+		 *	Take the code of the mail askChange() sent: the request is the one in the
+		 *	session and the account's own - without one, after its time, one of another
+		 *	account or after the fifth wrong try it is 'gone' and over. The try is counted
+		 *	first, the code - six digits, spaces left out; anything else is a wrong one -
+		 *	is looked up as sha256( nonce | code ) and spent, and only a record of the kind
+		 *	'change' for this account and this address counts. A good one ends the
+		 *	request and writes the address the way change() does, from the member's side
+		 *	(its links and codes die, the account's other sessions end, the old address is
+		 *	told, '/members/changed' is fired with by 'member'); this session keeps its
+		 *	place and carries the new epoch of the account. An address another account has
+		 *	by now is 'gone' as well, as it would have been before: nobody is told whose it is
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		$account			The member who is signed in, as current() has it
+		 *	@param		string		$code					As typed
+		 *
+		 *	@return 	string										'ok', 'wrong', 'gone', or 'write' (the address could not be written - the code is spent)
+		 */
+		public static function confirmChange( array &$appData, array $account, string $code ): string {
+
+			$pending = self::_changePending( $appData );
+
+			if( $pending === null || self::_own( $appData, $account ) === false || $pending['account'] !== $account['id'] ) {
+				\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_CHANGE );
+				return 'gone';
+			}
+
+			$pending['tries']++;
+			\Nino\Runtime::setSessionValue( $appData, self::SESSION_CHANGE, $pending );
+
+			$code = preg_replace( '/\s+/', '', $code ) ?? '';
+			$spent = preg_match( '/^[0-9]{6}$/D', $code ) === 1 ? self::_spendHash( $appData, hash( 'sha256', $pending['nonce']. '|'. $code ), 'change' ) : null;
+
+			if( $spent === null ) {
+
+				if( $pending['tries'] >= self::CODE_TRIES ) {
+					\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_CHANGE );
+					return 'gone';
+				}
+
+				return 'wrong';
+			}
+
+			\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_CHANGE );
+
+			if( $spent['account'] !== $account['id'] || ( $spent['email'] ?? '' ) !== $pending['email'] )
+				return 'gone';
+
+			$changed = self::_rewrite( $appData, $pending['account'], [ 'email' => $pending['email'] ], 'member' );
+
+			if( is_array( $changed ) === false )
+				return $changed === 'write' ? 'write' : 'gone';
+
+			$session = \Nino\Runtime::getSessionValue( $appData, self::SESSION_ACCOUNT );
+
+			\Nino\Runtime::setSessionValue( $appData, self::SESSION_ACCOUNT, [ 'id' => $pending['account'], 'epoch' => (string) ( $session['epoch'] ?? '' ) ] + ( ( $changed['epoch'] ?? '' ) !== '' ? [ 'own' => $changed['epoch'] ] : [] ) );
+
+			return 'ok';
 		}
 
 		/**
@@ -689,7 +814,7 @@ namespace Nino\Modules {
 			\Nino\Runtime::setSessionValue( $appData, self::SESSION_PENDING, $pending );
 
 			$code = preg_replace( '/\s+/', '', self::_posted( 'code' ) ) ?? '';
-			$spent = preg_match( '/^[0-9]{6}$/D', $code ) === 1 ? self::_spendHash( $appData, hash( 'sha256', $pending['nonce']. '|'. $code ) ) : null;
+			$spent = preg_match( '/^[0-9]{6}$/D', $code ) === 1 ? self::_spendHash( $appData, hash( 'sha256', $pending['nonce']. '|'. $code ), 'code' ) : null;
 
 			if( $spent === null ) {
 
@@ -704,7 +829,8 @@ namespace Nino\Modules {
 
 			$account = self::account( $appData, $spent['account'] );
 
-			if( $account === null || $account['active'] === false ) {
+			// A code asked for an address the account has left is no way in: the account still has the address the request was made for
+			if( $account === null || $account['active'] === false || $account['email'] !== $pending['email'] ) {
 				self::_redirect( $appData, $request, $return, 'gone' );
 				return;
 			}
@@ -822,6 +948,7 @@ namespace Nino\Modules {
 			$account = self::current( $appData );
 
 			\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_ACCOUNT );
+			\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_CHANGE );
 
 			if( $account !== null )
 				\Nino\Callbacks::doCallbacks( $appData, '/members/logout', $account );
@@ -1002,6 +1129,113 @@ namespace Nino\Modules {
 		}
 
 		/**
+		 *	The write behind change() and confirmChange(): the rules of change(), for whoever asks. A new
+		 *	address ends what the old one let in, in this order: the account's links and codes are deleted
+		 *	first, then the address is written, then they are deleted once more - a write that fails leaves
+		 *	the account as it was with nothing left that signs in, and a link or a code made between the two
+		 *	deletions does not outlive the address - a code to sign in is taken only while the account still has the
+		 *	address the request was made for (callbackCode()), so one that was asked for the old address after
+		 *	the first deletion is gone as well. What the lock would refuse (an address another account
+		 *	has) is refused before anything is deleted, so a change that does not happen takes nobody's
+		 *	links away. The old address is mailed that it was changed - in the language of the request,
+		 *	in the site's native one for the owner, who is not in the room - and '/members/changed' is
+		 *	fired; a notice that could not be sent is a warning and the change stays
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$id
+		 *	@param		array 		$changes			See change()
+		 *	@param		string		$by						'owner' or 'member': who asked, for the callback and the language of the notice
+		 *
+		 *	@return 	array|string							The account as the file has it, with its id and its epoch; or why not, see change()
+		 */
+		private static function _rewrite( array &$appData, string $id, array $changes, string $by ): array|string {
+
+			$name = is_string( $changes['name'] ?? null ) === true ? trim( $changes['name'] ) : null;
+			$email = null;
+
+			if( array_key_exists( 'email', $changes ) === true ) {
+
+				$email = is_string( $changes['email'] ) === true ? self::_email( $changes['email'] ) : '';
+
+				if( $email === '' )
+					return 'invalid';
+			}
+
+			if( $name !== null && mb_strlen( $name, 'UTF-8' ) > self::NAME_LENGTH )
+				return 'long';
+
+			$group = is_string( $changes['group'] ?? null ) === true ? \Nino\Feature::slug( $changes['group'] ) : null;
+			$active = is_bool( $changes['active'] ?? null ) === true ? $changes['active'] : null;
+			$current = $email === null ? null : self::_record( $appData, $id );
+
+			if( $current !== null && $current['email'] !== $email ) {
+
+				if( self::_byEmail( $appData, (string) $email ) !== null )
+					return 'taken';
+
+				if( self::_forget( $appData, $id ) === false )
+					return 'write';
+			}
+
+			$ran = false;
+			$found = null;
+			$taken = false;
+			$same = false;
+			$from = '';
+
+			$written = \Nino\Filesystem::mutate( $appData, self::ACCOUNTS, static function( mixed $state ) use ( $id, $name, $group, $active, $email, &$ran, &$found, &$taken, &$same, &$from ): ?array {
+
+				$ran = true;
+				$accounts = self::_accountsOf( $state );
+
+				if( isset( $accounts[$id] ) === false )
+					return null;
+
+				$before = $accounts[$id];
+				$accounts[$id] = array_merge( $before, array_filter( [ 'name' => $name, 'group' => $group, 'active' => $active ], static fn( mixed $value ): bool => $value !== null ) );
+
+				if( $email !== null && $email !== $before['email'] ) {
+
+					foreach( $accounts as $other => $each )
+						if( (string) $other !== $id && $each['email'] === $email ) {
+							$taken = true;
+							return null;
+						}
+
+					$accounts[$id]['email'] = $email;
+					$accounts[$id]['epoch'] = bin2hex( random_bytes( 16 ) );
+					$from = $before['email'];
+				}
+
+				$found = [ 'id' => $id ] + $accounts[$id];
+				$same = $accounts[$id] === $before;
+
+				return $same === true ? null : [ 'accounts' => $accounts ];
+			}, [] );
+
+			if( $ran === true && $found === null )
+				return $taken === true ? 'taken' : 'unknown';
+
+			if( $found === null || ( $written === false && $same === false ) )
+				return 'write';
+
+			if( $from === '' )
+				return $found;
+
+			if( self::_forget( $appData, $id ) === false )
+				trigger_error( 'Members: the links of an account could not be deleted after its address was changed', E_USER_WARNING );
+
+			if( self::_mail( $appData, $from, 'changed', '', $by === 'owner' ) === false )
+				trigger_error( 'Members: the old address of an account could not be told that it was changed', E_USER_WARNING );
+
+			$told = [ 'account' => [ 'id' => $id ] + self::_plain( $found ), 'old' => $from, 'by' => $by ];
+
+			\Nino\Callbacks::doCallbacks( $appData, '/members/changed', $told );
+
+			return $found;
+		}
+
+		/**
 		 *	Sign an account in: the epoch is opened (written, when the first sign-in
 		 *	of the project happens), the time of the sign-in is stamped on the
 		 *	account, and the session gets the account and the epoch. The session id
@@ -1048,7 +1282,13 @@ namespace Nino\Modules {
 				session_regenerate_id( true );
 
 			\Nino\Csrf::rotateToken( $appData );
-			\Nino\Runtime::setSessionValue( $appData, self::SESSION_ACCOUNT, [ 'id' => $id, 'epoch' => $epoch ] );
+
+			// A change of an address that was asked for belongs to the one who asked: whoever signs in here starts without it
+			\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_CHANGE );
+
+			$own = (string) ( self::_record( $appData, $id )['epoch'] ?? '' );
+
+			\Nino\Runtime::setSessionValue( $appData, self::SESSION_ACCOUNT, [ 'id' => $id, 'epoch' => $epoch ] + ( $own !== '' ? [ 'own' => $own ] : [] ) );
 
 			return true;
 		}
@@ -1082,20 +1322,51 @@ namespace Nino\Modules {
 		 *	@param		string		$kind					One of KINDS
 		 *	@param		int				$expires			The time it is good until
 		 *	@param		string		$target				The path the member asked for, '' for none
+		 *	@param		string		$email				For the code of a change: the new address, which the record keeps; '' for any other
 		 *
 		 *	@return 	bool											Whether it was written
 		 */
-		private static function _keep( array &$appData, string $hash, string $id, string $kind, int $expires, string $target ): bool {
+		private static function _keep( array &$appData, string $hash, string $id, string $kind, int $expires, string $target, string $email = '' ): bool {
 
 			$now = time();
 
-			return \Nino\Filesystem::mutate( $appData, self::TOKENS, static function( mixed $state ) use ( $hash, $id, $kind, $expires, $target, $now ): array {
+			return \Nino\Filesystem::mutate( $appData, self::TOKENS, static function( mixed $state ) use ( $hash, $id, $kind, $expires, $target, $email, $now ): array {
 
 				$tokens = self::_liveTokens( $state, $now );
-				$tokens[$hash] = [ 'account' => $id, 'kind' => $kind, 'expires' => $expires, 'target' => $target ];
+				$tokens[$hash] = [ 'account' => $id, 'kind' => $kind, 'expires' => $expires, 'target' => $target ] + ( $kind === 'change' ? [ 'email' => $email ] : [] );
 
 				return $tokens;
 			}, [] );
+		}
+
+		/**
+		 *	Delete every link and code an account has out, of every kind - what a new
+		 *	address ends: the old address let them in. Nothing is written where it has none
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$id						The account
+		 *
+		 *	@return 	bool											False where the file could not be written
+		 */
+		private static function _forget( array &$appData, string $id ): bool {
+
+			$ran = false;
+			$dirty = false;
+
+			$written = \Nino\Filesystem::mutate( $appData, self::TOKENS, static function( mixed $state ) use ( $id, &$ran, &$dirty ): ?array {
+
+				$ran = true;
+				$kept = array_filter( self::_liveTokens( $state, time() ), static fn( array $entry ): bool => $entry['account'] !== $id );
+
+				if( $kept === ( is_array( $state ) === true ? $state : [] ) )
+					return null;
+
+				$dirty = true;
+
+				return $kept;
+			}, [] );
+
+			return $ran === true && ( $dirty === false || $written === true );
 		}
 
 		/**
@@ -1127,6 +1398,61 @@ namespace Nino\Modules {
 			}
 
 			return true;
+		}
+
+		/**
+		 *	Make the code of a change of address, keep it under the hash of the session's nonce
+		 *	and the code, with the account and the new address, and mail it to the new
+		 *	address: six digits, in the words of the request's language. Nothing is mailed
+		 *	where the record could not be written
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$id						The account
+		 *	@param		string		$email				The new address, lower case
+		 *	@param		string		$nonce				32 hex characters of the request the session holds
+		 *	@param		int				$until				The time the code is good until
+		 *
+		 *	@return 	bool											Whether the mail was delivered - false, with a warning that names no address, where the code could not be stored or the mail was not taken
+		 */
+		private static function _sendChange( array &$appData, string $id, string $email, string $nonce, int $until ): bool {
+
+			$code = sprintf( '%06d', random_int( 0, 999999 ) );
+
+			if( self::_keep( $appData, hash( 'sha256', $nonce. '|'. $code ), $id, 'change', $until, '', $email ) === false ) {
+				trigger_error( 'Members: a code for a change of address could not be stored', E_USER_WARNING );
+				return false;
+			}
+
+			if( self::_mail( $appData, $email, 'change', $code, false ) === false ) {
+				trigger_error( 'Members: a code for a change of address could not be mailed', E_USER_WARNING );
+				return false;
+			}
+
+			return true;
+		}
+
+		/**
+		 *	The change of an address the session holds, as long as it is live: well formed - an
+		 *	account, the new address, a nonce of 32 hex characters, the tries used and the time it
+		 *	is good until - not run out and with a try left
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *
+		 *	@return 	array|null								account, email, nonce, tries and until - null for none, or one that is over
+		 */
+		private static function _changePending( array &$appData ): ?array {
+
+			$pending = \Nino\Runtime::getSessionValue( $appData, self::SESSION_CHANGE );
+
+			if( is_array( $pending ) === false || is_string( $pending['account'] ?? null ) === false || preg_match( '/^[0-9a-f]{12}$/D', $pending['account'] ) !== 1
+				|| is_string( $pending['email'] ?? null ) === false || self::_email( $pending['email'] ) !== $pending['email'] || is_string( $pending['nonce'] ?? null ) === false
+				|| preg_match( '/^[0-9a-f]{32}$/D', $pending['nonce'] ) !== 1 || is_int( $pending['tries'] ?? null ) === false || is_int( $pending['until'] ?? null ) === false )
+				return null;
+
+			if( $pending['until'] <= time() || $pending['tries'] >= self::CODE_TRIES )
+				return null;
+
+			return [ 'account' => $pending['account'], 'email' => $pending['email'], 'nonce' => $pending['nonce'], 'tries' => $pending['tries'], 'until' => $pending['until'] ];
 		}
 
 		/**
@@ -1196,21 +1522,22 @@ namespace Nino\Modules {
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$hash					The sha256 of a token, or of a nonce, a bar and a code
+		 *	@param		string		$kind					The kind the record has to be of, '' for any: a record of another kind is nothing, and stays
 		 *
-		 *	@return 	array|null								account (the id), kind, expires and target - null for no record
+		 *	@return 	array|null								account (the id), kind, expires, target and - for a change - email; null for no record
 		 */
-		private static function _spendHash( array &$appData, string $hash ): ?array {
+		private static function _spendHash( array &$appData, string $hash, string $kind = '' ): ?array {
 
 			$now = time();
 			$found = null;
 
-			$written = \Nino\Filesystem::mutate( $appData, self::TOKENS, static function( mixed $state ) use ( $hash, $now, &$found ): ?array {
+			$written = \Nino\Filesystem::mutate( $appData, self::TOKENS, static function( mixed $state ) use ( $hash, $kind, $now, &$found ): ?array {
 
 				$tokens = is_array( $state ) === true ? $state : [];
 				$live = self::_liveTokens( $state, $now );
 				$entry = $live[$hash] ?? null;
 
-				if( $entry !== null ) {
+				if( $entry !== null && ( $kind === '' || $entry['kind'] === $kind ) ) {
 					$found = $entry;
 					unset( $live[$hash] );
 				}
@@ -1223,12 +1550,13 @@ namespace Nino\Modules {
 
 		/**
 		 *	The tokens that are good: an entry that is well formed - an account, a
-		 *	kind of KINDS, a target that is a string - and has not run out
+		 *	kind of KINDS, a target that is a string, and for a change the new address - and
+		 *	has not run out
 		 *
 		 *	@param		mixed			$state				As the file holds it
 		 *	@param		int				$now
 		 *
-		 *	@return 	array										hash => account, kind, expires, target
+		 *	@return 	array										hash => account, kind, expires, target - and email, for a change
 		 */
 		private static function _liveTokens( mixed $state, int $now ): array {
 
@@ -1236,38 +1564,40 @@ namespace Nino\Modules {
 
 			foreach( is_array( $state ) === true ? $state : [] as $hash => $entry )
 				if( is_array( $entry ) === true && is_string( $entry['account'] ?? null ) === true && in_array( $entry['kind'] ?? null, self::KINDS, true ) === true
-					&& is_int( $entry['expires'] ?? null ) === true && $entry['expires'] > $now && is_string( $entry['target'] ?? null ) === true )
-					$live[(string) $hash] = [ 'account' => $entry['account'], 'kind' => $entry['kind'], 'expires' => $entry['expires'], 'target' => $entry['target'] ];
+					&& is_int( $entry['expires'] ?? null ) === true && $entry['expires'] > $now && is_string( $entry['target'] ?? null ) === true
+					&& ( $entry['kind'] !== 'change' || is_string( $entry['email'] ?? null ) === true ) )
+					$live[(string) $hash] = [ 'account' => $entry['account'], 'kind' => $entry['kind'], 'expires' => $entry['expires'], 'target' => $entry['target'] ] + ( $entry['kind'] === 'change' ? [ 'email' => $entry['email'] ] : [] );
 
 			return $live;
 		}
 
 		/**
-		 *	Mail a link or a code. The template is rendered first - its words are the
-		 *	keys of the unit - and the link or the code and the validity are put in
-		 *	afterwards, in the result, so that nothing in them is ever read as a fill or
+		 *	Mail a link or a code, or the notice of a change. The template is rendered first - its words are the
+		 *	keys of the unit - and the link or the code, the validity, the day and the contact address of the
+		 *	project are put in afterwards, in the result, so that nothing in them is ever read as a fill or
 		 *	a shortcode (the order \Nino\Form::render() keeps). A code is set as two
 		 *	groups of three digits. The reply goes to the project's contact address
 		 *	where it has one
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$to
-		 *	@param		string		$kind					'login', 'invite' or 'code'
-		 *	@param		string		$token				The token of a link, the six digits of a code
+		 *	@param		string		$kind					'login', 'invite', 'code', 'change' (a code, to the new address) or 'changed' (the notice to the old address that it was changed, which names neither the new one nor a code)
+		 *	@param		string		$token				The token of a link, the six digits of a code - nothing for a notice
 		 *	@param		bool			$native				Write in the site's native language
 		 *
 		 *	@return 	bool										Whether the mail was delivered
 		 */
 		private static function _mail( array &$appData, string $to, string $kind, string $token, bool $native ): bool {
 
-			$url = $kind === 'code' ? '' : \Nino\Html::absoluteUrl( $appData, '/.members/login?t='. rawurlencode( $token ) );
-			$code = $kind === 'code' ? substr( $token, 0, 3 ). ' '. substr( $token, 3 ) : '';
+			$url = in_array( $kind, self::LINKS, true ) === true ? \Nino\Html::absoluteUrl( $appData, '/.members/login?t='. rawurlencode( $token ) ) : '';
+			$code = in_array( $kind, [ 'code', 'change' ], true ) === true ? substr( $token, 0, 3 ). ' '. substr( $token, 3 ) : '';
 			$locale = \Nino\Locales::getCurrentLocale( $appData );
 
 			if( $native === true )
 				\Nino\Locales::useLocale( $appData, \Nino\Locales::getNativeLocale( $appData ) );
 
 			try {
+				$date = str_starts_with( \Nino\Locales::getCurrentLocale( $appData ), 'de' ) === true ? date( 'd.m.Y' ) : date( 'Y-m-d' );
 				$body = \Nino\Html::renderHtml( $appData, \Nino\Feature::template( $appData, self::TEMPLATES, 'mail-'. $kind ) );
 				$subject = \Nino\Html::renderHtml( $appData, '[[/feature/members/mail/'. $kind. '-subject]]' );
 				$replyTo = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ) );
@@ -1277,13 +1607,14 @@ namespace Nino\Modules {
 					\Nino\Locales::useLocale( $appData, $locale );
 			}
 
+			$replyTo = filter_var( $replyTo, FILTER_VALIDATE_EMAIL ) === false ? '' : $replyTo;
 			$body = str_replace(
-				[ '[[link]]', '[[code]]', '[[minutes]]', '[[days]]' ],
-				[ \Nino\Modules\Components::escape( $url ), \Nino\Modules\Components::escape( $code ), (string) self::_minutes( $appData ), (string) self::_days( $appData ) ],
+				[ '[[link]]', '[[code]]', '[[minutes]]', '[[days]]', '[[date]]', '[[contact]]' ],
+				[ \Nino\Modules\Components::escape( $url ), \Nino\Modules\Components::escape( $code ), (string) self::_minutes( $appData ), (string) self::_days( $appData ), \Nino\Modules\Components::escape( $date ), \Nino\Modules\Components::escape( $replyTo ) ],
 				$body
 			);
 
-			return \Nino\Mail::send( $appData, $to, $subject, $body, filter_var( $replyTo, FILTER_VALIDATE_EMAIL ) === false ? '' : $replyTo );
+			return \Nino\Mail::send( $appData, $to, $subject, $body, $replyTo );
 		}
 
 		/**
@@ -1345,12 +1676,13 @@ namespace Nino\Modules {
 		/**
 		 *	The accounts a file holds, each read for what it has to be: the id is 12
 		 *	hex characters, the address lower case, the strings strings, 'active' a
-		 *	bool and the time of the last sign-in a string or null. A record that is
+		 *	bool and the time of the last sign-in a string or null, and the epoch - 32 hex
+		 *	characters - there where the account has one. A record that is
 		 *	none is left out - the file is plain php and editable
 		 *
 		 *	@param		mixed			$state				As the file holds it
 		 *
-		 *	@return 	array										id => email, name, group, active, created, login
+		 *	@return 	array										id => email, name, group, active, created, login - and epoch, where there is one
 		 */
 		private static function _accountsOf( mixed $state ): array {
 
@@ -1371,10 +1703,52 @@ namespace Nino\Modules {
 					'active'	=> ( $record['active'] ?? false ) === true,
 					'created'	=> $text( $record['created'] ?? null ),
 					'login'		=> is_string( $record['login'] ?? null ) === true ? $record['login'] : null,
-				];
+				] + ( self::_epochOf( $record ) !== '' ? [ 'epoch' => self::_epochOf( $record ) ] : [] );
 			}
 
 			return $accounts;
+		}
+
+		/**
+		 *	One account as the file has it, its epoch among the fields
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$id
+		 *
+		 *	@return 	array|null								email, name, group, active, created, login and - where there is one - epoch; null for an id nobody has
+		 */
+		private static function _record( array &$appData, string $id ): ?array {
+
+			return self::_accountsOf( \Nino\Filesystem::getFileContent( $appData, self::ACCOUNTS, [] ) )[$id] ?? null;
+		}
+
+		/**
+		 *	An account without its epoch: what the account is to everybody outside this class
+		 *
+		 *	@param		array 		$record				As _record() has it
+		 *
+		 *	@return 	array
+		 */
+		private static function _plain( array $record ): array {
+
+			unset( $record['epoch'] );
+
+			return $record;
+		}
+
+		/**
+		 *	Whether an account is the member who is signed in in this session
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		$account			As current() has it
+		 *
+		 *	@return 	bool
+		 */
+		private static function _own( array &$appData, array $account ): bool {
+
+			$member = self::current( $appData );
+
+			return $member !== null && is_string( $account['id'] ?? null ) === true && $member['id'] === $account['id'];
 		}
 
 		/**
@@ -1387,7 +1761,7 @@ namespace Nino\Modules {
 
 			foreach( self::_accountsOf( \Nino\Filesystem::getFileContent( $appData, self::ACCOUNTS, [] ) ) as $id => $record )
 				if( $record['email'] === $email )
-					return [ 'id' => (string) $id ] + $record;
+					return [ 'id' => (string) $id ] + self::_plain( $record );
 
 			return null;
 		}

@@ -43,6 +43,8 @@ return [
 	'data.field.country' => 'Land',
 	'data.field.phone' => 'Telefon',
 	'data.field.vat_id' => 'USt-IdNr.',
+	'data.field.login' => 'Anmeldeadresse',
+	'data.notice-login' => 'Das Konto meldet sich ab jetzt mit der neuen Adresse an. Die Adresse in den Stammdaten des Kunden bleibt, wie sie ist.',
 	'order.owner.subject' => 'Auftrag erteilt: Angebot %s von Kunde %s durch %s',
 	'order.owner.title' => 'Ein Kunde hat einen Auftrag erteilt',
 	'order.owner.intro' => 'Im Kundenportal wurde ein Angebot beauftragt:',

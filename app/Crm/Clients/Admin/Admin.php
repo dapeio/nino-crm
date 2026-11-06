@@ -3,7 +3,7 @@ declare(strict_types=1);
 /**
  *	Crm\Clients\Admin		The API of the clients behind the surface's endpoint (Surface::actions()): the clients (list, card, add with
  *											the first account, change, deactivate), the accounts of their logins in Members - made with the client,
- *											invited, linked, sent a link again, switched off or on, renamed and deleted from the card, so that the
+ *											invited, linked, sent a link again, switched off or on, renamed, given another sign-in address and deleted from the card, so that the
  *											panel Members need not be opened - and what the client sees in the portal. It calls Members' PHP API,
  *											never its files; the one permission of the CRM covers it. It is no panel of the workbench any more: the
  *											workbench has the panel CRM (Crm\Crm\Admin), which also holds the status of the module and the button
@@ -54,6 +54,7 @@ class Admin {
 			'crm-clients/account-resend' => [ self::class, 'apiAccountResend' ],
 			'crm-clients/account-active' => [ self::class, 'apiAccountActive' ],
 			'crm-clients/account-name'   => [ self::class, 'apiAccountName' ],
+			'crm-clients/account-email'  => [ self::class, 'apiAccountEmail' ],
 			'crm-clients/account-remove' => [ self::class, 'apiAccountRemove' ],
 			'crm-clients/portal'   => [ self::class, 'apiPortal' ],
 		];
@@ -71,7 +72,8 @@ class Admin {
 
 		$number = self::$_made[$action] ?? '';
 		$of = $number === '' ? '' : ' '. $number;
-		$id = is_string( $data['account'] ?? null ) === true && preg_match( self::ACCOUNT_ID, $data['account'] ) === 1 ? ' '. $data['account'] : '';
+		$key = $action === 'crm-clients/account-email' ? 'member' : 'account';
+		$id = is_string( $data[$key] ?? null ) === true && preg_match( self::ACCOUNT_ID, $data[$key] ) === 1 ? ' '. $data[$key] : '';
 
 		return match( $action ) {
 			'crm-clients/save'           => ( isset( $data['id'] ) === true && $data['id'] !== '' ? 'Changed client' : 'Added client' ). $of,
@@ -81,6 +83,7 @@ class Admin {
 			'crm-clients/account-resend' => str_contains( $of, ', without mail' ) === true ? 'Made a link without mail for account'. $id. ' of client'. str_replace( ', without mail', '', $of ) : 'Sent a link to account'. $id. ' of client'. $of,
 			'crm-clients/account-active' => 'Switched account'. $id. ' of client'. $of,
 			'crm-clients/account-name'   => 'Renamed account'. $id. ' of client'. $of,
+			'crm-clients/account-email'  => $of === '' ? '' : 'Changed the sign-in address of account'. $id. ' of client'. $of,
 			'crm-clients/account-remove' => 'Deleted account'. $id. ' of client'. $of,
 			default                      => '',
 		};
@@ -706,6 +709,78 @@ class Admin {
 			self::$_made['crm-clients/account-name'] = $client['number'];
 
 			\Nino\Http::ok( $request, [ 'account' => $changed ] );
+		} );
+	}
+
+	/**
+	 *	Change the sign-in address of an account: id (the client), member (the account) and email, and master - true to enter the address as the client's own as well. The
+	 *	account has to be the client's, and the permission of Members is asked for as it is for a link without the mail: the new address is where the account's next
+	 *	login goes, so the CRM's permission alone is not enough (403 crm_clients_link_perm). Members writes it (400 crm_clients_email, 409 crm_clients_taken - the owner may
+	 *	be told that -, 500 crm_clients_write); the links and codes of the account die with the old address, its other sessions end and the old address is told. The log
+	 *	names the client and the account, never an address. The answer is the account as the card draws it, and the client when master was set
+	 */
+	public static function apiAccountEmail( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		$data = \Nino\Admin\Admin::postData();
+
+		if( array_key_exists( 'master', $data ) === true && is_bool( $data['master'] ) === false ) {
+			\Nino\Http::fail( $request, 400, 'the value is no flag', 'crm_clients_format', [], 'master' );
+			return;
+		}
+
+		self::_run( $request, static function() use ( &$appData, &$request, $data ): void {
+
+			if( \Crm\Crm::mayLink( $appData, 'members' ) === false ) {
+				self::_refuse( $request, 'link_perm' );
+				return;
+			}
+
+			$target = self::_target( $appData, $request, [ 'id' => \Nino\Admin\Admin::postString( $data, 'id' ), 'account' => \Nino\Admin\Admin::postString( $data, 'member' ) ], true, false );
+
+			if( $target === null )
+				return;
+
+			[ $client, $account ] = $target;
+			$email = trim( \Nino\Admin\Admin::postString( $data, 'email' ) );
+			$master = ( $data['master'] ?? false ) === true;
+
+			// What the client's own address takes is looked at before the account is touched: a change that is made half is none
+			if( $master === true && mb_strlen( $email, 'UTF-8' ) > \Crm\Clients::FIELDS['email'] ) {
+				self::_refused( $request, 'long:email' );
+				return;
+			}
+
+			$before = (string) ( \Nino\Modules\Members::account( $appData, $account['id'] )['email'] ?? '' );
+			$changed = \Crm\Clients::changeAccountEmail( $appData, $account['id'], $email );
+
+			if( is_string( $changed ) === true ) {
+				self::_refuse( $request, $changed );
+				return;
+			}
+
+			// Only a real change is logged: the address the account has already writes nothing and says nothing
+			unset( self::$_made['crm-clients/account-email'] );
+
+			if( $changed['email'] !== $before )
+				self::$_made['crm-clients/account-email'] = $client['number'];
+			$answer = [ 'account' => $changed ];
+
+			if( $master === true ) {
+
+				$saved = \Crm\Clients::change( $appData, $client['id'], [ 'email' => $changed['email'] ] );
+
+				if( is_string( $saved ) === true ) {
+					self::_refused( $request, $saved );
+					return;
+				}
+
+				$answer['client'] = self::_withDocuments( $appData, $saved );
+			}
+
+			\Nino\Http::ok( $request, $answer );
 		} );
 	}
 

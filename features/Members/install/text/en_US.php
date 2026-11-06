@@ -62,5 +62,18 @@ return [
 	'[[/feature/members/mail/invite-valid]]'	=> 'The invitation works once and is valid for',
 	'[[/feature/members/mail/invite-days]]'		=> 'days.',
 	'[[/feature/members/mail/invite-notice]]'	=> 'If you did not expect this invitation, ignore this email.',
+
+	// The mail with a code for a new sign-in address (to the new address) and the notice to the old address that it was changed
+	'[[/feature/members/mail/change-subject]]'	=> 'Your code for the new sign-in address',
+	'[[/feature/members/mail/change-title]]'	=> 'Confirm the new sign-in address',
+	'[[/feature/members/mail/change-intro]]'	=> 'Somebody wants to enter this email address as the sign-in address of an account. Enter the code on the page where it was asked for, to confirm the address.',
+	'[[/feature/members/mail/change-valid]]'	=> 'The code works once and is valid for',
+	'[[/feature/members/mail/change-minutes]]'	=> 'minutes.',
+	'[[/feature/members/mail/change-notice]]'	=> 'If that was not you, ignore this email: nothing happens without the code.',
+	'[[/feature/members/mail/changed-subject]]'	=> 'Your sign-in address was changed',
+	'[[/feature/members/mail/changed-title]]'	=> 'Sign-in address changed',
+	'[[/feature/members/mail/changed-intro]]'	=> 'The sign-in address of your account was changed. From now on you sign in with another address; links and codes that were still out for your account no longer work.',
+	'[[/feature/members/mail/changed-when]]'	=> 'Changed on',
+	'[[/feature/members/mail/changed-notice]]'	=> 'If that was not you, write to us:',
 	'[[/feature/members/mail/closing]]'			=> 'Kind regards',
 ];

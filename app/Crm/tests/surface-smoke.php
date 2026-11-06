@@ -868,20 +868,23 @@ Documents::get( $appData, $contractOk['id'] );
 // A link that is shown and not mailed signs in or signs as the account: it takes the permission of the feature that makes it, which the CRM's alone is not
 $reset();
 $asCrm();
+$clientEmailBefore = \Crm\Clients::get( $appData, $a['id'] )['email'];
 $membersBefore = count( \Nino\Modules\Members::accounts( $appData ) );
 $clientsBefore = count( \Crm\Clients::list( $appData ) );
 $requestsBefore = count( \Nino\Modules\Sign::requests( $appData ) );
 $mailsBefore = count( $mails );
+$carlFile = \Nino\Modules\Members::account( $appData, $accounts['carl']['id'] );
 $denied = [
 	'sign'        => surfaceApi( $appData, 'crm-documents/sign', [ 'id' => (string) $contractOk['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] ),
 	'invite'      => surfaceApi( $appData, 'crm-clients/invite', [ 'id' => (string) $a['id'], 'email' => 'noperm@example.org', 'notify' => false ] ),
 	'resend'      => surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] ),
 	'first'       => surfaceApi( $appData, 'crm-clients/save', [ 'company' => 'Ohne Recht GmbH', 'account_email' => 'first-noperm@example.org', 'notify' => false ] ),
+	'address'     => surfaceApi( $appData, 'crm-clients/account-email', [ 'id' => (string) $a['id'], 'member' => $accounts['carl']['id'], 'email' => 'noperm-address@example.org' ] ),
 ];
-check( 'an account with the permission of the CRM alone is refused a link without the mail: 403 crm_documents_link_perm for a signature, 403 crm_clients_link_perm for an invitation, a link to sign in and a first account - and nothing is made',
-	array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $denied ) === [ 'sign' => '403 crm_documents_link_perm', 'invite' => '403 crm_clients_link_perm', 'resend' => '403 crm_clients_link_perm', 'first' => '403 crm_clients_link_perm' ]
+check( 'an account with the permission of the CRM alone is refused a link without the mail: 403 crm_documents_link_perm for a signature, 403 crm_clients_link_perm for an invitation, a link to sign in and a first account - and nothing is made; the same holds for a new sign-in address, which is where the next code goes: it is refused and the account keeps its address',
+	array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $denied ) === [ 'sign' => '403 crm_documents_link_perm', 'invite' => '403 crm_clients_link_perm', 'resend' => '403 crm_clients_link_perm', 'first' => '403 crm_clients_link_perm', 'address' => '403 crm_clients_link_perm' ]
 	&& array_filter( $denied, static fn( array $answer ): bool => isset( $answer[1]['link'] ) ) === [] && count( \Nino\Modules\Members::accounts( $appData ) ) === $membersBefore && count( \Crm\Clients::list( $appData ) ) === $clientsBefore
-	&& count( \Nino\Modules\Sign::requests( $appData ) ) === $requestsBefore && count( $mails ) === $mailsBefore );
+	&& count( \Nino\Modules\Sign::requests( $appData ) ) === $requestsBefore && count( $mails ) === $mailsBefore && \Nino\Modules\Members::account( $appData, $accounts['carl']['id'] ) === $carlFile );
 [ $status, $answer ] = surfaceApi( $appData, 'crm-documents/sign', [ 'id' => (string) $contractOk['id'], 'account' => $accounts['anna']['id'] ] );
 $denyRemind = surfaceApi( $appData, 'crm-documents/sign-remind', [ 'id' => (string) $contractOk['id'], 'notify' => false ] );
 check( '...the same account has all of it with the mail: the signature is asked for and mailed, and the link again without the mail is refused by the permission of Sign, and its token is as it was', $status === 200 && $answer['mailed'] === true && $denyRemind[0] === 403 && ( $denyRemind[1]['code'] ?? '' ) === 'crm_documents_link_perm' && isset( $denyRemind[1]['link'] ) === false );
@@ -893,6 +896,10 @@ $allowed = [
 	'resend' => surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] ),
 	'remind' => surfaceApi( $appData, 'crm-documents/sign-remind', [ 'id' => (string) $contractOk['id'], 'notify' => false ] ),
 ];
+$carlChange = surfaceApi( $appData, 'crm-clients/account-email', [ 'id' => (string) $a['id'], 'member' => $accounts['carl']['id'], 'email' => 'Carl.Changed@Example.org' ] );
+check( 'the permission of Members is what changes a sign-in address: with it the answer is 200 and the account as the card draws it, in Members the address is the new one in lower case - and the client\'s own address is as it was', $carlChange[0] === 200 && ( $carlChange[1]['account']['email'] ?? '' ) === 'carl.changed@example.org' && \Nino\Modules\Members::account( $appData, $accounts['carl']['id'] )['email'] === 'carl.changed@example.org'
+	&& array_key_exists( 'client', $carlChange[1] ) === false && \Crm\Clients::get( $appData, $a['id'] )['email'] === $clientEmailBefore );
+\Nino\Modules\Members::change( $appData, $accounts['carl']['id'], [ 'email' => 'carl@example.org' ] );
 check( 'with the permissions of Members and of Sign the same actions answer the link: 200 and a link in each', array_map( static fn( array $answer ): bool => $answer[0] === 200 && preg_match( '~^https://example\.org/club/\.(members/login|sign)\?t=[A-Za-z0-9_-]+~', (string) ( $answer[1]['link'] ?? '' ) ) === 1, $allowed ) === [ 'invite' => true, 'resend' => true, 'remind' => true ] );
 $reset();
 $asUser( 'onlymembers@example.com', 'onlymembers password' );
@@ -903,8 +910,10 @@ $reset();
 $asUser( 'onlysign@example.com', 'onlysign password' );
 $splitSign[] = surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts['anna']['id'], 'notify' => false ] );
 $splitSign[] = surfaceApi( $appData, 'crm-clients/invite', [ 'id' => (string) $a['id'], 'email' => 'split-sign@example.org', 'notify' => false ] );
+$splitAddress = surfaceApi( $appData, 'crm-clients/account-email', [ 'id' => (string) $a['id'], 'member' => $accounts['carl']['id'], 'email' => 'split-sign-address@example.org' ] );
 check( '...and each permission is its own: the account that holds the one of Members has the links of Members and not those of Sign, and the account that holds Sign\'s has the signature (asked for here) and no link of Members',
-	$split === [ 200, 403 ] && array_map( static fn( array $answer ): int => $answer[0], $splitSign ) === [ 403, 403, 403 ] && $splitSign[0][1]['code'] === 'crm_documents_link_perm' );
+	$split === [ 200, 403 ] && array_map( static fn( array $answer ): int => $answer[0], $splitSign ) === [ 403, 403, 403 ] && $splitSign[0][1]['code'] === 'crm_documents_link_perm'
+	&& $splitAddress[0] === 403 && $splitAddress[1]['code'] === 'crm_clients_link_perm' && \Nino\Modules\Members::account( $appData, $accounts['carl']['id'] )['email'] === 'carl@example.org' );
 $reset();
 \Nino\Modules\Sign::cancel( $appData, Documents::get( $appData, $contractOk['id'] )['sign_id'] );
 $asUser( 'onlysign@example.com', 'onlysign password' );

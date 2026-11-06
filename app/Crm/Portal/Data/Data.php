@@ -8,6 +8,15 @@ declare(strict_types=1);
  *										that was refused) or expired (the token of the form was not the session's). What was typed is not kept, so the sentence names the
  *										field. The e-mail of the account is Members' and is shown, never posted; the e-mail of the client is not on the form. A finalised
  *										document keeps the client it was made with (its client_json): the next document carries the new data.
+ *
+ *										Under the form stands the block Anmeldeadresse: the address the account signs in with and a way to change it that needs
+ *										the new address - POST /.crm/anmeldeadresse asks Members for a code to it (askChange()), the second step of the block takes it
+ *										(POST /.crm/anmeldeadresse/code, confirmChange()). Both answer like the form: a redirect with a state in the query - login=code
+ *										for the second step, and for the state sent nothing else -, 404 for whoever is no member of a client, ?state=expired for a token
+ *										that is not the session's. A box in the form of the Stammdaten does the same for the address of the client: with it, saving asks
+ *										for the code as well and the page shows the second step under the note that it was saved. Nothing of what the address says is
+ *										kept in the page: an address a code was asked for is read from the session, and every address is written escaped. The owner is
+ *										mailed when the member has changed the address (callbackChanged(), what Members tells under '/members/changed').
  */
 namespace Crm\Portal;
 
@@ -21,6 +30,8 @@ class Data {
 
 	// The route the form posts to, and the page it comes from and goes back to
 	public const string ROUTE = '/.crm/daten';
+	public const string ROUTE_LOGIN = '/.crm/anmeldeadresse';
+	public const string ROUTE_CODE = '/.crm/anmeldeadresse/code';
 	public const string PAGE = '/portal/meine-daten';
 
 	// The fields of the form, in their order: the client's fields the member may change, how the input is made and whether it takes the whole line
@@ -42,11 +53,26 @@ class Data {
 	// The states a page says, each with the tone and the icon of its note and whether it is a status or an alert
 	private const array STATES = [ 'saved' => [ 'success', 'circle-check', 'status' ], 'invalid' => [ 'error', 'circle-alert', 'alert' ], 'expired' => [ 'error', 'circle-alert', 'alert' ] ];
 
+	// The states of the block Anmeldeadresse, in the same shape: what the two routes answer besides saved. invalid says it with the field login, and expired is said
+	// in the block where the address names a step (login=change or login=code); login-invalid and login-expired are the keys of the words of invalid and expired
+	private const array LOGIN_STATES = [
+		'login-changed' => [ 'success', 'circle-check', 'status' ],
+		'same'          => [ 'info', 'info', 'status' ],
+		'limit'         => [ 'error', 'circle-alert', 'alert' ],
+		'gone'          => [ 'error', 'circle-alert', 'alert' ],
+		'wrong'         => [ 'error', 'circle-alert', 'alert' ],
+		'login-invalid' => [ 'error', 'circle-alert', 'alert' ],
+		'login-expired' => [ 'error', 'circle-alert', 'alert' ],
+	];
+
 	/**
 	 *	[crm-client-data] - the form with the client's company, name, address (the postal code and the city on one line), country (a select,
 	 *	Deutschland where the client has none), phone and VAT id, the e-mail of the account beside it as a line that is only read, and a button;
-	 *	under the form the block Datenschutz-Zustimmung: whether the client has agreed, and the way to the page. The state the query names is said
-	 *	above the form, and an invalid field beside the field. A member of no client is told there is no client; nothing for a visitor
+	 *	under the form the block Anmeldeadresse - the address the account signs in with, the button that opens the form for a new one and, once a code is out,
+	 *	the second step that asks for it (see loginBlock()) - and the block Datenschutz-Zustimmung: whether the client has agreed, and the way to the page. The
+	 *	state the query names is said above the form, or in the block Anmeldeadresse where it is one of that block's, and an invalid field beside the field. A box
+	 *	in the form offers the address of the client as the sign-in address, where the account has another. A member of no client is told there is no client;
+	 *	nothing for a visitor
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$args
@@ -71,6 +97,10 @@ class Data {
 		$field = is_string( $query['field'] ?? null ) === true && isset( self::FIELDS[$query['field']] ) === true ? $query['field'] : '';
 
 		if( $state === 'invalid' && $field === '' )
+			$state = '';
+
+		// A token that ran out in the block Anmeldeadresse is said there, not above the form (its other states are none of STATES)
+		if( $state === 'expired' && in_array( $query['login'] ?? null, [ 'change', 'code' ], true ) === true )
 			$state = '';
 
 		$fields = '';
@@ -102,7 +132,7 @@ class Data {
 			] );
 		}
 
-		$member = \Nino\Modules\Members::current( $appData );
+		$member = (array) \Nino\Modules\Members::current( $appData );
 		$standing = Records::privacy( $appData, $client['id'] );
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 
@@ -118,7 +148,8 @@ class Data {
 			'[[dir]]'     => $dir,
 			'[[state]]'   => $note,
 			'[[fields]]'  => $fields,
-			'[[email]]'   => \Nino\Modules\Components::escape( (string) ( $member['email'] ?? '' ) ),
+			'[[also]]'    => $client['email'] !== '' && mb_strtolower( $client['email'], 'UTF-8' ) !== $member['email'] ? Portal::render( 'data-login-also', [ '[[address]]' => \Nino\Modules\Components::escape( $client['email'] ) ] ) : '',
+			'[[login]]'   => self::loginBlock( $appData, $member, $dir, $query ),
 			'[[privacy]]' => $standing['asked'] === false ? '' : Portal::render( 'data-privacy', [
 				'[[agreed]]'   => $standing['agreed'] === true ? '1' : '0',
 				'[[tone]]'     => $standing['agreed'] === true ? 'success' : 'warning',
@@ -164,14 +195,10 @@ class Data {
 	public static function callbackSave( array &$appData, array &$request ): void {
 
 		$client = Portal::client( $appData );
-		$member = $client === null ? null : \Nino\Modules\Members::current( $appData );
+		$member = self::memberOfClient( $appData );
 
 		if( $client === null || $member === null ) {
-
-			$request['/nino/http/response']['statusCode']								= 404;
-			$request['/nino/http/response']['body']										= 'Not Found';
-			$request['/nino/http/response']['header']['Content-Type']		= 'text/plain; charset=utf-8';
-			$request['/nino/http/response']['header']['Cache-Control']	= 'no-store';
+			self::notFound( $request );
 
 			return;
 		}
@@ -195,10 +222,7 @@ class Data {
 			$field = $changed === 'empty' ? 'name' : substr( $changed, (int) strpos( $changed, ':' ) + 1 );
 
 			if( $changed === 'unknown' || isset( self::FIELDS[$field] ) === false ) {
-				$request['/nino/http/response']['statusCode']								= 404;
-				$request['/nino/http/response']['body']										= 'Not Found';
-				$request['/nino/http/response']['header']['Content-Type']		= 'text/plain; charset=utf-8';
-				$request['/nino/http/response']['header']['Cache-Control']	= 'no-store';
+				self::notFound( $request );
 
 				return;
 			}
@@ -218,7 +242,197 @@ class Data {
 		if( $differences !== [] )
 			Documents\Mail::dataChanged( $appData, $changed, $differences, $member );
 
+		// The box of the form: the address the Stammdaten have is the sign-in address as well - saved first, then a code to it, and the page shows the second step
+		// under the note that it was saved. An address the account has already, or none, asks for nothing
+		if( ( $_POST['login'] ?? null ) === '1' && (string) $changed['email'] !== '' && mb_strtolower( (string) $changed['email'], 'UTF-8' ) !== $member['email'] ) {
+
+			$asked = \Nino\Modules\Members::askChange( $appData, $member, (string) $changed['email'] );
+
+			if( $asked === 'sent' ) {
+				self::redirect( $appData, $request, 'saved', '', 'code' );
+
+				return;
+			}
+
+			if( $asked === 'limit' ) {
+				self::redirect( $appData, $request, 'limit' );
+
+				return;
+			}
+		}
+
 		self::redirect( $appData, $request, 'saved' );
+	}
+
+	/**
+	 *	The block Anmeldeadresse: the address of the account as text and, below it, the first step - a button that opens the form for a new address, closed
+	 *	until the query says login=change or a state that is about that form - or, where a code is out in the session of the member (Members::changePending())
+	 *	and the query says login=code, the second step, which names the address the code was asked for and asks for the digits. The second step without a
+	 *	request that is live is the first one with the state gone. The state of the query is said above the step: the states of LOGIN_STATES, invalid with the
+	 *	field login, expired where the address names a step. The address a code was asked for is the session's and never the query's
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$member				The account who is signed in
+	 *	@param		string		$dir					The escaped directory of the project
+	 *	@param		array 		$query				The query of the request
+	 *
+	 *	@return 	string										Markup
+	 */
+	private static function loginBlock( array &$appData, array $member, string $dir, array $query ): string {
+
+		$state = is_string( $query['state'] ?? null ) === true ? $query['state'] : '';
+		$asked = in_array( $query['login'] ?? null, [ 'change', 'code' ], true ) === true ? $query['login'] : '';
+		$new = $asked === 'code' ? \Nino\Modules\Members::changePending( $appData, $member ) : null;
+
+		if( $asked === 'code' && $new === null ) {
+			$asked = 'change';
+			$state = 'gone';
+		}
+
+		if( $state === 'wrong' && $new === null )
+			$state = 'gone';
+
+		$key = $state === 'invalid' && ( $query['field'] ?? null ) === 'login' ? 'login-invalid' : ( $state === 'expired' && $asked !== '' ? 'login-expired' : $state );
+		$tone = self::LOGIN_STATES[$key] ?? null;
+		$bad = $key === 'login-invalid' || $key === 'wrong' ? [ '[[invalid]]' => ' crm-field--invalid', '[[described]]' => ' aria-invalid="true"' ] : [ '[[invalid]]' => '', '[[described]]' => '' ];
+
+		if( $new !== null )
+			$step = Portal::render( 'data-login-code', [ '[[dir]]' => $dir, '[[address]]' => \Nino\Modules\Components::escape( $new ) ] + $bad );
+		else
+			$step = Portal::render( 'data-login-change', [ '[[dir]]' => $dir, '[[open]]' => $asked === 'change' || ( $tone !== null && $key !== 'login-changed' ) ? ' open' : '' ] + $bad );
+
+		return Portal::render( 'data-login', [
+			'[[address]]' => \Nino\Modules\Components::escape( (string) $member['email'] ),
+			'[[state]]'   => $tone === null ? '' : Portal::render( 'data-state', [ '[[state]]' => $key, '[[tone]]' => $tone[0], '[[icon]]' => $tone[1], '[[role]]' => $tone[2] ] ),
+			'[[step]]'    => $step,
+		] );
+	}
+
+	/**
+	 *	'/nino/http/response/POST://.crm/anmeldeadresse': the first step of the block Anmeldeadresse. A visitor and a member of no client are answered 404; a token
+	 *	that is not the session's is the redirect with ?state=expired&login=change. The address is handed to Members::askChange(): sent - a code is on its way if the
+	 *	address is free, and nothing here says whether it is - goes to ?login=code, the second step; invalid to ?state=invalid&field=login; same (the address the
+	 *	account has) and limit (the caps of Members) to ?state=same and ?state=limit
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackLogin( array &$appData, array &$request ): void {
+
+		$member = self::memberOfClient( $appData );
+
+		if( $member === null ) {
+			self::notFound( $request );
+
+			return;
+		}
+
+		if( \Nino\Form::blocked( $request ) === true ) {
+			self::redirect( $appData, $request, 'expired', '', 'change' );
+
+			return;
+		}
+
+		$status = \Nino\Modules\Members::askChange( $appData, $member, is_string( $_POST['email'] ?? null ) === true ? $_POST['email'] : '' );
+
+		match( $status ) {
+			'sent'    => self::redirect( $appData, $request, '', '', 'code' ),
+			'invalid' => self::redirect( $appData, $request, 'invalid', 'login' ),
+			default   => self::redirect( $appData, $request, $status ),
+		};
+	}
+
+	/**
+	 *	'/nino/http/response/POST://.crm/anmeldeadresse/code': the second step. A visitor and a member of no client are answered 404; a token that is not the
+	 *	session's is the redirect with ?login=code&state=expired and the request as it was. The code is handed to Members::confirmChange(): ok is ?state=login-changed,
+	 *	wrong is ?login=code&state=wrong, and gone - no request, one that ran out or was used up, an address that is another account's by now, and a write that
+	 *	failed - is ?state=gone
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackCode( array &$appData, array &$request ): void {
+
+		$member = self::memberOfClient( $appData );
+
+		if( $member === null ) {
+			self::notFound( $request );
+
+			return;
+		}
+
+		if( \Nino\Form::blocked( $request ) === true ) {
+			self::redirect( $appData, $request, 'expired', '', 'code' );
+
+			return;
+		}
+
+		$status = \Nino\Modules\Members::confirmChange( $appData, $member, is_string( $_POST['code'] ?? null ) === true ? $_POST['code'] : '' );
+
+		match( $status ) {
+			'ok'    => self::redirect( $appData, $request, 'login-changed' ),
+			'wrong' => self::redirect( $appData, $request, 'wrong', '', 'code' ),
+			default => self::redirect( $appData, $request, 'gone' ),
+		};
+	}
+
+	/**
+	 *	'/members/changed': the address of an account was changed. Where the member changed it (the owner knows what he did himself) the owner is mailed, as for
+	 *	any change of the data in the portal: the client, the line Anmeldeadresse with the address it was and the one it is, and the account, which the reply goes to.
+	 *	An account of no client is nobody's business here, and a mail that does not go out is a warning of Documents\Mail and no reason to undo the change
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$told				account (the new address in it), old and by, as Members fires it
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackChanged( array &$appData, array &$told ): void {
+
+		if( ( $told['by'] ?? null ) !== 'member' || is_array( $told['account'] ?? null ) === false || is_string( $told['old'] ?? null ) === false )
+			return;
+
+		try {
+			$client = Clients::ofMember( $appData, (string) ( $told['account']['id'] ?? '' ) );
+		}
+		catch( \PDOException $e ) {
+			trigger_error( 'Crm: the client of an account whose sign-in address was changed could not be read', E_USER_WARNING );
+
+			return;
+		}
+
+		if( $client !== null )
+			Documents\Mail::dataChanged( $appData, $client, [ 'login' => [ $told['old'], (string) $told['account']['email'] ] ], $told['account'] );
+	}
+
+	/**
+	 *	The member of a client who is signed in
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array|null								The account as Members has it; null for a visitor and for a member of no client
+	 */
+	private static function memberOfClient( array &$appData ): ?array {
+
+		return Portal::client( $appData ) === null ? null : \Nino\Modules\Members::current( $appData );
+	}
+
+	/**
+	 *	The answer to whoever is no member of a client: 404, as the feature Files answers a stranger
+	 *
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	private static function notFound( array &$request ): void {
+
+		$request['/nino/http/response']['statusCode']								= 404;
+		$request['/nino/http/response']['body']										= 'Not Found';
+		$request['/nino/http/response']['header']['Content-Type']		= 'text/plain; charset=utf-8';
+		$request['/nino/http/response']['header']['Cache-Control']	= 'no-store';
 	}
 
 	/**
@@ -226,13 +440,16 @@ class Data {
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$request
-	 *	@param		string		$state				One of STATES
+	 *	@param		string		$state				One of STATES or LOGIN_STATES; '' for none
 	 *	@param		string		$field				For invalid: the field that was refused
+	 *	@param		string		$login				change or code: the step of the block Anmeldeadresse the page shows
 	 *
 	 *	@return 	void
 	 */
-	private static function redirect( array &$appData, array &$request, string $state, string $field = '' ): void {
+	private static function redirect( array &$appData, array &$request, string $state, string $field = '', string $login = '' ): void {
 
-		\Nino\Http::redirect( $appData, $request, self::PAGE. '?state='. $state. ( $field === '' ? '' : '&field='. $field ), 303 );
+		$query = array_filter( [ 'state' => $state, 'field' => $field, 'login' => $login ], static fn( string $value ): bool => $value !== '' );
+
+		\Nino\Http::redirect( $appData, $request, self::PAGE. '?'. http_build_query( $query ), 303 );
 	}
 }

@@ -415,7 +415,7 @@ $stateKeys = ( new ReflectionClassConstant( \Nino\Modules\Members::class, 'STATE
 foreach( ( new ReflectionClassConstant( \Nino\Modules\Members::class, 'STATES' ) )->getValue() as $state )
 	$read[] = '[[/feature/members/state/'. ( $stateKeys[$state] ?? $state ). ']]';
 
-foreach( [ 'login', 'invite', 'code' ] as $kind )
+foreach( [ 'login', 'invite', 'code', 'change', 'changed' ] as $kind )
 	$read[] = '[[/feature/members/mail/'. $kind. '-subject]]';
 
 $read = array_values( array_unique( array_filter( $read, static fn( string $key ): bool => str_contains( $key, 'state/[[' ) === false && str_contains( $key, '/state/name' ) === false ) ) );
@@ -1796,6 +1796,450 @@ $request = membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $to
 check( 'the sign-in is a value of the session - the answers that ask for it and bring it set no cookie of their own, nor does the one that ends it', array_key_exists( 'Set-Cookie', $asked['/nino/http/response']['header'] ) === false
 	&& array_key_exists( 'Set-Cookie', $request['/nino/http/response']['header'] ) === false && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $ada['id']
 	&& array_key_exists( 'Set-Cookie', membersServe( $appData, '/.members/logout' )['/nino/http/response']['header'] ) === false );
+
+echo "\n";
+
+
+// --- Changing the address: the owner's write -------------------------------------------
+
+echo "Modules\\Members - changing the address: the owner's write\n";
+
+\Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [] ] );
+unset( $appData['./nino/auth/current'] );
+\Nino\Filesystem::putFileContent( $appData, '/data/members.php', [] );
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', [] );
+membersVisitor();
+membersFresh( $appData );
+$mails = [];
+$delivery = true;
+$changedTold = [];
+\Nino\Callbacks::registerCallback( $appData, '/members/changed', static function( array &$appData, array &$told ) use ( &$changedTold ): void {
+	$changedTold[] = $told;
+} );
+
+$cleo = \Nino\Modules\Members::add( $appData, 'cleo@example.org', 'Cleo', 'staff' );
+$dora = \Nino\Modules\Members::add( $appData, 'dora@example.org', 'Dora', '' );
+$contact = \Nino\Html::renderTextfill( $appData, '/project/company/contact/email' );
+$accountsFile = static fn(): string => (string) file_get_contents( \Nino\Filesystem::path( $GLOBALS['appData'], '/data/members.php' ) );
+$tokensOf = static fn( string $id ): array => array_keys( array_filter( membersFile( $GLOBALS['appData'], 'tokens' ), static fn( array $entry ): bool => $entry['account'] === $id ) );
+
+// What is no address, and what another account has
+$cleoLink = membersLink( $appData, $cleo );
+$doraLink = membersLink( $appData, $dora );
+$fileBefore = $accountsFile();
+$tokensBefore = membersFile( $appData, 'tokens' );
+$mailsBefore = count( $mails );
+$refused = [];
+
+foreach( [ 'no address' => 'nope', 'an empty one' => '  ', 'markup' => 'a<b>@example.org', 'a bracket' => 'a[1]@example.org', 'a null byte' => "a\x00b@example.org", 'a list' => [ 'cleo2@example.org' ] ] as $kind => $typed )
+	$refused[$kind] = \Nino\Modules\Members::change( $appData, $cleo['id'], [ 'email' => $typed ] );
+
+$taken = [ \Nino\Modules\Members::change( $appData, $cleo['id'], [ 'email' => 'dora@example.org' ] ), \Nino\Modules\Members::change( $appData, $cleo['id'], [ 'email' => ' DORA@Example.ORG ' ] ) ];
+check( 'an address that is none - text, empty, markup, a bracket, a null byte, a list - is invalid, and one another account has, in any case, is taken: nothing is written or mailed, and the links the account has out are still there',
+	array_values( array_unique( $refused ) ) === [ 'invalid' ] && count( $refused ) === 6 && $taken === [ 'taken', 'taken' ] && $accountsFile() === $fileBefore && membersFile( $appData, 'tokens' ) === $tokensBefore && count( $mails ) === $mailsBefore
+	&& $cleoLink !== '' && $doraLink !== '' && count( $tokensOf( $cleo['id'] ) ) === 1 );
+check( '...an id nobody has is unknown, with an address and without', \Nino\Modules\Members::change( $appData, 'ffffffffffff', [ 'email' => 'new@example.org' ] ) === 'unknown' && \Nino\Modules\Members::change( $appData, 'ffffffffffff', [ 'name' => 'x' ] ) === 'unknown' );
+
+$same = \Nino\Modules\Members::change( $appData, $cleo['id'], [ 'email' => ' CLEO@example.org ' ] );
+check( 'the address the account has - in any case - is no change: the account as it is, nothing written, no epoch, nothing mailed, nobody told, the links stay',
+	is_array( $same ) && $same['email'] === 'cleo@example.org' && $accountsFile() === $fileBefore && membersFile( $appData, 'tokens' ) === $tokensBefore && count( $mails ) === $mailsBefore && $changedTold === [] );
+
+// Two browsers of the account, a code of a visitor that is out and a link of each kind
+membersVisitor();
+membersSignIn( $appData, $cleo );
+$browserA = $_SESSION;
+membersVisitor();
+membersSignIn( $appData, $cleo );
+$browserB = $_SESSION;
+membersVisitor();
+$digitsOut = membersAskCode( $appData, 'cleo@example.org' );
+$visitorOut = $_SESSION;
+$inviteLink = membersLink( $appData, $cleo, 'invite' );
+$loginLink = membersLink( $appData, $cleo, 'login' );
+$cleoTokens = $tokensOf( $cleo['id'] );
+$doraTokens = $tokensOf( $dora['id'] );
+$epochKept = membersFile( $appData, 'session' );
+$mails = [];
+$moved = \Nino\Modules\Members::change( $appData, $cleo['id'], [ 'email' => ' Cleo.New@Example.org ' ] );
+$record = membersFile( $appData, 'accounts' )['accounts'][ $cleo['id'] ] ?? [];
+check( 'a new address is written the way add() writes one - lower case - and the account as it is comes back with its id and without the epoch it was given', is_array( $moved ) && $moved['email'] === 'cleo.new@example.org' && array_keys( $moved ) === [ 'id', 'email', 'name', 'group', 'active', 'created', 'login' ]
+	&& $moved['name'] === 'Cleo' && ( $record['email'] ?? '' ) === 'cleo.new@example.org' && preg_match( '/^[0-9a-f]{32}$/D', (string) ( $record['epoch'] ?? '' ) ) === 1 && \Nino\Modules\Members::account( $appData, $cleo['id'] ) === $moved
+	&& array_keys( \Nino\Modules\Members::accounts( $appData )[0] ) === [ 'id', 'email', 'name', 'group', 'active', 'created', 'login' ] );
+
+$_SESSION = $visitorOut;
+$codeAfter = membersCodeServe( $appData, $digitsOut );
+check( '...every link and code of the account is deleted - the one from before, the code, the invitation and the login link, four - and no other account\'s: they are found nowhere, and the code of the session that asked is wrong',
+	count( $cleoTokens ) === 4 && $tokensOf( $cleo['id'] ) === [] && $tokensOf( $dora['id'] ) === $doraTokens && count( $doraTokens ) === 1 && membersConfirm( $appData, $inviteLink )[0] === 400 && membersConfirm( $appData, $loginLink )[0] === 400
+	&& $codeAfter === [ 303, '/join?members=wrong', 'no-store', '' ] && \Nino\Modules\Members::current( $appData ) === null );
+$_SESSION = $browserA;
+$outA = \Nino\Modules\Members::current( $appData );
+$_SESSION = $browserB;
+$outB = \Nino\Modules\Members::current( $appData );
+check( '...every session of the account ends - both browsers read signed out - while the epoch of everybody is the one it was', $outA === null && $outB === null && membersFile( $appData, 'session' ) === $epochKept );
+
+$notice = array_values( array_filter( $mails, static fn( array $mail ): bool => $mail['to'] === 'cleo@example.org' ) );
+check( 'the old address is told, once, and it is the only mail: it says the address was changed and whom to write to, names neither the new address nor a code, has no link and no key left in it',
+	count( $notice ) === 1 && count( $mails ) === 1 && $contact !== '' && str_contains( (string) $notice[0]['body'], $contact ) === true && str_contains( (string) $notice[0]['body'], 'cleo.new' ) === false && membersCodeOf( $notice[0] ) === ''
+	&& str_contains( (string) $notice[0]['body'], 'href=' ) === false && str_contains( (string) $notice[0]['body'], '[[' ) === false && trim( (string) $notice[0]['subject'] ) !== '' && str_contains( (string) $notice[0]['subject'], '[[' ) === false );
+check( '...and the features that build on it are told once, with the account as it is, the address it had and who asked: the owner', count( $changedTold ) === 1 && $changedTold[0] === [ 'account' => $moved, 'old' => 'cleo@example.org', 'by' => 'owner' ] );
+
+$mails = [];
+membersVisitor();
+$oldAsked = membersAskCode( $appData, 'cleo@example.org' );
+$newDigits = membersAskCode( $appData, 'cleo.new@example.org' );
+$signed = membersCodeServe( $appData, $newDigits );
+$own = \Nino\Runtime::getSessionValue( $appData, './members/account' );
+check( 'the old address asks for a code and nobody is mailed; the new one is mailed and signs in, and the session of an account that has an epoch carries it', $oldAsked === '' && $newDigits !== '' && $signed[1] === '/' && ( \Nino\Modules\Members::current( $appData )['email'] ?? '' ) === 'cleo.new@example.org'
+	&& array_keys( $own ) === [ 'id', 'epoch', 'own' ] && $own['own'] === $record['epoch'] );
+
+membersVisitor();
+membersSignIn( $appData, $dora );
+$doraSession = \Nino\Runtime::getSessionValue( $appData, './members/account' );
+check( 'an account without an epoch signs in as it did - its session holds the account and the epoch of everybody and nothing else - and the session is good when another account has changed its address',
+	array_keys( $doraSession ) === [ 'id', 'epoch' ] && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $dora['id'] && array_key_exists( 'epoch', membersFile( $appData, 'accounts' )['accounts'][ $dora['id'] ] ) === false );
+
+// A notice no transport takes is a warning, and the write that cannot delete the links does not write
+$delivery = false;
+$mails = [];
+ninoWarnings();
+$late = \Nino\Modules\Members::change( $appData, $dora['id'], [ 'email' => 'dora.late@example.org' ] );
+$warned = ninoWarnings();
+$delivery = true;
+check( 'a notice no transport takes is a warning that names no address, and the address is changed all the same', is_array( $late ) && $late['email'] === 'dora.late@example.org' && count( $warned ) === 1 && str_contains( implode( ' ', $warned ), 'example.org' ) === false );
+\Nino\Modules\Members::change( $appData, $dora['id'], [ 'email' => 'dora@example.org' ] );
+
+$locks = \Nino\Filesystem::path( $appData, '/data' ). '/.locks';
+membersLink( $appData, $dora );
+rename( $locks, $locks. '.kept' );
+file_put_contents( $locks, '' );
+$fileBefore = $accountsFile();
+$mails = [];
+$changedTold = [];
+ninoWarnings();
+$stuck = \Nino\Modules\Members::change( $appData, $dora['id'], [ 'email' => 'dora.stuck@example.org' ] );
+ninoWarnings();
+unlink( $locks );
+rename( $locks. '.kept', $locks );
+check( 'where the links cannot be deleted the address is not written: write, the account as it was, nobody mailed or told - no way in is left through the old address', $stuck === 'write' && $accountsFile() === $fileBefore && $mails === [] && $changedTold === [] && count( $tokensOf( $dora['id'] ) ) === 1 );
+
+// ...and where only the file of the links is stuck - its lock is a directory - the accounts file is still not written: the links are deleted first, so that a failure there leaves the account as it was
+foreach( glob( $locks. '/*.lock' ) ?: [] as $lockFile )
+	unlink( $lockFile );
+
+\Nino\Filesystem::mutate( $appData, '/data/members-tokens.php', static fn( mixed $state ): ?array => null, [] );
+$tokenLocks = glob( $locks. '/*.lock' ) ?: [];
+$linkedAgain = membersLink( $appData, $dora );
+unlink( $tokenLocks[0] ?? '' );
+mkdir( $tokenLocks[0] ?? '' );
+$fileBefore = $accountsFile();
+$mails = [];
+$changedTold = [];
+ninoWarnings();
+$stuckLinks = \Nino\Modules\Members::change( $appData, $dora['id'], [ 'email' => 'dora.stuck2@example.org' ] );
+ninoWarnings();
+rmdir( $tokenLocks[0] ?? '' );
+check( '...the same where only the links cannot be written: write - the address is not written, nobody is mailed or told, the link made is still the account\'s own', count( $tokenLocks ) === 1 && $linkedAgain !== '' && $stuckLinks === 'write' && $accountsFile() === $fileBefore && $mails === [] && $changedTold === [] && count( $tokensOf( $dora['id'] ) ) === 2 );
+
+// A code that was asked for the old address and landed after the links were deleted: the race a change leaves - the record is put back after the change, as a request that was between its reading and its writing would
+membersVisitor();
+membersFresh( $appData );
+$raceDigits = membersAskCode( $appData, 'dora@example.org' );
+$raceTokens = membersFile( $appData, 'tokens' );
+$moved = \Nino\Modules\Members::change( $appData, $dora['id'], [ 'email' => 'dora.moved@example.org' ] );
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', membersFile( $appData, 'tokens' ) + $raceTokens );
+$raceAnswer = membersCodeServe( $appData, $raceDigits );
+check( 'a code asked for the old address that is still out after the change signs nobody in: gone, with the account on the new address - and nobody is signed in by it', $raceDigits !== '' && is_array( $moved ) && count( array_filter( $raceTokens, static fn( array $entry ): bool => $entry['account'] === $dora['id'] ) ) >= 1
+	&& $raceAnswer === [ 303, '/join?members=gone', 'no-store', '' ] && \Nino\Modules\Members::current( $appData ) === null && \Nino\Modules\Members::account( $appData, $dora['id'] )['email'] === 'dora.moved@example.org' );
+\Nino\Modules\Members::change( $appData, $dora['id'], [ 'email' => 'dora@example.org' ] );
+
+// The panel's save does not take an address
+\Nino\Auth::loginUser( $appData, 'admin@example.com', 'correct horse battery staple' );
+[ $status ] = ninoCall( $appData, $panel, [ 'id' => $dora['id'], 'name' => 'Dora D', 'email' => 'dora.panel@example.org' ], 'members/save' );
+unset( $appData['./nino/auth/current'] );
+check( 'the panel\'s save changes the name and leaves the address alone, whatever else it is posted', $status === 200 && ( \Nino\Modules\Members::account( $appData, $dora['id'] )['name'] ?? '' ) === 'Dora D' && ( \Nino\Modules\Members::account( $appData, $dora['id'] )['email'] ?? '' ) === 'dora@example.org' );
+
+echo "\n";
+
+
+// --- The member's way: askChange() and confirmChange() ---------------------------------
+
+echo "Modules\\Members - the member's way: a code to the new address, in the session that asked\n";
+
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', [] );
+$gus = \Nino\Modules\Members::add( $appData, 'gus@example.org', 'Gus', '' );
+$hal = \Nino\Modules\Members::add( $appData, 'hal@example.org', 'Hal', '' );
+$me = static fn(): array => (array) \Nino\Modules\Members::current( $GLOBALS['appData'] );
+$ask = static fn( string $email ): string => \Nino\Modules\Members::askChange( $GLOBALS['appData'], $GLOBALS['me'](), $email );
+$confirm = static fn( string $code ): string => \Nino\Modules\Members::confirmChange( $GLOBALS['appData'], $GLOBALS['me'](), $code );
+$request = static fn(): ?array => is_array( \Nino\Runtime::getSessionValue( $GLOBALS['appData'], './members/change' ) ) === true ? \Nino\Runtime::getSessionValue( $GLOBALS['appData'], './members/change' ) : null;
+$digitsOfLast = static fn(): string => str_replace( ' ', '', membersCodeOf( end( $GLOBALS['mails'] ) ?: [] ) );
+$mailsTo = static fn( string $email ): array => array_values( array_filter( $GLOBALS['mails'], static fn( array $mail ): bool => $mail['to'] === $email ) );
+$wrong = static fn( string $digits ): string => sprintf( '%06d', ( (int) $digits + 1 ) % 1000000 );
+
+// Not for another account's sake
+membersVisitor();
+membersFresh( $appData );
+$mails = [];
+$asGuest = \Nino\Modules\Members::askChange( $appData, $gus, 'gus.new@example.org' );
+membersSignIn( $appData, $hal );
+$mails = [];
+$asOther = \Nino\Modules\Members::askChange( $appData, $gus, 'gus.new@example.org' );
+check( 'a visitor, and a member who asks for the address of another account, are refused - invalid - with no request in the session, no code in the file and no mail', $asGuest === 'invalid' && $asOther === 'invalid' && $request() === null
+	&& membersFile( $appData, 'tokens' ) === [] && $mails === [] && \Nino\Modules\Members::changePending( $appData, $gus ) === null );
+
+membersVisitor();
+membersSignIn( $appData, $gus );
+$gusLink = membersLink( $appData, $gus );
+$counted = membersFile( $appData, 'tries' );
+$mails = [];
+$answers = [ 'no address' => $ask( 'nope' ), 'markup' => $ask( 'a<b>@example.org' ), 'a bracket' => $ask( 'a[1]@example.org' ), 'a null byte' => $ask( "a\x00b@example.org" ) ];
+$sameAnswer = $ask( ' GUS@Example.org ' );
+check( 'an address that is none is invalid and the address the account has is same - nothing is kept, mailed or counted for either', array_values( array_unique( $answers ) ) === [ 'invalid' ] && $sameAnswer === 'same' && $request() === null && $mails === [] && membersFile( $appData, 'tries' ) === $counted );
+
+$answer = $ask( ' Gus.New@Example.org ' );
+$first = $request() ?? [];
+$firstDigits = $digitsOfLast();
+$record = membersFile( $appData, 'tokens' )[ hash( 'sha256', ( $first['nonce'] ?? '' ). '|'. $firstDigits ) ] ?? [];
+check( 'a free address is sent: the session keeps the request - the account, the address as the form made it, a nonce of 32 hex characters, no try and the time of the setting\'s minutes -, and the new address is mailed six digits, no link',
+	$answer === 'sent' && array_keys( $first ) === [ 'account', 'email', 'nonce', 'tries', 'until' ] && $first['account'] === $gus['id'] && $first['email'] === 'gus.new@example.org' && preg_match( '/^[0-9a-f]{32}$/D', $first['nonce'] ) === 1 && $first['tries'] === 0
+	&& $first['until'] >= time() + 900 - 2 && $first['until'] <= time() + 900 + 2 && count( $mails ) === 1 && $mails[0]['to'] === 'gus.new@example.org' && preg_match( '/^[0-9]{6}$/D', $firstDigits ) === 1 && membersCodeOf( $mails[0] ) !== ''
+	&& str_contains( (string) $mails[0]['body'], 'href=' ) === false && str_contains( (string) $mails[0]['body'], '.members/login' ) === false && str_contains( (string) $mails[0]['body'], '[[' ) === false && trim( (string) $mails[0]['subject'] ) !== '' && str_contains( (string) $mails[0]['subject'], '[[' ) === false );
+check( '...the record of the code is under the hash of the nonce and the digits - of the kind change, for this account and this address, good as long as the request is -, and nothing of the account is touched: its address, its session and its links are as they were',
+	array_keys( $record ) === [ 'account', 'kind', 'expires', 'target', 'email' ] && $record['account'] === $gus['id'] && $record['kind'] === 'change' && $record['email'] === 'gus.new@example.org' && $record['expires'] === $first['until']
+	&& \Nino\Modules\Members::account( $appData, $gus['id'] )['email'] === 'gus@example.org' && $me()['id'] === $gus['id'] && $tokensOf( $gus['id'] ) !== [] && in_array( hash( 'sha256', $gusLink ), $tokensOf( $gus['id'] ), true ) === true
+	&& \Nino\Modules\Members::changePending( $appData, $me() ) === 'gus.new@example.org' && $mailsTo( 'gus@example.org' ) === [] );
+
+// A new request replaces the one before, whose code is no code of it
+$secondAnswer = $ask( 'gus.second@example.org' );
+$second = $request() ?? [];
+$secondDigits = $digitsOfLast();
+$replaced = $confirm( $firstDigits );
+check( 'a second request replaces the first: another nonce, the new address - and the code of the first is wrong in it, a try used', $secondAnswer === 'sent' && $second['email'] === 'gus.second@example.org' && $second['nonce'] !== $first['nonce'] && $replaced === 'wrong' && ( $request()['tries'] ?? -1 ) === 1 && $secondDigits !== $firstDigits );
+
+// Four wrong ones are told - the first is the code of the request that was replaced -, the fifth try may be the right one, typed with a space in the middle; a second browser of the account, a link of it and one of another account are out
+$wrongOnes = [];
+$tries = [];
+$bad = $wrong( $secondDigits );
+
+for( $try = 1; $try <= 3; $try++ ) {
+	$wrongOnes[] = $confirm( $bad );
+	$tries[] = $request()['tries'] ?? null;
+}
+
+$browserG = $_SESSION;
+membersVisitor();
+membersSignIn( $appData, $gus );
+$browserG2 = $_SESSION;
+$_SESSION = $browserG;
+$halLink = membersLink( $appData, $hal );
+$gusLink = membersLink( $appData, $gus );
+$csrfBefore = \Nino\Csrf::getToken( $appData );
+$accountBefore = \Nino\Runtime::getSessionValue( $appData, './members/account' );
+$mails = [];
+$changedTold = [];
+$result = $confirm( substr( $secondDigits, 0, 3 ). ' '. substr( $secondDigits, 3 ) );
+$gusNow = \Nino\Modules\Members::account( $appData, $gus['id'] ) ?? [];
+$gusRecord = membersFile( $appData, 'accounts' )['accounts'][ $gus['id'] ] ?? [];
+check( 'a wrong code is told wrong and counted in the session', $wrongOnes === [ 'wrong', 'wrong', 'wrong' ] && $tries === [ 2, 3, 4 ] );
+check( 'the fifth try, if it is the right code, writes the address: ok - the account has the new address and an epoch of its own, nothing else about it changed, and the session that confirmed it is still the member - the same session, the same token of the form, now with the account\'s new epoch',
+	$result === 'ok' && $gusNow['email'] === 'gus.second@example.org' && $gusNow['name'] === 'Gus' && preg_match( '/^[0-9a-f]{32}$/D', (string) ( $gusRecord['epoch'] ?? '' ) ) === 1 && $me()['id'] === $gus['id'] && $me()['email'] === 'gus.second@example.org'
+	&& \Nino\Csrf::getToken( $appData ) === $csrfBefore && \Nino\Runtime::getSessionValue( $appData, './members/account' ) === $accountBefore + [ 'own' => $gusRecord['epoch'] ] && $request() === null && \Nino\Modules\Members::changePending( $appData, $me() ) === null );
+$confirmedAgain = $confirm( $secondDigits );
+$browserG = $_SESSION;
+$_SESSION = $browserG2;
+$otherEnded = \Nino\Modules\Members::current( $appData );
+$_SESSION = $browserG;
+check( '...the code is spent: sent again it is gone - and the other browser of the account is signed out, where this one is not', $confirmedAgain === 'gone' && $otherEnded === null && $me()['id'] === $gus['id'] );
+check( '...every link and code of the account is deleted - its login link, the codes - and no other account\'s link', $tokensOf( $gus['id'] ) === [] && count( $tokensOf( $hal['id'] ) ) === 1 && membersConfirm( $appData, $gusLink )[0] === 400 );
+$_SESSION = $browserG;
+$told = $mailsTo( 'gus@example.org' );
+check( 'the old address is told - one mail, the new address is not in it, no code - and the new one is not mailed again; the features that build on it are told once, the account, the old address and who asked: the member',
+	count( $told ) === 1 && count( $mails ) === 1 && str_contains( (string) $told[0]['body'], 'gus.second' ) === false && membersCodeOf( $told[0] ) === '' && count( $changedTold ) === 1 && $changedTold[0] === [ 'account' => $gusNow, 'old' => 'gus@example.org', 'by' => 'member' ] );
+
+// Five tries: the fifth wrong code ends the request, and the right one is gone with it
+membersFresh( $appData );
+$mails = [];
+$ask( 'gus.third@example.org' );
+$thirdDigits = $digitsOfLast();
+$bad = $wrong( $thirdDigits );
+$fives = [];
+
+for( $try = 1; $try <= 5; $try++ )
+	$fives[] = $confirm( $bad );
+
+$afterFive = $confirm( $thirdDigits );
+check( 'the fifth wrong code ends the request - gone, none in the session - and the right code is gone after it, the address is as it was', $fives === [ 'wrong', 'wrong', 'wrong', 'wrong', 'gone' ] && $request() === null && $afterFive === 'gone' && $me()['email'] === 'gus.second@example.org' );
+
+// What is no code: seven digits, letters, a null byte - each is a wrong try and spends nothing
+$ask( 'gus.third@example.org' );
+$thirdDigits = $digitsOfLast();
+$recordsBefore = membersFile( $appData, 'tokens' );
+ninoWarnings();
+$malformed = [ $confirm( $thirdDigits. '0' ), $confirm( 'abcdef' ), $confirm( substr( $thirdDigits, 0, 3 ). "\x00". substr( $thirdDigits, 3 ) ), $confirm( '' ) ];
+check( 'a code of seven digits, one with letters, one with a null byte and none at all are told wrong, each a try - and nothing is spent, no warning', $malformed === [ 'wrong', 'wrong', 'wrong', 'wrong' ] && ( $request()['tries'] ?? -1 ) === 4 && membersFile( $appData, 'tokens' ) === $recordsBefore && ninoWarnings() === [] );
+check( '...and the right code, the fifth try, is taken', $confirm( $thirdDigits ) === 'ok' && $me()['email'] === 'gus.third@example.org' );
+
+// In time
+membersFresh( $appData );
+$ask( 'gus.late@example.org' );
+$lateDigits = $digitsOfLast();
+$_SESSION[ $appData['./nino/uid'] ]['./members/change']['until'] = time() - 1;
+$lateRequest = $confirm( $lateDigits );
+$lateKept = $request();
+$pendingLate = \Nino\Modules\Members::changePending( $appData, $me() );
+membersFresh( $appData );
+$ask( 'gus.late@example.org' );
+$lateDigits = $digitsOfLast();
+$ran = membersFile( $appData, 'tokens' );
+
+foreach( $ran as $key => $each )
+	$ran[$key]['expires'] = time() - 1;
+
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $ran );
+$lateRecord = $confirm( $lateDigits );
+check( 'a request that has run out is gone, even with the right code - and so is nothing in the session; a code whose record has run out is wrong', $lateRequest === 'gone' && $lateKept === null && $pendingLate === null && $lateRecord === 'wrong' && $me()['email'] === 'gus.third@example.org' );
+
+// Without a request at all, and in a session that is not the member's
+membersFresh( $appData );
+\Nino\Runtime::unsetSessionValue( $appData, './members/change' );
+$request0 = $confirm( '123456' );
+check( 'a code posted by a member who asked for none is gone', $request0 === 'gone' );
+
+$ask( 'gus.fourth@example.org' );
+$fourthDigits = $digitsOfLast();
+$browserAsked = $_SESSION;
+membersVisitor();
+membersSignIn( $appData, $hal );
+$elsewhere = $confirm( $fourthDigits );
+$_SESSION = $browserAsked;
+check( 'the code from another browser, signed in as another account, changes nothing: gone - and in the browser that asked it still works', $elsewhere === 'gone' && \Nino\Modules\Members::account( $appData, $hal['id'] )['email'] === 'hal@example.org' && $confirm( $fourthDigits ) === 'ok' && $me()['email'] === 'gus.fourth@example.org' );
+
+membersFresh( $appData );
+$ask( 'gus.fifth@example.org' );
+$fifthDigits = $digitsOfLast();
+$forged = $request();
+membersSignIn( $appData, $hal );
+$asked = $request();
+$_SESSION[ $appData['./nino/uid'] ]['./members/change'] = $forged;
+$stolen = $confirm( $fifthDigits );
+check( 'the other account that signs in in the same browser starts without the request - and one that is put into its session by hand is no request of it: gone, nothing changes for either', $asked === null && $stolen === 'gone' && $request() === null
+	&& \Nino\Modules\Members::account( $appData, $hal['id'] )['email'] === 'hal@example.org' && \Nino\Modules\Members::account( $appData, $gus['id'] )['email'] === 'gus.fourth@example.org' );
+
+// Two confirmations of one request: once ok
+membersVisitor();
+membersSignIn( $appData, $gus );
+membersFresh( $appData );
+$ask( 'gus.race@example.org' );
+$raceDigits = $digitsOfLast();
+$copy = $_SESSION;
+$mails = [];
+$changedTold = [];
+$winner = $confirm( $raceDigits );
+$epochNow = membersFile( $appData, 'accounts' )['accounts'][ $gus['id'] ]['epoch'] ?? '';
+$_SESSION = $copy;
+$loser = $confirm( $raceDigits );
+$_SESSION = $copy;
+$_SESSION[ $appData['./nino/uid'] ]['./members/account']['own'] = $epochNow;
+$late = $confirm( $raceDigits );
+check( 'two confirmations of one request - the second from a copy of the session, even one that carries the new epoch - are one ok and nothing else: the address is written once, one notice, one call',
+	$winner === 'ok' && $loser === 'gone' && $late === 'wrong' && ( membersFile( $appData, 'accounts' )['accounts'][ $gus['id'] ]['epoch'] ?? '' ) === $epochNow && count( $changedTold ) === 1 && count( $mailsTo( 'gus.fourth@example.org' ) ) === 1 );
+
+// The address is another account's by the time the code comes back
+membersVisitor();
+membersSignIn( $appData, $gus );
+$gusLink = membersLink( $appData, $gus );
+membersFresh( $appData );
+$ask( 'taken.later@example.org' );
+$laterDigits = $digitsOfLast();
+\Nino\Modules\Members::add( $appData, 'Taken.Later@example.org', 'Later', '' );
+$mails = [];
+$changedTold = [];
+$beforeLater = $accountsFile();
+$tooLate = $confirm( $laterDigits );
+check( 'an address that another account has taken since is gone - nobody is told whose it is - the request is over, the address is as it was, and nothing was deleted, mailed or told', $tooLate === 'gone' && $request() === null && $accountsFile() === $beforeLater && $mails === [] && $changedTold === []
+	&& in_array( hash( 'sha256', $gusLink ), $tokensOf( $gus['id'] ), true ) === true && \Nino\Modules\Members::current( $appData ) !== null );
+
+// An address that another account has is answered like a free one - and mails nothing
+membersFresh( $appData );
+$mails = [];
+$changeRecords = static fn(): int => count( array_filter( membersFile( $GLOBALS['appData'], 'tokens' ), static fn( array $entry ): bool => $entry['kind'] === 'change' ) );
+$recordsBefore = $changeRecords();
+$haveAnswer = $ask( ' HAL@Example.org ' );
+$haveRequest = $request() ?? [];
+$haveRecords = $changeRecords();
+$haveMails = count( $mails );
+$haveWrongs = [];
+
+for( $try = 1; $try <= 5; $try++ )
+	$haveWrongs[] = $confirm( '000000' );
+
+$freeAnswer = $ask( 'free.address@example.org' );
+$freeDigits = $digitsOfLast();
+$freeWrongs = [];
+
+for( $try = 1; $try <= 5; $try++ )
+	$freeWrongs[] = $confirm( $wrong( $freeDigits ) );
+
+check( 'an address another account has is sent, as a free one is: the request is kept - with that address, lower case - and no mail goes out and no record of a code is made, hal is not troubled', $haveAnswer === 'sent' && $freeAnswer === 'sent' && ( $haveRequest['email'] ?? '' ) === 'hal@example.org'
+	&& $haveMails === 0 && $haveRecords === $recordsBefore && $mailsTo( 'hal@example.org' ) === [] && count( $mails ) === 1 && $changeRecords() === $recordsBefore + 1 );
+check( '...and what follows is the same for both: four wrong, then gone, whatever the code - the address is never given away', $haveWrongs === [ 'wrong', 'wrong', 'wrong', 'wrong', 'gone' ] && $freeWrongs === $haveWrongs && \Nino\Modules\Members::account( $appData, $hal['id'] )['email'] === 'hal@example.org' );
+
+// A code to sign in is no code for a change, and the other way round
+membersFresh( $appData );
+$ask( 'gus.kinds@example.org' );
+$changeDigits = $digitsOfLast();
+$loginDigits = membersAskCode( $appData, 'gus.race@example.org' );
+$loginRequest = membersPending( $appData );
+$loginForChange = $confirm( $loginDigits );
+$changeForLogin = membersCodeServe( $appData, $changeDigits );
+$tokensKinds = array_count_values( array_column( membersFile( $appData, 'tokens' ), 'kind' ) );
+check( 'a code to sign in does not confirm a change and the code of a change does not sign in: each is wrong in the other, and neither is spent', $loginDigits !== '' && $changeDigits !== '' && $loginForChange === 'wrong' && $changeForLogin === [ 303, '/join?members=wrong', 'no-store', '' ]
+	&& ( $tokensKinds['code'] ?? 0 ) >= 1 && ( $tokensKinds['change'] ?? 0 ) >= 1 && $loginRequest !== null );
+check( '...the code of the change, then, confirms it', $confirm( $changeDigits ) === 'ok' && $me()['email'] === 'gus.kinds@example.org' );
+membersFresh( $appData );
+$ask( 'gus.forged@example.org' );
+$forgedRequest = (array) \Nino\Runtime::getSessionValue( $appData, './members/change' );
+$forgedHash = hash( 'sha256', ( $forgedRequest['nonce'] ?? '' ). '|424242' );
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', membersFile( $appData, 'tokens' ) + [ $forgedHash => [ 'account' => $forgedRequest['account'] ?? '', 'kind' => 'code', 'expires' => time() + 600, 'target' => '' ] ] );
+$forgedAnswer = $confirm( '424242' );
+check( 'a record of another kind under the hash of the request is no code of the change: wrong, the record is not spent and the address is as it was', $forgedAnswer === 'wrong' && array_key_exists( $forgedHash, membersFile( $appData, 'tokens' ) ) === true && $me()['email'] === 'gus.kinds@example.org' );
+membersFresh( $appData );
+$ask( 'gus.theirs@example.org' );
+$theirRequest = (array) \Nino\Runtime::getSessionValue( $appData, './members/change' );
+$theirHash = hash( 'sha256', ( $theirRequest['nonce'] ?? '' ). '|535353' );
+$halBefore = \Nino\Modules\Members::account( $appData, $hal['id'] );
+\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', membersFile( $appData, 'tokens' ) + [ $theirHash => [ 'account' => $hal['id'], 'kind' => 'change', 'expires' => time() + 600, 'target' => '', 'email' => 'gus.theirs@example.org' ] ] );
+$theirAnswer = $confirm( '535353' );
+check( 'a record of the right kind that is another account\'s is no code of this member: gone, the request is over and neither account has a new address', $theirAnswer === 'gone' && $me()['email'] === 'gus.kinds@example.org' && \Nino\Modules\Members::account( $appData, $hal['id'] ) === $halBefore && \Nino\Runtime::getSessionValue( $appData, './members/change' ) === null );
+
+// The caps: three requests for one address an hour, and the visitor's own
+membersFresh( $appData );
+$cap = [ $ask( 'cap.address@example.org' ), $ask( 'cap.address@example.org' ), $ask( 'cap.address@example.org' ) ];
+$thirdRequest = $request();
+$over = $ask( 'cap.address@example.org' );
+check( 'the address is counted: three requests an hour are sent, the fourth is the limit - the request of the session is the third\'s, nothing is replaced', $cap === [ 'sent', 'sent', 'sent' ] && $over === 'limit' && $request() === $thirdRequest );
+membersFresh( $appData );
+\Nino\Features::saveSettings( $appData, 'members', [ 'attempts' => 2 ] );
+$visitor = [ $ask( 'v1@example.org' ), $ask( 'v2@example.org' ), $ask( 'v3@example.org' ) ];
+\Nino\Features::saveSettings( $appData, 'members', [ 'attempts' => 5 ] );
+membersFresh( $appData );
+check( '...and so is the visitor, by the setting attempts', $visitor === [ 'sent', 'sent', 'limit' ] );
+membersFresh( $appData );
+$ask( 'mix@example.org' );
+membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'mix@example.org', 'return' => '/join' ] );
+$mixed = [ $ask( 'mix@example.org' ), $ask( 'mix@example.org' ) ];
+check( '...the counter is the one of the requests for a login code: a request for a change, one for a code to sign in and another change are the three an address has an hour, the next is the limit', $mixed === [ 'sent', 'limit' ] );
+
+// Hostile addresses: valid ones with a bracket or a quote in them are kept and mailed nothing of their own, and a warning names none
+membersFresh( $appData );
+$delivery = false;
+$mails = [];
+ninoWarnings();
+$hostile = $ask( '"a[b"@example.org' );
+$kept = $request()['email'] ?? '';
+$unsent = ninoWarnings();
+$delivery = true;
+check( 'an address with a bracket in it, a valid one, is kept as it is; a mail no transport takes is a warning that names no address - and the answer is sent all the same', $hostile === 'sent' && $kept === '"a[b"@example.org' && count( $unsent ) >= 1 && str_contains( implode( ' ', $unsent ), 'example.org' ) === false && str_contains( implode( ' ', $unsent ), 'a[b' ) === false );
 
 echo "\n";
 

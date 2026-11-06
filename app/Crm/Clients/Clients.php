@@ -476,6 +476,24 @@ class Clients {
 	}
 
 	/**
+	 *	Change the sign-in address of an account of Members, as the owner does: no code, no question to the member - the owner is the one who knows. The rules of
+	 *	Members::change() hold: the links and codes of the account die with the old address, its other sessions end and the old address is told. The address of
+	 *	the client itself is not touched here
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$memberId
+	 *	@param		string		$email
+	 *
+	 *	@return 	array|string							The account as accountsDetailed() has it; or 'invalid', 'taken' (another account has the address), 'unknown' or 'write'
+	 */
+	public static function changeAccountEmail( array &$appData, string $memberId, string $email ): array|string {
+
+		$changed = \Nino\Modules\Members::change( $appData, $memberId, [ 'email' => $email ] );
+
+		return is_string( $changed ) === true ? $changed : self::row( $memberId, $changed );
+	}
+
+	/**
 	 *	Delete an account: in Members, and its row. The documents of the client and the requests of Sign that name the account are not
 	 *	touched. An account Members has not got any more is only a row: the row goes
 	 *

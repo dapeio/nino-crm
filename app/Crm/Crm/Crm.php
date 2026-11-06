@@ -5,7 +5,7 @@ declare(strict_types=1);
  *						init() registers behaviour and writes nothing: the panel CRM (adminPanels()), the
  *						components [crm-portal-head], [crm-portal-door], [crm-client], [crm-documents], [crm-portal-nav], [crm-portal-start], [crm-portal-dates], [crm-projects], [crm-uploads], [crm-client-data] and [crm-privacy], the callbacks that keep the portal's lookup true when a member signs in or
  *						out, the one that takes the portal's pages out of the menus of a visitor and the ones that let a document follow its request in Sign, the style sheet and the script of the portal, the route
- *						/.crm/pdf/<id> that answers the PDF of a finalised document, /.crm/xml/<id> that answers its electronic invoice and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/datenschutz of the page Datenschutz and POST /.crm/auftrag of the order under an offer; and the surface at /crm, one page of the project with its
+ *						/.crm/pdf/<id> that answers the PDF of a finalised document, /.crm/xml/<id> that answers its electronic invoice and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/anmeldeadresse and POST /.crm/anmeldeadresse/code of the block Anmeldeadresse on that page, POST /.crm/datenschutz of the page Datenschutz and POST /.crm/auftrag of the order under an offer, and the callback that mails the owner when a member has changed the address the account signs in with; and the surface at /crm, one page of the project with its
  *						endpoint and assets (Surface::init()). The database is opened on first use, the portal pages come with the install unit
  *						the wizard applies, and the screen Einrichtung of the surface completes the product (see Admin::apiSetup()).
  */
@@ -234,6 +234,14 @@ class Crm {
 		// The form of the page Meine Daten posts here: a member of a client changes the data of the client (see Portal\Data::callbackSave())
 		$appData['/nino/http/routes']['POST://.crm/daten'] = [ 'uri' => Portal\Data::ROUTE ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/daten', [ Portal\Data::class, 'callbackSave' ] );
+
+		// The block Anmeldeadresse of that page: a member of a client asks for another sign-in address and gives back the code that went to it (see Portal\Data::callbackLogin(),
+		// callbackCode()); the owner is mailed when the member has changed it (callbackChanged(), told by Members)
+		$appData['/nino/http/routes']['POST://.crm/anmeldeadresse'] = [ 'uri' => Portal\Data::ROUTE_LOGIN ];
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/anmeldeadresse', [ Portal\Data::class, 'callbackLogin' ] );
+		$appData['/nino/http/routes']['POST://.crm/anmeldeadresse/code'] = [ 'uri' => Portal\Data::ROUTE_CODE ];
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/anmeldeadresse/code', [ Portal\Data::class, 'callbackCode' ] );
+		\Nino\Callbacks::registerCallback( $appData, '/members/changed', [ Portal\Data::class, 'callbackChanged' ] );
 
 		// The Datenschutz and the order: the forms of the pages Datenschutz and of the offers post here, a member of a client agrees or orders (see Portal\Privacy::callbackAgree(), Portal\Order::callbackOrder())
 		$appData['/nino/http/routes']['POST://.crm/datenschutz'] = [ 'uri' => Portal\Privacy::ROUTE ];

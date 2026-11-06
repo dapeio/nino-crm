@@ -96,6 +96,10 @@ return [
 				'en_US' => 'Fired when a signed-in member signs out through /.members/logout, with the same account as the argument.',
 				'de_DE' => 'Wird ausgelöst, wenn sich ein angemeldetes Mitglied über /.members/logout abmeldet, mit demselben Konto als Argument.',
 			],
+			'/members/changed' => [
+				'en_US' => 'Fired when the address of an account was changed - by Members::change() with \'email\' (the owner, by \'owner\') or by Members::confirmChange() (the member, with the code of the mail the new address got, by \'member\'; Members::askChange() asks for it) -, with an array of account (as account() has it, with the new address), old (the address it had) and by. The old address is mailed the notice, every link and code of the account is deleted and every other session of it ends before this is fired.',
+				'de_DE' => 'Wird ausgelöst, wenn die Adresse eines Kontos geändert wurde – durch Members::change() mit \'email\' (der Inhaber, by \'owner\') oder durch Members::confirmChange() (das Mitglied, mit dem Code der Mail, die die neue Adresse bekam, by \'member\'; Members::askChange() fordert ihn an) –, mit einem Array aus account (wie account() es hat, mit der neuen Adresse), old (die bisherige Adresse) und by. Die alte Adresse hat den Hinweis bekommen, jeder Link und Code des Kontos ist gelöscht und jede andere Sitzung des Kontos beendet, bevor dies ausgelöst wird.',
+			],
 		],
 		'install' => [
 			'templates/page-members-login.tpl' => [
@@ -107,8 +111,8 @@ return [
 				'de_DE' => 'Die Seite, die ein Link der Mail öffnet: die Rahmen der Website, ein Titel, ein kurzer Text und [members-confirm], der Button, der das Mitglied anmeldet. Verbraucht wird erst, wenn der Button gedrückt ist – so verbraucht kein Mail-Scanner einen Link. Der Link rendert sie; ein Projekt, das eine eigene Adresse dafür will, gibt ihr im Panel Routen eine Route.',
 			],
 			'text/<locale>.php' => [
-				'en_US' => 'Its words, into the Text panel - those of the two pages, the forms, their messages and the three mails.',
-				'de_DE' => 'Seine Worte, ins Panel Texte – die der beiden Seiten, der Formulare, ihrer Meldungen und der drei Mails.',
+				'en_US' => 'Its words, into the Text panel - those of the two pages, the forms, their messages and the five mails: the code, the login link, the invitation, the code for a new sign-in address and the notice to the old one that it was changed.',
+				'de_DE' => 'Seine Worte, ins Panel Texte – die der beiden Seiten, der Formulare, ihrer Meldungen und der fünf Mails: der Code, der Anmeldelink, die Einladung, der Code für eine neue Anmeldeadresse und der Hinweis an die alte, dass sie geändert wurde.',
 			],
 			'elements/privacy.php' => [
 				'en_US' => 'Its section of the privacy policy, added to the Legal module\'s type - never replacing a section. Where there is no such module, nothing happens. A starting point, no legal advice. It names fifteen minutes, five tries and seven days, the defaults of the settings linkMinutes and inviteDays and of the tries of a code: whoever changes a setting changes the section in the Elements panel too.',
@@ -152,8 +156,8 @@ return [
 			'type'		=> 'int',
 			'label'		=> [ 'en_US' => 'Login code valid for', 'de_DE' => 'Login-Code gültig für' ],
 			'hint'		=> [
-				'en_US' => 'How long the code a member asks for can be used, once. The login link the owner sends from the panel is valid just as long. The section of the privacy policy names fifteen minutes - change it with this.',
-				'de_DE' => 'Wie lange der Code, den ein Mitglied anfordert, benutzt werden kann, einmal. Der Anmeldelink, den der Inhaber im Panel schickt, gilt ebenso lange. Der Abschnitt der Datenschutzerklärung nennt fünfzehn Minuten – ändere ihn mit.',
+				'en_US' => 'How long the code a member asks for can be used, once - the code to sign in and the code for a new sign-in address alike. The login link the owner sends from the panel is valid just as long. The section of the privacy policy names fifteen minutes - change it with this.',
+				'de_DE' => 'Wie lange der Code, den ein Mitglied anfordert, benutzt werden kann, einmal – der Code zum Anmelden ebenso wie der für eine neue Anmeldeadresse. Der Anmeldelink, den der Inhaber im Panel schickt, gilt ebenso lange. Der Abschnitt der Datenschutzerklärung nennt fünfzehn Minuten – ändere ihn mit.',
 			],
 			'min'			=> 5,
 			'max'			=> 1440,
@@ -176,8 +180,8 @@ return [
 			'type'		=> 'int',
 			'label'		=> [ 'en_US' => 'Requests', 'de_DE' => 'Anforderungen' ],
 			'hint'		=> [
-				'en_US' => 'Codes one visitor may ask for per hour before the form refuses for the rest of that hour. Beside it, one address gets at most 3 codes per hour, whoever asks.',
-				'de_DE' => 'Codes, die ein Besucher pro Stunde anfordern darf, bevor das Formular für den Rest der Stunde verweigert. Daneben bekommt eine Adresse höchstens 3 Codes pro Stunde, wer auch fragt.',
+				'en_US' => 'Codes one visitor may ask for per hour before the form refuses for the rest of that hour - for a sign-in and for a new sign-in address alike. Beside it, one address gets at most 3 codes per hour, whoever asks.',
+				'de_DE' => 'Codes, die ein Besucher pro Stunde anfordern darf, bevor das Formular für den Rest der Stunde verweigert – zum Anmelden ebenso wie für eine neue Anmeldeadresse. Daneben bekommt eine Adresse höchstens 3 Codes pro Stunde, wer auch fragt.',
 			],
 			'min'			=> 1,
 			'max'			=> 50,
