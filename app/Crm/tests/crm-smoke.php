@@ -716,7 +716,7 @@ $appData['/nino/http/routes']['GET://'] = $ownHome;
 $page = crmServe( $appData, '/portal' );
 check( 'the member is served the portal: 200', $page[0] === 200 && $page[2] === '[template /templates/page-portal]' );
 $html = crmPage( $appData, '/portal' );
-check( '...with the name of the member, the company and the links to the pages', str_contains( $html, 'Anna Nord' ) === true && str_contains( $html, 'Studio Nord AG' ) === true
+check( '...with the name of the member in the bar and the title of the page', str_contains( $html, 'Anna Nord' ) === true
 	&& str_contains( $html, 'Mein eigener Titel' ) === true );
 $portalPage = crmPage( $appData, '/portal' );
 check( 'the head of /portal holds its title and its description and no key of the page details', str_contains( $portalPage, '[[/_nino/' ) === false && str_contains( $portalPage, '<title>Mein eigener Titel | ' ) === true );
@@ -724,7 +724,7 @@ check( 'no page of the portal shows a key of its details', array_filter( [ '/por
 check( 'every page of the portal is served to the member', array_unique( array_map( static fn( string $path ): int => crmServe( $appData, $path )[0], [ '/portal/meine-daten', '/portal/projekte', '/portal/upload', '/portal/belege', '/portal/termine' ] ) ) === [ 200 ] );
 $pages = array_map( static fn( string $area ): string => crmPage( $appData, '/portal/'. $area ), [ 'meine-daten', 'projekte', 'upload', 'belege', 'termine' ] );
 check( 'every page of the areas has the navigation of the portal once, drawn by the head, and no component of the module is left unrendered in it', array_filter( $pages, static fn( string $page ): bool => substr_count( $page, '<nav class="crm-nav"' ) !== 1 || str_contains( $page, '[crm-' ) === true ) === [] );
-check( 'Meine Daten draws the name and the sign-out link in the navigation and the form of the data; Projekte the list; Belege the list of Documents, which says there are none while nothing is released', str_contains( $pages[0], 'class="crm-nav__logout" href="/.members/logout"' ) === true && str_contains( $pages[0], 'class="crm-head__account"' ) === true && str_contains( $pages[0], '<form class="crm-data__form' ) === true
+check( 'Meine Daten draws the name and the sign-out link in the bar and the form of the data; Projekte the list; Belege the list of Documents, which says there are none while nothing is released', str_contains( $pages[0], 'class="crm-account__logout" href="/.members/logout"' ) === true && str_contains( $pages[0], 'class="crm-bar"' ) === true && str_contains( $pages[0], '<form class="crm-data__form' ) === true
 	&& str_contains( $pages[1], 'class="crm-projects crm-projects--empty"' ) === true && str_contains( $pages[3], 'class="crm-documents crm-documents--empty"' ) === true && str_contains( $pages[3], 'class="crm-empty crm-documents__empty"' ) === true );
 check( '/portal is the navigation, the head and the components: the navigation once, before the head, and no component left unrendered', substr_count( $html, '<nav class="crm-nav"' ) === 1 && substr_count( $html, 'class="crm-head"' ) === 1 && strpos( $html, '<nav class="crm-nav"' ) < strpos( $html, 'class="crm-head"' ) && str_contains( $html, '[crm-' ) === false );
 // The templates of the unit: the head draws the navigation, so none holds it or a row of buttons

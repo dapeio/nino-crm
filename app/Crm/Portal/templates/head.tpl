@@ -6,7 +6,6 @@
 			[[badge]]
 			[[lead]]
 		</div>
-		[[account]]
 		[[actions]]
 	</div>
 </div>

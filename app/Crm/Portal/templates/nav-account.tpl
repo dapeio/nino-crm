@@ -1,1 +1,0 @@
-<a class="crm-account" href="[[dir]]/portal/meine-daten"><span class="crm-account__avatar" aria-hidden="true">[[initials]]</span><span class="crm-account__text"><span class="crm-account__name">[[name]]</span>[[company]]</span></a>

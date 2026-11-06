@@ -2,11 +2,11 @@
 declare(strict_types=1);
 /**
  *	Crm\Portal		What the portal pages read of the CRM: the client of the member who is signed in, the head of every portal page
- *								([crm-portal-head]: the navigation of the portal, then the breadcrumb where there is a parent, the title of the page or of the
- *								project, its lead, the account of the member on a narrow window and the actions of the page), the component [crm-client] that says the company, the component
+ *								([crm-portal-head]: the bar of the application with the account of the member and Abmelden, the navigation of the portal, then the
+ *								breadcrumb where there is a parent, the title of the page or of the project, its lead and the actions of the page), the component [crm-client] that says the company, the component
  *								[crm-documents] that lists the documents released to that client (all of them, or those of one project) with their number, the amount, the
  *								day an invoice is due, the state in the customer's words and - for an open invoice - how to pay it, the navigation
- *								[crm-portal-nav] of the portal (its areas, the account of the member and Abmelden) and the door [crm-portal-door] of the site's start page. The Datenschutz
+ *								[crm-portal-nav] of the portal (its areas) and the door [crm-portal-door] of the site's start page. The Datenschutz
  *								([crm-privacy], Portal\Privacy), the order under an offer (Portal\Order), the offer itself (Portal\Offer), the start page
  *								(Portal\Start, [crm-portal-start]) and the dates (Portal\Dates, [crm-portal-dates]) are classes of their own. The areas
  *								themselves are the components of Portal\Projects ([crm-projects]), Portal\Files ([crm-uploads]) and Portal\Data
@@ -121,15 +121,17 @@ class Portal {
 	}
 
 	/**
-	 *	[crm-portal-head] - the head of a portal page: the navigation of the portal (see componentCrmPortalNav(); nav="0" leaves it out, for a template that
-	 *	sets it itself), then the title and the lead of the page (its name and description, as the head of the site reads them) and, on a window narrower
-	 *	than the side bar, the account of the member (the chip and Abmelden). On the page of a project (?projekt=<id>, or ?review=<file> of a
+	 *	[crm-portal-head] - the head of a portal page: the bar of the application (the name of the site, or its logo, as a link to the start page and
+	 *	the h1 of the page, the one the head of the site has; the account of the member as a chip that links to Meine Daten; Abmelden), the navigation of the portal (see
+	 *	componentCrmPortalNav()), then the title and the lead of the page (its name and description, as the head of the site reads them). The bar takes the
+	 *	place of the head of the site on the page (the style sheet sets that head aside where the bar is). nav="0" leaves the bar and the navigation out,
+	 *	for a template that sets the navigation itself. On the page of a project (?projekt=<id>, or ?review=<file> of a
 	 *	file of one of the client's projects) the breadcrumb Projekte › the project, the project's title as the title with its state and its start,
 	 *	and its description as the lead. With calendar="1" the subscription of the calendar stands among the actions (where Events is on). Nothing
 	 *	for a visitor
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$args					calendar ('1': the subscription of the calendar of Events among the actions), nav ('0': no navigation)
+	 *	@param		array 		$args					calendar ('1': the subscription of the calendar of Events among the actions), nav ('0': no bar and no navigation)
 	 *
 	 *	@return 	string
 	 */
@@ -170,15 +172,30 @@ class Portal {
 			$lead = self::render( 'head-lead', [ '[[text]]' => '[[/_nino/webpage[[/nino/http/response/uri]]/description]]' ] );
 		}
 
-		$navigation = ( $args['nav'] ?? '1' ) === '0' ? '' : self::componentCrmPortalNav( $appData, [] );
+		$bar = '';
+		$navigation = '';
 
-		return $navigation. self::render( 'head', [
+		if( ( $args['nav'] ?? '1' ) !== '0' ) {
+
+			// The name of the site is a text of the project and is put in as text: what the page of the site draws as markup is shown as typed here
+			$site = str_replace( "\0", '', trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/general/name' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
+			$bar = self::render( 'bar', [
+				'[[dir]]'      => $dir,
+				'[[site]]'     => \Nino\Modules\Components::escape( $site ),
+				'[[prefix]]'   => $site === '' ? '' : \Nino\Modules\Components::escape( $site. ' | ' ),
+				'[[current]]'  => rtrim( (string) ( \Nino\Http::getRequest( $appData )['/nino/http/request']['uri'] ?? '' ), '/' ) === '/portal/meine-daten' ? ' aria-current="page"' : '',
+				'[[initials]]' => \Nino\Modules\Components::escape( self::initials( $name ) ),
+				'[[name]]'     => \Nino\Modules\Components::escape( $name ),
+			] );
+			$navigation = self::componentCrmPortalNav( $appData, [] );
+		}
+
+		return $bar. $navigation. self::render( 'head', [
 			'[[classes]]' => \Nino\Feature::classes( $args ),
 			'[[crumbs]]'  => $crumbs,
 			'[[title]]'   => $title,
 			'[[badge]]'   => $badge,
 			'[[lead]]'    => $lead,
-			'[[account]]' => self::render( 'head-account', [ '[[current]]' => rtrim( (string) ( \Nino\Http::getRequest( $appData )['/nino/http/request']['uri'] ?? '' ), '/' ) === '/portal/meine-daten' ? ' aria-current="page"' : '', '[[dir]]' => $dir, '[[initials]]' => \Nino\Modules\Components::escape( self::initials( $name ) ), '[[name]]' => \Nino\Modules\Components::escape( $name ) ] ),
 			'[[actions]]' => ( $args['calendar'] ?? '0' ) === '1' && Crm::featureOn( $appData, 'events' ) === true ? self::template( 'head-calendar' ) : '',
 		] );
 	}
@@ -206,11 +223,10 @@ class Portal {
 	}
 
 	/**
-	 *	[crm-portal-nav] - the navigation of the portal: the account of the member as a chip (the initials, the name, the company of the client; a link to
-	 *	Meine Daten), the areas as links - Portal, Projekte, Belege, Termine, Upload, Meine Daten - the one the request is in marked with aria-current,
-	 *	and Abmelden. The names are the words of the pages (/_nino/webpage/portal/<area>/name). A link to the Datenschutz stands after the areas, with a dot,
-	 *	while the client has not agreed to the text it is asked for. It is the same markup on every window: the style sheet draws it as a side bar, a row of
-	 *	pills or a bar of tabs. Nothing for a visitor
+	 *	[crm-portal-nav] - the navigation of the portal: the areas as links - Portal, Projekte, Belege, Termine, Upload, Meine Daten - the one the request is
+	 *	in marked with aria-current. The names are the words of the pages (/_nino/webpage/portal/<area>/name). A link to the Datenschutz stands after the
+	 *	areas, with a dot, while the client has not agreed to the text it is asked for. It is the same markup on every window: the style sheet draws it as a
+	 *	side bar, a row of pills or a bar of tabs. The account and Abmelden are the bar's (see componentCrmPortalHead()). Nothing for a visitor
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$args
@@ -232,7 +248,6 @@ class Portal {
 		$request = \Nino\Http::getRequest( $appData );
 		$path = $request === false ? '' : rtrim( (string) ( $request['/nino/http/request']['uri'] ?? '' ), '/' );
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
-		$name = self::nameOf( $member );
 		$client = self::client( $appData );
 		$areas = self::NAV;
 
@@ -259,13 +274,9 @@ class Portal {
 			] );
 		}
 
-		$company = $client !== null && $client['company'] !== '' && $client['company'] !== $name ? self::render( 'nav-company', [ '[[company]]' => \Nino\Modules\Components::escape( str_replace( "\0", '', $client['company'] ) ) ] ) : '';
-
 		return self::render( 'nav', [
 			'[[classes]]' => \Nino\Feature::classes( $args ),
-			'[[account]]' => self::render( 'nav-account', [ '[[dir]]' => $dir, '[[initials]]' => \Nino\Modules\Components::escape( self::initials( $name ) ), '[[name]]' => \Nino\Modules\Components::escape( $name ), '[[company]]' => $company ] ),
 			'[[items]]'   => $items,
-			'[[logout]]'  => self::render( 'nav-logout', [ '[[dir]]' => $dir ] ),
 		] );
 	}
 
