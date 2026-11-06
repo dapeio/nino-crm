@@ -20,6 +20,8 @@ namespace Nino\Modules\Files {
 	 *										download (a link), move to another folder of the group, delete; and the
 	 *										owner's upload, in the chunks of the members' (Files\Upload) through the
 	 *										action files/upload, with the limits of the server in a line of its own.
+	 *										A file can be removed from the server (files/remove): its bytes go, its row
+	 *										stays with the day they went - no download, no move, delete still there.
 	 *
 	 *										The panel validates what it is posted and answers with the codes of the
 	 *										failures a person can cause; the rules of the data and the writes are
@@ -54,6 +56,7 @@ namespace Nino\Modules\Files {
 				'files/upload'							=> [ self::class, 'apiUpload' ],
 				'files/save'								=> [ self::class, 'apiSave' ],
 				'files/delete'							=> [ self::class, 'apiDelete' ],
+				'files/remove'							=> [ self::class, 'apiRemove' ],
 			];
 		}
 
@@ -96,8 +99,9 @@ namespace Nino\Modules\Files {
 				$words[$key] = (string) ( $fills['[[/_admin/files/unit/'. $name. ']]'] ?? '' );
 
 			$files = Store::read( $appData )['files'];
+			$kept = array_filter( $files, static fn( array $file ): bool => isset( $file['gone'] ) === false );
 
-			return [ 'value' => count( $files ). ' ('. Store::size( (int) array_sum( array_column( $files, 'size' ) ), $words ). ')', 'label' => '/_admin/files/label/count' ];
+			return [ 'value' => count( $files ). ' ('. Store::size( (int) array_sum( array_column( $kept, 'size' ) ), $words ). ')', 'label' => '/_admin/files/label/count' ];
 		}
 
 		/**
@@ -122,6 +126,7 @@ namespace Nino\Modules\Files {
 				'files/upload'							=> ( self::$_made[$action] ?? '' ) === '' ? '' : 'Uploaded file '. self::$_made[$action]. ( ( $data['notify'] ?? null ) === false ? ', members not mailed' : '' ),
 				'files/save'								=> 'Changed file'. $of. ( ( $data['notify'] ?? null ) === false && ( $data['visible'] ?? null ) === true ? ', members not mailed' : '' ),
 				'files/delete'							=> 'Deleted file'. $of,
+				'files/remove'							=> ( self::$_made[$action] ?? '' ) === '' ? '' : 'Removed file '. self::$_made[$action]. ' from the server',
 				default											=> '',
 			};
 		}
@@ -397,7 +402,7 @@ namespace Nino\Modules\Files {
 
 			$appData['./nino/files/mailed'] = 0;
 
-			if( $saved['before']['visible'] === false && $saved['file']['visible'] === true ) {
+			if( $saved['before']['visible'] === false && $saved['file']['visible'] === true && isset( $saved['file']['gone'] ) === false ) {
 
 				$folder = Store::folder( $appData, $saved['file']['folder'] );
 
@@ -431,6 +436,35 @@ namespace Nino\Modules\Files {
 			\Nino\Callbacks::doCallbacks( $appData, '/files/delete', $gone );
 
 			\Nino\Http::ok( $request );
+		}
+
+		/**
+		 *	Remove the bytes of a file from the server and keep its row: the name, the size, who put it there and when stay, with the time the bytes went
+		 *	in gone. A file that is removed already is answered as it is, nothing changed; the comments of other features on it stay. No callback is told:
+		 *	the file is still there for them
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		&$request			(reference) Current server request
+		 *
+		 *	@return 	void
+		 */
+		public static function apiRemove( array &$appData, array &$request ): void {
+
+			if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+				return;
+
+			self::$_made['files/remove'] = '';
+
+			$removed = Store::removeBytes( $appData, self::_id( \Nino\Admin\Admin::postData() ) );
+
+			if( is_string( $removed ) === true ) {
+				self::_failed( $request, $removed );
+				return;
+			}
+
+			self::$_made['files/remove'] = $removed['changed'] === true ? $removed['file']['id'] : '';
+
+			\Nino\Http::ok( $request, [ 'file' => $removed['file'], 'changed' => $removed['changed'] ] );
 		}
 
 		/**

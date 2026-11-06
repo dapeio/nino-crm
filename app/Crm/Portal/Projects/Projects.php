@@ -341,11 +341,19 @@ class Projects {
 		$playing = '';
 
 		if( $review !== '' && Crm::featureOn( $appData, 'review' ) === true )
-			foreach( $files as $file )
-				if( $file['id'] === $review && \Nino\Modules\Review::kind( $file['mime'] ) !== '' && \Nino\Modules\Files::path( $appData, $file['id'] ) !== null ) {
+			foreach( $files as $file ) {
+
+				if( $file['id'] !== $review || \Nino\Modules\Review::kind( $file['mime'] ) === '' )
+					continue;
+
+				// A file that was removed from the server has its comments and no medium: the sentence stands over them
+				if( isset( $file['gone'] ) === true )
+					$player = Files::goneNote( $appData ). \Nino\Modules\Review::componentReviewPlayer( $appData, [] );
+				elseif( \Nino\Modules\Files::path( $appData, $file['id'] ) !== null ) {
 					$player = \Nino\Modules\Review::componentReviewPlayer( $appData, [] );
 					$playing = $file['id'];
 				}
+			}
 
 		return [ Portal::render( 'project-files', [
 			'[[player]]' => $player,

@@ -8,11 +8,12 @@
  *								what it posts, the totals it shows
  *				  the shell		the element helper (every element is made from data, no markup is written), the toast, the menus, the dialogs
  *								(<dialog>), the keys (/ finds the search, Esc closes), the router (#uebersicht, #belege, #beleg-12,
- *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #projekte, #projekte-neu, #projekt-<id>, #positionen, #positionen-neu, #position-<uri>, #einstellungen, #einrichtung, and
+ *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #projekte, #projekte-neu, #projekt-<id>, #uploads, #positionen, #positionen-neu, #position-<uri>, #einstellungen, #einrichtung, and
  *								for PDF-Vorlagen #pdf, #pdf-bausteine, #pdf-layout, #pdf-design, #pdf-vorlage-<key>, #pdf-neue-vorlage-<tag>, #pdf-baustein-<key>,
  *								#pdf-neuer-baustein) and the answers of the endpoint (the session that ended, the token that is stale)
  *				  the screens	Übersicht, Belege, Beleg and Entwurf, then Kunden, Kundenkarte (with the tab Projekte), Neuer Kunde, Projekte (the list, Neues Projekt and the Projektkarte with its tabs
- *								Belege and Dateien, which drives the Elements panel's actions for the type projekte and the Files panel's for the project's folder), Positionen (for an account with the permission of the
+ *								Belege and Dateien, which drives the Elements panel's actions for the type projekte and the Files panel's for the project's folder), Uploads (every file the customers
+ *								put into their upload folders, with the ZIP of a choice and its deletion), Positionen (for an account with the permission of the
  *								Elements panel with the editor of an item, Position, which edits the elements of the type positionen through the panel's actions) and Einstellungen, the
  *								Einrichtung of the first run (the page starts there while crm/status says the product is not whole) and - for an account
  *								with the permission of the Pdf panel - PDF-Vorlagen: Vorlagen with the editor of a template, Bausteine with the editor of a
@@ -61,6 +62,7 @@
 			clients : [], items : [], offers : [], years : [], docs : [], summary : null, people : [], owed : {},
 			filter : { chip : 'all', q : '', sort : 'date', dir : -1, year : 0, page : 1 },
 			cfilter : { q : '', sort : 'number', dir : 1, page : 1 },
+			ufilter : { q : '', sort : 'age', dir : -1, page : 1 }, ubody : null, picked : new Set(),
 			pfilter : { q : '', sort : 'name', dir : 1 }, ifilter : { q : '', sort : 'sort', dir : 1, page : 1 }, pbody : null, jfilter : { q : '', all : false, page : 1 }, jbody : null, busy : null, pdf : { site : [] }, saver : {}, company : null,
 			view : 0, entered : false, seen : null, tab : '', draft : null, saving : false, queued : false, pending : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
 		} );
@@ -1303,11 +1305,18 @@
 				tile( t( 'tile.drafts' ), String( sum.drafts_count ), sum.drafts_count > 0 ? t( 'tile.drafts-last', dmy( sum.drafts_last ) ) : t( 'tile.drafts-none' ), '' ) ) );
 
 			const shown = needs.slice( 0, 10 );
+			const stale = answer.body.stale;
+
+			// The finished projects whose files lie on the server for long: a line that points at the projects, nothing is done for the owner
+			const staleLine = stale === undefined || stale === null || stale.count === 0 ? null : el( 'li', { id: 'needs-stale' }, el( 'span', {}, el( 'span', { class: 'dot muted' } ), link( '#projekte', t( stale.count === 1 ? 'needs.stale-one' : 'needs.stale-many', stale.count, stale.days, sizeText( stale.bytes ) ), { on: { click: function() {
+				state.jfilter.all = true;
+				state.jfilter.page = 1;
+			} } } ) ) );
 
 			state.main.appendChild( el( 'div', { class: 'cols' },
 				card( t( 'needs.title' ), el( 'ul', { class: 'list-mini' },
-					shown.length === 0 ? el( 'li', { class: 'muted', text: t( 'needs.none' ) } ) : shown.map( needLine ),
-					needs.length > shown.length ? el( 'li', { class: 'muted', text: t( 'needs.more', needs.length - shown.length ) } ) : null ) ),
+					shown.length === 0 && staleLine === null ? el( 'li', { class: 'muted', text: t( 'needs.none' ) } ) : shown.map( needLine ),
+					needs.length > shown.length ? el( 'li', { class: 'muted', text: t( 'needs.more', needs.length - shown.length ) } ) : null, staleLine ) ),
 				card( t( 'recent.title' ), el( 'ul', { class: 'list-mini' },
 					answer.body.recent.length === 0 ? el( 'li', { class: 'muted', text: t( 'recent.none' ) } )
 						: answer.body.recent.map( function( doc ) {
@@ -5288,6 +5297,44 @@
 	};
 
 	/**
+	 *	@param		{Object}	file						As crm-projekte/get and crm-uploads/list have it
+	 *
+	 *	@return		{boolean}									Whether the bytes of the file were removed from the server
+	 */
+	const isGone = function( file ) {
+		return typeof file.gone === 'string' && file.gone !== '';
+	};
+
+	/**
+	 *	Remove the bytes of files from the server, one after the other: the first that is refused stops it, and its refusal is said
+	 *
+	 *	@param		{Array}		ids
+	 *	@param		{string}	fallback				The word for what failed
+	 *
+	 *	@return		{Promise}									{ removed: how many, ok: whether none was refused }
+	 */
+	const removeFiles = function( ids, fallback ) {
+
+		const result = { removed : 0, ok : true };
+
+		return ids.reduce( function( chain, id ) {
+			return chain.then( function() {
+
+				if( result.ok !== true )
+					return null;
+
+				return call( 'files/remove', { id : id }, fallback ).then( function( answer ) {
+
+					if( answer.ok === true )
+						result.removed++;
+					else
+						result.ok = false;
+				} );
+			} );
+		}, Promise.resolve() ).then( function() { return result } );
+	};
+
+	/**
 	 *	The tab Dateien: the files of the project's folder, and - for an account that holds the permission of the Files panel - what changes them
 	 *
 	 *	@param		{Object}	view
@@ -5352,6 +5399,40 @@
 			holder.appendChild( el( 'label', { class: 'check', id: 'project-notify-label' }, view.notifyBox, ' '+ t( 'notify.files' ) ) );
 		}
 
+		// What is on the server of the files: the ones that were removed take no room and are not removed again
+		const onServer = function() { return ( view.list || [] ).filter( function( file ) { return isGone( file ) === false } ) };
+
+		if( editable === true && onServer().length > 0 ) {
+
+			const removeAll = el( 'button', { type: 'button', class: 'btn sm', id: 'files-remove-all', text: t( 'projects.remove-all' ), on: { click: function() {
+
+				const kept = onServer();
+				const bytes = kept.reduce( function( sum, file ) { return sum+ file.size }, 0 );
+
+				ask( { title : t( 'projects.remove-all' ), text : ( kept.length === 1 ? t( 'projects.remove-all-text-one', sizeText( bytes ) ) : t( 'projects.remove-all-text', kept.length, sizeText( bytes ) ) ), yes : t( 'projects.remove-all' ), danger : true } ).then( function( yes ) {
+
+					if( yes !== true || state.view !== mine )
+						return;
+
+					removeAll.disabled = true;
+
+					removeFiles( kept.map( function( file ) { return file.id } ), 'projects.error-remove' ).then( function( result ) {
+
+						if( state.view !== mine )
+							return;
+
+						// A refusal has said so already in a toast of its own: the success does not cover it
+						if( result.ok === true && result.removed > 0 )
+							toast( t( result.removed === 1 ? 'projects.file-removed' : 'projects.removed-all', result.removed ) );
+
+						reloadProjekt( view );
+					} );
+				} );
+			} } } );
+
+			holder.appendChild( el( 'div', { class: 'actions top', id: 'project-remove' }, removeAll ) );
+		}
+
 		holder.appendChild( tableBox );
 
 		const filesTable = function() {
@@ -5387,15 +5468,31 @@
 							} );
 						} } } );
 
-						return el( 'tr', { dataset: { id: file.id } },
-							el( 'td', { class: 'wrap' }, editable === true && file.url !== '' ? link( file.url, file.name, { target: '_blank', rel: 'noopener' } ) : file.name ),
+						const gone = isGone( file );
+
+						return el( 'tr', { dataset: { id: file.id }, class: gone === true ? 'dim' : null },
+							el( 'td', { class: 'wrap' }, editable === true && file.url !== '' && gone === false ? link( file.url, file.name, { target: '_blank', rel: 'noopener' } ) : file.name, gone === true ? el( 'span', { class: 'gone-note', dataset: { gone: file.id }, text: t( 'projects.file-gone', dmy( file.gone ) ) } ) : null ),
 							el( 'td', { class: 'r num', text: sizeText( file.size ) } ),
 							el( 'td', { text: dmy( file.created ) } ),
 							el( 'td', { text: file.by.kind === 'owner' ? t( 'projects.by-owner' ) : ( file.by.label !== '' ? file.by.label : t( 'projects.by-member' ) ) } ),
-							el( 'td', {}, visibleBox ),
-							el( 'td', { class: 'r' }, editable === true ? el( 'button', { type: 'button', class: 'btn sm quiet danger', text: t( 'projects.file-delete' ), dataset: { del: file.id }, on: { click: function() {
+							el( 'td', {}, gone === true ? el( 'span', { class: 'muted', text: '–' } ) : visibleBox ),
+							el( 'td', { class: 'r' }, editable === true && gone === false ? el( 'button', { type: 'button', class: 'btn sm quiet', text: t( 'projects.file-remove' ), dataset: { remove: file.id }, on: { click: function() {
 
-								ask( { title : t( 'projects.file-delete' ), text : t( 'projects.file-delete-text', file.name ), yes : t( 'projects.file-delete' ), danger : true } ).then( function( yes ) {
+								ask( { title : t( 'projects.file-remove' ), text : t( 'projects.file-remove-text', file.name ), yes : t( 'projects.file-remove' ), danger : true } ).then( function( yes ) {
+
+									if( yes !== true || state.view !== mine )
+										return;
+
+									call( 'files/remove', { id : file.id }, 'projects.error-remove' ).then( function( answer ) {
+										if( answer.ok === true && state.view === mine ) {
+											toast( t( 'projects.file-removed' ) );
+											reloadProjekt( view );
+										}
+									} );
+								} );
+							} } } ) : null, editable === true ? el( 'button', { type: 'button', class: 'btn sm quiet danger', text: t( 'projects.file-delete' ), dataset: { del: file.id }, on: { click: function() {
+
+								ask( { title : t( 'projects.file-delete' ), text : t( gone === true ? 'projects.file-delete-gone-text' : 'projects.file-delete-text', file.name ), yes : t( 'projects.file-delete' ), danger : true } ).then( function( yes ) {
 
 									if( yes !== true || state.view !== mine )
 										return;
@@ -5559,6 +5656,251 @@
 		state.main.appendChild( strip );
 		state.main.appendChild( body );
 		show( start );
+	};
+
+
+	// --- Uploads -----------------------------------------------------------------------------------------------------
+
+	const uploadKeys = {
+		client : function( row ) { return row.client },
+		name : function( row ) { return row.name.toLowerCase() },
+		by : function( row ) { return ( row.by.kind === 'owner' ? '' : row.by.label ).toLowerCase() },
+		size : function( row ) { return row.size },
+		created : function( row ) { return row.created },
+		age : function( row ) { return row.age },
+	};
+
+	/**
+	 *	The rows the list of the uploads shows: the search over the number and the title of the client, the name and the sender, then the order (a tie goes by the id)
+	 *
+	 *	@param		{Array}		rows						As crm-uploads/list has them
+	 *	@param		{Object}	filter					q, sort, dir
+	 *
+	 *	@return		{Array}
+	 */
+	const visibleUploads = function( rows, filter ) {
+
+		const query = filter.q.trim().toLowerCase();
+		const key = uploadKeys[filter.sort] || uploadKeys.age;
+
+		const found = rows.filter( function( row ) {
+			return query === '' || ( row.client+ ' '+ row.client_title+ ' '+ row.name+ ' '+ row.by.label ).toLowerCase().includes( query );
+		} );
+
+		found.sort( function( a, b ) {
+
+			const left = key( a );
+			const right = key( b );
+			const order = typeof left === 'string' ? left.localeCompare( right, 'de' ) : ( left < right ? -1 : ( left > right ? 1 : 0 ) );
+
+			return order !== 0 ? order * filter.dir : a.id.localeCompare( b.id );
+		} );
+
+		return found;
+	};
+
+	/**
+	 *	Let the browser save what an address answers as a file, with no screen of ours in between: a refusal is the browser's own failed download
+	 *
+	 *	@param		{string}	href
+	 *
+	 *	@return		{void}
+	 */
+	const saveFrom = function( href ) {
+
+		const anchor = el( 'a', { href : href, download : '', hidden : true } );
+
+		state.main.appendChild( anchor );
+		anchor.click();
+		anchor.remove();
+	};
+
+	const uploads = function( where, mine ) {
+
+		loading();
+
+		api( 'crm-uploads/list' ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answer.ok !== true ) {
+				loadFailed( answer, 'error.load', function() { route() } );
+				return;
+			}
+
+			state.ubody = answer.body;
+			state.picked = new Set();
+			drawUploads();
+		} );
+	};
+
+	const drawUploads = function() {
+
+		const body = state.ubody;
+		const filter = state.ufilter;
+		const changes = body.allowed === true;
+		const mine = state.view;
+		const rows = visibleUploads( body.rows, filter );
+		const pages = Math.max( 1, Math.ceil( rows.length / PAGE_SIZE ) );
+
+		filter.page = Math.min( Math.max( 1, filter.page ), pages );
+
+		const shown = rows.slice( ( filter.page - 1 ) * PAGE_SIZE, filter.page * PAGE_SIZE );
+		const again = function() { drawUploads() };
+		const heading = function( key, label, right ) { return sortHead( filter, key, label, right, again, key === 'age' || key === 'size' || key === 'created' ? -1 : 1 ) };
+
+		// What can be chosen is a file that is on the server; a choice is held over a search and over the pages, and counts for the files it names
+		const known = new Map( body.rows.map( function( row ) { return [ row.id, row ] } ) );
+
+		Array.from( state.picked ).forEach( function( id ) {
+			if( known.has( id ) === false || isGone( known.get( id ) ) === true )
+				state.picked.delete( id );
+		} );
+
+		const chosen = function() { return Array.from( state.picked ).map( function( id ) { return known.get( id ) } ) };
+		const takeable = rows.filter( function( row ) { return isGone( row ) === false } );
+		const bytesOf = function( list ) { return list.reduce( function( sum, row ) { return sum+ row.size }, 0 ) };
+
+		reveal();
+
+		state.main.appendChild( head( t( 'uploads.title' ), el( 'span', { class: 'sub', text: t( 'uploads.count', rows.length, body.rows.length ) } ), el( 'span', { class: 'grow' } ),
+			search( t( 'uploads.search' ), filter.q, { input: function( event ) {
+				filter.q = event.target.value;
+				filter.page = 1;
+				keepSearch( drawUploads, true );
+			} } ) ) );
+
+		if( body.files !== true ) {
+			state.main.appendChild( note( '', t( 'uploads.files-off' ) ) );
+			return;
+		}
+
+		const sum = body.summary;
+
+		state.main.appendChild( el( 'p', { class: 'state-note', id: 'uploads-sum', text: t( 'uploads.sum', sum.count, sizeText( sum.bytes ), body.old_days, sum.old_count, sizeText( sum.old_bytes ) ) } ) );
+
+		if( changes === false )
+			state.main.appendChild( note( '', t( 'uploads.forbidden' ) ) );
+
+		const status = el( 'span', { class: 'state-note', id: 'uploads-picked', role: 'status' } );
+		const zip = el( 'button', { type: 'button', class: 'btn sm', id: 'uploads-zip', on: { click: function() {
+
+			const list = state.picked.size > 0 ? chosen() : takeable;
+
+			if( list.length > body.limit ) {
+				toast( t( 'uploads.zip-many', body.limit ), true );
+				return;
+			}
+
+			saveFrom( state.base+ '/crm/uploads.zip?ids='+ list.map( function( row ) { return row.id } ).join( ',' ) );
+		} } } );
+
+		const remove = el( 'button', { type: 'button', class: 'btn sm danger', id: 'uploads-delete', text: t( 'uploads.delete' ), on: { click: function() {
+
+			const list = chosen();
+
+			ask( { title : t( 'uploads.delete' ), text : ( list.length === 1 ? t( 'uploads.delete-text-one', sizeText( bytesOf( list ) ) ) : t( 'uploads.delete-text', list.length, sizeText( bytesOf( list ) ) ) ), yes : t( 'uploads.delete' ), danger : true } ).then( function( yes ) {
+
+				if( yes !== true || state.view !== mine )
+					return;
+
+				remove.disabled = true;
+
+				let deleted = 0;
+				let refused = false;
+
+				list.reduce( function( chain, row ) {
+					return chain.then( function() {
+
+						if( refused === true )
+							return null;
+
+						return call( 'files/delete', { id : row.id }, 'projects.error-file' ).then( function( answer ) {
+
+							if( answer.ok === true )
+								deleted++;
+							else
+								refused = true;
+						} );
+					} );
+				}, Promise.resolve() ).then( function() {
+
+					// A refusal has said so already in a toast of its own: the success does not cover it
+					if( deleted > 0 && refused === false )
+						toast( t( deleted === 1 ? 'projects.file-deleted' : 'uploads.deleted', deleted ) );
+
+					if( state.view === mine )
+						uploads( { screen : 'uploads' }, mine );
+				} );
+			} );
+		} } } );
+
+		const shownBoxes = [];
+
+		// What the buttons say follows the choice; the ZIP of no choice is the ZIP of what the search finds
+		const refresh = function() {
+
+			const list = state.picked.size > 0 ? chosen() : takeable;
+			const large = bytesOf( list ) >= body.large;
+
+			zip.textContent = t( state.picked.size > 0 ? 'uploads.zip-chosen' : 'uploads.zip-all', list.length );
+			zip.disabled = body.zip !== true || changes === false || list.length === 0;
+			remove.disabled = changes === false || state.picked.size === 0;
+			status.textContent = ( state.picked.size === 0 ? '' : t( 'uploads.picked', state.picked.size, sizeText( bytesOf( chosen() ) ) ) )+ ( large === true ? ( state.picked.size === 0 ? '' : ' ' )+ t( 'uploads.large' ) : '' );
+		};
+
+		const all = el( 'input', { type: 'checkbox', id: 'uploads-all', 'aria-label': t( 'uploads.pick-all' ), on: { change: function( event ) {
+
+			takeable.forEach( function( row ) {
+				if( event.target.checked === true )
+					state.picked.add( row.id );
+				else
+					state.picked.delete( row.id );
+			} );
+
+			shownBoxes.forEach( function( box ) { box.checked = state.picked.has( box.dataset.pick ) } );
+			refresh();
+		} } } );
+
+		state.main.appendChild( el( 'div', { class: 'actions', id: 'uploads-actions' }, zip, changes === true ? remove : null, status ) );
+
+		if( body.zip !== true )
+			state.main.appendChild( el( 'p', { class: 'state-note', id: 'uploads-zip-off', text: t( 'uploads.zip-off' ) } ) );
+
+		state.main.appendChild( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static', id: 'uploads' },
+			el( 'thead', {}, el( 'tr', {}, el( 'th', { class: 'pick' }, all ), heading( 'client', t( 'uploads.client' ) ), heading( 'name', t( 'uploads.file' ) ), heading( 'by', t( 'uploads.by' ) ), heading( 'size', t( 'uploads.size' ), true ), heading( 'created', t( 'uploads.day' ) ), heading( 'age', t( 'uploads.age' ), true ) ) ),
+			el( 'tbody', {}, shown.length === 0
+				? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '7', class: 'muted', text: t( body.rows.length === 0 ? 'uploads.empty' : 'uploads.none' ) } ) )
+				: shown.map( function( row ) {
+
+					const gone = isGone( row );
+					const box = el( 'input', { type: 'checkbox', checked: state.picked.has( row.id ), disabled: gone, 'aria-label': t( 'uploads.pick', row.name ), dataset: { pick: row.id }, on: { change: function( event ) {
+
+						if( event.target.checked === true )
+							state.picked.add( row.id );
+						else
+							state.picked.delete( row.id );
+
+						all.checked = takeable.length > 0 && takeable.every( function( one ) { return state.picked.has( one.id ) } );
+						refresh();
+					} } } );
+
+					shownBoxes.push( box );
+
+					return el( 'tr', { dataset: { id: row.id }, class: gone === true ? 'dim' : null },
+						el( 'td', { class: 'pick' }, box ),
+						el( 'td', {}, link( '#kunde-'+ row.client_id, row.client_title ), el( 'span', { class: 'muted', text: ' '+ row.client } ) ),
+						el( 'td', { class: 'wrap' }, row.name, gone === true ? el( 'span', { class: 'gone-note', dataset: { gone: row.id }, text: t( 'projects.file-gone', dmy( row.gone ) ) } ) : null ),
+						el( 'td', { text: row.by.kind === 'owner' ? t( 'projects.by-owner' ) : ( row.by.label !== '' ? row.by.label : t( 'projects.by-member' ) ) } ),
+						el( 'td', { class: 'r num', text: sizeText( row.size ) } ),
+						el( 'td', { text: dmy( row.created ) } ),
+						el( 'td', { class: 'r num', text: String( row.age ) } ) );
+				} ) ) ) ) );
+
+		all.checked = takeable.length > 0 && takeable.every( function( one ) { return state.picked.has( one.id ) } );
+		refresh();
+		append( state.main, [ pagerOf( filter, pages, again ) ] );
 	};
 
 
@@ -7564,6 +7906,9 @@
 		if( found !== null )
 			return { screen : 'projekt', id : found[1], tab : found[2] === undefined ? '' : found[2] };
 
+		if( text === 'uploads' )
+			return { screen : 'uploads' };
+
 		if( text === 'positionen' )
 			return { screen : 'positionen' };
 
@@ -7614,9 +7959,9 @@
 		return { screen : 'uebersicht' };
 	};
 
-	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, projekte : projekte, projektneu : projektNeu, projekt : projekt, positionen : positionen, position : position, einstellungen : einstellungen, einrichtung : einrichtung,
+	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, projekte : projekte, projektneu : projektNeu, projekt : projekt, uploads : uploads, positionen : positionen, position : position, einstellungen : einstellungen, einrichtung : einrichtung,
 		pdfvorlagen : pdfVorlagen, pdfvorlage : pdfVorlage, pdfbausteine : pdfBausteine, pdfbaustein : pdfBaustein, pdflayout : pdfLayout, pdfdesign : pdfDesign };
-	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', projekte : 'projekte', projektneu : 'projekte', projekt : 'projekte', positionen : 'positionen', position : 'positionen', einstellungen : 'einstellungen', einrichtung : '',
+	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', projekte : 'projekte', projektneu : 'projekte', projekt : 'projekte', uploads : 'uploads', positionen : 'positionen', position : 'positionen', einstellungen : 'einstellungen', einrichtung : '',
 		pdfvorlagen : 'pdf', pdfvorlage : 'pdf', pdfbausteine : 'pdf', pdfbaustein : 'pdf', pdflayout : 'pdf', pdfdesign : 'pdf' };
 
 	const route = function() {

@@ -246,7 +246,7 @@ namespace Nino\Modules {
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *
-		 *	@return 	array										A list of the files as Files::files() has them, each with kind (audio or video) and folderName; none for a visitor and for a member without a group
+		 *	@return 	array										A list of the files as Files::files() has them, each with kind (audio or video) and folderName - a file that was removed from the server is no medium and is not among them; none for a visitor and for a member without a group
 		 */
 		public static function media( array &$appData ): array {
 
@@ -262,7 +262,7 @@ namespace Nino\Modules {
 
 					$kind = self::kind( $file['mime'] );
 
-					if( $kind !== '' && \Nino\Modules\Files::allowed( $appData, $file ) === true )
+					if( $kind !== '' && isset( $file['gone'] ) === false && \Nino\Modules\Files::allowed( $appData, $file ) === true )
 						$list[] = $file + [ 'kind' => $kind, 'folderName' => $folder['name'] ];
 				}
 
@@ -294,7 +294,7 @@ namespace Nino\Modules {
 		 *	the state 'expired' and counts for nothing. The visitor is counted first (the setting attempts, per hour), whoever
 		 *	they are: over the cap the state is 'limit'. Then the member has to be signed in and the file one they may see
 		 *	(Files::allowed()) - a visitor, a member of another group and an id nobody has are the same 404 with a plain body, so
-		 *	that nothing tells that a file exists. A file that is no audio or video, a text that is empty, a time that is typed
+		 *	that nothing tells that a file exists. A file that is no audio or video or that was removed from the server, a text that is empty, a time that is typed
 		 *	and is none and a comment that is not there to answer are 'invalid', a text over the setting length is 'long'. Else
 		 *	the comment is stored, the callback '/review/comment' is told, the owner is mailed where the setting says so and the
 		 *	answer is the redirect with 'sent'. Every redirect goes to the page the form was on, ?review=<id>&review-state=<state>
@@ -339,7 +339,7 @@ namespace Nino\Modules {
 			$typed = trim( self::_posted( 'at' ) );
 			$at = $typed === '' ? null : self::seconds( $typed );
 
-			if( self::kind( $entry['mime'] ) === '' || ( $typed !== '' && $at === null ) ) {
+			if( self::kind( $entry['mime'] ) === '' || isset( $entry['gone'] ) === true || ( $typed !== '' && $at === null ) ) {
 				self::_redirect( $appData, $request, $return, $file, 'invalid' );
 				return;
 			}
@@ -367,8 +367,9 @@ namespace Nino\Modules {
 		 *	they may see (the attribute kind narrows it to one of the two), each a link to this page with ?review=<id>. With it:
 		 *	the player of that file - the audio or video element with the address of the Files feature as its source - the comments
 		 *	on it as comments() orders them, each timed one with its time as a link and its second in data-review-at, and the
-		 *	form that posts to /.review/comment. A file the member may not see, one that is no audio or video, one whose bytes are
-		 *	gone and an id that is none are the list with the state 'invalid'. The query 'review-state' is said above the form (or
+		 *	form that posts to /.review/comment. A file that was removed from the server (Files) has its comments and no
+		 *	medium and no form: the page that stands the player says why. A file the member may not see, one that is no audio or
+		 *	video, one whose bytes are gone and an id that is none are the list with the state 'invalid'. The query 'review-state' is said above the form (or
 		 *	the list) when it is one of STATES. Nothing for a visitor
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
@@ -391,7 +392,7 @@ namespace Nino\Modules {
 
 				$file = \Nino\Modules\Files::file( $appData, $asked );
 
-				if( $file !== null && self::kind( $file['mime'] ) !== '' && \Nino\Modules\Files::allowed( $appData, $file ) === true && \Nino\Modules\Files::path( $appData, $asked ) !== null )
+				if( $file !== null && self::kind( $file['mime'] ) !== '' && \Nino\Modules\Files::allowed( $appData, $file ) === true && ( isset( $file['gone'] ) === true || \Nino\Modules\Files::path( $appData, $asked ) !== null ) )
 					return self::_player( $appData, $args, $file, $path, $said );
 
 				$said = 'invalid';
@@ -545,17 +546,21 @@ namespace Nino\Modules {
 
 			$comments = Review\Store::parse( include $staged );
 			$index = is_file( $staging. '/data/files.php' ) === true ? include $staging. '/data/files.php' : null;
+			$live = is_file( $dataDir. '/files.php' ) === true ? include $dataDir. '/files.php' : null;
 			$kept = $comments;
 
 			foreach( array_keys( $comments ) as $file ) {
 
 				$file = (string) $file;
 
+				// A file that was removed from the server has no bytes and keeps its comments: its entry says so, in the backup or in the live index
+				$removed = static fn( mixed $source ): bool => is_array( $source ) === true && is_string( $source['files'][$file]['gone'] ?? null ) === true && $source['files'][$file]['gone'] !== '';
+
 				if( is_array( $index ) === true )
-					$there = is_array( $index['files'][$file] ?? null ) === true && is_string( $index['files'][$file]['ext'] ?? null ) === true
-						&& preg_match( '/^[a-z0-9]{1,8}$/D', $index['files'][$file]['ext'] ) === 1 && is_file( $dataDir. '/files/'. $file. '.'. $index['files'][$file]['ext'] ) === true;
+					$there = is_array( $index['files'][$file] ?? null ) === true && ( $removed( $index ) === true || $removed( $live ) === true || ( is_string( $index['files'][$file]['ext'] ?? null ) === true
+						&& preg_match( '/^[a-z0-9]{1,8}$/D', $index['files'][$file]['ext'] ) === 1 && is_file( $dataDir. '/files/'. $file. '.'. $index['files'][$file]['ext'] ) === true ) );
 				else
-					$there = \Nino\Modules\Files::path( $appData, $file ) !== null;
+					$there = isset( ( \Nino\Modules\Files::file( $appData, $file ) ?? [] )['gone'] ) === true || \Nino\Modules\Files::path( $appData, $file ) !== null;
 
 				if( $there === false )
 					unset( $kept[$file] );
@@ -625,7 +630,7 @@ namespace Nino\Modules {
 		}
 
 		/**
-		 *	The player of one file with its comments and the form
+		 *	The player of one file with its comments and the form - a file that was removed from the server has its comments, no medium and no form
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		$args
@@ -638,7 +643,8 @@ namespace Nino\Modules {
 		private static function _player( array &$appData, array $args, array $file, string $path, string $state ): string {
 
 			$kind = self::kind( $file['mime'] );
-			$source = \Nino\Modules\Components::escape( \Nino\Modules\Files::url( $appData, $file['id'] ) );
+			$removed = isset( $file['gone'] ) === true;
+			$source = $removed === true ? '' : \Nino\Modules\Components::escape( \Nino\Modules\Files::url( $appData, $file['id'] ) );
 			$comments = self::comments( $appData, $file['id'] );
 			$items = '';
 			$count = 0;
@@ -656,8 +662,8 @@ namespace Nino\Modules {
 				$count++;
 			}
 
-			// Every value escaped, and the markup that was built last: a token after it would be looked for in it as well
-			$form = str_replace(
+			// Every value escaped, and the markup that was built last: a token after it would be looked for in it as well; a file that was removed takes no comment
+			$form = $removed === true ? '' : str_replace(
 				[ '[[id]]', '[[file]]', '[[return]]', '[[length]]', '[[state]]' ],
 				[
 					'review-form-'. ( $appData[self::FORMS] = (int) ( $appData[self::FORMS] ?? 0 ) + 1 ),
@@ -672,13 +678,13 @@ namespace Nino\Modules {
 			return str_replace(
 				[ '[[classes]]', '[[file]]', '[[kind]]', '[[back]]', '[[name]]', '[[count]]', '[[media]]', '[[comments]]', '[[form]]' ],
 				[
-					\Nino\Feature::classes( $args ),
+					\Nino\Feature::classes( $args ). ( $removed === true ? ' review-player--removed' : '' ),
 					$file['id'],
 					$kind,
 					\Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ). $path ),
 					\Nino\Modules\Components::escape( $file['name'] ),
 					(string) $count,
-					str_replace( [ '[[src]]', '[[name]]' ], [ $source, \Nino\Modules\Components::escape( $file['name'] ) ], \Nino\Feature::template( $appData, self::TEMPLATES, 'review-'. $kind ) ),
+					$removed === true ? '' : str_replace( [ '[[src]]', '[[name]]' ], [ $source, \Nino\Modules\Components::escape( $file['name'] ) ], \Nino\Feature::template( $appData, self::TEMPLATES, 'review-'. $kind ) ),
 					$items !== '' ? str_replace( '[[items]]', $items, \Nino\Feature::template( $appData, self::TEMPLATES, 'review-comments' ) ) : \Nino\Feature::template( $appData, self::TEMPLATES, 'review-none' ),
 					$form,
 				],
@@ -694,7 +700,7 @@ namespace Nino\Modules {
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$template			review-comment or review-answer
 		 *	@param		array 		$comment			As comments() has it
-		 *	@param		string		$source				The address of the file, escaped: a timed comment links it at its second
+		 *	@param		string		$source				The address of the file, escaped: a timed comment links it at its second - '' for a file that has no medium, whose time is no link and which has no button to answer with
 		 *	@param		string		$answers			The markup of the answers under it
 		 *
 		 *	@return 	string
@@ -704,7 +710,7 @@ namespace Nino\Modules {
 			$at = $comment['at'] === null ? '' : (string) $comment['at'];
 
 			return str_replace(
-				[ '[[modifier]]', '[[id]]', '[[who]]', '[[created]]', '[[date]]', '[[text]]', '[[at]]', '[[time]]', '[[mark]]', '[[answers]]' ],
+				[ '[[modifier]]', '[[id]]', '[[who]]', '[[created]]', '[[date]]', '[[text]]', '[[at]]', '[[time]]', '[[mark]]', '[[reply]]', '[[answers]]' ],
 				[
 					$comment['done'] === true ? ' '. $template. '--done' : '',
 					$comment['id'],
@@ -713,8 +719,9 @@ namespace Nino\Modules {
 					\Nino\Modules\Components::escape( substr( $comment['created'], 0, 10 ) ),
 					self::_lines( $appData, $comment['text'] ),
 					$at === '' ? '' : str_replace( '[[at]]', $at, \Nino\Feature::template( $appData, self::TEMPLATES, 'review-at' ) ),
-					$at === '' ? '' : str_replace( [ '[[src]]', '[[at]]', '[[clock]]' ], [ $source, $at, self::clock( (float) $comment['at'] ) ], \Nino\Feature::template( $appData, self::TEMPLATES, 'review-time' ) ),
+					$at === '' ? '' : str_replace( [ '[[src]]', '[[at]]', '[[clock]]' ], [ $source, $at, self::clock( (float) $comment['at'] ) ], \Nino\Feature::template( $appData, self::TEMPLATES, $source === '' ? 'review-clock' : 'review-time' ) ),
 					$comment['done'] === true ? \Nino\Feature::template( $appData, self::TEMPLATES, 'review-done' ) : '',
+					$source === '' ? '' : \Nino\Feature::template( $appData, self::TEMPLATES, 'review-reply' ),
 					$answers,
 				],
 				\Nino\Feature::template( $appData, self::TEMPLATES, $template )

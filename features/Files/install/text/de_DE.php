@@ -18,6 +18,9 @@ return [
 	'[[/feature/files/browser/empty]]'		=> 'In diesem Ordner liegen noch keine Dateien.',
 	'[[/feature/files/browser/none]]'			=> 'Für Deine Gruppe gibt es noch keine Ordner.',
 
+	// Was die Adresse einer Datei sagt, deren Bytes vom Server entfernt wurden (Status 410)
+	'[[/feature/files/download/removed]]'	=> 'Die Datei wurde bereits entfernt. Bitte schreib uns an, wenn Du sie nochmal benötigst.',
+
 	// Das Formular, [files-upload]
 	'[[/feature/files/upload/label]]'		=> 'Datei wählen',
 	'[[/feature/files/upload/hint]]'		=> 'Größte Datei:',

@@ -77,6 +77,8 @@ return [
 	'[[/project/crm-portal/files/playing]]' => 'opened',
 	'[[/project/crm-portal/files/download]]' => 'Download',
 	'[[/project/crm-portal/files/listen]]' => 'Listen',
+	'[[/project/crm-portal/files/gone]]' => 'The file has already been removed.',
+	'[[/project/crm-portal/files/gone-ask]]' => 'Please write to us if you need it again.',
 	'[[/project/crm-portal/uploads/heading]]' => 'Uploaded',
 	'[[/project/crm-portal/uploads/note]]' => 'Uploaded files stay on the server for a while only. We take them out as soon as they are in the project.',
 	'[[/project/crm-portal/uploads/empty]]' => 'You have not uploaded anything yet. What you upload stands here until we have taken it into the project.',

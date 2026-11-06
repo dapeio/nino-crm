@@ -16,7 +16,7 @@ namespace Nino\Modules\Files {
 	 *										file, /data/files.php, that holds the folders and the files:
 	 *
 	 *											[ 'folders' => [ <id> => [ group, name, upload, created ] ],
-	 *											  'files'   => [ <id> => [ folder, name, ext, size, mime, sha256, by, visible, created ] ] ]
+	 *											  'files'   => [ <id> => [ folder, name, ext, size, mime, sha256, by, visible, created, gone? ] ] ]
 	 *
 	 *										Every write is a Filesystem::mutate() of that file, and the
 	 *										file is plain php anybody can edit, so parse() reads what is
@@ -101,7 +101,7 @@ namespace Nino\Modules\Files {
 		 *
 		 *	@param		mixed			$state				As the file holds it
 		 *
-		 *	@return 	array										[ 'folders' => id => entry, 'files' => id => entry ]
+		 *	@return 	array										[ 'folders' => id => entry, 'files' => id => entry ] - an entry of a file that was removed carries gone, the time its bytes went
 		 */
 		public static function parse( mixed $state ): array {
 
@@ -148,7 +148,7 @@ namespace Nino\Modules\Files {
 					'by'			=> [ 'kind' => $by['kind'], 'id' => $text( $by['id'] ?? null ) ],
 					'visible'	=> ( $record['visible'] ?? false ) === true,
 					'created'	=> $text( $record['created'] ?? null ),
-				];
+				] + ( $text( $record['gone'] ?? null ) !== '' ? [ 'gone' => $text( $record['gone'] ) ] : [] );
 			}
 
 			return [ 'folders' => $folders, 'files' => $files ];
@@ -263,12 +263,12 @@ namespace Nino\Modules\Files {
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$id
 		 *
-		 *	@return 	string|null								Null where the index has no such file or its bytes are gone
+		 *	@return 	string|null								Null where the index has no such file, the file was removed or its bytes are gone
 		 */
 		public static function path( array &$appData, string $id ): ?string {
 
 			$file = self::file( $appData, $id );
-			$path = $file === null ? null : self::bytes( $appData, $id, $file['ext'] );
+			$path = $file === null || isset( $file['gone'] ) === true ? null : self::bytes( $appData, $id, $file['ext'] );
 
 			return $path !== null && is_file( $path ) === true ? $path : null;
 		}
@@ -542,7 +542,54 @@ namespace Nino\Modules\Files {
 		}
 
 		/**
-		 *	How many bytes the files of a group take
+		 *	Remove the bytes of a file and keep the entry: the entry gets the time they went in gone - the name, the size, the sha256, who
+		 *	put the file there and when stay - and the bytes are unlinked after that. A file that was removed is answered as it is, with
+		 *	its first time; its bytes are looked for again, so that a remove that could not unlink them is finished by the next
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$id
+		 *
+		 *	@return 	array|string							[ 'file' => as it is now, 'changed' => whether the entry was changed ]; or why not: 'unknown', 'write' (the entry or the bytes could not be written)
+		 */
+		public static function removeBytes( array &$appData, string $id ): array|string {
+
+			$after = null;
+			$changed = false;
+			$ran = false;
+
+			$written = \Nino\Filesystem::mutate( $appData, self::INDEX, static function( mixed $state ) use ( $id, &$after, &$changed, &$ran ): ?array {
+
+				$ran = true;
+				$index = self::parse( $state );
+
+				if( isset( $index['files'][$id] ) === false )
+					return null;
+
+				if( isset( $index['files'][$id]['gone'] ) === false ) {
+					$index['files'][$id]['gone'] = gmdate( self::TIME );
+					$changed = true;
+				}
+
+				$after = [ 'id' => $id ] + $index['files'][$id];
+
+				return $changed === true ? $index : null;
+			}, [] );
+
+			if( $ran === true && $after === null )
+				return 'unknown';
+
+			if( $changed === true && $written === false || $after === null )
+				return 'write';
+
+			self::_unlink( $appData, $after );
+
+			$path = self::bytes( $appData, $id, $after['ext'] );
+
+			return $path !== null && is_file( $path ) === true ? 'write' : [ 'file' => $after, 'changed' => $changed ];
+		}
+
+		/**
+		 *	How many bytes the files of a group take - the files that were removed take none
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$group
@@ -786,14 +833,14 @@ namespace Nino\Modules\Files {
 		 *	@param		array 		$index
 		 *	@param		string		$group
 		 *
-		 *	@return 	int											The bytes of the files in the folders of the group
+		 *	@return 	int											The bytes of the files in the folders of the group, those that were removed not among them
 		 */
 		private static function _used( array $index, string $group ): int {
 
 			$used = 0;
 
 			foreach( $index['files'] as $file )
-				if( ( $index['folders'][ $file['folder'] ]['group'] ?? null ) === $group )
+				if( ( $index['folders'][ $file['folder'] ]['group'] ?? null ) === $group && isset( $file['gone'] ) === false )
 					$used += $file['size'];
 
 			return $used;

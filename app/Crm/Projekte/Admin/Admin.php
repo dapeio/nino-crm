@@ -141,6 +141,48 @@ class Admin {
 	}
 
 	/**
+	 *	The finished projects whose files are still on the server and have lain there for long: a project that is done, whose folder is one of its client's group, holds
+	 *	files that are not removed, and none of them is younger than the days. What is meant is the room those files take, which the owner may free
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$days					The age of the youngest file that is still counted
+	 *
+	 *	@return 	array											count (the projects), bytes (of their files on the server) and days
+	 */
+	public static function stale( array &$appData, int $days = 60 ): array {
+
+		$stale = [ 'count' => 0, 'bytes' => 0, 'days' => $days ];
+
+		if( self::filesOn( $appData ) === false || Projekte::missing( $appData ) === true )
+			return $stale;
+
+		$limit = gmdate( 'Y-m-d\TH:i:s\Z', time() - $days * 86400 );
+		$folders = [];
+
+		foreach( Projekte::list( $appData ) as $project ) {
+
+			if( $project['done'] !== true || $project['folder'] === '' || $project['client'] === '' )
+				continue;
+
+			$group = \Crm\Clients::group( $project['client'] );
+			$folders[$group] ??= array_column( \Nino\Modules\Files::folders( $appData, $group ), 'id' );
+
+			if( in_array( $project['folder'], $folders[$group], true ) === false )
+				continue;
+
+			$kept = array_filter( \Nino\Modules\Files::files( $appData, $project['folder'] ), static fn( array $file ): bool => isset( $file['gone'] ) === false );
+
+			if( $kept === [] || array_filter( $kept, static fn( array $file ): bool => (string) $file['created'] > $limit ) !== [] )
+				continue;
+
+			$stale['count']++;
+			$stale['bytes'] += array_sum( array_column( $kept, 'size' ) );
+		}
+
+		return $stale;
+	}
+
+	/**
 	 *	The projects with what the screens show beside them: the client's id and title, the number of the files and - for one project - the files
 	 *
 	 *	@param		array 		&$appData
@@ -195,7 +237,7 @@ class Admin {
 	}
 
 	/**
-	 *	The files of a folder as the tab shows them: the name, the size, the day, who put it there and whether the members see it, with the address it is downloaded at
+	 *	The files of a folder as the tab shows them: the name, the size, the day, who put it there and whether the members see it, with the address it is downloaded at and - for a file that was removed from the server - the time its bytes went
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$files				As Files::files() has them
@@ -225,6 +267,7 @@ class Admin {
 				'mime'    => (string) $file['mime'],
 				'created' => (string) $file['created'],
 				'visible' => ( $file['visible'] ?? false ) === true,
+				'gone'    => (string) ( $file['gone'] ?? '' ),
 				'by'      => [ 'kind' => $kind, 'label' => $kind === 'member' ? $labels[$who] : '' ],
 				'url'     => \Nino\Modules\Files::url( $appData, (string) $file['id'] ),
 			];

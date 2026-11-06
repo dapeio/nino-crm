@@ -6,6 +6,6 @@
 		[[mark]]
 	</div>
 	<p class="review-comment__text">[[text]]</p>
-	<button type="button" class="review-comment__reply" data-review-reply hidden>[[/feature/review/comment/reply]]</button>
+	[[reply]]
 	[[answers]]
 </li>

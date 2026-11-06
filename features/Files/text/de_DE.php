@@ -68,6 +68,11 @@ return [
 	'[[/_admin/files/confirm/file]]'				=> '%s löschen? Die Datei ist endgültig weg.',
 	'[[/_admin/files/error/save]]'					=> 'Die Datei konnte nicht geändert werden.',
 	'[[/_admin/files/error/delete]]'				=> 'Die Datei konnte nicht gelöscht werden.',
+	'[[/_admin/files/label/remove]]'				=> 'Vom Server entfernen',
+	'[[/_admin/files/label/removed]]'			=> 'Entfernt am %s',
+	'[[/_admin/files/title/remove]]'				=> 'Die Datei vom Server entfernen',
+	'[[/_admin/files/confirm/remove]]'			=> '%s vom Server entfernen? Die Bytes sind danach weg; der Eintrag mit Namen, Größe und Datum bleibt, und die Mitglieder lesen, dass die Datei entfernt wurde.',
+	'[[/_admin/files/error/remove]]'			=> 'Die Datei konnte nicht entfernt werden.',
 
 	// Der Upload des Betreibers
 	'[[/_admin/files/label/upload-to]]'				=> 'Hochladen in %s',

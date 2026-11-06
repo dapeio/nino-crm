@@ -78,6 +78,8 @@ return [
 	'[[/project/crm-portal/files/playing]]' => 'geöffnet',
 	'[[/project/crm-portal/files/download]]' => 'Herunterladen',
 	'[[/project/crm-portal/files/listen]]' => 'Anhören',
+	'[[/project/crm-portal/files/gone]]' => 'Die Datei wurde bereits entfernt.',
+	'[[/project/crm-portal/files/gone-ask]]' => 'Bitte schreib uns an, wenn Du sie nochmal benötigst.',
 	'[[/project/crm-portal/uploads/heading]]' => 'Hochgeladen',
 	'[[/project/crm-portal/uploads/note]]' => 'Hochgeladene Dateien liegen nur vorübergehend auf dem Server. Wir nehmen sie heraus, sobald sie im Projekt sind.',
 	'[[/project/crm-portal/uploads/empty]]' => 'Du hast noch nichts hochgeladen. Was Du hochlädst, steht hier, bis wir es ins Projekt übernommen haben.',

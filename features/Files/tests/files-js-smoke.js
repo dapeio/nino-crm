@@ -567,6 +567,45 @@ console.log( '\nNino.admin.files - the files\n' );
 }
 
 {
+	// A file removed from the server: its row stays, with what is left of it
+	const GONE = Object.assign( {}, TRACK, { id : 'ffffffffffff', url : at('ffffffffffff'), name : '<i>Gone</i>.mp3', visible : true, gone : '2026-11-04T08:09:10Z' } );
+
+	[ 'en_US', 'de_DE' ].forEach( function( locale ) {
+
+		const w = drawn( locale, Object.assign( {}, LIST, { files : [ TRACK, GONE ] } ) );
+		const [ track, gone ] = w.rows('files-file-row');
+		const kinds = function( row ) { return w.all( row, function( el ) { return el.tagName === 'A' || el.tagName === 'INPUT' || el.tagName === 'SELECT' } ).map( function( el ) { return el.tagName } ) };
+
+		check( 'a file that was removed has a row of its own, in its place - with its size, who put it there, the day it came and the day its bytes went, in the words of the key - '+ locale,
+			gone !== undefined && gone.dataset.id === GONE.id && w.has('/_admin/files/label/removed') === true
+			&& copyOf( w, gone ).join('|') === GONE.name+ '|'+ [ sized( w, '2', '4', 'megabyte' ), w.word('/_admin/files/label/by-owner'), '2026-11-02', w.said( '/_admin/files/label/removed', '2026-11-04' ) ].join(' · ') );
+		check( '...it has no link to download, no switch and no move - what is not there cannot be offered - and keeps the button that deletes it',
+			kinds( gone ).length === 0 && w.button( gone, w.label('delete') ) !== null && w.button( gone, w.label('remove') ) === null && kinds( track ).indexOf('A') !== -1 && kinds( track ).indexOf('INPUT') !== -1 );
+		check( '...and the name stays text: what is written in it is no markup', w.all( gone, function( el ) { return el.tagName === 'I' } ).length === 0 && copyOf( w, gone )[0] === GONE.name );
+	} );
+}
+
+{
+	const w = drawn('en_US');
+	const [ track ] = w.rows('files-file-row');
+
+	w.agree( false );
+	w.button( track, w.label('remove') ).click();
+	check( 'removing a file from the server asks first, with its name, in the words of its own key - a "no" sends nothing', w.has('/_admin/files/confirm/remove') === true && w.asked[0] === w.said( '/_admin/files/confirm/remove', TRACK.name ) && w.requests.length === 1 );
+	w.agree( true );
+	w.button( track, w.label('remove') ).click();
+	check( '...a "yes" posts files/remove with the id and nothing else, and the list is asked for again', w.last().action === 'files/remove' && JSON.stringify( w.last().payload ) === JSON.stringify( { id : TRACK.id } ) );
+	w.answer( 200, { file : Object.assign( {}, TRACK, { gone : '2026-11-04T08:09:10Z' } ), changed : true } );
+	check( '...the list is asked for again', w.last().action === 'files/list' );
+
+	const refused = drawn('en_US');
+	refused.agree( true );
+	refused.button( refused.rows('files-file-row')[0], refused.label('remove') ).click();
+	refused.answer( 404, { error : 'x', code : 'files_unknown' } );
+	check( 'a refusal of the remove says so in the row, with the sentence of its code, and the list is not asked for again', refused.has('/_admin/error/files_unknown') === true && refused.requests.length === 2 && refused.all( refused.rows('files-file-row')[0], function( el ) { return el.textContent === refused.word('/_admin/error/files_unknown') } ).length > 0 );
+}
+
+{
 	const w = drawn('en_US');
 	const [ track ] = w.rows('files-file-row');
 

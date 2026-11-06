@@ -2,7 +2,7 @@
 declare(strict_types=1);
 /**
  *	Crm\Surface\Files		What the tab Dateien of a project in the surface takes from the Files panel of the workbench: its actions files/list,
- *											files/folder/add, files/folder/save, files/upload, files/save and files/delete go through the endpoint as the panel has them,
+ *											files/folder/add, files/folder/save, files/upload, files/save, files/remove and files/delete go through the endpoint as the panel has them,
  *											under the permission of the panel and only where the feature is on, and the sentences of their codes are the panel's own. One thing only
  *											the surface adds: every one of them is for the folders of the clients and for no others. A client's folder lies in the group of
  *											its number in Members (\Crm\Clients::group(): K-0001 is k-0001); an action that names the group of nobody - or a folder, or the folder of a
@@ -28,7 +28,7 @@ class Files {
 	// The actions of the panel that the surface offers, and the method of this class that answers each
 	private const array ACTIONS = [
 		'files/list' => 'apiList', 'files/folder/add' => 'apiFolderAdd', 'files/folder/save' => 'apiFolderSave',
-		'files/upload' => 'apiUpload', 'files/save' => 'apiSave', 'files/delete' => 'apiDelete',
+		'files/upload' => 'apiUpload', 'files/save' => 'apiSave', 'files/delete' => 'apiDelete', 'files/remove' => 'apiRemove',
 	];
 
 	/**
@@ -42,7 +42,7 @@ class Files {
 	}
 
 	/**
-	 *	The actions of the tab: the panel's six, answered by the methods of this class
+	 *	The actions of the tab: the panel's seven, answered by the methods of this class
 	 *
 	 *	@return 	array											action => [ class, method ]
 	 */
@@ -265,7 +265,7 @@ class Files {
 	}
 
 	/**
-	 *	A file is changed or deleted where the folder it lies in is a client's. A file nobody has is the panel's to answer: nothing is touched by it
+	 *	A file is changed, removed or deleted where the folder it lies in is a client's. A file nobody has is the panel's to answer: nothing is touched by it
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$request
@@ -292,6 +292,20 @@ class Files {
 
 		if( self::fileIn( $appData, $request ) === true )
 			\Nino\Modules\Files\Admin::apiSave( $appData, $request );
+	}
+
+	/**
+	 *	The bytes of a file are removed from the server and its row stays - the panel's own action, for the files of a client's folder
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function apiRemove( array &$appData, array &$request ): void {
+
+		if( self::fileIn( $appData, $request ) === true )
+			\Nino\Modules\Files\Admin::apiRemove( $appData, $request );
 	}
 
 	/**

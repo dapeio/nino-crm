@@ -726,6 +726,71 @@ check( 'a file whose bytes are gone is the 404 of the others, not an error - for
 	&& $goneForOwner['statusCode'] === 404 && $goneForOwner['body'] === 'Not Found' && array_key_exists( 'file', $goneForOwner ) === false );
 filesVisitor();
 
+// A file removed from the server: the bytes go, the row stays with the time they went
+$removable = filesMake( $appData, $room['id'], 'Remove Me.mp3', 'REMOVE-BYTES' );
+$removablePath = (string) \Nino\Modules\Files::path( $appData, $removable['id'] );
+$usedBefore = \Nino\Modules\Files\Store::used( $appData, 'staff' );
+$removed = \Nino\Modules\Files\Store::removeBytes( $appData, $removable['id'] );
+$removedEntry = is_array( $removed ) === true ? $removed['file'] : [];
+check( 'removeBytes unlinks the bytes and keeps the row: the time they went is in gone, the name, the size, the sha256, who put it there, whether it is visible and when it came are as they were - and the answer says the entry changed',
+	is_array( $removed ) === true && $removed['changed'] === true && is_file( $removablePath ) === false && preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', (string) ( $removedEntry['gone'] ?? '' ) ) === 1
+	&& array_diff_key( $removedEntry, [ 'gone' => 1 ] ) === $removable && filesIndex( $appData )['files'][$removable['id']] === array_diff_key( $removedEntry, [ 'id' => 1 ] ) );
+check( '...the API carries it - file() and files() have gone, path() is null for a file that was removed, and a file that was not has no gone at all',
+	\Nino\Modules\Files::file( $appData, $removable['id'] ) === $removedEntry && in_array( $removedEntry, \Nino\Modules\Files::files( $appData, $room['id'] ), true ) === true && \Nino\Modules\Files::path( $appData, $removable['id'] ) === null
+	&& array_key_exists( 'gone', \Nino\Modules\Files::file( $appData, $track['id'] ) ?? [] ) === false );
+$removedIndex = filesIndex( $appData );
+$removedAgain = \Nino\Modules\Files\Store::removeBytes( $appData, $removable['id'] );
+check( '...removing it again changes nothing - the same entry with its first time, the index not rewritten',
+	is_array( $removedAgain ) === true && $removedAgain['changed'] === false && $removedAgain['file'] === $removedEntry && filesIndex( $appData ) === $removedIndex );
+file_put_contents( $removablePath, 'LEFT-OVER' );
+$strayPath = \Nino\Modules\Files\Store::path( $appData, $removable['id'] );
+$finished = \Nino\Modules\Files\Store::removeBytes( $appData, $removable['id'] );
+check( '...bytes put back under its name are no path while the entry says it was removed, and the next remove unlinks them - which is how a remove that could not unlink them is finished',
+	$strayPath === null && is_array( $finished ) === true && $finished['changed'] === false && is_file( $removablePath ) === false && \Nino\Modules\Files\Store::path( $appData, $removable['id'] ) === null );
+check( 'an id nobody has, or that is none, is "unknown" and writes nothing', \Nino\Modules\Files\Store::removeBytes( $appData, 'ffffffffffff' ) === 'unknown' && \Nino\Modules\Files\Store::removeBytes( $appData, '../etc/passwd' ) === 'unknown' && filesIndex( $appData ) === $removedIndex );
+check( 'the files of a group that were removed take no room: used() counts the bytes that are there', \Nino\Modules\Files\Store::used( $appData, 'staff' ) === $usedBefore - strlen( 'REMOVE-BYTES' ) );
+
+$handmade = filesIndex( $appData );
+$handmade['files'][$track['id']]['gone'] = 12345;
+$handmade['files'][$secret['id']]['gone'] = '';
+$handmade['files'][$cydsOwn['id']]['gone'] = '2026-03-04T05:06:07Z';
+$parsed = \Nino\Modules\Files\Store::parse( $handmade );
+check( 'an index that was edited by hand is read for gone as for the rest: a string that is something is the time, a number and an empty string are none, and the entry is left in for all three',
+	array_key_exists( 'gone', $parsed['files'][$track['id']] ) === false && array_key_exists( 'gone', $parsed['files'][$secret['id']] ) === false && $parsed['files'][$cydsOwn['id']]['gone'] === '2026-03-04T05:06:07Z' );
+
+// The route: 410 for whoever may have the file, the 404 of the others for everybody else
+$sentence = trim( (string) \Nino\Html::resolveTextfill( $appData, '/feature/files/download/removed' ) );
+$removedAnswers = [];
+
+foreach( [ 'a member of the group' => 'ada', 'a member of another group' => 'bob', 'a visitor' => '' ] as $kind => $who ) {
+	filesAs( $who );
+	$removedAnswers[$kind] = filesServe( $appData, '/.files/'. $removable['id'] )['/nino/http/response'];
+}
+
+filesVisitor();
+filesWorkbench( 'admin' );
+$removedAnswers['the workbench with the permission'] = filesServe( $appData, '/.files/'. $removable['id'] )['/nino/http/response'];
+$removedAnswers['the workbench saving it'] = filesServe( $appData, '/.files/'. $removable['id']. '?download=1' )['/nino/http/response'];
+filesWorkbench( 'plain' );
+$removedAnswers['the workbench without the permission'] = filesServe( $appData, '/.files/'. $removable['id'] )['/nino/http/response'];
+filesVisitor();
+$isGone = static fn( array $answer ): bool => $answer['statusCode'] === 410 && $answer['body'] === $GLOBALS['sentence'] && $GLOBALS['sentence'] !== '' && array_key_exists( 'file', $answer ) === false && array_key_exists( 'Content-Disposition', $answer['header'] ) === false
+	&& str_starts_with( $answer['header']['Content-Type'], 'text/plain' ) === true && $answer['header']['Cache-Control'] === 'no-store';
+$isStranger = static fn( array $answer ): bool => $answer['statusCode'] === 404 && $answer['body'] === 'Not Found' && array_key_exists( 'file', $answer ) === false;
+check( 'a file that was removed is answered 410 with the sentence of the words, as a plain text no cache keeps, to a member who may have it and to the workbench with the permission - ?download=1 too - and with no file named for the kernel',
+	$isGone( $removedAnswers['a member of the group'] ) && $isGone( $removedAnswers['the workbench with the permission'] ) && $isGone( $removedAnswers['the workbench saving it'] ) );
+check( '...a member of another group, a visitor and an account at the workbench without the permission get the 404 of every other id: nothing tells them that it was ever there',
+	$isStranger( $removedAnswers['a member of another group'] ) && $isStranger( $removedAnswers['a visitor'] ) && $isStranger( $removedAnswers['the workbench without the permission'] ) );
+
+filesAs( 'ada' );
+$browserHtml = \Nino\Html::renderHtml( $appData, '[files-browser]' );
+filesVisitor();
+check( '...and the browser of the group does not list it', str_contains( $browserHtml, $track['id'] ) === true && str_contains( $browserHtml, $removable['id'] ) === false );
+
+$told = [];
+$deletedRemoved = \Nino\Modules\Files\Store::deleteFile( $appData, $removable['id'] );
+check( 'a removed file can still be deleted whole - the row goes, nothing is left to unlink', is_array( $deletedRemoved ) === true && $deletedRemoved === $removedEntry && \Nino\Modules\Files::file( $appData, $removable['id'] ) === null );
+
 echo "\n";
 
 // --- The upload - the owner's, through the panel ----------------------------------
@@ -890,7 +955,7 @@ filesWorkbench( 'admin' );
 
 $posts = [ 'files/list' => [], 'files/folder/add' => [ 'group' => 'staff', 'name' => 'x' ], 'files/folder/save' => [ 'id' => 'ffffffffffff', 'name' => 'x' ], 'files/folder/delete' => [ 'id' => 'ffffffffffff' ],
 	'files/folder/upload-target' => [ 'id' => 'ffffffffffff' ], 'files/upload' => [ 'folder' => $room['id'], 'name' => 'a.mp3', 'size' => 1, 'upload' => '', 'index' => 0, 'count' => 1 ], 'files/save' => [ 'id' => 'ffffffffffff', 'visible' => true ],
-	'files/delete' => [ 'id' => 'ffffffffffff' ] ];
+	'files/delete' => [ 'id' => 'ffffffffffff' ], 'files/remove' => [ 'id' => 'ffffffffffff' ] ];
 $refused = [ 'signed out' => [], 'without the permission' => [] ];
 $before = filesIndex( $appData );
 
@@ -903,9 +968,9 @@ foreach( $posts as $action => $data ) {
 
 filesWorkbench( 'admin' );
 check( 'every action refuses a visitor with 401 and an account without the permission with 403, and writes nothing', array_values( array_unique( $refused['signed out'] ) ) === [ 401 ] && array_values( array_unique( $refused['without the permission'] ) ) === [ 403 ]
-	&& count( $refused['signed out'] ) === 8 && $denied['signed out'][1]['code'] === 'session' && filesIndex( $appData ) === $before && filesParts( $appData ) === [] );
-check( '...and the actions are the eight there are - none of them downloads, that is the route\'s - all under the slug of the panel', array_keys( array_filter( \Nino\Admin\Admin::actions( $appData ), static fn( string $action ): bool => str_starts_with( $action, 'files/' ), ARRAY_FILTER_USE_KEY ) )
-	=== [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/folder/delete', 'files/folder/upload-target', 'files/upload', 'files/save', 'files/delete' ] );
+	&& count( $refused['signed out'] ) === 9 && $denied['signed out'][1]['code'] === 'session' && filesIndex( $appData ) === $before && filesParts( $appData ) === [] );
+check( '...and the actions are the nine there are - none of them downloads, that is the route\'s - all under the slug of the panel', array_keys( array_filter( \Nino\Admin\Admin::actions( $appData ), static fn( string $action ): bool => str_starts_with( $action, 'files/' ), ARRAY_FILTER_USE_KEY ) )
+	=== [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/folder/delete', 'files/folder/upload-target', 'files/upload', 'files/save', 'files/delete', 'files/remove' ] );
 
 // Three chunks of a known file give one entry
 $told = [];
@@ -1727,6 +1792,50 @@ $deleteAgain = ninoCall( $appData, $panel, [ 'id' => $otherFile['id'] ], 'files/
 $deleteBad = ninoCall( $appData, $panel, [ 'id' => '../etc/passwd' ], 'files/delete' );
 check( '...the same file again, and an id that is none, are 404 files_unknown and change nothing', [ $deleteAgain[0], $deleteAgain[1]['code'], $deleteBad[0], $deleteBad[1]['code'] ] === [ 404, 'files_unknown', 404, 'files_unknown' ] );
 
+// Remove from the server: the bytes go, the row stays, nobody is told of a deletion
+$taking = filesMake( $appData, $room['id'], 'Take Away.mp3', 'TAKE-AWAY-BYTES', [ 'kind' => 'owner', 'id' => '' ], false );
+$takingPath = (string) \Nino\Modules\Files::path( $appData, $taking['id'] );
+$told = [];
+$mailsBefore = count( $mails );
+$beforeRemove = filesIndex( $appData );
+$taken = ninoCall( $appData, $panel, [ 'id' => $taking['id'] ], 'files/remove' );
+$takenLine = \Nino\Modules\Files\Admin::log( 'files/remove', [ 'id' => $taking['id'], 'name' => 'ada@example.org' ] );
+check( 'remove takes the bytes of that file and no other: the answer has the entry with gone and says it changed, the index differs from before in that one field, the bytes are gone - and no callback hears of a deletion',
+	$taken[0] === 200 && $taken[1]['changed'] === true && ( $taken[1]['file']['gone'] ?? '' ) !== '' && is_file( $takingPath ) === false && filesIndex( $appData )['files'][$taking['id']] === array_diff_key( $taken[1]['file'], [ 'id' => 1 ] )
+	&& array_diff_key( filesIndex( $appData )['files'], [ $taking['id'] => 1 ] ) === array_diff_key( $beforeRemove['files'], [ $taking['id'] => 1 ] ) && filesIndex( $appData )['folders'] === $beforeRemove['folders'] && $told === [] );
+check( '...its line of the log names the id and neither the name nor the address in the post',
+	str_contains( $takenLine, $taking['id'] ) === true && str_contains( $takenLine, 'ada@example.org' ) === false && str_contains( $takenLine, 'Take Away' ) === false );
+$takenAgain = ninoCall( $appData, $panel, [ 'id' => $taking['id'] ], 'files/remove' );
+$againIndex = filesIndex( $appData );
+check( '...the same file again is 200 with the same entry, says it changed nothing, writes the index no further - and has no line of the log, since nothing happened',
+	$takenAgain[0] === 200 && $takenAgain[1]['changed'] === false && $takenAgain[1]['file'] === $taken[1]['file'] && $againIndex === filesIndex( $appData ) && $againIndex['files'][$taking['id']]['gone'] === $taken[1]['file']['gone']
+	&& \Nino\Modules\Files\Admin::log( 'files/remove', [ 'id' => $taking['id'] ] ) === '' );
+$takenBad = [ ninoCall( $appData, $panel, [ 'id' => 'ffffffffffff' ], 'files/remove' ), ninoCall( $appData, $panel, [ 'id' => '../etc/passwd' ], 'files/remove' ), ninoCall( $appData, $panel, [], 'files/remove' ) ];
+check( '...an id nobody has, one that is none and none at all are 404 files_unknown and change nothing', array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $takenBad ) === [ '404 files_unknown', '404 files_unknown', '404 files_unknown' ] && filesIndex( $appData ) === $againIndex );
+
+$listed = ninoCall( $appData, $panel, [ 'group' => 'staff' ], 'files/list' );
+$listedTaking = array_values( array_filter( $listed[1]['files'], static fn( array $file ): bool => $file['id'] === $GLOBALS['taking']['id'] ) )[0] ?? [];
+$listedOther = array_values( array_filter( $listed[1]['files'], static fn( array $file ): bool => $file['id'] === $GLOBALS['track']['id'] ) )[0] ?? [];
+check( 'the list of the panel carries gone for a file that was removed and none for one that was not - and a file that was removed is made visible without a mail to the group, which a file with its bytes is not spared',
+	( $listedTaking['gone'] ?? '' ) === $taken[1]['file']['gone'] && array_key_exists( 'gone', $listedOther ) === false && $listedOther !== []
+	&& ( ninoCall( $appData, $panel, [ 'id' => $taking['id'], 'visible' => true, 'notify' => true ], 'files/save' )[0] === 200 && count( $mails ) === $mailsBefore ) );
+$bulk = filesMake( $appData, $room['id'], 'Bulk.mp3', str_repeat( 'x', 3 * 1048576 ) );
+$tileFull = \Nino\Modules\Files\Admin::summary( $appData )['value'];
+ninoCall( $appData, $panel, [ 'id' => $bulk['id'] ], 'files/remove' );
+$tileTaken = \Nino\Modules\Files\Admin::summary( $appData )['value'];
+$fills = \Nino\Admin\Admin::textFills( $appData, '/features/Files/text', \Nino\Admin\Admin::sessionLocale( $appData ) );
+$unitWords = [];
+
+foreach( [ 'b' => 'byte', 'kb' => 'kilobyte', 'mb' => 'megabyte', 'gb' => 'gigabyte', 'separator' => 'separator' ] as $key => $name )
+	$unitWords[$key] = (string) ( $fills['[[/_admin/files/unit/'. $name. ']]'] ?? '' );
+
+$keptBytes = static fn(): int => (int) array_sum( array_column( array_filter( filesIndex( $GLOBALS['appData'] )['files'], static fn( array $file ): bool => isset( $file['gone'] ) === false ), 'size' ) );
+$entries = count( filesIndex( $appData )['files'] );
+check( 'the tile of the dashboard counts the entries and the bytes that are on the server: removing a file of 3 MB leaves the number and takes the size off',
+	$tileFull === $entries. ' ('. \Nino\Modules\Files\Store::size( $keptBytes() + 3 * 1048576, $unitWords ). ')' && $tileTaken === $entries. ' ('. \Nino\Modules\Files\Store::size( $keptBytes(), $unitWords ). ')' && $tileFull !== $tileTaken );
+$deletedAfter = ninoCall( $appData, $panel, [ 'id' => $taking['id'] ], 'files/delete' );
+check( '...and a file that was removed is deleted by the panel whole, with the callback told of it as it was', $deletedAfter[0] === 200 && \Nino\Modules\Files::file( $appData, $taking['id'] ) === null && count( $told ) === 1 && $told[0][0] === '/files/delete' && ( $told[0][1]['gone'] ?? '' ) !== '' );
+
 $kept = filesMake( $appData, $room['id'], 'Survivor.mp3', 'SURVIVOR' );
 $told = [];
 $inFolder = \Nino\Modules\Files::files( $appData, $newId );
@@ -2163,6 +2272,26 @@ $restored = (array) include $staging. '/data/files.php';
 unlink( $dataDir. '/files/567890123456.mp3' );
 check( 'a restore keeps the entries of the backup whose bytes are there (an id of digits among them) and drops the rest - the one that has none, and one that names an extension that is none - and leaves the folders', array_map( 'strval', array_keys( $restored['files'] ) ) === [ $live['id'], '567890123456' ] && $restored['folders'] === $staged['folders']
 	&& $restored['files'][$live['id']] === array_diff_key( $live, [ 'id' => 1 ] ) );
+// An entry that was removed from the server has no bytes and stays - and so does one the live index has removed since the day of the backup
+$staging2 = $sandbox. '/restore-removed';
+mkdir( $staging2. '/data', 0755, true );
+$since = filesMake( $appData, $room['id'], 'Removed Since.mp3', 'SINCE-BYTES' );
+\Nino\Modules\Files\Store::removeBytes( $appData, $since['id'] );
+$liveSince = \Nino\Modules\Files::file( $appData, $since['id'] );
+$entryOf = static fn( array $file ): array => array_diff_key( $file, [ 'id' => 1 ] );
+$stagedRemoved = [ 'folders' => $staged['folders'], 'files' => [
+	'dddddddddddd' => [ 'folder' => $room['id'], 'name' => 'Removed Then.mp3', 'ext' => 'mp3', 'size' => 5, 'mime' => 'audio/mpeg', 'sha256' => '', 'by' => [ 'kind' => 'owner', 'id' => '' ], 'visible' => true, 'created' => '2026-01-01T00:00:00Z', 'gone' => '2026-02-02T02:02:02Z' ],
+	$since['id'] => $entryOf( $since ),
+	'aaaaaaaaaaaa' => $staged['files']['aaaaaaaaaaaa'],
+] ];
+file_put_contents( $staging2. '/data/files.php', '<?php return '. var_export( $stagedRemoved, true ). ';' );
+$argsRemoved = [ 'dataDir' => $dataDir, 'staging' => $staging2 ];
+\Nino\Callbacks::doCallbacks( $appData, '/nino/admin/restore', $argsRemoved );
+$restoredRemoved = (array) include $staging2. '/data/files.php';
+check( 'a restore keeps an entry that was removed from the server, with the time it carries, and takes over the removal of a file the live index has removed since the backup - and drops the entry that has neither bytes nor a removal',
+	array_map( 'strval', array_keys( $restoredRemoved['files'] ) ) === [ 'dddddddddddd', $since['id'] ] && $restoredRemoved['files']['dddddddddddd']['gone'] === '2026-02-02T02:02:02Z' && $restoredRemoved['files'][$since['id']]['gone'] === $liveSince['gone'] );
+\Nino\Modules\Files\Store::deleteFile( $appData, $since['id'] );
+
 // A staged index that can be read and not written: the filtered index cannot be put back. The write is not silenced - php says so in a warning -
 // and the staged index is what it was, since a failed open does not touch it
 FilesBlockedStage::$index = '<?php return '. var_export( $staged, true ). ';';

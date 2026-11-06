@@ -1091,6 +1091,45 @@ ninoVisit( $appData, '/club/review?review='. $track['id'] );
 $bobRefused .= \Nino\Html::renderHtml( $appData, '[review-player]' );
 check( 'a member of another group is shown the list with invalid for the staff\'s file, and nothing of it', reviewFind( $bobRefused, '//audio | //video | //form' ) === [] && substr_count( $bobRefused, 'review-state' ) >= 2 && str_contains( $bobRefused, $track['id'] ) === false || str_contains( $bobRefused, 'review?review='. $guestTrack['id'] ) );
 
+// A file that was removed from the server: no medium any more - the comments stay, to be read, with no form to add to them
+reviewVisitor();
+$vanished = reviewUpload( $appData, $room['id'], 'Vanished.mp3', $mp3 );
+$vanishedFirst = \Nino\Modules\Review::add( $appData, $vanished['id'], $byAda, 12.0, 'Intro is long' );
+$vanishedAnswer = \Nino\Modules\Review::add( $appData, $vanished['id'], $owner, null, 'Noted', $vanishedFirst['id'] );
+reviewAs( 'ada' );
+$mediaBefore = array_column( \Nino\Modules\Review::media( $appData ), 'id' );
+$vanishedRemoved = \Nino\Modules\Files\Store::removeBytes( $appData, $vanished['id'] );
+$mediaAfter = array_column( \Nino\Modules\Review::media( $appData ), 'id' );
+ninoVisit( $appData, '/club/review' );
+$listAfter = \Nino\Html::renderHtml( $appData, '[review-player]' );
+check( 'a file that was removed from the server is no medium: media() and the list of the player leave it out, and every other file of the group stays',
+	in_array( $vanished['id'], $mediaBefore, true ) === true && is_array( $vanishedRemoved ) === true && in_array( $vanished['id'], $mediaAfter, true ) === false && array_values( array_diff( $mediaBefore, [ $vanished['id'] ] ) ) === $mediaAfter
+	&& str_contains( $listAfter, $vanished['id'] ) === false && count( reviewFind( $listAfter, '//li[contains(@class, "review-item")]' ) ) === count( $mediaAfter ) );
+check( '...its comments are still in the store, and the panel\'s are those of Files: the file has an entry, so they are not dropped', count( \Nino\Modules\Review::comments( $appData, $vanished['id'] ) ) === 1 && count( \Nino\Modules\Review::comments( $appData, $vanished['id'] )[0]['answers'] ) === 1 );
+
+ninoVisit( $appData, '/club/review?review='. $vanished['id'] );
+$goneHtml = \Nino\Html::renderHtml( $appData, '[review-player]' );
+$goneBoxes = reviewFind( $goneHtml, '//div[contains(concat(" ", normalize-space(@class), " "), " review-player ")]' );
+$goneItems = reviewFind( $goneHtml, '//li[@data-review-id]' );
+check( 'asking for it shows its player with the comments and no medium - no audio, no video, no form - marked as removed, with its name, the way back and the count of the comments and answers, and no state: it is no refusal',
+	count( $goneBoxes ) === 1 && $goneBoxes[0]->getAttribute( 'data-review-file' ) === $vanished['id'] && in_array( 'review-player--removed', reviewClasses( $goneBoxes[0] ), true ) === true && reviewFind( $goneHtml, '//audio | //video | //form' ) === []
+	&& reviewFind( $goneHtml, '//h3' )[0]->textContent === 'Vanished.mp3' && reviewFind( $goneHtml, '//p[contains(@class, "review-player__back")]/a' )[0]->getAttribute( 'href' ) === '/club/review' && reviewFind( $goneHtml, '//p[contains(@class, "review-state")]' ) === []
+	&& array_map( static fn( DOMElement $item ): string => $item->getAttribute( 'data-review-id' ), $goneItems ) === [ $vanishedFirst['id'], $vanishedAnswer['id'] ] && str_contains( $goneHtml, 'Intro is long' ) === true && str_contains( $goneHtml, '/.files/'. $vanished['id'] ) === false );
+check( '...and it has no button to answer a comment with - there is no form for the answer - where a player with its medium has one for each',
+	reviewFind( $goneHtml, '//button[@data-review-reply]' ) === [] && count( reviewFind( $html, '//button[@data-review-reply]' ) ) > 0 );
+check( '...the time of a comment is the time and no link: there is no file to play it in', reviewFind( $goneHtml, '//a[contains(@class, "review-comment__time")]' ) === [] && count( reviewFind( $goneHtml, '//span[contains(@class, "review-comment__time")]' ) ) === 1
+	&& trim( reviewFind( $goneHtml, '//span[contains(@class, "review-comment__time")]' )[0]->textContent ) === \Nino\Modules\Review::clock( 12.0 ) );
+
+// ...and nobody adds to them: a post for a file that was removed is the state invalid, and nothing is stored
+reviewFresh( $appData );
+$told = [];
+$goneBefore = reviewData( $appData );
+$goneCommented = reviewPost( 'ada', [ 'file' => $vanished['id'], 'text' => 'Too late' ] );
+check( 'a comment on a file that was removed is refused as invalid - 303 back to the page with the state - and nothing is stored or told', $goneCommented[0] === 303 && $goneCommented[1] === '/club/review?review='. $vanished['id']. '&review-state=invalid' && reviewData( $appData ) === $goneBefore && $told === [] );
+$strangerAnswer = reviewPost( 'bob', [ 'file' => $vanished['id'], 'text' => 'Hello' ] );
+check( '...and a member who may not see the file is the 404 of every file: nothing tells them it ever was', $strangerAnswer[0] === 404 && $strangerAnswer[2] === 'Not Found' );
+reviewVisitor();
+
 // Names are text wherever they are written
 $eve = \Nino\Modules\Members::add( $appData, 'eve@example.org', '<img src=x onerror=alert(1)> [[/project/company/general/name]] [review-player]', 'staff' );
 \Nino\Modules\Review::add( $appData, $track['id'], [ 'kind' => 'member', 'id' => $eve['id'] ], 5.0, 'From eve' );
@@ -1797,6 +1836,29 @@ $aloneIndex = (array) include $alone. '/data/files.php';
 check( 'on the index as the backup brought it Review keeps the comments of the files whose bytes are in the live directory and drops the rest: a file the index lacks, one whose bytes are gone and one whose extension is a way out of the directory - and what it writes back is read for what it is: an entry that is no comment is not carried along',
 	array_map( 'strval', array_keys( $aloneRestored ) ) === [ $track['id'], $digits ] && $aloneRestored[$track['id']] === $stagedComments[$track['id']] && $aloneRestored[$digits] === $stagedComments[$digits] );
 check( '...and the index of the backup is not Review\'s to touch', $aloneIndex === $sneaky );
+
+// A file that was removed from the server has no bytes and keeps its comments: its entry says so in the backup - or, for a file removed since the day of the backup, the live index does
+$removedStage = $sandbox. '/restore-removed';
+mkdir( $removedStage. '/data', 0755, true );
+$removedIndex = $stagedIndex;
+$removedIndex['files']['eeeeeeeeeeee'] = [ 'folder' => $room['id'], 'name' => 'Removed.mp3', 'ext' => 'mp3', 'size' => 5, 'mime' => 'audio/mpeg', 'sha256' => '', 'by' => [ 'kind' => 'owner', 'id' => '' ], 'visible' => true, 'created' => '', 'gone' => '2026-02-02T02:02:02Z' ];
+$removedIndex['files'][$vanished['id']] = array_diff_key( $vanished, [ 'id' => 1, 'gone' => 1 ] );
+$removedComments = [ 'eeeeeeeeeeee' => [ 'dddddddddddd' => $comment( 'Removed then' ) ], $vanished['id'] => [ 'dddddddddddd' => $comment( 'Removed since' ) ], $bytesGone => [ 'dddddddddddd' => $comment( 'Bytes gone' ) ] ];
+file_put_contents( $removedStage. '/data/files.php', '<?php return '. var_export( $removedIndex, true ). ';' );
+file_put_contents( $removedStage. '/data/review.php', '<?php return '. var_export( $removedComments, true ). ';' );
+$removedArgs = [ 'dataDir' => $dataDir, 'staging' => $removedStage ];
+reviewTry( static function() use ( &$appData, &$removedArgs ): void {
+	\Nino\Modules\Review::callbackRestore( $appData, $removedArgs );
+} );
+$removedRestored = (array) include $removedStage. '/data/review.php';
+check( 'a restore keeps the comments on a file that was removed from the server - the entry of the backup says so, or the live index does for a file removed since - and drops those on a file whose bytes are gone with no removal behind it',
+	array_map( 'strval', array_keys( $removedRestored ) ) === [ 'eeeeeeeeeeee', $vanished['id'] ] && $removedRestored[$vanished['id']] === $removedComments[$vanished['id']] );
+unlink( $removedStage. '/data/files.php' );
+file_put_contents( $removedStage. '/data/review.php', '<?php return '. var_export( $removedComments + [ 'ffffffffffff' => [ 'dddddddddddd' => $comment( 'Nobody has it' ) ] ], true ). ';' );
+reviewTry( static function() use ( &$appData, &$removedArgs ): void {
+	\Nino\Modules\Review::callbackRestore( $appData, $removedArgs );
+} );
+check( '...without an index in the backup the live one is the measure for it as well: the file removed there keeps its comments', array_map( 'strval', array_keys( (array) include $removedStage. '/data/review.php' ) ) === [ $vanished['id'] ] );
 
 // A backup that carries no index of the files: the files the live Files feature has are the measure
 file_put_contents( $staging. '/data/review.php', '<?php return '. var_export( [ $track['id'] => [ 'dddddddddddd' => $comment( 'Live' ) ], 'ffffffffffff' => [ 'dddddddddddd' => $comment( 'Nobody has it' ) ], $pack['id'] => [ 'dddddddddddd' => $comment( 'A zip is a file too' ) ], $lost['id'] => [ 'dddddddddddd' => $comment( 'Bytes gone live' ) ] ], true ). ';' );

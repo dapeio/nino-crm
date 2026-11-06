@@ -332,8 +332,14 @@ input[role="switch"]:focus-visible { outline: 2px solid var(--accent); outline-o
 
 /* Projekte: the switch of the list, a done project dimmed, the progress of an upload */
 .sw { display: inline-flex; align-items: center; gap: 8px; color: var(--fg-2); white-space: nowrap }
-.tbl tr.dim td { color: var(--fg-3) }
+.tbl tr.dim td { color: var(--fg-2) }
 .tbl input[role="switch"] { vertical-align: middle }
+.tbl td .gone-note { display: block; margin-top: 2px; color: var(--fg-2); font-size: 12px }
+
+/* Uploads: the column of the boxes, the line of the choice beside the buttons */
+.tbl th.pick, .tbl td.pick { width: 36px; padding-right: 0 }
+#uploads-actions { align-items: center; margin: 0 0 12px }
+#uploads-sum { margin: 0 0 12px }
 .up-list { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px }
 .up-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center }
 .up-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }

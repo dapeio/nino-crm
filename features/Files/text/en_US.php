@@ -68,6 +68,11 @@ return [
 	'[[/_admin/files/confirm/file]]'				=> 'Delete %s? The file is gone for good.',
 	'[[/_admin/files/error/save]]'					=> 'The file could not be changed.',
 	'[[/_admin/files/error/delete]]'				=> 'The file could not be deleted.',
+	'[[/_admin/files/label/remove]]'				=> 'Remove from the server',
+	'[[/_admin/files/label/removed]]'			=> 'Removed on %s',
+	'[[/_admin/files/title/remove]]'				=> 'Remove the file from the server',
+	'[[/_admin/files/confirm/remove]]'			=> 'Remove %s from the server? The bytes are gone afterwards; the entry with its name, size and date stays, and the members read that the file was removed.',
+	'[[/_admin/files/error/remove]]'			=> 'The file could not be removed.',
 
 	// The owner's upload
 	'[[/_admin/files/label/upload-to]]'				=> 'Upload into %s',

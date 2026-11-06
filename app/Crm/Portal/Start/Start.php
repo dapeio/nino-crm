@@ -180,11 +180,11 @@ class Start {
 			if( $project['folder'] === '' || in_array( $project['folder'], $folders, true ) === false )
 				continue;
 
-			// What the member put there is not news to the member
+			// What the member put there is not news to the member, and a file that was removed from the server is none to anybody
 			$new = array_filter( Files::visible( $appData, $project['folder'] ), static function( array $file ) use ( $limit, $member ): bool {
 				$created = strtotime( (string) $file['created'] );
 
-				return $created !== false && $created > $limit && ( ( $file['by']['kind'] ?? '' ) === 'member' && ( $file['by']['id'] ?? '' ) === $member['id'] ) === false;
+				return isset( $file['gone'] ) === false && $created !== false && $created > $limit && ( ( $file['by']['kind'] ?? '' ) === 'member' && ( $file['by']['id'] ?? '' ) === $member['id'] ) === false;
 			} );
 
 			if( $new !== [] )

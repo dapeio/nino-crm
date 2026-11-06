@@ -73,8 +73,8 @@ return [
 				'de_DE' => 'Von diesem Feature eingehängt: Das Feature Dateien löst es für jede Datei aus, die es löscht – in seinem Panel oder mit ihrem Ordner –, und die Kommentare zu dieser Datei fallen mit ihr weg.',
 			],
 			'/nino/admin/restore' => [
-				'en_US' => 'A restore of the daily backup: the comments of the backup are kept for the files its index of the Files feature still has with their bytes, and the rest dropped. Where the backup carries no index of the files, the files the live Files feature has are the measure.',
-				'de_DE' => 'Eine Wiederherstellung der täglichen Sicherung: Die Kommentare der Sicherung bleiben für die Dateien, die ihr Index des Features Dateien noch mit ihren Bytes hat, der Rest fällt weg. Wo die Sicherung keinen Index der Dateien enthält, sind die Dateien, die das Feature Dateien live hat, der Maßstab.',
+				'en_US' => 'A restore of the daily backup: the comments of the backup are kept for the files its index of the Files feature still has with their bytes - and for those removed from the server whose entry stays -, and the rest dropped. Where the backup carries no index of the files, the files the live Files feature has are the measure.',
+				'de_DE' => 'Eine Wiederherstellung der täglichen Sicherung: Die Kommentare der Sicherung bleiben für die Dateien, die ihr Index des Features Dateien noch mit ihren Bytes hat – und für die, die vom Server entfernt wurden und deren Eintrag bleibt –, der Rest fällt weg. Wo die Sicherung keinen Index der Dateien enthält, sind die Dateien, die das Feature Dateien live hat, der Maßstab.',
 			],
 		],
 		'install' => [

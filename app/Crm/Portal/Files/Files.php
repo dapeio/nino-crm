@@ -90,7 +90,8 @@ class Files {
 	/**
 	 *	The rows of a list of files: the icon of the kind and the name - a link to the player for an audio or video file where Review is on and a
 	 *	listen address is given, else to the download -, "neu" for a file younger than NEW_DAYS, the size, the day, the button that plays and the
-	 *	download. The file that is being played is marked
+	 *	download. The file that is being played is marked. A file that was removed from the server has its name, size and day and no way to open it:
+	 *	the sentence that it is gone and that the studio can be written to stands in the place of the buttons
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$files				As Files::files() has them
@@ -117,6 +118,22 @@ class Files {
 			if( $url === '' )
 				continue;
 
+			if( isset( $file['gone'] ) === true ) {
+
+				$rows .= Portal::render( 'file-gone', [
+					'[[id]]'      => \Nino\Modules\Components::escape( $file['id'] ),
+					'[[mime]]'    => \Nino\Modules\Components::escape( $file['mime'] ),
+					'[[icon]]'    => Icons::ofFile( $file['mime'] ),
+					'[[name]]'    => \Nino\Modules\Components::escape( $file['name'] ),
+					'[[size]]'    => \Nino\Modules\Components::escape( \Nino\Modules\Files\Store::size( $file['size'], $words ) ),
+					'[[created]]' => \Nino\Modules\Components::escape( $file['created'] ),
+					'[[date]]'    => \Nino\Modules\Components::escape( Documents\Render::day( substr( $file['created'], 0, 10 ) ) ),
+					'[[gone]]'    => self::gone( $appData ),
+				] );
+
+				continue;
+			}
+
 			$created = strtotime( $file['created'] );
 			$plays = $review === true && \Nino\Modules\Review::kind( $file['mime'] ) !== '';
 			$name = \Nino\Modules\Components::escape( $file['name'] );
@@ -142,6 +159,33 @@ class Files {
 		}
 
 		return $rows;
+	}
+
+	/**
+	 *	The sentence for a file that was removed from the server: that it is gone, and - where the site has a contact address - the way to ask for it again as a link to
+	 *	write to that address
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	string										Markup
+	 */
+	public static function gone( array &$appData ): string {
+
+		$mail = Portal::contactMail( $appData );
+
+		return Portal::render( 'file-gone-text', [ '[[ask]]' => $mail !== '' ? Portal::render( 'file-gone-mail', [ '[[address]]' => \Nino\Modules\Components::escape( $mail ) ] ) : Portal::template( 'file-gone-ask' ) ] );
+	}
+
+	/**
+	 *	The sentence for a removed file as a note, which stands over the comments of a file that has no medium any more
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	string										Markup
+	 */
+	public static function goneNote( array &$appData ): string {
+
+		return Portal::render( 'file-gone-note', [ '[[gone]]' => self::gone( $appData ) ] );
 	}
 
 	/**

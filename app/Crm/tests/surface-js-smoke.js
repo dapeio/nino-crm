@@ -157,6 +157,7 @@ function world( options ) {
 	const windowListeners = {};
 	const dialogs = [];
 	const opened = [];
+	const downloads = [];
 	const storage = {};
 	const reloads = [];
 	const tabs = [];
@@ -166,7 +167,7 @@ function world( options ) {
 
 	const nav = element('nav');
 	nav.id = 'nav';
-	[ 'uebersicht', 'belege', 'kunden', 'projekte', 'positionen', 'pdf', 'einstellungen' ].forEach( function( key ) {
+	[ 'uebersicht', 'belege', 'kunden', 'projekte', 'uploads', 'positionen', 'pdf', 'einstellungen' ].forEach( function( key ) {
 		const anchor = element('a');
 		anchor.setAttribute( 'data-r', key );
 		anchor.setAttribute( 'href', '#'+ key );
@@ -205,6 +206,12 @@ function world( options ) {
 		// A form submits as the browser's requestSubmit() does: its listeners of submit hear it
 		if( tag === 'form' )
 			el.requestSubmit = function() { fire( el, 'submit', { target : el, preventDefault : function() {} } ) };
+
+		// A link that is clicked is a download the page asked for: its address is kept, and nothing is loaded
+		if( tag === 'a' ) {
+			const press = el.click;
+			el.click = function() { downloads.push( el.getAttribute( 'href' ) ); return press === undefined ? undefined : press.call( el ) };
+		}
 
 		if( tag === 'dialog' ) {
 			el.open = false;
@@ -278,7 +285,7 @@ function world( options ) {
 	const app = win.Nino.crm.app;
 
 	return {
-		app : app, win : win, page : page, calls : calls, tabs : tabs, main : main, toast : toast, dialogRoot : dialogRoot, count : count, clientCount : clientCount, nav : nav, timers : timers, dialogs : dialogs, opened : opened, reloads : reloads, storage : storage, answers : opts.answers,
+		app : app, win : win, page : page, calls : calls, tabs : tabs, main : main, toast : toast, dialogRoot : dialogRoot, count : count, clientCount : clientCount, nav : nav, timers : timers, dialogs : dialogs, opened : opened, downloads : downloads, reloads : reloads, storage : storage, answers : opts.answers,
 		location : location, documentListeners : documentListeners, windowListeners : windowListeners,
 		boot : function() { app.boot( block ) },
 		last : function( action ) { return calls.filter( function( call ) { return call.action === action } ).pop() },
@@ -2479,7 +2486,7 @@ function press( w, key, target, mods ) {
 
 	const first = await iopen( '' );
 	check( 'the first showing of the page asks for the status before it draws the Übersicht, and a module that is not whole sends it to the Einrichtung: the overview is not asked for', first.sent().join() === 'crm/status' && first.location.hash === '#einrichtung' && first.all( 'crm-documents/overview' ).length === 0 && all( first.main, '#einrichtung-rows' ).length === 1 );
-	check( '...the rail has its seven entries (PDF-Vorlagen hidden for an account without the Pdf permission) and none is marked: the Einrichtung is no entry of it', all( first.nav, '[data-r]' ).length === 7 && all( first.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).length === 0 );
+	check( '...the rail has its eight entries (PDF-Vorlagen hidden for an account without the Pdf permission) and none is marked: the Einrichtung is no entry of it', all( first.nav, '[data-r]' ).length === 8 && all( first.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).length === 0 );
 	check( '...a row for each item of the status, its word and its state: done for the module and the data directory, to do for the rest', irows( first ).length === ifresh.length && Array.from( irows( first ) ).map( function( li ) { return li.getAttribute( 'data-key' )+ ':'+ li.getAttribute( 'data-state' ) } ).join() === 'module:ok,data:ok,members:todo,files:todo,review:todo,sign:todo,pdf:todo,events:todo,portal:todo,pdf-templates:todo,home:todo,mail-cap:todo'
 		&& textOf( irows( first )[2] ).indexOf( texts['einrichtung.row-members'] ) === 0 && textOf( irows( first )[2] ).indexOf( texts['status.members-off'] ) !== -1 && textOf( irows( first )[2] ).indexOf( texts['einrichtung.state-todo'] ) !== -1 && textOf( irows( first )[0] ).indexOf( texts['status.allok'] ) === -1 );
 	check( '...what is missing is said in one sentence of the status: the portal names what it lacks, the PDF templates their keys, the start page that it is not the door yet', textOf( irows( first )[8] ).indexOf( texts['status.portal-partial'].replace( '%s', texts['status.lacks-paths']+ ', '+ texts['status.lacks-start'] ) ) !== -1
@@ -4007,6 +4014,7 @@ function press( w, key, target, mods ) {
 			'files/list' : function() { return [ 200, { groups : [ 'k-0001' ], group : 'k-0001', folders : [], files : [], types : [ 'txt' ], limits : { chunk : 1000, max : 5000, php : 0, quota : 0, used : 0 } } ] },
 			'files/save' : function( data ) { jposts.push( [ 'files/save', data ] ); return [ 200, { file : {}, mailed : data.notify === true && data.visible === true ? 2 : 0 } ] },
 			'files/delete' : function( data ) { jposts.push( [ 'files/delete', data ] ); return [ 200, {} ] },
+			'files/remove' : function( data ) { jposts.push( [ 'files/remove', data ] ); return [ 200, { file : {}, changed : true } ] },
 			'files/upload' : function( data ) { return [ 200, data.index + 1 < data.count ? { upload : '0123456789abcdef', index : data.index } : { id : 'b00000000001', name : data.name, size : data.size, mailed : data.notify === true ? 2 : 0 } ] },
 		}, over || {} );
 	};
@@ -4254,7 +4262,7 @@ function press( w, key, target, mods ) {
 	check( '...where the card says the setting is on, the box starts ticked: the customer is informed by default as the setting says - and a box of the tab is not carried to another visit of it', jf( jon, 'project-notify' ).checked === true && jf( jdf, 'project-notify' ).checked === true );
 	jf( jon, 'project-notify' ).checked = false;
 	fire( jf( jon, 'project-notify' ), 'change', { target : jf( jon, 'project-notify' ) } );
-	click( jon, all( jfrows( jon )[0], 'button' )[0] );
+	click( jon, all( jfrows( jon )[0], 'button' ).find( function( b ) { return b.dataset.del !== undefined } ) );
 	await settle();
 	click( jon, all( jon.dialogs[0], 'button' ).pop() );
 	await settle();
@@ -4273,7 +4281,7 @@ function press( w, key, target, mods ) {
 	await settle();
 	check( '...(the file was gone: the switch is as it was)', all( jfrows( jdf2 )[1], 'input' )[0].checked === false && jdf2.toast.textContent === texts['error.files_unknown'] );
 	const jdel = await jopen( '#projekt-00001-dateien' );
-	click( jdel, all( jfrows( jdel )[0], 'button' )[0] );
+	click( jdel, all( jfrows( jdel )[0], 'button' ).find( function( b ) { return b.dataset.del !== undefined } ) );
 	check( 'Löschen of a file asks first, with its name; nothing is posted before the yes', jdel.dialogs.length === 1 && jposts.length === 0 && textOf( all( jdel.dialogs[0], 'p' )[0] ).indexOf( 'Notizen.txt' ) !== -1 && all( jdel.dialogs[0], 'button' ).pop().classList.contains( 'danger' ) === true );
 	jyes( jdel, 0 );
 	await settle();
@@ -4285,7 +4293,180 @@ function press( w, key, target, mods ) {
 	check( 'where the feature is off the tab says so and has nothing else', jf( joff, 'project-file-table' ) === undefined && textOf( jf( joff, 'project-files' ) ) === texts['projects.files-off'] && all( jtab( joff, 'dateien' ), '.n' ).length === 0 );
 	const jedStale = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { allowed : true } ) ] } }, { crm : true, pdf : false, elements : true, text : false, files : false } );
 	const jedStale2 = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { allowed : false } ) ] } } );
-	check( '...so are the files of the card: what the answer says now decides whether they can be changed and uploaded', jf( jedStale, 'up-input' ) !== undefined && all( jf( jedStale, 'project-file-table' ), 'button' ).length === 2 && jf( jedStale2, 'up-input' ) === undefined && all( jf( jedStale2, 'project-file-table' ), 'button' ).length === 0 );
+	check( '...so are the files of the card: what the answer says now decides whether they can be changed and uploaded', jf( jedStale, 'up-input' ) !== undefined && all( jf( jedStale, 'project-file-table' ), 'button' ).filter( function( b ) { return b.dataset.del !== undefined } ).length === 2 && jf( jedStale2, 'up-input' ) === undefined && all( jf( jedStale2, 'project-file-table' ), 'button' ).length === 0 );
+
+	// --- a file removed from the server: the tab, the line of the Übersicht and the screen Uploads
+	const fillT = function( key, ...values ) { let at = 0; return texts[key].replace( /%s/g, function() { return String( values[at++] ?? '' ) } ) };
+	const rgone = { id : 'a00000000009', name : 'Gone <i>Take</i>.wav', ext : 'wav', size : 3000000, mime : 'audio/wav', created : '2026-09-01T10:00:00Z', visible : true, gone : '2026-11-02T08:00:00Z', by : { kind : 'owner', label : '' }, url : '/.files/a00000000009' };
+	const rwithGone = { 'crm-projekte/get' : function() { return [ 200, jget( { list : [ jfiles[0], rgone, jfiles[1] ] } ) ] } };
+	const rrm = await jopen( '#projekt-00001-dateien', rwithGone );
+	const rremoveOf = function( row ) { return all( row, 'button' ).find( function( b ) { return b.dataset.remove !== undefined } ) };
+	const rdeleteOf = function( row ) { return all( row, 'button' ).find( function( b ) { return b.dataset.del !== undefined } ) };
+	check( 'a file that was removed from the server stays in the table: its name is text with the day its bytes went under it, it has no link, no switch and no Vom Server entfernen - Löschen stays - and the others have both buttons',
+		jfrows( rrm ).length === 3 && textOf( jfrows( rrm )[1].children[0] ) === rgone.name+ fillT( 'projects.file-gone', '02.11.2026' ) && all( jfrows( rrm )[1], 'a' ).length === 0 && all( jfrows( rrm )[1], 'input' ).length === 0 && rremoveOf( jfrows( rrm )[1] ) === undefined && rdeleteOf( jfrows( rrm )[1] ) !== undefined
+		&& jfrows( rrm )[1].classList.contains( 'dim' ) === true && all( jfrows( rrm )[1], '[data-gone]' ).length === 1 && findAll( jf( rrm, 'project-file-table' ), function( n ) { return n.tagName === 'I' } ).length === 0
+		&& [ 0, 2 ].every( function( at ) { return rremoveOf( jfrows( rrm )[at] ) !== undefined && rdeleteOf( jfrows( rrm )[at] ) !== undefined && textOf( rremoveOf( jfrows( rrm )[at] ) ) === texts['projects.file-remove'] } ) );
+	click( rrm, rdeleteOf( jfrows( rrm )[1] ) );
+	check( '...deleting it asks in the words for a row whose bytes are gone already, with its name', rrm.dialogs.length === 1 && textOf( all( rrm.dialogs[0], 'p' )[0] ) === fillT( 'projects.file-delete-gone-text', rgone.name ) && jposts.length === 0 );
+	const rrm2 = await jopen( '#projekt-00001-dateien', rwithGone );
+	click( rrm2, rremoveOf( jfrows( rrm2 )[0] ) );
+	check( 'Vom Server entfernen asks first, with the name of the file and in danger colours; nothing is posted before the yes', rrm2.dialogs.length === 1 && jposts.length === 0 && textOf( all( rrm2.dialogs[0], 'p' )[0] ) === fillT( 'projects.file-remove-text', 'Notizen.txt' ) && all( rrm2.dialogs[0], 'button' ).pop().classList.contains( 'danger' ) === true );
+	jyes( rrm2, 0 );
+	await settle();
+	check( '...the yes posts the Files panel\'s files/remove with the id and nothing else, the card is read again and the toast says the file is removed', JSON.stringify( jposts ) === JSON.stringify( [ [ 'files/remove', { id : 'a00000000001' } ] ] ) && rrm2.all( 'crm-projekte/get' ).length === 2 && rrm2.toast.textContent === texts['projects.file-removed'] );
+
+	const rall = await jopen( '#projekt-00001-dateien', rwithGone );
+	const rallButton = jf( rall, 'files-remove-all' );
+	check( 'above the table stands Alle Dateien des Projekts entfernen - once, before the list - where there is a file on the server', rallButton !== undefined && rallButton.textContent === texts['projects.remove-all'] && all( rall.main, '#files-remove-all' ).length === 1 );
+	click( rall, rallButton );
+	check( '...it asks with the number and the size of the files that are on the server - the one that was removed does not count: 2 files, 1,1 MB - and posts nothing yet', rall.dialogs.length === 1 && jposts.length === 0 && textOf( all( rall.dialogs[0], 'p' )[0] ) === fillT( 'projects.remove-all-text', 2, '1,1 MB' ) );
+	jyes( rall, 0 );
+	await settle();
+	check( '...the yes removes them one after the other, those two and not the one that is gone, reads the card again and says how many', JSON.stringify( jposts ) === JSON.stringify( [ [ 'files/remove', { id : 'a00000000001' } ], [ 'files/remove', { id : 'a00000000002' } ] ] ) && rall.all( 'crm-projekte/get' ).length === 2 && rall.toast.textContent === fillT( 'projects.removed-all', 2 ) );
+	const rone = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { list : [ rgone, jfiles[1] ] } ) ] } } );
+	click( rone, jf( rone, 'files-remove-all' ) );
+	check( '...one file is asked for with the sentence for one, and the size', textOf( all( rone.dialogs[0], 'p' )[0] ) === fillT( 'projects.remove-all-text-one', '51 KB' ) );
+	let rrefusals = 0;
+	const rthird = Object.assign( {}, jfiles[0], { id : 'a00000000003', name : 'Dritte.txt', url : '/.files/a00000000003' } );
+	const rrefuse = await jopen( '#projekt-00001-dateien', Object.assign( {}, rwithGone, { 'crm-projekte/get' : function() { return [ 200, jget( { list : [ jfiles[0], rgone, jfiles[1], rthird ] } ) ] }, 'files/remove' : function( data ) { jposts.push( [ 'files/remove', data ] ); return ++rrefusals === 2 ? [ 404, { error : 'x', code : 'files_unknown' } ] : [ 200, { file : {}, changed : true } ] } } ) );
+	click( rrefuse, jf( rrefuse, 'files-remove-all' ) );
+	jyes( rrefuse, 0 );
+	await settle();
+	check( '...a refusal stops it where it is: of three files the second is refused, there is no third, the toast is the refusal and not the success - and the card is read again, to show what is there', jposts.length === 2 && rrefuse.toast.textContent === texts['error.files_unknown'] && rrefuse.all( 'crm-projekte/get' ).length === 2 );
+	const rallGone = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { list : [ rgone ] } ) ] } } );
+	const rlocked = await jopen( '#projekt-00001-dateien', rwithGone, { crm : true, pdf : false, elements : true, text : false, files : false } );
+	check( 'there is no Alle Dateien des Projekts entfernen where every file is removed already, and neither it nor Vom Server entfernen where the account may not change the files - it does not even ask', jf( rallGone, 'files-remove-all' ) === undefined && jf( rlocked, 'files-remove-all' ) === undefined
+		&& all( jf( rlocked, 'project-file-table' ), 'button' ).length === 0 && rlocked.all( 'files/remove' ).length === 0 );
+
+	// The Übersicht: the finished projects whose files lie on the server
+	const rstale = async function( stale ) { return jopen( '#uebersicht', { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], stale : stale, recent : [], settings : settings } ] } } ) };
+	const rsOne = await rstale( { count : 1, bytes : 1048576, days : 60 } );
+	const rsMany = await rstale( { count : 3, bytes : 5368709120, days : 60 } );
+	const rsNone = await rstale( { count : 0, bytes : 0, days : 60 } );
+	const rsLine = function( w ) { return all( w.main, '#needs-stale' )[0] };
+	check( 'the Übersicht has the line of the finished projects whose files lie on the server, with their number, the days and the size - a line in the card that needs the owner, which leads to the projects',
+		rsLine( rsOne ) !== undefined && textOf( rsLine( rsOne ) ) === fillT( 'needs.stale-one', 1, 60, '1 MB' ) && textOf( rsLine( rsMany ) ) === fillT( 'needs.stale-many', 3, 60, '5 GB' ) && all( rsLine( rsMany ), 'a' )[0].getAttribute( 'href' ) === '#projekte'
+		&& all( rsLine( rsMany ), 'a' )[0].parentNode.parentNode === rsLine( rsMany ) && rsLine( rsMany ).parentNode.classList.contains( 'list-mini' ) === true && texts['needs.stale-one'] !== texts['needs.stale-many'] );
+	check( '...none for no such project - and then the card says there is nothing - and one is something that waits: the sentence for nothing is gone', rsLine( rsNone ) === undefined && textOf( rsNone.main ).indexOf( texts['needs.none'] ) !== -1 && textOf( rsOne.main ).indexOf( texts['needs.none'] ) === -1 );
+	click( rsMany, all( rsLine( rsMany ), 'a' )[0] );
+	check( '...and the click on it leaves the done projects shown in the list', rsMany.app.state.jfilter.all === true );
+
+	// The screen Uploads
+	const urow = function( over ) { return Object.assign( { id : 'u00000000001', client_id : 1, client : 'K-0001', client_title : 'Nordlicht Records GmbH', name : 'Take 1.wav', ext : 'wav', size : 5000000, created : '2026-09-20T10:00:00Z', age : 46, by : { kind : 'member', label : 'Lena Brandt' }, gone : '' }, over || {} ) };
+	const urows = [
+		urow( { id : 'u00000000002', name : 'Notiz.txt', size : 1200, created : '2026-11-02T09:00:00Z', age : 3, by : { kind : 'member', label : '' } } ),
+		urow( { id : 'u00000000003', client_id : 2, client : 'K-0002', client_title : 'Jonas <b>Richter</b>', name : 'Zeta <i>mix</i>.mp3', size : 2000000, created : '2026-10-26T09:00:00Z', age : 10, by : { kind : 'owner', label : '' } } ),
+		urow(),
+		urow( { id : 'u00000000004', name : 'Weg.wav', size : 777, created : '2026-07-01T09:00:00Z', age : 100, gone : '2026-10-30T09:00:00Z' } ),
+	];
+	const usummary = { count : 3, bytes : 7001200, old_count : 1, old_bytes : 5000000 };
+	const ubody = function( over ) { return Object.assign( { files : true, allowed : true, zip : true, old_days : 30, limit : 400, large : 2147483648, rows : urows, summary : usummary }, over || {} ) };
+	const uopen = async function( over, perms, extra ) { return jopen( '#uploads', Object.assign( { 'crm-uploads/list' : function() { return [ 200, ubody( over ) ] } }, extra || {} ), perms ); };
+	const uf = function( w, id ) { return all( w.main, '#'+ id )[0] };
+	const urowsOf = function( w ) { return all( uf( w, 'uploads' ), 'tbody tr' ) };
+	const unamesOf = function( w ) { return urowsOf( w ).filter( function( r ) { return r.dataset.id !== undefined } ).map( function( r ) { return textOf( r.children[2] ) } ) };
+	const uw = await uopen();
+	check( 'the rail has Uploads between Projekte and Positionen, the hash #uploads is its screen and the rail marks it', JSON.stringify( uw.app.parse( '#uploads' ) ) === '{"screen":"uploads"}' && all( uw.nav, '[data-r="uploads"]' ).length === 1 && all( uw.nav, '[data-r="uploads"]' )[0].classList.contains( 'on' ) === true );
+	check( 'the screen lists the files of the upload folders: the client with its number, the name, who sent it (the name, Du for the owner, the word for a member without a name), the size, the day and the age in days - the oldest first, and a name that is markup is text',
+		all( uf( uw, 'uploads' ), 'thead th' ).map( textOf ).slice( 1 ).join( '|' ) === [ texts['uploads.client'], texts['uploads.file'], texts['uploads.by'], texts['uploads.size'], texts['uploads.day'], texts['uploads.age']+ ' ↓' ].join( '|' )
+		&& unamesOf( uw ).join( '|' ) === [ 'Weg.wav'+ fillT( 'projects.file-gone', '30.10.2026' ), 'Take 1.wav', 'Zeta <i>mix</i>.mp3', 'Notiz.txt' ].join( '|' ) && urowsOf( uw ).map( function( r ) { return textOf( r.children[6] ) } ).join() === '100,46,10,3'
+		&& textOf( urowsOf( uw )[1].children[1] ) === 'Nordlicht Records GmbH K-0001' && all( urowsOf( uw )[1], 'a' )[0].getAttribute( 'href' ) === '#kunde-1' && textOf( urowsOf( uw )[1].children[3] ) === 'Lena Brandt' && textOf( urowsOf( uw )[2].children[3] ) === texts['projects.by-owner'] && textOf( urowsOf( uw )[3].children[3] ) === texts['projects.by-member']
+		&& textOf( urowsOf( uw )[1].children[4] ) === '4,8 MB' && textOf( urowsOf( uw )[1].children[5] ) === '20.09.2026' && findAll( uf( uw, 'uploads' ), function( n ) { return n.tagName === 'I' || n.tagName === 'B' } ).length === 0 );
+	check( '...above the table one line says how many files there are, what they take and how many of them are older than 30 days - the sums of the answer, not a count of the rows - and the row that was removed has no box to tick',
+		textOf( uf( uw, 'uploads-sum' ) ) === fillT( 'uploads.sum', 3, '6,7 MB', 30, 1, '4,8 MB' ) && all( urowsOf( uw )[0], 'input' )[0].disabled === true && all( urowsOf( uw )[1], 'input' )[0].disabled === false && urowsOf( uw )[0].classList.contains( 'dim' ) === true );
+
+	// search, sort, pages
+	const usearch = function( w, text ) { const field = uf( w, 'q' ); field.value = text; fire( field, 'input', { target : field } ) };
+	usearch( uw, 'zeta' );
+	check( 'the search looks in the client, its number, the name and the sender: "zeta" finds the file, "K-0002" the client\'s file, "lena" the files of a sender, "nichts" none - and the line says so', unamesOf( uw ).join() === 'Zeta <i>mix</i>.mp3' && ( usearch( uw, 'K-0002' ), unamesOf( uw ).join() === 'Zeta <i>mix</i>.mp3' ) && ( usearch( uw, 'lena' ), unamesOf( uw ).length === 2 )
+		&& ( usearch( uw, 'nichts' ), textOf( urowsOf( uw )[0] ) === texts['uploads.none'] ) && textOf( all( uw.main, '.head .sub' )[0] ) === fillT( 'uploads.count', 0, 4 ) );
+	usearch( uw, '' );
+	click( uw, all( uf( uw, 'uploads' ), '[data-sort="size"]' )[0] );
+	const bySize = unamesOf( uw ).join( '|' );
+	click( uw, all( uf( uw, 'uploads' ), '[data-sort="size"]' )[0] );
+	click( uw, all( uf( uw, 'uploads' ), '[data-sort="name"]' )[0] );
+	check( 'every column sorts: size from the largest, again from the smallest, the name from A - and the sign of the column says which way', bySize === [ 'Take 1.wav', 'Zeta <i>mix</i>.mp3', 'Notiz.txt', 'Weg.wav'+ fillT( 'projects.file-gone', '30.10.2026' ) ].join( '|' ) && unamesOf( uw )[0].indexOf( 'Notiz' ) === 0 && unamesOf( uw )[3].indexOf( 'Zeta' ) === 0 );
+	const manyRows = Array.from( { length : 120 }, function( _, at ) { return urow( { id : 'm'+ String( at + 1 ).padStart( 11, '0' ), name : 'Datei '+ String( at + 1 ).padStart( 3, '0' )+ '.wav', age : at, size : 10 } ) } );
+	const upaged = await uopen( { rows : manyRows, summary : { count : 120, bytes : 1200, old_count : 0, old_bytes : 0 } } );
+	check( 'the table has pages of fifty, as the others have: 120 files are 50, 50 and 20 - Weiter and Zurück turn them, and the choice is kept from one page to the next',
+		urowsOf( upaged ).length === 50 && uf( upaged, 'next' ) !== undefined );
+	all( urowsOf( upaged )[0], 'input' )[0].checked = true;
+	fire( all( urowsOf( upaged )[0], 'input' )[0], 'change', { target : all( urowsOf( upaged )[0], 'input' )[0] } );
+	click( upaged, uf( upaged, 'next' ) );
+	const secondPage = urowsOf( upaged ).length;
+	click( upaged, uf( upaged, 'next' ) );
+	check( '...a box ticked on the first page is still chosen on the third: the line counts it', secondPage === 50 && urowsOf( upaged ).length === 20 && textOf( uf( upaged, 'uploads-picked' ) ) === fillT( 'uploads.picked', 1, '10 B' ) );
+
+	// the choice, the ZIP and the deletion
+	const utick = function( w, at, on ) { const box = all( urowsOf( w )[at], 'input' )[0]; box.checked = on; fire( box, 'change', { target : box } ) };
+	const uzip = uf( uw, 'uploads-zip' );
+	check( 'with nothing chosen the button is the ZIP of what the list shows - the files on the server, not the one that was removed - and Löschen is off', uzip.textContent === fillT( 'uploads.zip-all', 3 ) && uzip.disabled === false && uf( uw, 'uploads-delete' ).disabled === true && textOf( uf( uw, 'uploads-picked' ) ) === '' );
+	click( uw, uzip );
+	check( '...it loads /crm/uploads.zip with the ids of those files, as a download the page asks the browser for', uw.downloads.length === 1 && uw.downloads[0].split( '?ids=' )[0] === '/crm/uploads.zip' && uw.downloads[0].split( '?ids=' )[1].split( ',' ).sort().join() === 'u00000000001,u00000000002,u00000000003' );
+	const uw2 = await uopen();
+	utick( uw2, 2, true );
+	utick( uw2, 3, true );
+	check( 'a box on a row chooses it: the line says how many and how large, the button is the ZIP of the choice, Löschen is on - and the box of all follows', textOf( uf( uw2, 'uploads-picked' ) ) === fillT( 'uploads.picked', 2, '1,9 MB' ) && uf( uw2, 'uploads-zip' ).textContent === fillT( 'uploads.zip-chosen', 2 ) && uf( uw2, 'uploads-delete' ).disabled === false && uf( uw2, 'uploads-all' ).checked === false );
+	click( uw2, uf( uw2, 'uploads-zip' ) );
+	check( '...the ZIP is of the two and no other', uw2.downloads.length === 1 && uw2.downloads[0].split( '?ids=' )[1].split( ',' ).sort().join() === 'u00000000002,u00000000003' );
+	const uall = uf( uw2, 'uploads-all' );
+	uall.checked = true;
+	fire( uall, 'change', { target : uall } );
+	check( 'the box of all chooses every file of the list that is on the server - three, not the one that was removed - and unticked it takes the choice back', textOf( uf( uw2, 'uploads-picked' ) ) === fillT( 'uploads.picked', 3, '6,7 MB' ) && all( urowsOf( uw2 )[0], 'input' )[0].checked === false && all( urowsOf( uw2 )[1], 'input' )[0].checked === true && ( uall.checked = false, fire( uall, 'change', { target : uall } ), textOf( uf( uw2, 'uploads-picked' ) ) === '' ) );
+	const ulimit = await uopen( { limit : 2 } );
+	utick( ulimit, 1, true ); utick( ulimit, 2, true ); utick( ulimit, 3, true );
+	click( ulimit, uf( ulimit, 'uploads-zip' ) );
+	check( 'a choice of more files than a ZIP takes is said in a toast and loads nothing', ulimit.downloads.length === 0 && ulimit.toast.textContent === fillT( 'uploads.zip-many', 2 ) );
+	const ularge = await uopen( { large : 1000000 } );
+	utick( ularge, 1, true );
+	check( 'a choice of 2 GB or more says that it is large - the download runs all the same', textOf( uf( ularge, 'uploads-picked' ) ).indexOf( texts['uploads.large'] ) !== -1 && uf( ularge, 'uploads-zip' ).disabled === false );
+	const udel = await uopen();
+	utick( udel, 1, true );
+	utick( udel, 3, true );
+	click( udel, uf( udel, 'uploads-delete' ) );
+	check( 'Löschen asks first with the number and the size of the choice - nothing is posted before the yes', udel.dialogs.length === 1 && jposts.length === 0 && textOf( all( udel.dialogs[0], 'p' )[0] ) === fillT( 'uploads.delete-text', 2, '4,8 MB' ) && all( udel.dialogs[0], 'button' ).pop().classList.contains( 'danger' ) === true );
+	jyes( udel, 0 );
+	await settle();
+	check( '...the yes deletes each file with the panel\'s files/delete, one after the other, and reads the list again - the choice is gone with the files', JSON.stringify( jposts.map( function( post ) { return [ post[0], post[1].id ] } ).sort() ) === JSON.stringify( [ [ 'files/delete', 'u00000000001' ], [ 'files/delete', 'u00000000002' ] ].sort() ) && udel.all( 'crm-uploads/list' ).length === 2 && udel.toast.textContent === fillT( 'uploads.deleted', 2 ) && textOf( uf( udel, 'uploads-picked' ) ) === '' );
+	let udeleted = 0;
+	const urefuse = await uopen( {}, undefined, { 'files/delete' : function( data ) { jposts.push( [ 'files/delete', data ] ); return ++udeleted === 2 ? [ 404, { error : 'x', code : 'files_unknown' } ] : [ 200, {} ] } } );
+	utick( urefuse, 1, true ); utick( urefuse, 2, true ); utick( urefuse, 3, true );
+	click( urefuse, uf( urefuse, 'uploads-delete' ) );
+	jyes( urefuse, 0 );
+	await settle();
+	check( '...a refusal stops it: the second is refused, there is no third, the toast is the refusal - and the list is read again for what is left', jposts.length === 2 && urefuse.toast.textContent === texts['error.files_unknown'] && urefuse.all( 'crm-uploads/list' ).length === 2 );
+
+	// A "no" to a question posts nothing and changes nothing on the screen
+	const unot = function( w ) { click( w, all( w.dialogs[0], 'button' )[0] ) };
+	const ularge2 = await uopen( { large : 1000000 } );
+	check( 'the hint for a large download stands over the button of all as well, with nothing chosen: the ZIP of what the list shows is as large as the choice would be', textOf( uf( ularge2, 'uploads-picked' ) ) === texts['uploads.large'] && uf( ularge2, 'uploads-zip' ).disabled === false && textOf( uf( uw, 'uploads-picked' ) ) === '' );
+	const uno = await uopen();
+	utick( uno, 1, true );
+	click( uno, uf( uno, 'uploads-delete' ) );
+	unot( uno );
+	await settle();
+	check( 'a "no" to the question before the uploads are deleted posts nothing, reads nothing again and keeps the choice', uno.dialogs.length === 1 && jposts.length === 0 && uno.all( 'crm-uploads/list' ).length === 1 && textOf( uf( uno, 'uploads-picked' ) ) !== '' );
+	const rno = await jopen( '#projekt-00001-dateien', rwithGone );
+	click( rno, rremoveOf( jfrows( rno )[0] ) );
+	unot( rno );
+	await settle();
+	check( '...and so for Vom Server entfernen of one file', rno.dialogs.length === 1 && jposts.length === 0 && rno.all( 'crm-projekte/get' ).length === 1 );
+	click( rno, jf( rno, 'files-remove-all' ) );
+	rno.dialogs[1] && click( rno, all( rno.dialogs[1], 'button' )[0] );
+	await settle();
+	check( '...and for Alle Dateien des Projekts entfernen: nothing is posted, the card is not read again and the button can be used once more', rno.dialogs.length === 2 && jposts.length === 0 && rno.all( 'crm-projekte/get' ).length === 1 && jf( rno, 'files-remove-all' ).disabled === false );
+
+	// what the screen says where there is nothing to do
+	const ulocked = await uopen( { allowed : false } );
+	const uzipOff = await uopen( { zip : false } );
+	const ufilesOff = await uopen( { files : false, rows : [], summary : { count : 0, bytes : 0, old_count : 0, old_bytes : 0 } } );
+	const uempty = await uopen( { rows : [], summary : { count : 0, bytes : 0, old_count : 0, old_bytes : 0 } } );
+	check( 'without the permission of the Files panel the list is to read: the sentence says why, there is no Löschen and the ZIP is off, since the route asks for the permission as well',
+		textOf( ulocked.main ).indexOf( texts['uploads.forbidden'] ) !== -1 && uf( ulocked, 'uploads-delete' ) === undefined && uf( ulocked, 'uploads-zip' ).disabled === true && urowsOf( ulocked ).length === 4 );
+	check( '...without ZipArchive the button is off and the sentence says why; with the feature off there is only that sentence; and a list with no upload says so', uf( uzipOff, 'uploads-zip' ).disabled === true && textOf( uf( uzipOff, 'uploads-zip-off' ) ) === texts['uploads.zip-off'] && uf( uzipOff, 'uploads-delete' ) !== undefined
+		&& uf( ufilesOff, 'uploads' ) === undefined && textOf( ufilesOff.main ).indexOf( texts['uploads.files-off'] ) !== -1 && textOf( urowsOf( uempty )[0] ) === texts['uploads.empty'] );
+	const ufail = await jopen( '#uploads', { 'crm-uploads/list' : function() { return [ 500, { error : 'x', code : 'crm_documents_database' } ] } } );
+	check( 'a list that cannot be read says so, with the way to try again, and draws no table', uf( ufail, 'uploads' ) === undefined && textOf( ufail.main ).indexOf( texts['error.crm_documents_database'] ) !== -1 && all( ufail.main, 'button' ).map( textOf ).includes( texts['retry'] ) );
 	const jrenStale = await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { allowed : false } ) ] } } );
 	click( jrenStale, jitem( jrenStale, texts['projects.edit'] ) );
 	type( jf( jrenStale, 'f-title' ), 'Neu', false );
@@ -4577,7 +4758,7 @@ function press( w, key, target, mods ) {
 	check( 'the waiting offers of a project are told with their number in a form that is right for every count: the word has a place for the number, and the number does not stand before a singular noun', texts['projects.open-offers'].indexOf( '%s' ) !== -1 && /%s Angebot\b/.test( texts['projects.open-offers'] ) === false );
 
 	// --- the script
-	check( 'the script posts a file to the Files panel\'s upload only as chunks, with the part named chunk, and keeps no folder of its own: the actions it names of that panel are the six of the endpoint', [ ...script.matchAll( /(?:api|call|upload)\( '(files\/[a-z/]+)'/g ) ].map( function( found ) { return found[1] } ).sort().join() === 'files/delete,files/folder/add,files/folder/save,files/list,files/save,files/upload' && /upload\( 'files\/upload', \{[^}]*\}, file\.slice\([^)]*\), 'chunk' \)/.test( script ) === true );
+	check( 'the script posts a file to the Files panel\'s upload only as chunks, with the part named chunk, and keeps no folder of its own: the actions it names of that panel are the seven of the endpoint', [ ...new Set( [ ...script.matchAll( /(?:api|call|upload)\( '(files\/[a-z/]+)'/g ) ].map( function( found ) { return found[1] } ) ) ].sort().join() === 'files/delete,files/folder/add,files/folder/save,files/list,files/remove,files/save,files/upload' && /upload\( 'files\/upload', \{[^}]*\}, file\.slice\([^)]*\), 'chunk' \)/.test( script ) === true );
 	check( '...every word the screens ask for is a word of the page', [ ...script.matchAll( /\bt\( '(projects\.[a-z-]+|project\.[a-z-]+|ptab\.[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return typeof texts[key] !== 'string' || texts[key] === '' } ).length === 0 && typeof texts['nav.projects'] === 'string' );
 	}
 

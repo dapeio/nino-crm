@@ -16,11 +16,13 @@ declare(strict_types=1);
  *																					the code csrf, no session the 401 with the code session, an action the table does not hold the
  *																					404 with the code action; the four actions of the Elements panel (elements/list, get, save, delete) are for the types positionen and projekte alone, any
  *																					other type is the 404 with the code crm_positionen_type; the two of the Text panel (text/keys, text/savebatch) are for the keys below /project/company/
- *																					alone, a batch with another key is the 404 with the code crm_texts_key, and the six of the Files panel (files/list, folder/add, folder/save,
- *																					upload, save, delete) are for the folders of the clients alone, any other is the 404 with the code crm_files_group. The upload of a picture (pdf/layout/image) comes as a multipart post with the action and the
+ *																					alone, a batch with another key is the 404 with the code crm_texts_key, and the seven of the Files panel (files/list, folder/add, folder/save,
+ *																					upload, save, remove, delete) are for the folders of the clients alone, any other is the 404 with the code crm_files_group; crm-uploads/list reads the files of the upload folders of the clients for the screen Uploads. The upload of a picture (pdf/layout/image) comes as a multipart post with the action and the
  *																					data as fields and the file, which the method reads from $_FILES; no other action takes a file
  *								GET  /crm/assets/<hash>-<name>		a file of ASSETS whose content hash is the one in the name, for a year
  *								GET  /crm/preview/<id>		the PDF of a draft as its template makes it now, inline, nothing stored
+ *								GET  /crm/uploads.zip?ids=<id>,<id>	the files of the upload folders of the clients as one ZIP, as an attachment: for a session with the CRM's permission and the Files panel's,
+ *																					with ZipArchive (see Surface\Uploads); the ZIP lies in /data for the length of the request
  *								GET  /crm/pdf-preview/template/<key>, /crm/pdf-preview/layout
  *																					the PDF of a saved template with the feature's sample data, and of the layout and design with the sample page, as the
  *																					panel of the feature makes them: inline, nothing stored, for a session with the CRM's permission and the Pdf panel's
@@ -69,12 +71,14 @@ class Surface {
 		$appData['/nino/http/routes']['GET://crm/assets/*'] = [ 'uri' => '/crm/assets/*' ];
 		$appData['/nino/http/routes']['GET://crm/preview/*'] = [ 'uri' => '/crm/preview/*' ];
 		$appData['/nino/http/routes']['GET://crm/pdf-preview/*'] = [ 'uri' => '/crm/pdf-preview/*' ];
+		$appData['/nino/http/routes']['GET://crm/uploads.zip'] = [ 'uri' => '/crm/uploads.zip' ];
 
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://crm', [ self::class, 'callbackPage' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://crm/api', [ self::class, 'callbackApi' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://crm/assets/*', [ self::class, 'callbackAsset' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://crm/preview/*', [ self::class, 'callbackPreview' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://crm/pdf-preview/*', [ self::class, 'callbackPdfPreview' ] );
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://crm/uploads.zip', [ Surface\Uploads::class, 'callbackZip' ] );
 	}
 
 	/**
@@ -87,7 +91,7 @@ class Surface {
 	 */
 	public static function actions(): array {
 
-		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), \Crm\Projekte\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions(), Surface\Texts::actions(), Surface\Files::actions() );
+		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), \Crm\Projekte\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions(), Surface\Texts::actions(), Surface\Files::actions(), Surface\Uploads::actions() );
 	}
 
 	/**
@@ -459,7 +463,7 @@ class Surface {
 	 *
 	 *	@return 	bool										Whether the classes are there
 	 */
-	private static function workbench( array &$appData ): bool {
+	public static function workbench( array &$appData ): bool {
 
 		if( class_exists( '\\Nino\\Admin\\Admin', false ) === true )
 			return true;
@@ -554,7 +558,7 @@ class Surface {
 	 *
 	 *	@return 	void
 	 */
-	private static function plain( array &$request, int $status, string $body ): void {
+	public static function plain( array &$request, int $status, string $body ): void {
 
 		$request['/nino/http/response']['statusCode'] = $status;
 		$request['/nino/http/response']['body'] = $body;

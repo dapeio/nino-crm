@@ -18,6 +18,9 @@ return [
 	'[[/feature/files/browser/empty]]'		=> 'There are no files in this folder yet.',
 	'[[/feature/files/browser/none]]'			=> 'There are no folders for your group yet.',
 
+	// What the address of a file says when its bytes were removed from the server (status 410)
+	'[[/feature/files/download/removed]]'	=> 'The file has already been removed. Please write to us if you need it again.',
+
 	// The form, [files-upload]
 	'[[/feature/files/upload/label]]'		=> 'Choose a file',
 	'[[/feature/files/upload/hint]]'		=> 'Largest file:',

@@ -32,7 +32,9 @@ namespace Nino\Modules {
 	 *										The data is Files\Store's: the index /data/files.php and the bytes
 	 *										in /data/files/ - the bytes are not part of the daily backup, the
 	 *										index is, and a restore keeps the entries whose bytes are there
-	 *										(callbackRestore()).
+	 *										(callbackRestore()). A file can be removed from the server and stay in the index: the
+	 *										entry keeps its name, size and sender and carries gone, the time the bytes went; its address
+	 *										answers 410 to those who may have the file, and nothing offers it for download.
 	 *
 	 *										Two components put the file browser and the upload form on any page
 	 *										the Builder composes (componentFilesBrowser() and
@@ -117,7 +119,7 @@ namespace Nino\Modules {
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$folder				The id of a folder
 		 *
-		 *	@return 	array										A list of files: id, folder, name, ext, size, mime, sha256, by (kind and id), visible and created
+		 *	@return 	array										A list of files: id, folder, name, ext, size, mime, sha256, by (kind and id), visible and created - and gone, the time the bytes were removed, for a file that was
 		 */
 		public static function files( array &$appData, string $folder ): array {
 
@@ -128,7 +130,7 @@ namespace Nino\Modules {
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$id
 		 *
-		 *	@return 	array|null								The entry with its id; null for an id nobody has
+		 *	@return 	array|null								The entry with its id (and gone, for a file whose bytes were removed); null for an id nobody has
 		 */
 		public static function file( array &$appData, string $id ): ?array {
 
@@ -139,7 +141,7 @@ namespace Nino\Modules {
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$id
 		 *
-		 *	@return 	string|null								The absolute path of the bytes; null where there is no such file or its bytes are gone
+		 *	@return 	string|null								The absolute path of the bytes; null where there is no such file, it was removed or its bytes are gone
 		 */
 		public static function path( array &$appData, string $id ): ?string {
 
@@ -215,8 +217,10 @@ namespace Nino\Modules {
 		 *	every cache but the browser's own. It is answered to a member by the rule of allowed() and to the workbench
 		 *	session of the owner by the permission of the panel (\Nino\Auth::checkPermission(), which a parent of it
 		 *	such as '/_admin/*' or '/*' holds as well): any file that has bytes, a hidden one and one of any group
-		 *	included. All the rest is the same 404 with a plain body - a visitor, a member of another group, an account at
-		 *	the workbench without the permission, an id nobody has and a file whose bytes are gone
+		 *	included. A file that was removed from the server is answered 410 with a plain sentence to whoever may have it
+		 *	(allowed(), or the permission) - nobody else is told that it ever was. All the rest is the same 404 with a plain
+		 *	body - a visitor, a member of another group, an account at the workbench without the permission, an id nobody has
+		 *	and a file whose bytes are gone
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		&$request			(reference) Current server request
@@ -230,6 +234,16 @@ namespace Nino\Modules {
 			$file = $id !== '' ? \Nino\Modules\Files\Store::file( $appData, $id ) : null;
 			$may = $file !== null && ( self::allowed( $appData, $file ) === true || \Nino\Auth::checkPermission( $appData, \Nino\Modules\Files\Admin::MANAGE_PERM ) === true );
 			$path = $may === true ? \Nino\Modules\Files\Store::path( $appData, $id ) : null;
+
+			if( $may === true && isset( $file['gone'] ) === true ) {
+
+				$request['/nino/http/response']['statusCode']								= 410;
+				$request['/nino/http/response']['body']										= trim( (string) \Nino\Html::resolveTextfill( $appData, '/feature/files/download/removed' ) );
+				$request['/nino/http/response']['header']['Content-Type']		= 'text/plain; charset=utf-8';
+				$request['/nino/http/response']['header']['Cache-Control']	= 'no-store';
+
+				return;
+			}
 
 			if( $file === null || $path === null ) {
 
@@ -364,7 +378,7 @@ namespace Nino\Modules {
 
 				foreach( \Nino\Modules\Files\Store::files( $appData, $folder['id'] ) as $file ) {
 
-					if( self::allowed( $appData, $file ) === false )
+					if( self::allowed( $appData, $file ) === false || isset( $file['gone'] ) === true )
 						continue;
 
 					$count++;
@@ -575,7 +589,8 @@ namespace Nino\Modules {
 		 *	Rewrite the staged index of a backup before /_admin's Restore copies it over the live one. The bytes are not
 		 *	in a backup - only the index is - so an index of a day may name files whose bytes are gone, or that were
 		 *	deleted since: the entries whose bytes are in the live directory are kept and the rest dropped, so that no
-		 *	member is offered a file that is not there. A file put there after the day of the backup has no entry in it,
+		 *	member is offered a file that is not there - except an entry that was removed from the server, which has no bytes and
+		 *	stays, and one the live index has removed since the day of the backup, which is taken over as removed. A file put there after the day of the backup has no entry in it,
 		 *	and its bytes stay where they are. Reached through the '/nino/admin/restore' callback init() registers, with
 		 *	the live /data directory and the extracted backup as arguments; a no-op if the backup carries no index. The
 		 *	write is not silenced: one that fails is php's own warning, and the staged index stays as it was
@@ -595,10 +610,16 @@ namespace Nino\Modules {
 				return;
 
 			$index = \Nino\Modules\Files\Store::parse( include $staged );
+			$live = is_file( $dataDir. '/files.php' ) === true ? \Nino\Modules\Files\Store::parse( include $dataDir. '/files.php' ) : [ 'files' => [] ];
 
-			foreach( $index['files'] as $id => $file )
-				if( is_file( $dataDir. '/files/'. $id. '.'. $file['ext'] ) === false )
+			foreach( $index['files'] as $id => $file ) {
+
+				// An entry that was removed has no bytes to look for: it stays, as removed - and so does one the live index has removed since the backup
+				if( isset( $file['gone'] ) === false && isset( $live['files'][$id]['gone'] ) === true )
+					$index['files'][$id]['gone'] = $live['files'][$id]['gone'];
+				elseif( isset( $file['gone'] ) === false && is_file( $dataDir. '/files/'. $id. '.'. $file['ext'] ) === false )
 					unset( $index['files'][$id] );
+			}
 
 			file_put_contents( $staged, '<?php return '. var_export( $index, true ). ';' );
 		}

@@ -671,6 +671,20 @@ class Portal {
 	}
 
 	/**
+	 *	The contact address of the studio, from the words of the site
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	string										'' where the site has none or what it has is no address
+	 */
+	public static function contactMail( array &$appData ): string {
+
+		$mail = trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+
+		return filter_var( $mail, FILTER_VALIDATE_EMAIL ) !== false ? $mail : '';
+	}
+
+	/**
 	 *	An empty state: an icon, the sentence that says what happens next, and the way to the studio - its e-mail address and its phone as links,
 	 *	from the words of the site
 	 *
@@ -683,10 +697,10 @@ class Portal {
 	 */
 	public static function emptyState( array &$appData, string $icon, string $message, string $classes = '' ): string {
 
-		$mail = trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+		$mail = self::contactMail( $appData );
 		$phone = trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/phone' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
 		$number = (string) preg_replace( '/[^0-9+]/', '', $phone );
-		$mailLink = filter_var( $mail, FILTER_VALIDATE_EMAIL ) !== false ? self::render( 'empty-mail', [ '[[address]]' => \Nino\Modules\Components::escape( $mail ) ] ) : '';
+		$mailLink = $mail !== '' ? self::render( 'empty-mail', [ '[[address]]' => \Nino\Modules\Components::escape( $mail ) ] ) : '';
 		$phoneLink = $number !== '' && $number !== '+' ? self::render( 'empty-phone', [ '[[number]]' => \Nino\Modules\Components::escape( $number ), '[[phone]]' => \Nino\Modules\Components::escape( $phone ) ] ) : '';
 
 		return self::render( 'empty', [

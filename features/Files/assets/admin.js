@@ -209,16 +209,17 @@
 		 *	@param		{string}		title
 		 *	@param		{string}		message
 		 *	@param		{Function}	onYes
+		 *	@param		{string}		[yes]					The fill key of the word of the button that says yes; delete by default
 		 *
 		 *	@return		void
 		 */
-		_confirm : function( title, message, onYes ) {
+		_confirm : function( title, message, onYes, yes ) {
 
 			Nino.adminUi.choiceDialog( {
 				title		: title,
 				message	: message,
 				choices	: [
-					{ value : 'delete', label : Nino.content.getText('/_admin/files/label/delete'), kind : 'danger' },
+					{ value : 'delete', label : Nino.content.getText( yes === undefined ? '/_admin/files/label/delete' : yes ), kind : 'danger' },
 					{ value : 'cancel', label : Nino.content.getText('/_admin/files/label/cancel'), kind : 'secondary' },
 				],
 				onChoose : function( value ) { if( value === 'delete' ) onYes() },
@@ -693,77 +694,98 @@
 			const row = Nino.adminUi.el( 'li', 'files-file-row' );
 			const copy = Nino.adminUi.el( 'div', 'nino-admin-list-copy' );
 			const line = files._line();
+			const removed = typeof file.gone === 'string' && file.gone !== '';
 			const visible = Nino.adminUi.switchField( { key : 'visible', checked : file.visible === true, label : Nino.content.getText('/_admin/files/label/visible') } );
 			const actions = Nino.adminUi.el( 'div', 'nino-admin-actions files-row-actions' );
 
 			row.dataset.id = file.id;
 			copy.appendChild( Nino.adminUi.el( 'strong', '', file.name ) );
-			copy.appendChild( Nino.adminUi.el( 'small', '', [ files._size( file.size ), files._who( file ), files._when( file.created ) ].filter( function( part ) { return part !== '' } ).join(' · ') ) );
+			copy.appendChild( Nino.adminUi.el( 'small', '', [ files._size( file.size ), files._who( file ), files._when( file.created ), removed === true ? files._text( '/_admin/files/label/removed', files._when( file.gone ) ) : '' ].filter( function( part ) { return part !== '' } ).join(' · ') ) );
 			row.appendChild( copy );
 
-			const toggle = visible.querySelector('input');
-			let reverting = false;
+			if( removed === false ) {
 
-			toggle.addEventListener( 'change', function() {
+				const toggle = visible.querySelector('input');
+				let reverting = false;
 
-				// The switch puts its own word beside the knob on every change, the one that puts it back included
-				if( reverting === true )
-					return;
+				toggle.addEventListener( 'change', function() {
 
-				const wanted = toggle.checked;
+					// The switch puts its own word beside the knob on every change, the one that puts it back included
+					if( reverting === true )
+						return;
 
-				line.saving();
+					const wanted = toggle.checked;
 
-				files.call( 'save', { id : file.id, visible : wanted, notify : files._wantsNotify() }, function( status, response ) {
+					line.saving();
 
-					if( status !== 200 ) {
-						reverting = true;
-						toggle.checked = wanted === false;
-						toggle.dispatchEvent( new Event( 'change' ) );
-						reverting = false;
-						return line.error( status, response, '/_admin/files/error/save' );
-					}
+					files.call( 'save', { id : file.id, visible : wanted, notify : files._wantsNotify() }, function( status, response ) {
 
-					file.visible = response.file.visible === true;
-					line.saved();
+						if( status !== 200 ) {
+							reverting = true;
+							toggle.checked = wanted === false;
+							toggle.dispatchEvent( new Event( 'change' ) );
+							reverting = false;
+							return line.error( status, response, '/_admin/files/error/save' );
+						}
+
+						file.visible = response.file.visible === true;
+						line.saved();
+					} );
 				} );
-			} );
 
-			row.appendChild( visible );
+				row.appendChild( visible );
 
-			// The download is a link to the route the members' files are streamed by, which answers the owner's session too: a
-			// tab of its own, and the browser saves what the route says to save
-			const download = Nino.adminUi.el( 'a', 'nino-admin-btn-secondary nino-admin-btn--small files-download', Nino.content.getText('/_admin/files/label/download') );
+				// The download is a link to the route the members' files are streamed by, which answers the owner's session too: a
+				// tab of its own, and the browser saves what the route says to save
+				const download = Nino.adminUi.el( 'a', 'nino-admin-btn-secondary nino-admin-btn--small files-download', Nino.content.getText('/_admin/files/label/download') );
 
-			download.href = file.url+ '?download=1';
-			download.target = '_blank';
-			download.rel = 'noopener';
-			actions.appendChild( download );
+				download.href = file.url+ '?download=1';
+				download.target = '_blank';
+				download.rel = 'noopener';
+				actions.appendChild( download );
 
-			const others = files._data.folders.filter( function( folder ) { return folder.id !== file.folder } );
+				const others = files._data.folders.filter( function( folder ) { return folder.id !== file.folder } );
 
-			if( others.length > 0 )
-				actions.appendChild( Nino.adminUi.selectField( {
-					key			: 'move',
-					label		: Nino.content.getText('/_admin/files/label/move'),
-					options	: [ { value : '', label : '-' } ].concat( others.map( function( folder ) { return { value : folder.id, label : folder.name } } ) ),
-					value		: '',
-					onChange	: function( value ) {
+				if( others.length > 0 )
+					actions.appendChild( Nino.adminUi.selectField( {
+						key			: 'move',
+						label		: Nino.content.getText('/_admin/files/label/move'),
+						options	: [ { value : '', label : '-' } ].concat( others.map( function( folder ) { return { value : folder.id, label : folder.name } } ) ),
+						value		: '',
+						onChange	: function( value ) {
 
-						if( value === '' )
-							return;
+							if( value === '' )
+								return;
+
+							line.saving();
+
+							files.call( 'save', { id : file.id, folder : value }, function( status, response ) {
+
+								if( status !== 200 )
+									return line.error( status, response, '/_admin/files/error/save' );
+
+								files.reload();
+							} );
+						},
+					} ) );
+			}
+
+			if( removed === false )
+				actions.appendChild( Nino.adminUi.button( Nino.content.getText('/_admin/files/label/remove'), function() {
+
+					files._confirm( Nino.content.getText('/_admin/files/title/remove'), files._text( '/_admin/files/confirm/remove', file.name ), function() {
 
 						line.saving();
 
-						files.call( 'save', { id : file.id, folder : value }, function( status, response ) {
+						files.call( 'remove', { id : file.id }, function( status, response ) {
 
 							if( status !== 200 )
-								return line.error( status, response, '/_admin/files/error/save' );
+								return line.error( status, response, '/_admin/files/error/remove' );
 
 							files.reload();
 						} );
-					},
-				} ) );
+					}, '/_admin/files/label/remove' );
+				}, { className : 'nino-admin-btn-secondary nino-admin-btn--small' } ) );
 
 			actions.appendChild( Nino.adminUi.button( Nino.content.getText('/_admin/files/label/delete'), function() {
 

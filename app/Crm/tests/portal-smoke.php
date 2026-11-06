@@ -815,7 +815,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 153 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 155 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -1476,6 +1476,75 @@ portalSignIn( $appData, $accounts['anna'] );
 check( 'with Files off the block says so', portalFind( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ), '//section[contains(@class, "crm-uploads--empty")]' ) !== [] );
 \Nino\Features::activate( $appData, 'files' );
 \Nino\Features::activate( $appData, 'review' );
+
+// --- Removed files -----------------------------------------------------------------------------------------------------------------
+
+echo "\n[removed files]\n";
+
+$portalSheet = (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' );
+check( 'the button Antworten of a comment, drawn hidden, stays hidden for as long as it is: the display the portal gives the buttons of Review does not override the attribute', preg_match( '/\.crm-project \.review-comment__reply\[hidden\]\s*\{\s*display:\s*none;/', $portalSheet ) === 1 );
+$newOnStart = static function() use ( &$appData, $p1 ): int {
+	foreach( portalFind( portalPage( $appData, '/portal' )[1], '//article[@data-card="files"]//li[contains(@class, "crm-start__row")]' ) as $row ) {
+		$html = $row->ownerDocument->saveHTML( $row );
+
+		if( str_contains( (string) ( portalFind( $html, '//a[contains(@class, "crm-start__link")]/@href' )[0]->nodeValue ?? '' ), 'projekt='. $p1. '&' ) === true )
+			return (int) portalText( $html, '//span[@class="crm-start__extra"]' );
+	}
+
+	return 0;
+};
+portalSignIn( $appData, $accounts['anna'] );
+$vanishedSong = $put( $folderA, 'Entfernt <b>Song</b>.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 120 ) );
+$vanishedPdf = $put( $folderA, 'Entfernt.pdf', 'pdf', 'application/pdf', true, $owner, $ago( 130 ) );
+\Nino\Modules\Review::add( $appData, $vanishedSong['id'], [ 'kind' => 'member', 'id' => $accounts['anna']['id'] ], 12.0, 'Der Einsatz <i>kommt</i> zu früh' );
+$newBefore = $newOnStart();
+$rowsBefore = count( portalFind( portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1], '//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' ) );
+\Nino\Modules\Files\Store::removeBytes( $appData, $vanishedSong['id'] );
+\Nino\Modules\Files\Store::removeBytes( $appData, $vanishedPdf['id'] );
+$goneHtml = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
+$goneRows = portalFind( $goneHtml, '//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row--gone ")]' );
+$goneRow = $goneRows === [] ? '' : $goneRows[0]->ownerDocument->saveHTML( $goneRows[0] );
+check( 'a file that was removed from the server stays in the list of the project, in its place among the others, as a row of its own: its name as text - no link to the player, none to the download -, its size and its day',
+	count( $goneRows ) === 2 && count( portalFind( $goneHtml, '//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' ) ) === $rowsBefore && array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-files-id' ), $goneRows ) === [ $vanishedSong['id'], $vanishedPdf['id'] ]
+	&& portalFind( $goneRow, '//a[contains(@class, "crm-files__name")]' ) === [] && trim( portalText( $goneRow, '//span[contains(@class, "crm-files__name")]' ) ) === 'Entfernt <b>Song</b>.mp3' && portalFind( $goneRow, '//b' ) === []
+	&& portalText( $goneRow, '//span[contains(@class, "crm-files__size")]' ) !== '' && portalFind( $goneRow, '//time/@datetime' )[0]->nodeValue === $vanishedSong['created'] );
+check( '...and no way to open it: no download, no "Anhören", no "neu" - nothing a link points at but the sentence',
+	array_filter( $goneRows, static fn( \DOMElement $row ): bool => portalFind( $row->ownerDocument->saveHTML( $row ), '//a[contains(@class, "crm-files__download") or contains(@class, "crm-files__listen")] | //span[contains(@class, "crm-files__new")] | //a[contains(@href, ".files")] | //a[contains(@href, "review=")]' ) !== [] ) === []
+	&& count( portalFind( $goneHtml, '//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")][not(contains(@class, "crm-files__row--gone"))]//a[contains(@class, "crm-files__download")]' ) ) === $rowsBefore - 2 );
+check( '...the sentence stands in the place of the buttons: the words of the portal, muted, with the contact address of the site as the link that writes to it - and nothing in it is markup of the name',
+	count( portalFind( $goneRow, '//p[contains(@class, "crm-files__gone")]' ) ) === 1 && portalText( $goneRow, '//p[contains(@class, "crm-files__gone")]' ) !== '' && str_contains( portalText( $goneRow, '//p[contains(@class, "crm-files__gone")]' ), '[[' ) === false
+	&& portalFind( $goneRow, '//p[contains(@class, "crm-files__gone")]/a/@href' )[0]->nodeValue === 'mailto:owner@example.org' && portalText( $goneRow, '//p[contains(@class, "crm-files__gone")]/a' ) === \Nino\Html::resolveTextfill( $appData, '/project/crm-portal/files/gone-ask' )
+	&& str_starts_with( portalText( $goneRow, '//p[contains(@class, "crm-files__gone")]' ), (string) \Nino\Html::resolveTextfill( $appData, '/project/crm-portal/files/gone' ) ) === true );
+\Nino\Html::addFills( $appData, [ '[[/project/company/contact/email]]' => 'no-address' ], '*' );
+$noMail = portalFind( portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1], '//li[contains(@class, "crm-files__row--gone")]//p[contains(@class, "crm-files__gone")]' );
+\Nino\Html::addFills( $appData, [ '[[/project/company/contact/email]]' => 'owner@example.org' ], '*' );
+check( '...a site without a contact address has the sentence with no link', count( $noMail ) === 2 && portalFind( $noMail[0]->ownerDocument->saveHTML( $noMail[0] ), '//a' ) === [] && trim( $noMail[0]->textContent ) !== '' );
+check( 'the card of the new files on the start page does not count it, and a file that was removed is no file the member may open from the page Upload either - the same row',
+	$newBefore - $newOnStart() === 2 && $newOnStart() >= 0 );
+
+$reviewGone = portalPage( $appData, '/portal/projekte?review='. $vanishedSong['id'] )[1];
+$reviewBoxes = portalFind( $reviewGone, '//div[contains(@class, "review-player")]' );
+check( '?review=<a file that was removed> shows the page of its project with the comments of the file and no medium: the sentence stands over them, the player has no audio, no video and no form, and the comment is text',
+	count( $reviewBoxes ) === 1 && portalFind( $reviewGone, '//audio | //video | //form[contains(@class, "review-form")]' ) === [] && str_contains( $reviewGone, 'Der Einsatz &lt;i&gt;kommt&lt;/i&gt; zu früh' ) === true && portalFind( $reviewGone, '//div[contains(@class, "review-player")]//i' ) === []
+	&& count( portalFind( $reviewGone, '//p[contains(@class, "crm-files__gone-note")]/following-sibling::div[contains(@class, "review-player")]' ) ) === 1 && portalFind( $reviewGone, '//p[contains(@class, "crm-files__gone-note")]//a/@href' )[0]->nodeValue === 'mailto:owner@example.org'
+	&& $reviewBoxes[0]->getAttribute( 'data-review-file' ) === $vanishedSong['id'] && portalFind( $reviewGone, '//li[contains(@class, "crm-files__row--playing")]' ) === [] );
+check( '...and no button Antworten on its comment - there is no form to answer in, and a button the script never shows would stand there dead', count( portalFind( $reviewGone, '//li[@data-review-id]' ) ) === 1 && portalFind( $reviewGone, '//*[@data-review-reply]' ) === [] );
+$goneStranger = portalPage( $appData, '/portal/projekte?projekt='. $p3. '&review='. $vanishedSong['id'] )[1];
+check( '...a file that was removed is no reason to show it in a project it is not in: the page of another client\'s project has no player and no sentence of it', portalFind( $goneStranger, '//div[contains(@class, "review-player")] | //p[contains(@class, "crm-files__gone-note")]' ) === [] );
+$noReviewGone = portalPage( $appData, '/portal/projekte?projekt='. $p1. '&review='. $vanishedSong['id'] );
+check( 'a removed file that is no audio or video asked for with ?review= has no sentence over its row and no player: the list is the page', portalFind( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&review='. $vanishedPdf['id'] )[1], '//p[contains(@class, "crm-files__gone-note")] | //div[contains(@class, "review-player")]' ) === []
+	&& $noReviewGone[1] !== '' );
+$goneRoute = portalServe( $appData, '/.files/'. $vanishedSong['id'] );
+check( 'the address of it answers 410 with the sentence, to the member whose file it is', $goneRoute['statusCode'] === 410 && str_contains( (string) $goneRoute['body'], (string) \Nino\Html::resolveTextfill( $appData, '/feature/files/download/removed' ) ) === true );
+$store::markUpload( $appData, $folderUp['id'], true );
+$upGone = $put( $folderUp, 'Eingang-entfernt.txt', 'txt', 'text/plain', true, $owner, $ago( 20 ) );
+\Nino\Modules\Files\Store::removeBytes( $appData, $upGone['id'] );
+$upGoneHtml = \Nino\Html::renderHtml( $appData, '[crm-uploads]' );
+check( 'the list of the uploads has the row too: a file of the upload folder that was removed, with the sentence and no download', count( portalFind( $upGoneHtml, '//li[contains(@class, "crm-files__row--gone")]' ) ) === 1 && portalFind( $upGoneHtml, '//li[contains(@class, "crm-files__row--gone")]//a[contains(@class, "crm-files__download")]' ) === []
+	&& portalFind( $upGoneHtml, '//li[contains(@class, "crm-files__row--gone")]//p[contains(@class, "crm-files__gone")]/a' ) !== [] );
+$store::markUpload( $appData, $folderUp['id'], false );
+foreach( [ $vanishedSong, $vanishedPdf, $upGone ] as $removedFile )
+	$store::deleteFile( $appData, $removedFile['id'] );
 
 // --- The page Termine -------------------------------------------------------------------------------------------------------------
 

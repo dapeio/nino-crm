@@ -1847,6 +1847,41 @@ a.crm-files__name:hover {
 	margin: 0;
 }
 
+/*	A file that was removed from the server: its name and numbers stay, in the muted ink, and the sentence takes the line under them in the place of the buttons	*/
+.crm-files__row--gone .crm-files__name {
+	color: var(--crm-ink-2);
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.crm-files__row--gone .crm-files__icon {
+	color: var(--crm-ink-3);
+}
+
+.crm-files__gone {
+	flex: 1 1 100%;
+	margin: 0;
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	line-height: 1.5;
+}
+
+.crm-files__gone-link {
+	color: var(--crm-link);
+	font-weight: 600;
+}
+
+@media (min-width: 1024px) {
+
+	.crm-table__line > .crm-files__gone {
+		grid-column: 1 / -1;
+	}
+}
+
+.crm-files__gone-note {
+	margin: 0 0 var(--crm-4);
+}
+
 
 /*	11 Parts - the uploads	*/
 
@@ -2900,6 +2935,10 @@ a.crm-nav__link[aria-current="page"] .crm-icon {
 		background-color: transparent;
 		color: var(--crm-link);
 	}
+}
+
+.crm-project .review-comment__reply[hidden] {
+	display: none;
 }
 
 /*	14 Print - a page of the portal on paper: what is for the screen is left out, the head of the site is no longer fixed over the text, the

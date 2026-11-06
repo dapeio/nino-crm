@@ -26,6 +26,28 @@ use Crm\Positionen;
 use Crm\Surface;
 use Crm\Settings;
 
+// A worker of the section Uploads: a process of its own that answers one request for a ZIP in the project of the test and ends, the way a request
+// ends - what it made is the shutdown function's to remove. It prints the path of the ZIP it answered with
+if( ( $argv[1] ?? '' ) === 'zip-worker' ) {
+
+	$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+	$sandbox = (string) $argv[2];
+	$appData = [ './nino/uid' => $sandbox ];
+	\Nino\AppData::prepare( $appData );
+	$appData['./nino/filesystem/path']				= $sandbox;
+	$appData['./nino/filesystem/configpath']	= $sandbox. '/private';
+	$appData['./nino/filesystem/contentpath']	= $sandbox. '/private';
+	$appData['./nino/filesystem/publicpath']	= $sandbox. '/public';
+	\Nino\AppData::init( $appData );
+	$_SESSION = [];
+	\Nino\Auth::loginUser( $appData, 'files@example.com', 'files password' );
+	$request = ninoVisit( $appData, '/crm/uploads.zip?ids='. $argv[3] );
+	$request['/nino/http/response'] = [ 'header' => [], 'statusCode' => 200, 'body' => '' ];
+	\Crm\Surface\Uploads::callbackZip( $appData, $request );
+	echo $request['/nino/http/response']['statusCode'], ' ', $request['/nino/http/response']['file'] ?? '', "\n";
+	exit( 0 );
+}
+
 $appData = ninoSandbox( 'crm-surface' );
 $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 $today = date( 'Y-m-d' );
@@ -171,10 +193,10 @@ $asLinker = static function() use ( $asUser ): void { $asUser( 'linker@example.c
 echo "\nThe routes\n";
 
 $routes = $appData['/nino/http/routes'];
-check( 'the module registers GET /crm, POST /crm/api, GET /crm/assets/* and GET /crm/preview/*', ( $routes['GET://crm']['uri'] ?? '' ) === '/crm' && ( $routes['POST://crm/api']['uri'] ?? '' ) === '/crm/api'
+check( 'the module registers GET /crm, POST /crm/api, GET /crm/assets/*, GET /crm/preview/* and GET /crm/uploads.zip', ( $routes['GET://crm']['uri'] ?? '' ) === '/crm' && ( $routes['GET://crm/uploads.zip']['uri'] ?? '' ) === '/crm/uploads.zip' && ( $routes['POST://crm/api']['uri'] ?? '' ) === '/crm/api'
 	&& ( $routes['GET://crm/assets/*']['uri'] ?? '' ) === '/crm/assets/*' && ( $routes['GET://crm/preview/*']['uri'] ?? '' ) === '/crm/preview/*' );
 check( '...the endpoint carries csrf, so that the kernel checks the token of every post', ( $routes['POST://crm/api']['csrf'] ?? null ) === true );
-check( '...each has its callback, and none is a reserved address of the kernel', array_filter( [ 'GET://crm', 'POST://crm/api', 'GET://crm/assets/*', 'GET://crm/preview/*' ], static fn( string $route ): bool => isset( $appData['./nino/callbacks']['/nino/http/response/'. $route] ) === false ) === []
+check( '...each has its callback, and none is a reserved address of the kernel', array_filter( [ 'GET://crm', 'POST://crm/api', 'GET://crm/assets/*', 'GET://crm/preview/*', 'GET://crm/uploads.zip' ], static fn( string $route ): bool => isset( $appData['./nino/callbacks']['/nino/http/response/'. $route] ) === false ) === [] && \Nino\Callbacks::registered( $appData, '/nino/http/response/GET://crm/uploads.zip' ) === [ [ \Crm\Surface\Uploads::class, 'callbackZip' ] ]
 	&& \Nino\Http::isReservedUri( '/crm' ) === false );
 
 // --- The gate and the page -------------------------------------------------------------------------------------------
@@ -226,8 +248,8 @@ check( '...the JSON block holds the token of the session, the user, the permissi
 	&& $data['links']['workbench'] === '/_admin/' && $data['links']['site'] === '/' );
 check( '...the links lead to the pages of the workbench the surface has no screen of: the Elements panel at the type of the items, the panels PDF, Members and Users - and none to a panel Kunden or Belege, which are gone', $data['links']['items'] === '/_admin/#elements/positionen' && $data['links']['projects'] === '/_admin/#elements/projekte' && $data['links']['files'] === '/_admin/#files' && $data['links']['pdf'] === '/_admin/#pdf'
 	&& $data['links']['members'] === '/_admin/#members' && $data['links']['users'] === '/_admin/#users' && array_diff( array_keys( $data['links'] ), [ 'css', 'site', 'workbench', 'items', 'projects', 'files', 'pdf', 'members', 'users' ] ) === [] && str_contains( $html, 'crm-clients' ) === false && str_contains( $html, 'crm-documents' ) === false );
-check( '...the rail has seven entries and each is a screen of the surface: Kunden, Projekte, Positionen, PDF-Vorlagen and Einstellungen are hashes with their own mark, the count of the clients has its place, nothing leaves the page but the two links of the foot', preg_match_all( '~<nav class="nav".*?</nav>~s', $html, $rail ) === 1
-	&& preg_match_all( '~<a href="([^"]*)"(?: data-r="([a-z]+)")?~', $rail[0][0], $entries, PREG_SET_ORDER ) === 7 && array_map( static fn( array $entry ): string => $entry[1]. '|'. ( $entry[2] ?? '' ), $entries ) === [ '#uebersicht|uebersicht', '#belege|belege', '#kunden|kunden', '#projekte|projekte', '#positionen|positionen', '#pdf|pdf', '#einstellungen|einstellungen' ]
+check( '...the rail has eight entries and each is a screen of the surface: Kunden, Projekte, Uploads, Positionen, PDF-Vorlagen and Einstellungen are hashes with their own mark, the count of the clients has its place, nothing leaves the page but the two links of the foot', preg_match_all( '~<nav class="nav".*?</nav>~s', $html, $rail ) === 1
+	&& preg_match_all( '~<a href="([^"]*)"(?: data-r="([a-z]+)")?~', $rail[0][0], $entries, PREG_SET_ORDER ) === 8 && array_map( static fn( array $entry ): string => $entry[1]. '|'. ( $entry[2] ?? '' ), $entries ) === [ '#uebersicht|uebersicht', '#belege|belege', '#kunden|kunden', '#projekte|projekte', '#uploads|uploads', '#positionen|positionen', '#pdf|pdf', '#einstellungen|einstellungen' ]
 	&& str_contains( $rail[0][0], 'id="n-kunden"' ) === true && str_contains( $rail[0][0], 'id="n-belege"' ) === true );
 check( '...the words are the surface\'s and the sentences of the codes of both panels, as error.<code>', $data['texts']['error.crm_documents_fixed'] === Surface::texts()['error.crm_documents_fixed'] && isset( $data['texts']['error.crm_clients_email'] ) === true
 	&& str_starts_with( $data['texts']['error.crm_documents_state'], 'Dieser Schritt' ) === true && count( array_filter( array_keys( $data['texts'] ), static fn( string $key ): bool => str_starts_with( $key, 'error.crm_' ) ) ) > 60 );
@@ -768,8 +790,8 @@ foreach( [ 'not json', '[]', '{"action":["crm-documents/list"]}', '{"action":1}'
 	check( 'a body that is no action ('. $broken. ') is 404 action as well', $answer['statusCode'] === 404 && $answer['body']['code'] === 'action' );
 }
 
-check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the six of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/delete' ] )
-	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|delete))$~D', $action ) !== 1 ) === []
+check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the seven of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - the list of the uploads and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/delete', 'files/remove' ], [ 'crm-uploads/list' ] )
+	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|delete|remove)|crm-uploads/list)$~D', $action ) !== 1 ) === []
 	&& in_array( 'crm-clients/setup', array_keys( Surface::actions() ), true ) === false && in_array( 'crm-clients/status', array_keys( Surface::actions() ), true ) === false );
 
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiList' ], [ 'year' => (string) date( 'Y' ) ], 'crm-documents/list' );
@@ -777,8 +799,8 @@ check( 'the table is the API of the clients and of the documents by their names,
 check( 'a list through the endpoint equals the answer of the panel, to the byte of its JSON', $viaStatus === $status && json_encode( $via ) === json_encode( $direct ) && count( $via['documents'] ) > 10 );
 [ $viaStatus, $via ] = surfaceApi( $appData, 'crm-documents/get', [ 'id' => (string) $late1['id'] ] );
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiGet' ], [ 'id' => (string) $late1['id'] ], 'crm-documents/get' );
-check( '...so does a document, with its templates, clients and accounts - and the overview the screens start from has the books, what needs the owner and the latest documents', json_encode( $via ) === json_encode( $direct ) && $viaStatus === 200 && ( $overview = surfaceApi( $appData, 'crm-documents/overview' )[1] )
-	&& array_keys( $overview ) === [ 'summary', 'needs', 'recent', 'settings' ] && $overview['summary'] === Documents::summary( $appData ) + [ 'clients' => \Crm\Clients::countActive( $appData ) ] && $overview['summary']['clients'] === 3 && count( $overview['needs'] ) === count( Documents::needs( $appData ) ) && count( $overview['recent'] ) === 8 && $overview['settings']['currency'] === '€' );
+check( '...so does a document, with its templates, clients and accounts - and the overview the screens start from has the books, what needs the owner, the finished projects whose files lie on the server and the latest documents', json_encode( $via ) === json_encode( $direct ) && $viaStatus === 200 && ( $overview = surfaceApi( $appData, 'crm-documents/overview' )[1] )
+	&& array_keys( $overview ) === [ 'summary', 'needs', 'stale', 'recent', 'settings' ] && $overview['summary'] === Documents::summary( $appData ) + [ 'clients' => \Crm\Clients::countActive( $appData ) ] && $overview['summary']['clients'] === 3 && count( $overview['needs'] ) === count( Documents::needs( $appData ) ) && count( $overview['recent'] ) === 8 && $overview['settings']['currency'] === '€' );
 [ $status, $answer ] = surfaceApi( $appData, 'crm-clients/list' );
 check( '...and the actions of the other panel go through it, too', $status === 200 && count( $answer['clients'] ) === 4 );
 
@@ -1592,9 +1614,9 @@ check( '...a project nobody has is 404 crm_projekte_unknown at the field id; an 
 // --- the Files panel's actions, for the folders of the clients
 echo "\nDateien\n";
 
-$four = [ 'files/list' => [ 'group' => $group ], 'files/folder/add' => [ 'group' => $group, 'name' => 'Album' ], 'files/folder/save' => [ 'id' => 'aaaaaaaaaaaa', 'name' => 'x' ], 'files/upload' => [ 'folder' => 'aaaaaaaaaaaa', 'name' => 'a.txt', 'size' => 1, 'index' => 0, 'count' => 1 ], 'files/save' => [ 'id' => 'aaaaaaaaaaaa', 'visible' => true ], 'files/delete' => [ 'id' => 'aaaaaaaaaaaa' ] ];
+$four = [ 'files/list' => [ 'group' => $group ], 'files/folder/add' => [ 'group' => $group, 'name' => 'Album' ], 'files/folder/save' => [ 'id' => 'aaaaaaaaaaaa', 'name' => 'x' ], 'files/upload' => [ 'folder' => 'aaaaaaaaaaaa', 'name' => 'a.txt', 'size' => 1, 'index' => 0, 'count' => 1 ], 'files/save' => [ 'id' => 'aaaaaaaaaaaa', 'visible' => true ], 'files/delete' => [ 'id' => 'aaaaaaaaaaaa' ], 'files/remove' => [ 'id' => 'aaaaaaaaaaaa' ] ];
 $asVisitor();
-check( 'the six actions of the Files panel are in the table by their names: 401 for nobody', array_filter( $four, static fn( array $data, string $action ): bool => surfaceApi( $appData, $action, $data )[0] !== 401, ARRAY_FILTER_USE_BOTH ) === [] );
+check( 'the seven actions of the Files panel are in the table by their names: 401 for nobody', array_filter( $four, static fn( array $data, string $action ): bool => surfaceApi( $appData, $action, $data )[0] !== 401, ARRAY_FILTER_USE_BOTH ) === [] );
 $asCrm();
 $denied = static function() use ( &$appData, $four ): array {
 	return array_filter( $four, static function( array $data, string $action ) use ( &$appData ): bool { return surfaceApi( $appData, $action, $data )[0] !== 403; }, ARRAY_FILTER_USE_BOTH );
@@ -1624,7 +1646,7 @@ foreach( [ 'allgemein', 'k-9999', 'K-0001', 'k-1', 'k-00011', 'k-0001x', '', 'k-
 	}
 
 check( 'a group that is no client\'s - another group of Members, a number nobody has, a spelling of the group that is none - is 404 crm_files_group for the list and the add, and the answer holds nothing of the panel', $nobody === [] );
-check( '...nothing was made: no folder in any of those groups, the folder of the stranger is as it was', \Nino\Modules\Files::folders( $appData, 'allgemein' ) === [ $stranger ] && \Nino\Modules\Files::folders( $appData, 'k-9999' ) === [] && array_keys( \Nino\Modules\Files\Store::read( $appData )['folders'] ) === array_merge( $foldersBefore, [ $folderId, $stranger['id'] ] ) );
+check( '...nothing was made: no folder in any of those groups, the folder of the stranger is as it was', \Nino\Modules\Files::folders( $appData, 'allgemein' ) === [ $stranger ] && \Nino\Modules\Files::folders( $appData, 'k-9999' ) === [] && array_map( 'strval', array_keys( \Nino\Modules\Files\Store::read( $appData )['folders'] ) ) === array_map( 'strval', array_merge( $foldersBefore, [ $folderId, $stranger['id'] ] ) ) );
 check( '...the client without an account (a group the panel does not know yet) is a client\'s group all the same: the add is the panel\'s own refusal, 400 files_group, and the list shows nothing of any other group', ( $r = surfaceApi( $appData, 'files/folder/add', [ 'group' => \Crm\Clients::group( $c['number'] ), 'name' => 'Leer' ] ) )[0] === 400 && $r[1]['code'] === 'files_group'
 	&& ( $l = surfaceApi( $appData, 'files/list', [ 'group' => \Crm\Clients::group( $c['number'] ) ] ) )[0] === 200 && $l[1]['group'] === \Crm\Clients::group( $c['number'] ) && $l[1]['folders'] === [] && $l[1]['files'] === [] );
 [ $status, $l ] = surfaceApi( $appData, 'files/list', [ 'group' => $group ] );
@@ -1719,7 +1741,7 @@ $notifyOn = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['
 check( 'the card of a project says the setting of Dateien that mails the members as notify, for the box of the tab to start from', $notifyOn === true && ( surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['notify'] ?? null ) === false );
 [ , $list ] = surfaceApi( $appData, 'crm-projekte/list' );
 check( 'with a folder the list counts the files of the project and the card lists them with the address each is downloaded at, who put it there and whether the members see it - for the account of the CRM alone', array_column( $list['projects'], 'files', 'id' )['00001'] === 1 && array_column( $list['projects'], 'files', 'id' )['00003'] === 0
-	&& ( $got = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1] )['folder'] === [ 'id' => $folderId, 'name' => 'Album 2027' ] && count( $got['list'] ) === 1 && $got['list'][0] === [ 'id' => $fileId, 'name' => 'Notizen.txt', 'ext' => 'txt', 'size' => $total, 'mime' => 'text/plain', 'created' => $stored[0]['created'], 'visible' => false, 'by' => [ 'kind' => 'owner', 'label' => '' ], 'url' => '/.files/'. $fileId ] );
+	&& ( $got = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1] )['folder'] === [ 'id' => $folderId, 'name' => 'Album 2027' ] && count( $got['list'] ) === 1 && $got['list'][0] === [ 'id' => $fileId, 'name' => 'Notizen.txt', 'ext' => 'txt', 'size' => $total, 'mime' => 'text/plain', 'created' => $stored[0]['created'], 'visible' => false, 'gone' => '', 'by' => [ 'kind' => 'owner', 'label' => '' ], 'url' => '/.files/'. $fileId ] );
 $asItems();
 surfaceApi( $appData, 'elements/save', [ 'uri' => '00004', 'isNew' => false, 'fields' => [ 'folder' => 'dddddddddddd' ] ] + $project );
 $asCrm();
@@ -1754,6 +1776,238 @@ $featureOff = $perms( 'files@example.com', 'files password' )['files'];
 check( 'the data block says whether the account holds the permission of the Files panel with the feature on: perms.files is true for it and for the owner, false for the account of the CRM alone - and false for the one that holds it while the feature is off', surfaceData( $html )['perms']['files'] === true && $withFeature === [ true, false, true ] && $featureOff === false );
 $texts = Surface::texts();
 check( 'the sentences are the page\'s: the restriction has its own, the codes of the Files panel come from its text file, and the feature that is off has one', ( $texts['error.crm_files_group'] ?? '' ) !== '' && ( $texts['error.files_off'] ?? '' ) !== '' && str_contains( $texts['error.files_quota'] ?? '', '%s' ) === true && ( $texts['error.files_group'] ?? '' ) !== '' && Surface\Files::textFile() !== '' && str_ends_with( Surface\Files::textFile(), '/Files/text/de_DE.php' ) === true );
+$asCrm();
+
+// --- Entfernte Dateien: files/remove through the endpoint, the line of the Übersicht -----------------------------------------------------
+
+echo "\nDateien vom Server entfernen\n";
+
+$asFiles();
+$putFile = static function( string $folder, string $name, string $bytes, array $by, int $age ) use ( &$appData ): array {
+	[ $clean, $ext ] = \Nino\Modules\Files\Store::cleanName( $name );
+	$id = bin2hex( random_bytes( 6 ) );
+	@mkdir( dirname( (string) \Nino\Modules\Files\Store::bytes( $appData, $id, $ext ) ), 0775, true );
+	file_put_contents( (string) \Nino\Modules\Files\Store::bytes( $appData, $id, $ext ), $bytes );
+	$entry = \Nino\Modules\Files\Store::addFile( $appData, $id, [ 'folder' => $folder, 'name' => $clean, 'ext' => $ext, 'size' => strlen( $bytes ), 'mime' => $ext === 'wav' ? 'audio/wav' : 'text/plain', 'sha256' => hash( 'sha256', $bytes ), 'by' => $by, 'visible' => true, 'created' => gmdate( 'Y-m-d\TH:i:s\Z', time() - $age ) ], 0 );
+
+	return is_array( $entry ) === true ? $entry : [ 'id' => '' ];
+};
+$owner = [ 'kind' => 'owner', 'id' => '' ];
+$taking = $putFile( $folderId, 'Entfernen.txt', 'BYTES-OF-THE-FILE', $owner, 60 );
+$takingPath = (string) \Nino\Modules\Files::path( $appData, $taking['id'] );
+$told = [];
+$linesBeforeRemove = $lines( 'Removed file' );
+[ $status, $removed ] = surfaceApi( $appData, 'files/remove', [ 'id' => $taking['id'] ] );
+check( 'files/remove takes the bytes of a file of the folder of a client\'s group: 200, the entry with the time they went - its name, size and sender as they were - the bytes are gone from the disk, the row is in the index',
+	$status === 200 && $removed['changed'] === true && ( $removed['file']['gone'] ?? '' ) !== '' && $removed['file']['name'] === 'Entfernen.txt' && $removed['file']['size'] === 17 && is_file( $takingPath ) === false && \Nino\Modules\Files::file( $appData, $taking['id'] )['gone'] === $removed['file']['gone'] );
+check( '...the log has the panel\'s line, once, with the id and neither the name nor an address', $lines( 'Removed file '. $taking['id'] ) === 1 && $lines( 'Removed file' ) === $linesBeforeRemove + 1 && $lines( 'Entfernen.txt' ) === 0 );
+[ $status, $again ] = surfaceApi( $appData, 'files/remove', [ 'id' => $taking['id'] ] );
+check( '...removing it again is 200 and changes nothing: the same time, no second line of the log', $status === 200 && $again['changed'] === false && $again['file']['gone'] === $removed['file']['gone'] && $lines( 'Removed file '. $taking['id'] ) === 1 );
+$strangeBytes = (string) \Nino\Modules\Files\Store::bytes( $appData, 'bbbbbbbbbbbb', 'txt' );
+file_put_contents( $strangeBytes, 'X' );
+check( 'a file of a folder of another group is 404 crm_files_group and keeps its bytes and its row; a file nobody has is the panel\'s own 404 files_unknown; an id that is none the same',
+	( $r = surfaceApi( $appData, 'files/remove', [ 'id' => 'bbbbbbbbbbbb' ] ) )[0] === 404 && $r[1]['code'] === 'crm_files_group' && is_file( $strangeBytes ) === true && isset( \Nino\Modules\Files::file( $appData, 'bbbbbbbbbbbb' )['gone'] ) === false
+	&& ( $r = surfaceApi( $appData, 'files/remove', [ 'id' => 'cccccccccccc' ] ) )[1]['code'] === 'files_unknown' && surfaceApi( $appData, 'files/remove', [ 'id' => '../etc/passwd' ] )[1]['code'] === 'files_unknown' );
+unlink( $strangeBytes );
+$asCrm();
+check( '...the account of the CRM alone is 403 and the file keeps its row as it was', surfaceApi( $appData, 'files/remove', [ 'id' => $taking['id'] ] )[0] === 403 && \Nino\Modules\Files::file( $appData, $taking['id'] )['gone'] === $removed['file']['gone'] );
+$card = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1];
+$cardEntry = array_values( array_filter( $card['list'], static fn( array $file ): bool => $file['id'] === $GLOBALS['taking']['id'] ) )[0] ?? [];
+check( 'the card of the project lists the file that was removed with its time in gone, and the other files with an empty one', ( $cardEntry['gone'] ?? '' ) === $removed['file']['gone'] && array_unique( array_column( array_filter( $card['list'], static fn( array $file ): bool => $file['id'] !== $GLOBALS['taking']['id'] ), 'gone' ) ) !== [ $removed['file']['gone'] ] );
+$asFiles();
+surfaceApi( $appData, 'files/delete', [ 'id' => $taking['id'] ] );
+check( '...and a file that was removed is deleted whole by files/delete: the row is gone', \Nino\Modules\Files::file( $appData, $taking['id'] ) === null );
+
+// The Übersicht: the finished projects with files on the server for long
+$stales = static function() use ( &$appData ): array { return surfaceApi( $appData, 'crm-documents/overview' )[1]['stale'] ?? []; };
+$staleBefore = $stales();
+$folderOld = \Nino\Modules\Files\Store::addFolder( $appData, $group, 'Alt' );
+$folderYoung = \Nino\Modules\Files\Store::addFolder( $appData, $group, 'Jung' );
+$folderGoneOnly = \Nino\Modules\Files\Store::addFolder( $appData, $group, 'Weg' );
+$folderOpen = \Nino\Modules\Files\Store::addFolder( $appData, $group, 'Offen' );
+$folderOther = \Nino\Modules\Files\Store::addFolder( $appData, 'allgemein', 'Anderer Kunde' );
+$putFile( $folderOld['id'], 'Alt.wav', str_repeat( 'a', 1000 ), $owner, 90 * 86400 );
+$putFile( $folderOld['id'], 'Alt2.wav', str_repeat( 'a', 500 ), $owner, 70 * 86400 );
+$putFile( $folderYoung['id'], 'Alt.wav', str_repeat( 'a', 400 ), $owner, 100 * 86400 );
+$putFile( $folderYoung['id'], 'Neu.wav', str_repeat( 'a', 400 ), $owner, 86400 );
+$putFile( $folderOpen['id'], 'Alt.wav', str_repeat( 'a', 300 ), $owner, 100 * 86400 );
+$putFile( $folderOther['id'], 'Alt.wav', str_repeat( 'a', 300 ), $owner, 100 * 86400 );
+$goneOnly = $putFile( $folderGoneOnly['id'], 'Weg.wav', str_repeat( 'a', 300 ), $owner, 100 * 86400 );
+\Nino\Modules\Files\Store::removeBytes( $appData, $goneOnly['id'] );
+$asItems();
+foreach( [ [ 'Fertig alt', $folderOld['id'], true ], [ 'Fertig jung', $folderYoung['id'], true ], [ 'Fertig weg', $folderGoneOnly['id'], true ], [ 'Läuft noch', $folderOpen['id'], false ], [ 'Fremder Ordner', $folderOther['id'], true ], [ 'Fertig ohne Ordner', '', true ] ] as [ $title, $folderOf, $done ] )
+	surfaceApi( $appData, 'elements/save', [ 'fields' => [ 'title' => $title, 'client' => $a['number'], 'done' => $done, 'folder' => $folderOf ] ] + $project );
+$asCrm();
+$stale = $stales();
+check( 'the overview says how many finished projects have files on the server that are all older than 60 days, and what those files take: the project with an old file and another, the one with a young file, the one whose files are removed, the one that runs, the one with no folder and the one with a folder of another group are not counted',
+	( $stale['count'] ?? -1 ) === ( $staleBefore['count'] ?? 0 ) + 1 && ( $stale['bytes'] ?? -1 ) === ( $staleBefore['bytes'] ?? 0 ) + 1500 && ( $stale['days'] ?? 0 ) === 60 );
+\Nino\Features::deactivate( $appData, 'files' );
+check( '...with the feature off there is none', ( $stales()['count'] ?? -1 ) === 0 );
+\Nino\Features::activate( $appData, 'files' );
+
+// --- Uploads: the list of every file in the upload folders of the clients, and the ZIP of a choice -------------------------------------
+
+echo "\nUploads\n";
+
+$groupB = \Crm\Clients::group( $b['number'] );
+$upA = \Nino\Modules\Files\Store::addFolder( $appData, $group, 'Eingang' );
+$upB = \Nino\Modules\Files\Store::addFolder( $appData, $groupB, 'Eingang B' );
+$albumA = \Nino\Modules\Files\Store::addFolder( $appData, $group, 'Album' );
+$upStranger = \Nino\Modules\Files\Store::addFolder( $appData, 'allgemein', 'Eingang fremd' );
+foreach( [ $upA, $upB, $upStranger ] as $marked )
+	\Nino\Modules\Files\Store::markUpload( $appData, $marked['id'], true );
+
+$lena = \Nino\Modules\Members::add( $appData, 'lena-upload@example.org', 'Lena Upload', $group );
+$byLena = [ 'kind' => 'member', 'id' => $lena['id'] ];
+$u1 = $putFile( $upA['id'], 'Take 1.wav', 'AAAA-FIRST', $byLena, 40 * 86400 );
+$u2 = $putFile( $upA['id'], 'Notiz.txt', 'NOTE', $byLena, 2 * 86400 );
+$u3 = $putFile( $upB['id'], 'Take 1.wav', 'BBBB-OTHER-CLIENT', $byLena, 5 * 86400 );
+$second = 'AAAA-SECOND'. str_repeat( 'A', 20000 );
+$u4 = $putFile( $upA['id'], 'Take 1.wav', $second, $byLena, 3 * 86400 );
+$x1 = $putFile( $albumA['id'], 'Album.wav', 'ALBUM', $owner, 3 * 86400 );
+$x2 = $putFile( $upStranger['id'], 'Fremd.txt', 'STRANGER', $byLena, 3 * 86400 );
+$u5 = $putFile( $upA['id'], 'Weg.txt', 'GONE-BYTES', $byLena, 50 * 86400 );
+\Nino\Modules\Files\Store::removeBytes( $appData, $u5['id'] );
+$listed = static function() use ( &$appData ): array { return surfaceApi( $appData, 'crm-uploads/list' ); };
+
+$asVisitor();
+[ $status ] = $listed();
+$asUser( 'plain@example.com', 'plain password' );
+[ $statusPlain ] = $listed();
+check( 'crm-uploads/list is in the table: 401 for nobody, 403 for an account without the permission of the CRM', $status === 401 && $statusPlain === 403 );
+$asCrm();
+[ $status, $up ] = $listed();
+$byId = array_column( $up['rows'], null, 'id' );
+check( 'the list has the files of the upload folders of the clients - and no other: not a folder that is no upload folder, not the upload folder of a group that is no client\'s - each with its client, the name, who sent it, the size, the day and the age in days',
+	$status === 200 && array_map( 'strval', array_keys( $byId ) ) === array_column( $up['rows'], 'id' ) && array_diff( [ $u1['id'], $u2['id'], $u3['id'], $u4['id'], $u5['id'] ], array_keys( $byId ) ) === [] && isset( $byId[$x1['id']] ) === false && isset( $byId[$x2['id']] ) === false
+	&& $byId[$u1['id']]['client'] === $a['number'] && $byId[$u1['id']]['client_id'] === $a['id'] && $byId[$u1['id']]['client_title'] === 'Studio Nord GmbH' && $byId[$u3['id']]['client'] === $b['number'] && $byId[$u3['id']]['client_title'] === 'Ben Süd'
+	&& $byId[$u1['id']]['name'] === 'Take 1.wav' && $byId[$u1['id']]['size'] === 10 && $byId[$u1['id']]['by'] === [ 'kind' => 'member', 'label' => 'Lena Upload' ] && $byId[$u1['id']]['created'] === $u1['created'] && $byId[$u1['id']]['gone'] === '' );
+check( '...the age is in whole days - 40, 2, 5 - and the list is the newest first', $byId[$u1['id']]['age'] === 40 && $byId[$u2['id']]['age'] === 2 && $byId[$u3['id']]['age'] === 5 && array_column( $up['rows'], 'created' ) === ( static function( array $created ): array { rsort( $created ); return $created; } )( array_column( $up['rows'], 'created' ) ) );
+check( '...a file that was removed is in it as removed and counts for nothing: the sums are those of the files on the server - 4 files, their bytes, and of them the one older than 30 days',
+	$byId[$u5['id']]['gone'] !== '' && $up['summary'] === [ 'count' => 4, 'bytes' => strlen( 'AAAA-FIRST' ) + strlen( 'NOTE' ) + strlen( 'BBBB-OTHER-CLIENT' ) + strlen( $second ), 'old_count' => 1, 'old_bytes' => 10 ] && $up['old_days'] === 30 );
+check( '...and it says whether the account may change the files (the permission of the Files panel), whether ZipArchive is there, the most files of a ZIP and the size that is called large',
+	$up['allowed'] === false && $up['files'] === true && $up['zip'] === class_exists( '\ZipArchive' ) && $up['limit'] === \Crm\Surface\Uploads::MAX_FILES && $up['large'] === 2147483648 );
+$asFiles();
+check( '...the account with the permission of the Files panel is allowed', $listed()[1]['allowed'] === true );
+$asCrm();
+\Nino\Features::deactivate( $appData, 'files' );
+$off = $listed()[1];
+\Nino\Features::activate( $appData, 'files' );
+check( '...with the feature off the list is empty and says so - no row, no sum', $off['files'] === false && $off['rows'] === [] && $off['summary'] === [ 'count' => 0, 'bytes' => 0, 'old_count' => 0, 'old_bytes' => 0 ] );
+
+// The ZIP
+$zipDir = \Nino\Filesystem::path( $appData, \Crm\Surface\Uploads::DIRECTORY );
+$zipFiles = static fn(): array => glob( $zipDir. '/*' ) ?: [];
+$zipOf = static function( string $ids ) use ( &$appData ): array {
+	return surfaceServe( $appData, 'GET', '/crm/uploads.zip'. ( $ids === '' ? '' : '?ids='. $ids ) );
+};
+$asVisitor();
+$noSession = $zipOf( $u1['id'] );
+$asUser( 'plain@example.com', 'plain password' );
+$noCrm = $zipOf( $u1['id'] );
+$asCrm();
+$noFiles = $zipOf( $u1['id'] );
+$asUser( 'filesonly@example.com', 'filesonly password' );
+$onlyFiles = $zipOf( $u1['id'] );
+check( 'the ZIP is for a session that holds the permission of the CRM and that of the Files panel: 401 for nobody, 403 for an account without the CRM\'s - and for the one that has the CRM\'s alone, and the Files\' alone - and nothing is made',
+	$noSession['statusCode'] === 401 && $noCrm['statusCode'] === 403 && $noFiles['statusCode'] === 403 && $onlyFiles['statusCode'] === 403 && array_filter( [ $noSession, $noCrm, $noFiles, $onlyFiles ], static fn( array $answer ): bool => isset( $answer['file'] ) ) === [] && $zipFiles() === [] );
+\Nino\Features::deactivate( $appData, 'files' );
+$asCrm();
+$offNoRight = $zipOf( $u1['id'] )['statusCode'];
+$asFiles();
+$offWithRight = $zipOf( $u1['id'] )['statusCode'];
+\Nino\Features::activate( $appData, 'files' );
+check( 'the rights come before the state of the feature: with Files off the account that lacks the permission of the Files panel is 403 - it is told nothing of the state - and the one that holds it is 409', $offNoRight === 403 && $offWithRight === 409 );
+$asFiles();
+$tooMany = implode( ',', array_map( static fn( int $at ): string => str_pad( dechex( $at ), 12, '0', STR_PAD_LEFT ), range( 1, 401 ) ) );
+$refusedIds = [ 'none' => $zipOf( '' ), 'empty' => $zipOf( ',' ), 'not an id' => $zipOf( $u1['id']. ',zzz' ), 'a path' => $zipOf( '../../etc/passwd' ), 'too many' => $zipOf( $tooMany ) ];
+check( 'a choice that is no list of ids - none, an empty one, one that is none, a path, more than a ZIP takes - is 400 and makes nothing', array_map( static fn( array $answer ): int => $answer['statusCode'], $refusedIds ) === array_fill_keys( array_keys( $refusedIds ), 400 ) && $zipFiles() === [] );
+check( '...a ZIP takes 400 files and not 401, whatever the constant says: 401 ids are 400, and 400 ids that nobody has are the 404 of an id nobody has - the cap is past, the ids are looked at', $zipOf( $tooMany )['statusCode'] === 400 && $zipOf( substr( $tooMany, 0, 400 * 13 - 1 ) )['statusCode'] === 404 );
+$strangers = [ 'a file that is no upload' => $zipOf( $u1['id']. ','. $x1['id'] ), 'the upload of a group that is no client\'s' => $zipOf( $u1['id']. ','. $x2['id'] ), 'a file nobody has' => $zipOf( $u1['id']. ',ffffffffffff' ), 'a file that was removed' => $zipOf( $u1['id']. ','. $u5['id'] ) ];
+check( 'an id that is not a file of an upload folder of a client is 404 for the whole request - a file of a folder that is no upload folder, one of the upload folder of a group that is no client\'s, one nobody has - and for a file that was removed 410; the ZIP of the others is not made',
+	array_map( static fn( array $answer ): int => $answer['statusCode'], $strangers ) === [ 'a file that is no upload' => 404, 'the upload of a group that is no client\'s' => 404, 'a file nobody has' => 404, 'a file that was removed' => 410 ]
+	&& array_filter( $strangers, static fn( array $answer ): bool => isset( $answer['file'] ) === true || str_starts_with( $answer['header']['Content-Type'], 'text/plain' ) === false ) === [] && $zipFiles() === [] );
+unlink( (string) \Nino\Modules\Files::path( $appData, $u3['id'] ) );
+check( '...and a file whose bytes are not on the disk is 404 as well', $zipOf( $u3['id'] )['statusCode'] === 404 && $zipFiles() === [] );
+file_put_contents( (string) \Nino\Modules\Files\Store::bytes( $appData, $u3['id'], 'wav' ), 'BBBB-OTHER-CLIENT' );
+
+// A name in the index is a name anybody with a text editor can write: the ZIP takes what cleanName() makes of it
+$hostile = [
+	'dots'   => $putFile( $upA['id'], 'Fremd.txt', 'H1', $byLena, 1 ),
+	'slash'  => $putFile( $upA['id'], 'Fremd.txt', 'H2', $byLena, 1 ),
+	'nothing'=> $putFile( $upB['id'], 'Fremd.txt', 'H3', $byLena, 1 ),
+];
+$index = \Nino\Filesystem::getFileContent( $appData, '/data/files.php', [] );
+$index['files'][$hostile['dots']['id']]['name'] = '../../../etc/passwd.txt';
+$index['files'][$hostile['slash']['id']]['name'] = "/abs/olute\\..\\win.txt";
+$index['files'][$hostile['nothing']['id']]['name'] = '....';
+\Nino\Filesystem::putFileContent( $appData, '/data/files.php', $index );
+$ids = implode( ',', [ $u1['id'], $u2['id'], $u3['id'], $u4['id'], $hostile['dots']['id'], $hostile['slash']['id'], $hostile['nothing']['id'] ] );
+$linesBeforeZip = $lines( 'as a zip' );
+$zip = $zipOf( $ids );
+$entries = [];
+$contents = [];
+$methods = [];
+$zipPath = (string) ( $zip['file'] ?? '' );
+$archive = new \ZipArchive();
+
+if( $zipPath !== '' && $archive->open( $zipPath ) === true ) {
+	for( $at = 0; $at < $archive->numFiles; $at++ ) {
+		$stat = $archive->statIndex( $at );
+		$entries[] = $stat['name'];
+		$contents[$stat['name']] = $archive->getFromIndex( $at );
+		$methods[] = $stat['comp_method'];
+	}
+	$archive->close();
+}
+
+check( 'a ZIP of a choice is the file the kernel streams: 200, named for it - under /data, in a file of its own - as an attachment of application/zip named uploads-<day>.zip, no cache keeps it',
+	$zip['statusCode'] === 200 && str_starts_with( $zipPath, $zipDir. '/uploads-' ) === true && is_file( $zipPath ) === true && $zip['header']['Content-Type'] === 'application/zip' && str_starts_with( $zip['header']['Content-Disposition'], 'attachment; filename="uploads-'. date( 'Y-m-d' ). '.zip"' ) === true
+	&& str_contains( $zip['header']['Cache-Control'], 'no-store' ) === true && $zip['header']['X-Content-Type-Options'] === 'nosniff' );
+check( '...in it every file is <number of the client>/<name>, as the index keeps the name, with the bytes it has - and a name that is there already is made unique with -2 before its extension, the second Take 1.wav of a client, and the one of another client is in the folder of its own',
+	array_slice( $entries, 0, 4 ) === [ $a['number']. '/Take 1.wav', $a['number']. '/Notiz.txt', $b['number']. '/Take 1.wav', $a['number']. '/Take 1-2.wav' ] && $contents[$a['number']. '/Take 1.wav'] === 'AAAA-FIRST' && $contents[$a['number']. '/Take 1-2.wav'] === $second && $contents[$b['number']. '/Take 1.wav'] === 'BBBB-OTHER-CLIENT' && $contents[$a['number']. '/Notiz.txt'] === 'NOTE' );
+check( '...a name that is a way out - dots and slashes, a backslash, nothing but dots - is never one: every entry is a client\'s number, one slash and a name with neither a slash nor a backslash nor a segment of dots, and the unpacking cannot leave the directory it is made in',
+	count( $entries ) === 7 && array_filter( $entries, static fn( string $entry ): bool => preg_match( '~^K-[0-9]{4,}/[^/\\\\]+$~D', $entry ) !== 1 || str_contains( $entry, '..' ) === true && str_starts_with( explode( '/', $entry )[1], '.' ) ) === []
+	&& in_array( $a['number']. '/passwd.txt', $entries, true ) === true && in_array( $a['number']. '/win.txt', $entries, true ) === true && $contents[$a['number']. '/passwd.txt'] === 'H1' && $contents[$a['number']. '/win.txt'] === 'H2' && $contents[$b['number']. '/'. $hostile['nothing']['id']. '.txt'] === 'H3' );
+check( '...the files are stored, not compressed: what is uploaded is audio, video, images and archives already', $methods !== [] && array_unique( $methods ) === [ \ZipArchive::CM_STORE ] );
+check( '...the log has one line for it that counts the files, with no name and no address', $lines( 'Downloaded 7 uploaded files as a zip' ) === 1 && $lines( 'as a zip' ) === $linesBeforeZip + 1 && $lines( 'lena-upload@example.org' ) === 0 );
+$sameCount = count( $zipFiles() );
+$oneFile = $zipOf( $u2['id'] );
+check( '...a ZIP of one file is the same, and a choice of the same id twice is the file once', $oneFile['statusCode'] === 200 && ( new \ZipArchive() )->open( (string) $oneFile['file'] ) === true && $zipOf( $u2['id']. ','. $u2['id'] )['statusCode'] === 200 && count( $zipFiles() ) === $sameCount + 2 );
+$removedZips = \Crm\Surface\Uploads::cleanup();
+check( 'the ZIPs of a request are removed when it ends: the shutdown function, which is this method, takes every ZIP the request made and no other file - the directory is empty after it', $removedZips === $sameCount + 2 && $zipFiles() === [] && is_file( $zipPath ) === false && \Crm\Surface\Uploads::cleanup() === 0 );
+
+// A request that ends takes its ZIP with it: a process of its own answers one request for a ZIP and exits, and the directory is empty after it
+$child = proc_open( [ PHP_BINARY, __FILE__, 'zip-worker', ninoSandboxDir( $appData ), $u2['id']. ','. $u1['id'] ], [ 1 => [ 'pipe', 'w' ], 2 => [ 'file', '/dev/null', 'w' ] ], $childPipes );
+$childOut = is_resource( $child ) === true ? trim( (string) stream_get_contents( $childPipes[1] ) ) : '';
+is_resource( $child ) === true && proc_close( $child );
+[ $childStatus, $childZip ] = array_pad( explode( ' ', $childOut, 2 ), 2, '' );
+check( 'a ZIP is gone when the request that made it has ended: a process answered a request for one - 200, a file below /data/crm-zip, which the process had made - and exited, and the directory is empty after it (the shutdown function did it)',
+	$childStatus === '200' && str_starts_with( $childZip, $zipDir. '/uploads-' ) === true && is_file( $childZip ) === false && $zipFiles() === [] );
+
+// What an interrupted request left behind: the next ZIP takes it away once it is an hour old
+touch( $zipDir. '/uploads-stale0000000000.zip', time() - 7200 );
+touch( $zipDir. '/uploads-recent000000000.zip', time() - 600 );
+touch( $zipDir. '/uploads-unfinished0000.zip.a1B2c3', time() - 7200 );
+touch( $zipDir. '/uploads-unfinished1111.zip.d4E5f6', time() - 600 );
+touch( $zipDir. '/notes.txt', time() - 7200 );
+$zipOf( $u2['id'] );
+$left = array_map( 'basename', $zipFiles() );
+sort( $left );
+\Crm\Surface\Uploads::cleanup();
+check( 'a ZIP that an interrupted request left - and the temporary file libzip leaves beside an unfinished one - is removed by the next request for one, when it is older than an hour - one that is younger, and any other file in the directory, stay', in_array( 'uploads-stale0000000000.zip', $left, true ) === false && in_array( 'uploads-recent000000000.zip', $left, true ) === true && in_array( 'notes.txt', $left, true ) === true
+	&& in_array( 'uploads-unfinished0000.zip.a1B2c3', $left, true ) === false && in_array( 'uploads-unfinished1111.zip.d4E5f6', $left, true ) === true );
+array_map( 'unlink', $zipFiles() );
+check( '...and the sweep is a function of its own: it answers how many went', \Crm\Surface\Uploads::sweep( $appData ) === 0 );
+
+// Deleting an upload is the panel's own delete
+$asFiles();
+$deleteOne = surfaceApi( $appData, 'files/delete', [ 'id' => $u2['id'] ] );
+$deleteStranger = surfaceApi( $appData, 'files/delete', [ 'id' => $x2['id'] ] );
+check( 'an upload is deleted by files/delete: the row and the bytes go, and it is out of the list - the file of a group that is no client\'s is 404 crm_files_group and stays', $deleteOne[0] === 200 && \Nino\Modules\Files::file( $appData, $u2['id'] ) === null
+	&& is_file( (string) \Nino\Modules\Files\Store::bytes( $appData, $u2['id'], 'txt' ) ) === false && isset( array_column( $listed()[1]['rows'], null, 'id' )[$u2['id']] ) === false && $deleteStranger[0] === 404 && $deleteStranger[1]['code'] === 'crm_files_group' && \Nino\Modules\Files::file( $appData, $x2['id'] ) !== null );
+$texts = Surface::texts();
+check( 'the sentences the ZIP answers with are the page\'s own, in German with Du', array_filter( [ 'uploads.zip-off', 'uploads.zip-ids', 'uploads.zip-unknown', 'uploads.zip-gone', 'uploads.zip-failed' ], static fn( string $key ): bool => ( $texts[$key] ?? '' ) === '' ) === [] );
 $asCrm();
 
 // --- Firmendaten: the actions of the Text panel through the endpoint, for the keys below /project/company/ alone ------------
