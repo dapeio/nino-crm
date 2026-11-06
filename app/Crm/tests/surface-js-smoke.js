@@ -2382,7 +2382,7 @@ function press( w, key, target, mods ) {
 			return [ 400, { error : 'x', code : 'crm_clients_email', field : 'email' } ];
 		return [ 200, { client : Object.assign( {}, kclient, data, { id : 1, documents : { total : 2, released : 1 } } ) } ];
 	} } );
-	check( 'the menu of the client has Stammdaten bearbeiten, and the form is not there before', all( kmenu( ke, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'Stammdaten bearbeiten|Deaktivieren' && all( ke.main, '#client-save' ).length === 0 );
+	check( 'the menu of the client has the two links for the accounts that are on, Stammdaten bearbeiten and Deaktivieren, and the form is not there before', all( kmenu( ke, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === [ texts['plink.menu-data'], texts['plink.menu-privacy'], 'Stammdaten bearbeiten', 'Deaktivieren' ].join( '|' ) && all( ke.main, '#client-save' ).length === 0 );
 	click( ke, kitem( kmenu( ke, '⋯' ), 'Stammdaten bearbeiten' ) );
 	const mform = all( ke.main, '#master' )[0];
 	check( 'Stammdaten bearbeiten draws a form in the place of the facts: the nine fields with their words, filled, the mail a field of mail, the phone asking a phone keyboard, the country two characters long', all( mform, 'input' ).map( function( i ) { return i.id.slice( 2 ) } ).join() === 'company,name,street,zip,city,country,email,phone,vat_id,buyer_reference,business'
@@ -4281,7 +4281,7 @@ function press( w, key, target, mods ) {
 
 	{
 	const jperms = { crm : true, pdf : false, elements : true, text : false, files : true };
-	const jclient1 = { id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true };
+	const jclient1 = { id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true, active_accounts : 2 };
 	const jrow = function( over ) {
 		return Object.assign( { id : '00001', title : 'Album 2027', client : 'K-0001', description : 'Aufnahme\nund Mix', started : '2026-10-01', done : false, folder : 'f00000000001', documents : 3, open : 1, client_id : 1, client_title : 'Nordlicht Records GmbH', client_active : true, files : 1, download : false, download_at : '', approval : null }, over || {} );
 	};
@@ -5304,6 +5304,186 @@ function press( w, key, target, mods ) {
 	// --- the script
 	check( 'the script posts a file to the Files panel\'s upload only as chunks, with the part named chunk, and keeps no folder of its own: the actions it names of that panel are the seven of the endpoint', [ ...new Set( [ ...script.matchAll( /(?:api|call|upload)\( '(files\/[a-z/]+)'/g ) ].map( function( found ) { return found[1] } ) ) ].sort().join() === 'files/delete,files/folder/add,files/folder/save,files/list,files/remove,files/save,files/upload' && /upload\( 'files\/upload', \{[^}]*\}, file\.slice\([^)]*\), 'chunk' \)/.test( script ) === true );
 	check( '...every word the screens ask for is a word of the page', [ ...script.matchAll( /\bt\( '(projects\.[a-z-]+|project\.[a-z-]+|ptab\.[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return typeof texts[key] !== 'string' || texts[key] === '' } ).length === 0 && typeof texts['nav.projects'] === 'string' );
+
+	// === C20: Link für den Kunden - the button at the project, its files, a document and the client, and the dialog
+
+	const x20_perms = Object.assign( {}, jperms, { members : true } );
+	const x20_jopen = function( hash, over, perms ) { return jopen( hash, over, perms ?? x20_perms ) };
+	const x20_accounts = [
+		{ id : 'aaaaaaaaaaaa', gone : false, state : 'signed', email : 'lena@nordlicht.example', name : 'Lena Brandt', active : true, login : '2026-10-30T10:00:00Z' },
+		{ id : 'bbbbbbbbbbbb', gone : false, state : 'invited', email : 'tom@nordlicht.example', name : '', active : true, login : null },
+		{ id : 'cccccccccccc', gone : false, state : 'off', email : 'alt@nordlicht.example', name : 'Alt', active : false, login : '2026-01-02T10:00:00Z' },
+	];
+	const x20_posts = [];
+	const x20_answers = function( accountList, resend ) {
+		return {
+			'crm-clients/accounts' : function() { return [ 200, { accounts : accountList } ] },
+			'crm-clients/account-resend' : resend ?? function( data ) {
+				x20_posts.push( data );
+				return [ 200, Object.assign( { sent : data.notify !== false, kind : data.account === 'bbbbbbbbbbbb' ? 'invite' : 'login' }, data.notify === false ? { link : 'https://example.org/club/.members/login?t=SHOWN', expires : data.account === 'bbbbbbbbbbbb' ? 604800 : 900 } : {} ) ];
+			},
+		};
+	};
+	const x20_radios = function( node ) { return all( node, 'input' ).filter( function( input ) { return input.type === 'radio' } ) };
+	const x20_target = function( node ) { return node === undefined ? '' : node.dataset.target };
+	const x20_open = function( w ) { return w.dialogs[w.dialogs.length - 1] };
+	const x20_yes = function( w ) { click( w, all( x20_open( w ), 'button' ).pop() ) };
+
+	// the card of a project: the head, the tab Dateien and its rows (each version is a row of its own)
+	const x20_versions = jfiles.concat( [
+		{ id : 'a00000000003', name : 'Mix.wav', ext : 'wav', size : 5000, mime : 'audio/wav', created : '2026-11-04T10:00:00Z', visible : true, by : { kind : 'owner', label : '' }, url : '/.files/a00000000003', title : 'Mix', version : '1', versions : 2, group : 2, comments : null },
+		{ id : 'a00000000004', name : 'Mix.wav', ext : 'wav', size : 5100, mime : 'audio/wav', created : '2026-11-05T10:00:00Z', visible : true, by : { kind : 'owner', label : '' }, url : '/.files/a00000000004', title : 'Mix', version : '2', versions : 2, group : 2, comments : null },
+		{ id : 'a00000000005', name : 'Weg.wav', ext : 'wav', size : 5000, mime : 'audio/wav', created : '2026-11-04T10:00:00Z', visible : true, gone : '2026-11-06T10:00:00Z', by : { kind : 'owner', label : '' }, url : '', title : 'Weg', version : '', versions : 1, group : 3, comments : null },
+	] );
+	const x20_p = await x20_jopen( '#projekt-00001-dateien', Object.assign( { 'crm-projekte/get' : function() { return [ 200, jget( { list : x20_versions } ) ] } }, x20_answers( x20_accounts ) ) );
+	check( 'the head of the card of a project has Link für den Kunden: a button that is 44 pixels high in the style, with its title, leading to the overview of the project in the portal', x20_target( jf( x20_p, 'project-link' ) ) === '/portal/projekte?projekt=00001' && jf( x20_p, 'project-link' ).title === texts['plink.button'] && textOf( jf( x20_p, 'project-link' ) ) === texts['plink.short'] && jf( x20_p, 'project-link' ).getAttribute( 'aria-label' ).indexOf( texts['plink.button'] ) === 0 );
+	check( '...the tab Dateien has one for its head - the files of the project - and one for each file that the customer sees, by the file: a file that is hidden has none; of two versions of a title each has its own', x20_target( jf( x20_p, 'files-link' ) ) === '/portal/projekte?projekt=00001&tab=dateien'
+		&& x20_target( jf( x20_p, 'file-link-a00000000001' ) ) === '/portal/projekte?projekt=00001&review=a00000000001&tab=dateien' && jf( x20_p, 'file-link-a00000000002' ) === undefined && jf( x20_p, 'file-link-a00000000005' ) === undefined
+		&& x20_target( jf( x20_p, 'file-link-a00000000003' ) ) === '/portal/projekte?projekt=00001&review=a00000000003&tab=dateien' && x20_target( jf( x20_p, 'file-link-a00000000004' ) ) === '/portal/projekte?projekt=00001&review=a00000000004&tab=dateien' );
+	check( '...and none where the client has no account that is on, where the client is off, or where the account may not change the files', jf( await x20_jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { client : Object.assign( {}, jclient1, { active_accounts : 0 } ) } ) ] } } ), 'project-link' ) === undefined
+		&& all( ( await x20_jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { client : Object.assign( {}, jclient1, { active_accounts : 0 } ) } ) ] } } ) ).main, '.link-btn' ).length === 0
+		&& all( ( await x20_jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { client : Object.assign( {}, jclient1, { active : false } ) } ) ] } } ) ).main, '.link-btn' ).length === 0
+		&& all( ( await x20_jopen( '#projekt-00001-dateien', {}, { crm : true, pdf : false, elements : false, files : false } ) ).main, '.link-btn' ).map( function( button ) { return button.id } ).join() === 'project-link' );
+
+	// the dialog: the object and the target as text, the account, the box of the mail, and the link shown once with the sentence of how long it stays good
+	x20_posts.length = 0;
+	click( x20_p, jf( x20_p, 'file-link-a00000000004' ) );
+	await settle();
+	const x20_d = x20_open( x20_p );
+	check( 'the button asks for the accounts of the client and opens the dialog: the file with its version and the target as text - nothing to type -, a choice of the two accounts that are on (the first is chosen), and the box of the mail, not ticked', x20_p.all( 'crm-clients/accounts' ).length === 1 && x20_p.last( 'crm-clients/accounts' ).data.id === '1'
+		&& textOf( x20_d ).indexOf( 'Mix.wav' ) !== -1 && textOf( x20_d ).indexOf( 'Mix.wav v2' ) === -1 && all( x20_d, '#dlg-target' )[0].textContent === '/portal/projekte?projekt=00001&review=a00000000004&tab=dateien'
+		&& x20_radios( x20_d ).length === 2 && x20_radios( x20_d ).map( function( input ) { return input.value+ ':'+ input.checked } ).join() === 'aaaaaaaaaaaa:true,bbbbbbbbbbbb:false'
+		&& all( x20_d, '#dlg-mail' ).length === 1 && all( x20_d, '#dlg-mail' )[0].type === 'checkbox' && all( x20_d, '#dlg-mail' )[0].checked === false && all( x20_d, 'input' ).filter( function( input ) { return input.type === 'text' } ).length === 0 );
+	x20_yes( x20_p );
+	await settle();
+	check( '...Link erzeugen posts the action of the card of the client with the account, the target and notify false, shows the link in the field that nobody can type in, with the button that copies it and the sentence of how long it stays good (from the answer)', JSON.stringify( x20_posts ) === '[{"id":"1","account":"aaaaaaaaaaaa","target":"/portal/projekte?projekt=00001&review=a00000000004&tab=dateien","notify":false}]'
+		&& all( x20_d, '#dlg-link' )[0].value === 'https://example.org/club/.members/login?t=SHOWN' && all( x20_d, '#dlg-link' )[0].readOnly === true && all( x20_d, '#dlg-link-copy' ).length === 1
+		&& all( x20_d, '#dlg-note' )[0].textContent === texts['plink.valid-minutes'].replace( '%s', '15' ) && all( x20_d, 'button' ).map( textOf ).join( '|' ) === texts['shown.copy']+ '|'+ texts['dialog.close'] && x20_radios( x20_d ).length === 0 );
+	click( x20_p, all( x20_d, 'button' ).pop() );
+	await settle();
+	check( '...and takes the link along when it closes: not the field, nor the text of it', x20_p.dialogRoot.children.length === 0 && x20_p.dialogRoot.textContent.indexOf( 'SHOWN' ) === -1 && all( x20_d, '#dlg-link' )[0].value === '' );
+
+	x20_posts.length = 0;
+	click( x20_p, jf( x20_p, 'project-link' ) );
+	await settle();
+	click( x20_p, x20_radios( x20_open( x20_p ) )[1] );
+	x20_radios( x20_open( x20_p ) )[0].checked = false;
+	x20_radios( x20_open( x20_p ) )[1].checked = true;
+	all( x20_open( x20_p ), '#dlg-mail' )[0].checked = true;
+	x20_yes( x20_p );
+	await settle();
+	check( '...the other account and the box ticked post notify true and that account; the dialog closes with the toast of the mail, and no link is shown', JSON.stringify( x20_posts ) === '[{"id":"1","account":"bbbbbbbbbbbb","target":"/portal/projekte?projekt=00001","notify":true}]' && x20_p.dialogRoot.children.length === 0 && x20_p.toast.textContent === texts['acc.resent-invite'] );
+
+	x20_posts.length = 0;
+	const x20_one = await x20_jopen( '#projekt-00001', x20_answers( [ x20_accounts[1], x20_accounts[2] ] ) );
+	click( x20_one, jf( x20_one, 'project-link' ) );
+	await settle();
+	all( x20_open( x20_one ), '#dlg-mail' )[0].checked = false;
+	check( 'with one account that is on there is no choice: the account stands in the dialog as a line, and it is the one that is posted - and an invitation that is shown says its days', x20_radios( x20_open( x20_one ) ).length === 0 && textOf( x20_open( x20_one ) ).indexOf( 'tom@nordlicht.example' ) !== -1 && textOf( x20_open( x20_one ) ).indexOf( 'alt@nordlicht.example' ) === -1 );
+	x20_yes( x20_one );
+	await settle();
+	check( '...the post names that account, and the sentence says the days of an invitation (from the answer)', x20_posts[0].account === 'bbbbbbbbbbbb' && all( x20_open( x20_one ), '#dlg-note' )[0].textContent === texts['plink.valid-days'].replace( '%s', '7' ) );
+
+	// a refusal is said in the dialog, which stays; the target that is bad is the server's to refuse
+	const x20_refused = await x20_jopen( '#projekt-00001', x20_answers( x20_accounts, function() { return [ 400, { error : 'x', code : 'crm_clients_target', params : [], field : 'target' } ] } ) );
+	click( x20_refused, jf( x20_refused, 'project-link' ) );
+	await settle();
+	x20_yes( x20_refused );
+	await settle();
+	check( 'a refusal of the server is said in the dialog with the sentence of its code, which stays open with the yes on again and no link in it', x20_refused.dialogs.length === 1 && x20_refused.dialogRoot.children.length === 1 && all( x20_open( x20_refused ), '#dlg-problem' )[0].hidden === false && textOf( all( x20_open( x20_refused ), '#dlg-problem' )[0] ) === texts['error.crm_clients_target']
+		&& all( all( x20_open( x20_refused ), 'button' ).pop(), 'span' ).length === 0 && all( x20_open( x20_refused ), 'button' ).pop().disabled === false && all( x20_open( x20_refused ), '#dlg-link' ).length === 0 );
+	const x20_off = await x20_jopen( '#projekt-00001', x20_answers( x20_accounts, function() { return [ 409, { error : 'x', code : 'crm_clients_off', params : [], field : 'account' } ] } ) );
+	click( x20_off, jf( x20_off, 'project-link' ) );
+	await settle();
+	x20_yes( x20_off );
+	await settle();
+	check( '...so is an account that was switched off meanwhile', textOf( all( x20_open( x20_off ), '#dlg-problem' )[0] ) === texts['error.crm_clients_off'] );
+	const x20_none = await x20_jopen( '#projekt-00001', x20_answers( [ x20_accounts[2] ] ) );
+	click( x20_none, jf( x20_none, 'project-link' ) );
+	await settle();
+	check( 'a client whose accounts are all off since the card was read gets no dialog, and the toast says so', x20_none.dialogs.length === 0 && x20_none.toast.textContent === texts['here.none'] );
+
+	// the permission of Members: without it there is no box and the link goes by mail
+	const x20_plain = world( { hash : '#projekt-00001', perms : { crm : true, elements : true, files : true }, answers : janswers( x20_answers( x20_accounts ) ) } );
+	x20_plain.boot();
+	await settle();
+	x20_posts.length = 0;
+	click( x20_plain, jf( x20_plain, 'project-link' ) );
+	await settle();
+	check( 'an account without the permission of Members has no box of the mail: the link goes by mail, and the button says Senden', all( x20_open( x20_plain ), '#dlg-mail' ).length === 0 && textOf( all( x20_open( x20_plain ), 'button' ).pop() ) === texts['plink.send'] );
+	x20_yes( x20_plain );
+	await settle();
+	check( '...and the post says notify true', x20_posts.length === 1 && x20_posts[0].notify === true && x20_plain.dialogRoot.children.length === 0 );
+
+	// what the owner writes is text: a title and a file name with markup stand in the dialog as text
+	const x20_hostile = '<img src=x onerror=alert(1)>';
+	const x20_h = await x20_jopen( '#projekt-00001-dateien', Object.assign( { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { title : x20_hostile } ), list : [ Object.assign( {}, jfiles[0], { name : x20_hostile+ '.txt' } ) ] } ) ] } }, x20_answers( x20_accounts ) ) );
+	click( x20_h, jf( x20_h, 'project-link' ) );
+	await settle();
+	check( 'the title of a project with markup stands in the dialog as text and makes no element', all( x20_open( x20_h ), 'img' ).length === 0 && textOf( x20_open( x20_h ) ).indexOf( x20_hostile ) !== -1 );
+	click( x20_h, all( x20_open( x20_h ), 'button' )[0] );
+	click( x20_h, jf( x20_h, 'file-link-a00000000001' ) );
+	await settle();
+	check( '...as does the name of a file', all( x20_open( x20_h ), 'img' ).length === 0 && textOf( x20_open( x20_h ) ).indexOf( x20_hostile+ '.txt' ) !== -1 );
+
+	// a document that the customer sees in the portal: its screen and the card of the tab Portal
+	const x20_docs = [
+		[ 'an invoice without a project', { state : 'sent', released : true }, '/portal/belege#beleg-11' ],
+		[ 'an invoice of a project', { state : 'sent', released : true, project : '00001', project_title : 'Album 2027' }, '/portal/projekte?projekt=00001&tab=belege#beleg-11' ],
+		[ 'a credit note of a project', { id : 17, category : 'credit', state : 'open', released : true, project : '00001', project_title : 'Album 2027', due_date : null }, '/portal/projekte?projekt=00001&tab=belege#beleg-17' ],
+		[ 'an offer of a project', { id : 13, category : 'offer', state : 'sent', released : true, project : 'Album_2027-b', project_title : 'Album', due_date : null }, '/portal/projekte?projekt=Album_2027-b&tab=angebot#angebot-13' ],
+		[ 'an offer without a project', { id : 14, category : 'offer', state : 'open', released : true, due_date : null }, '/portal/belege#beleg-14' ],
+	];
+
+	for( const [ label, over, target ] of x20_docs ) {
+		const w = await opened( over, { accounts : x20_accounts } );
+		click( w, all( w.main, '.tabs button' ).find( function( b ) { return b.dataset.tab === 'portal' } ) );
+		check( 'the screen of '+ label+ ' that is released has Link für den Kunden in its head and on the card of its tab Portal, for the page the portal gives it: '+ target, x20_target( all( w.main, '#doc-link' )[0] ) === target && x20_target( all( w.main, '#portal-link' )[0] ) === target );
+	}
+
+	const x20_nodocs = [
+		[ 'an invoice that is not released', { state : 'sent', released : false }, { accounts : x20_accounts } ],
+		[ 'a draft', { state : 'draft', released : false }, { accounts : [] } ],
+		[ 'a released invoice of a client without an account that is on', { state : 'sent', released : true }, { accounts : [ x20_accounts[2] ] } ],
+		[ 'a released invoice of a client that is off', { state : 'sent', released : true }, { accounts : x20_accounts, clients : [ { id : 1, number : 'K-0001', title : 'X', active : false } ] } ],
+		[ 'a released contract', { id : 18, category : 'contract', state : 'open', released : true, lines : [], net : 0, gross : 0, vat : 0, title : 'V', number : '', due_date : null }, { accounts : x20_accounts } ],
+	];
+
+	for( const [ label, over, extra ] of x20_nodocs ) {
+		const w = await opened( over, extra );
+		check( 'the screen of '+ label+ ' has no Link für den Kunden: the portal does not show it, or there is nobody to give the link to', all( w.main, '.link-btn' ).length === 0 );
+	}
+
+	const x20_d1 = await opened( { state : 'sent', released : true }, { accounts : x20_accounts }, x20_answers( x20_accounts ) );
+	click( x20_d1, all( x20_d1.main, '#doc-link' )[0] );
+	await settle();
+	check( 'the button of a document opens the dialog with its number and the target of its row; the post carries that target', textOf( x20_open( x20_d1 ) ).indexOf( 'R-2026-0007' ) !== -1 && all( x20_open( x20_d1 ), '#dlg-target' )[0].textContent === '/portal/belege#beleg-11' );
+
+	// the card of the client: two entries of the menu for the pages of the portal that are the client's own
+	const x20_k = await kopen( '#kunde-1', x20_answers( x20_accounts ) );
+	x20_posts.length = 0;
+	click( x20_k, kitem( kmenu( x20_k, '⋯' ), texts['plink.menu-data'] ) );
+	await settle();
+	check( 'the menu ⋯ of the card of a client has Link zu Meine Daten, which opens the dialog for /portal/meine-daten', all( x20_open( x20_k ), '#dlg-target' )[0].textContent === '/portal/meine-daten' );
+	click( x20_k, all( x20_open( x20_k ), 'button' )[0] );
+	click( x20_k, kitem( kmenu( x20_k, '⋯' ), texts['plink.menu-privacy'] ) );
+	await settle();
+	all( x20_open( x20_k ), '#dlg-mail' )[0].checked = true;
+	x20_yes( x20_k );
+	await settle();
+	check( '...and Link zur Datenschutzerklärung for /portal/datenschutz, posted with the target and notify true', JSON.stringify( x20_posts ) === '[{"id":"1","account":"aaaaaaaaaaaa","target":"/portal/datenschutz","notify":true}]' );
+	const x20_koff = await kopen( '#kunde-1', { 'crm-clients/get' : function() { return [ 200, { client : kclient, accounts : [ kaccounts[2], kaccounts[3] ] } ] } } );
+	check( 'a client with no account that is on has neither entry; one that is off has none either', all( kmenu( x20_koff, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'Stammdaten bearbeiten|Deaktivieren'
+		&& all( kmenu( await kopen( '#kunde-4' ), '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'Stammdaten bearbeiten|Aktivieren' );
+
+	const x20_last = await kopen( '#kunde-1', { 'crm-clients/get' : function() { return [ 200, { client : kclient, accounts : [ kaccounts[0], kaccounts[2], kaccounts[3] ] } ] }, 'crm-clients/account-active' : function() { return [ 200, { account : Object.assign( {}, kaccounts[0], { active : false, state : 'off' } ) } ] } } );
+	const x20_before = all( kmenu( x20_last, '⋯' ), '[role="menuitem"]' ).length;
+	click( x20_last, kitem( arows( x20_last )[0], 'Sperren' ) );
+	await settle();
+	check( 'the links of the menu of the card follow the accounts: with the last account that is on switched off the two entries are gone from the menu', x20_before === 4 && all( kmenu( x20_last, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'Stammdaten bearbeiten|Deaktivieren' );
+
+	check( 'every word the buttons and the dialog of Link für den Kunden ask for is a word of the page', [ ...script.matchAll( /'(plink\.[a-z-]+)'/g ) ].map( function( found ) { return found[1] } ).every( function( key ) { return typeof texts[key] === 'string' } ) && [ ...script.matchAll( /'(plink\.[a-z-]+)'/g ) ].length >= 15 );
+
 	}
 
 	// === C18: the Datenschutz and the orders of the portal in the surface

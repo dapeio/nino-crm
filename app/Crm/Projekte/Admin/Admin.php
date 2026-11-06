@@ -171,7 +171,7 @@ class Admin {
 			\Nino\Http::ok( $request, [
 				'native'  => \Nino\Locales::getNativeLocale( $appData ),
 				'project' => $shown,
-				'client'  => $shown['client_id'] === 0 ? null : [ 'id' => $shown['client_id'], 'number' => $shown['client'], 'title' => $shown['client_title'], 'active' => $shown['client_active'] ],
+				'client'  => $shown['client_id'] === 0 ? null : [ 'id' => $shown['client_id'], 'number' => $shown['client'], 'title' => $shown['client_title'], 'active' => $shown['client_active'], 'active_accounts' => $shown['client_accounts'] ],
 				'files'   => self::filesOn( $appData ),
 				'allowed' => \Crm\Surface\Files::allowed( $appData ),
 				'review'  => self::filesOn( $appData ) === true && self::reviewOn( $appData ) === true,
@@ -324,6 +324,7 @@ class Admin {
 				'client_id'     => $client === null ? 0 : $client['id'],
 				'client_title'  => $client === null ? '' : $client['title'],
 				'client_active' => $client !== null && $client['active'] === true,
+				'client_accounts' => $client === null ? 0 : $client['active_accounts'],
 				'files'         => $files === null ? ( $on === true ? 0 : null ) : count( $files ),
 				'approval'      => isset( $approvals[$project['id']] ) === true && $client !== null && $approvals[$project['id']]['client_id'] === $client['id'] ? $approvals[$project['id']] : null,
 				'consent_social' => $client !== null && array_filter( $held( $project['id'] ), static fn( array $consent ): bool => $consent['client_id'] === $client['id'] && $consent['purpose'] === 'social' && $consent['revoked'] === null ) !== [],

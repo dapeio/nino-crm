@@ -525,6 +525,22 @@ class Clients {
 	}
 
 	/**
+	 *	How long a link of Members that is made here stays good: the setting inviteDays of Members for an invitation, linkMinutes for a link to sign in - the two
+	 *	settings Members::link() reads
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$kind					invite or login
+	 *
+	 *	@return 	int												Seconds
+	 */
+	public static function linkSeconds( array &$appData, string $kind ): int {
+
+		return $kind === 'invite'
+			? (int) \Nino\Features::setting( $appData, 'members', 'inviteDays', 7 ) * 86400
+			: (int) \Nino\Features::setting( $appData, 'members', 'linkMinutes', 15 ) * 60;
+	}
+
+	/**
 	 *	Switch an account of Members on or off
 	 *
 	 *	@param		array 		&$appData

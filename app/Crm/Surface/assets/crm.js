@@ -591,7 +591,9 @@
 	 *	A dialog with one question: the text, optionally fields, and two buttons. Escape and the second button are the no
 	 *
 	 *	@param		{Object}	spec						title, text, facts (pairs of a label and a value, shown as text beneath the text), pre, yes, no, danger, fields ([ { name, label, type, value, options, maxlength, rows } ]; the type checkbox is a box, ticked where the value is true, and its value is a boolean; the type textarea is a field of several lines), shortcut (true: Strg+S, Cmd+S says yes - for a dialog that is a form to save), link ({ href, text } instead of the buttons),
-	 *														secret ({ label, value, note }: a link shown once, in a field nobody can type in, with a button that copies it - and the dialog closes with a button)
+	 *														secret ({ label, value, note }: a link shown once, in a field nobody can type in, with a button that copies it - and the dialog closes with a button),
+	 *														run (a function of the values that answers a promise, for a dialog that does its step before it closes: a string is the sentence of a refusal, said in the dialog, which stays open; { secret, note }
+	 *														is the link of the step, shown once in the place of the form, with the sentence note beneath it; anything else closes the dialog with the values). A field of the type radio has options ([ { value, label } ]) and its value is the one that is chosen
 	 *
 	 *	@return		{Promise}									The values of the fields (an empty object without fields) for the yes; null for the no
 	 */
@@ -602,7 +604,10 @@
 			let answer = null;
 			let closed = false;
 			let decided = false;
+			let running = false;
+			let yes = null;
 			const controls = {};
+			const problem = el( 'p', { class: 'state-note bad', id: 'dlg-problem', role: 'alert', hidden: true } );
 
 			const box = el( 'dialog', { class: spec.wide === true ? 'dlg wide' : 'dlg', 'aria-label': spec.title || spec.text } );
 			const finish = function( value ) {
@@ -620,7 +625,47 @@
 				const values = {};
 
 				Object.keys( controls ).forEach( function( name ) { values[name] = controls[name].type === 'checkbox' ? controls[name].checked === true : controls[name].value } );
-				finish( values );
+
+				if( spec.run === undefined )
+					finish( values );
+				else
+					step( values );
+			};
+
+			// A dialog with a step of its own: the yes is off while the step runs, a refusal is said in the dialog and the dialog stays
+			const step = function( values ) {
+
+				if( running === true )
+					return;
+
+				running = true;
+				yes.disabled = true;
+				problem.hidden = true;
+
+				spec.run( values ).then( function( result ) {
+
+					running = false;
+					yes.disabled = false;
+
+					if( typeof result === 'string' ) {
+						problem.textContent = result;
+						problem.hidden = false;
+						return;
+					}
+
+					if( result === null || typeof result !== 'object' || result.secret === undefined ) {
+						finish( values );
+						return;
+					}
+
+					// The link of the step takes the place of the form: it is shown once, and the dialog takes it along when it closes
+					secret = shownLink( result.secret );
+					clear( form );
+					form.appendChild( el( 'h2', { text: spec.title } ) );
+					form.appendChild( secret.node );
+					form.appendChild( el( 'p', { class: 'state-note', id: 'dlg-note', text: result.note } ) );
+					form.appendChild( el( 'div', { class: 'actions end' }, el( 'button', { type: 'button', class: 'btn primary', text: t( 'dialog.close' ), on: { click: function() { finish( values ) } } } ) ) );
+				} );
 			};
 
 			const fields = ( spec.fields || [] ).map( function( field ) {
@@ -634,6 +679,21 @@
 					return el( 'label', { class: 'check' }, box, ' '+ field.label );
 				}
 
+				if( field.type === 'radio' ) {
+
+					const inputs = field.options.map( function( option, index ) {
+						return el( 'input', { type: 'radio', name: 'dlg-'+ field.name, value: option.value, checked: field.value === undefined ? index === 0 : option.value === field.value } );
+					} );
+					const group = el( 'fieldset', { class: 'choice', id: 'dlg-'+ field.name }, el( 'legend', { text: field.label } ), field.options.map( function( option, index ) {
+						return el( 'label', { class: 'check' }, inputs[index], ' '+ option.label );
+					} ) );
+
+					// The group answers as one control: its value is the one that is chosen
+					controls[field.name] = { type : 'radio', get value() { const chosen = inputs.find( function( input ) { return input.checked === true } ); return chosen === undefined ? '' : chosen.value } };
+
+					return group;
+				}
+
 				const control = field.options !== undefined
 					? el( 'select', { id: 'dlg-'+ field.name }, field.options.map( function( option ) { return el( 'option', { value: option.value, selected: option.value === field.value, text: option.label } ) } ) )
 					: ( field.type === 'textarea'
@@ -645,7 +705,7 @@
 				return el( 'label', { class: 'field' }, el( 'span', { text: field.label } ), control );
 			} );
 
-			const secret = spec.secret === undefined ? null : shownLink( spec.secret );
+			let secret = spec.secret === undefined ? null : shownLink( spec.secret );
 
 			box.addEventListener( 'close', function() {
 
@@ -671,6 +731,7 @@
 				spec.pre === undefined ? null : el( 'pre', { class: 'sheet', text: spec.pre } ),
 				secret === null ? null : secret.node,
 				fields,
+				spec.run === undefined ? null : problem,
 				el( 'div', { class: 'actions end' },
 					spec.link !== undefined
 						? el( 'a', { class: 'btn primary', href: spec.link.href, target: spec.link.blank === true ? '_blank' : null, rel: spec.link.blank === true ? 'noopener' : null, text: spec.link.text, on: { click: function( event ) {
@@ -681,7 +742,7 @@
 						} } } )
 						: spec.close === true ? el( 'button', { type: 'button', class: 'btn primary', text: t( 'dialog.close' ), on: { click: function() { finish( null ) } } } ) : [
 							el( 'button', { type: 'button', class: 'btn', text: spec.no || t( 'dialog.no' ), on: { click: function() { finish( null ) } } } ),
-							el( 'button', { type: 'button', class: 'btn '+ ( spec.danger === true ? 'danger' : 'primary' ), text: spec.yes || t( 'dialog.yes' ), on: { click: accept } } ),
+							yes = el( 'button', { type: 'button', class: 'btn '+ ( spec.danger === true ? 'danger' : 'primary' ), text: spec.yes || t( 'dialog.yes' ), on: { click: accept } } ),
 						] ) );
 
 			// A dialog that is a form to save takes Strg+S (Cmd+S) as its yes; the browser's own save of the page is kept off
@@ -2085,6 +2146,30 @@
 		] ), el( 'div', { class: 'actions' }, el( 'button', { type: 'button', class: 'btn sm', id: 'order-show', text: t( 'order.show' ), on: { click: function() { showRecord( order ) } } } ) ) );
 	};
 
+	/**
+	 *	The button Link für den Kunden of a document that the customer sees in the portal: an offer, an invoice or a credit note that is released, for a client that has an
+	 *	account that is on (a client that is off is refused by the server, with its sentence in the dialog). The page is the one the portal gives the document (documentTarget())
+	 *
+	 *	@param		{Object}	view						The document, with the accounts of its client
+	 *	@param		{string}	id
+	 *
+	 *	@return		{Object|null}
+	 */
+	const documentLink = function( view, id ) {
+
+		const doc = view.document;
+
+		if( doc.released !== true || [ 'offer', 'invoice', 'credit' ].includes( doc.category ) === false || reachable( view.accounts || [] ) === false )
+			return null;
+
+		const owner = ( view.clients || [] ).find( function( one ) { return one.id === doc.client_id } );
+
+		if( owner !== undefined && owner.active === false )
+			return null;
+
+		return linkButton( { client : doc.client_id, target : documentTarget( doc ), object : docName( doc ) }, id );
+	};
+
 	const tabPortal = function( view ) {
 
 		const doc = view.document;
@@ -2096,7 +2181,8 @@
 				el( 'p', { class: 'state-note' }, badge( 'portal', t( 'mark.released' ) ), ' '+ t( 'release.on', dmy( doc.released_at ) ) ),
 				el( 'div', { class: 'actions' },
 					el( 'button', { type: 'button', class: 'btn sm', id: 'unrelease', text: t( 'menu.unrelease' ), on: { click: function() { move( view, 'crm-documents/unrelease', {}, 'error.unrelease', function() { return t( 'release.undone' ) } ) } } } ),
-					el( 'button', { type: 'button', class: 'btn sm', id: 'mail-again', text: t( 'release.again' ), on: { click: function() { send( view ) } } } ) ),
+					el( 'button', { type: 'button', class: 'btn sm', id: 'mail-again', text: t( 'release.again' ), on: { click: function() { send( view ) } } } ),
+					documentLink( view, 'portal-link' ) ),
 			]
 			: [
 				el( 'p', { class: 'state-note', text: t( 'release.not' ) } ),
@@ -2204,7 +2290,7 @@
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#belege', t( 'list.title' ) ), ' › '+ t( 'category.'+ doc.category ) ) );
 		state.main.appendChild( head( docName( doc ), stateBadge( doc ), marks( doc ),
 			el( 'span', { class: 'sub' }, link( '#kunde-'+ doc.client_id, clientTitle( client ) ), ' · '+ dmy( doc.date )+ ( doc.due_date ? ' · '+ t( 'head.due', dmy( doc.due_date ) ) : doc.valid_until ? ' · '+ t( 'head.valid', dmy( doc.valid_until ) ) : '' ), doc.project === '' ? null : [ ' · ', link( '#projekt-'+ doc.project, doc.project_title !== '' ? doc.project_title : doc.project, { id: 'doc-project' } ) ] ),
-			el( 'span', { class: 'grow' } ), isPlain( doc ) ? null : el( 'span', { class: 'big num', id: 'gross', text: cash( doc.gross ) } ), primaryButton, menuOf( view ) ) );
+			el( 'span', { class: 'grow' } ), isPlain( doc ) ? null : el( 'span', { class: 'big num', id: 'gross', text: cash( doc.gross ) } ), documentLink( view, 'doc-link' ), primaryButton, menuOf( view ) ) );
 
 		// An offer the customer ordered in the portal says so under the head; one the owner accepted has no record and says nothing
 		if( view.order !== null && view.order !== undefined )
@@ -3457,8 +3543,13 @@
 
 	const replaceAccounts = function( view ) {
 
-		if( view.box !== null && view.box.parentNode !== null && view.mine === state.view )
+		if( view.box !== null && view.box.parentNode !== null && view.mine === state.view ) {
 			view.box.replaceWith( view.box = accountsCard( view ) );
+
+			// The links of the menu of the head are for the accounts that are on
+			if( view.menu !== undefined && view.menu.parentNode !== null )
+				view.menu.replaceWith( view.menu = clientMenu( view ) );
+		}
 	};
 
 	/**
@@ -3644,6 +3735,19 @@
 	};
 
 	/**
+	 *	The page of the portal of a project: its overview, or - with a tab and a file - the files, or the player of one file
+	 *
+	 *	@param		{string}	project
+	 *	@param		{string}	[tab]
+	 *	@param		{string}	[file]
+	 *
+	 *	@return		{string}
+	 */
+	const projectPage = function( project, tab, file ) {
+		return '/portal/projekte?projekt='+ encodeURIComponent( project )+ ( file === undefined ? '' : '&review='+ encodeURIComponent( file ) )+ ( tab === undefined ? '' : '&tab='+ tab );
+	};
+
+	/**
 	 *	The page of the portal a link leads to for a document that is released: its card on the page of its project (the section Angebot for an offer, Belege for any other
 	 *	document), else its row in the list of the documents
 	 *
@@ -3714,6 +3818,102 @@
 				} );
 			} );
 		} );
+	};
+
+	/**
+	 *	The sentence of how long a link stays good
+	 *
+	 *	@param		{number}	seconds
+	 *
+	 *	@return		{string}
+	 */
+	const validText = function( seconds ) {
+
+		if( seconds >= 86400 && seconds % 86400 === 0 )
+			return t( seconds === 86400 ? 'plink.valid-day' : 'plink.valid-days', seconds / 86400 );
+
+		return t( 'plink.valid-minutes', Math.max( 1, Math.round( seconds / 60 ) ) );
+	};
+
+	/**
+	 *	Whether a client can be sent a link: it is on and has an account that is on
+	 *
+	 *	@param		{Object|null}	client				active and active_accounts
+	 *
+	 *	@return		{boolean}
+	 */
+	const linkable = function( client ) {
+		return client !== null && client !== undefined && client.active === true && client.active_accounts > 0;
+	};
+
+	/**
+	 *	Link für den Kunden: ask for which of the active accounts of the client a link is made that leads to a page of the portal - the account is chosen where there are
+	 *	several -, and whether the account is mailed the link (off at first). The yes makes the link by the action of the card of the client; without the mail the link is
+	 *	shown once, with the sentence of how long it stays good. A refusal is said in the dialog
+	 *
+	 *	@param		{Object}	spec						client (the number of the row), target (a page of the portal, as the server takes it) and object (the words of what the link is about)
+	 *
+	 *	@return		{Promise}
+	 */
+	const linkFor = function( spec ) {
+
+		return call( 'crm-clients/accounts', { id : String( spec.client ) }, 'error.load' ).then( function( answer ) {
+
+			if( answer.ok !== true )
+				return null;
+
+			const accounts = answer.body.accounts.filter( function( account ) { return account.gone !== true && account.active === true } );
+			const mailOnly = state.perms.members !== true;
+
+			if( accounts.length === 0 ) {
+				toast( t( 'here.none' ), true );
+				return null;
+			}
+
+			const line = function( account ) { return account.name !== '' ? account.name+ ' · '+ account.email : account.email };
+			const facts = [ [ t( 'plink.object' ), spec.object ], [ t( 'plink.target' ), el( 'code', { id: 'dlg-target', text: spec.target } ) ] ];
+			const fields = accounts.length === 1 ? [] : [ { name : 'account', type : 'radio', label : t( 'plink.account' ), options : accounts.map( function( account ) { return { value : account.id, label : line( account ) } } ) } ];
+
+			if( accounts.length === 1 )
+				facts.push( [ t( 'plink.account' ), line( accounts[0] ) ] );
+
+			if( mailOnly === false )
+				fields.push( { name : 'mail', label : t( 'plink.mail' ), type : 'checkbox', value : false } );
+
+			return dialog( { title : t( 'plink.title' ), text : mailOnly === true ? t( 'notify.noperm-members' ) : undefined, facts : facts, fields : fields, yes : t( mailOnly === true ? 'plink.send' : 'plink.make' ), run : function( values ) {
+
+				const account = accounts.length === 1 ? accounts[0].id : values.account;
+				const mail = mailOnly === true || values.mail === true;
+
+				return api( 'crm-clients/account-resend', { id : String( spec.client ), account : account, target : spec.target, notify : mail } ).then( function( result ) {
+
+					if( result.ok !== true )
+						return errorText( result, 'error.account-resend' );
+
+					if( typeof result.body.link !== 'string' || result.body.link === '' ) {
+						toast( t( result.body.kind === 'invite' ? 'acc.resent-invite' : 'acc.resent-login' ) );
+						return null;
+					}
+
+					return { secret : { label : t( 'shown.field' ), value : result.body.link, note : t( 'plink.once' ) }, note : typeof result.body.expires === 'number' ? validText( result.body.expires ) : '' };
+				} );
+			} } );
+		} );
+	};
+
+	/**
+	 *	The button Link für den Kunden: an icon with a word, which opens the dialog for the page of the portal that is its target
+	 *
+	 *	@param		{Object}	spec						See linkFor()
+	 *	@param		{string}	id
+	 *	@param		{boolean}	[short]					The short word, for a row of a table
+	 *
+	 *	@return		{Object}
+	 */
+	const linkButton = function( spec, id, short ) {
+
+		return el( 'button', { type: 'button', class: 'btn link-btn', id: id, title: t( 'plink.button' ), 'aria-label': t( 'plink.button' )+ ': '+ spec.object, dataset: { target: spec.target }, on: { click: function() { linkFor( spec ) } } },
+			el( 'span', { class: 'link-icon', 'aria-hidden': 'true' } ), el( 'span', { text: t( short === true ? 'plink.short' : 'plink.button' ) } ) );
 	};
 
 	/**
@@ -4050,6 +4250,38 @@
 		return el( 'span', { class: 'sub', id: 'client-privacy', dataset: { agreed: privacy.agreed === true ? '1' : '0' }, text: privacy.agreed === true ? t( 'privacy.head-agreed', dmy( privacy.at ), privacy.member_name ) : t( 'privacy.head-open' ) } );
 	};
 
+	/**
+	 *	The menu ⋯ of the head of a client: the links to Meine Daten and to the Datenschutzerklärung of the portal for the accounts - while the client has one that is on -,
+	 *	Bearbeiten and the switch of the client
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const clientMenu = function( view ) {
+
+		const client = view.client;
+		const items = [];
+
+		if( client.active === true && view.accounts.some( function( account ) { return account.gone !== true && account.active === true } ) === true )
+			items.push(
+				{ label : t( 'plink.menu-data' ), run : function() { linkFor( { client : client.id, target : '/portal/meine-daten', object : t( 'plink.page-data' ) } ) } },
+				{ label : t( 'plink.menu-privacy' ), run : function() { linkFor( { client : client.id, target : '/portal/datenschutz', object : t( 'plink.page-privacy' ) } ) } },
+				'sep' );
+
+		items.push(
+			{ label : t( 'card.edit' ), run : function() {
+				if( view.editing === true )
+					return;
+				view.editing = true;
+				view.master.replaceWith( view.master = masterCard( view ) );
+			} },
+			'sep',
+			client.active === true ? { label : t( 'card.deactivate' ), danger : true, run : function() { switchClient( view, false ) } } : { label : t( 'card.activate' ), run : function() { switchClient( view, true ) } } );
+
+		return menu( { label : '⋯', items : items } );
+	};
+
 	const drawKunde = function( view ) {
 
 		const client = view.client;
@@ -4064,16 +4296,7 @@
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#kunden', t( 'clients.title' ) ), ' › '+ client.number ) );
 		state.main.appendChild( head( el( 'h1', { text: clientTitle( client ) } ), clientBadge( client ), el( 'span', { class: 'sub num', text: client.number } ), privacyLine( client ), el( 'span', { class: 'grow' } ),
 			client.active === true ? newMenu( t( 'card.document-new' ), client.id ) : null,
-			menu( { label : '⋯', items : [
-				{ label : t( 'card.edit' ), run : function() {
-					if( view.editing === true )
-						return;
-					view.editing = true;
-					view.master.replaceWith( view.master = masterCard( view ) );
-				} },
-				'sep',
-				client.active === true ? { label : t( 'card.deactivate' ), danger : true, run : function() { switchClient( view, false ) } } : { label : t( 'card.activate' ), run : function() { switchClient( view, true ) } },
-			] } ) ) );
+			view.menu = clientMenu( view ) ) );
 
 		if( client.active === false )
 			state.main.appendChild( note( '', t( 'card.inactive-note' ) ) );
@@ -5813,6 +6036,9 @@
 		if( project.download !== true )
 			holder.appendChild( el( 'p', { class: 'state-note', id: 'project-download-note', text: t( 'projects.download-note' ) } ) );
 
+		if( editable === true && linkable( view.client ) === true )
+			holder.appendChild( el( 'div', { class: 'actions top', id: 'project-files-link' }, linkButton( { client : view.client.id, target : projectPage( project.id, 'dateien' ), object : t( 'plink.object-files', projectName( project ) ) }, 'files-link' ) ) );
+
 		const tableBox = el( 'div', { id: 'project-file-box' } );
 
 		// One box for the tab: it says whether the customer is mailed for each upload and each switch of "Sichtbar" while it stands. It starts at the setting of Dateien
@@ -6093,7 +6319,7 @@
 					el( 'td', { text: file.by.kind === 'owner' ? t( 'projects.by-owner' ) : ( file.by.label !== '' ? file.by.label : t( 'projects.by-member' ) ) } ),
 					el( 'td', {}, gone === true ? el( 'span', { class: 'muted', text: '–' } ) : visibleBox ),
 					comments,
-					el( 'td', { class: 'r' }, editable === true && gone === false ? el( 'button', { type: 'button', class: 'btn sm quiet', text: t( 'projects.file-remove' ), dataset: { remove: file.id }, on: { click: function() {
+					el( 'td', { class: 'r' }, editable === true && gone === false && file.visible === true && linkable( view.client ) === true ? linkButton( { client : view.client.id, target : projectPage( project.id, 'dateien', file.id ), object : file.name }, 'file-link-'+ file.id, true ) : null, editable === true && gone === false ? el( 'button', { type: 'button', class: 'btn sm quiet', text: t( 'projects.file-remove' ), dataset: { remove: file.id }, on: { click: function() {
 
 						ask( { title : t( 'projects.file-remove' ), text : t( 'projects.file-remove-text', file.name ), yes : t( 'projects.file-remove' ), danger : true } ).then( function( yes ) {
 
@@ -6273,6 +6499,7 @@
 			el( 'span', { class: 'sub' }, view.client === null ? project.client : link( '#kunde-'+ view.client.id, view.client.title ), project.started === '' ? null : ' · '+ t( 'projects.since', dmy( project.started ) ) ),
 			downloadState( view ),
 			el( 'span', { class: 'grow' } ),
+			linkable( view.client ) ? linkButton( { client : view.client.id, target : projectPage( project.id ), object : projectName( project ) }, 'project-link', true ) : null,
 			view.client !== null && view.client.active === true ? newMenu( t( 'card.document-new' ), view.client.id, project.id ) : null,
 			projectMenu( view ) ) );
 

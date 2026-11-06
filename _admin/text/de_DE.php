@@ -24,6 +24,15 @@ return [
 	'[[/_admin/user/settings]]'			=> 'Einstellungen',
 	'[[/_admin/user/rail]]'					=> 'Navigation ein- oder ausklappen',
 
+	'[[/_admin/follow/label/back]]'	=> 'Workbench',
+	'[[/_admin/follow/label/path]]'	=> 'Angezeigte Seite',
+	'[[/_admin/follow/label/reload]]'	=> 'Neu laden',
+	'[[/_admin/follow/label/switch]]'	=> 'Der Seite folgen',
+	'[[/_admin/follow/label/frame]]'	=> 'Die Website',
+	'[[/_admin/follow/label/open]]'	=> 'Website-Fenster',
+	'[[/_admin/follow/hint/switch]]'	=> 'An: Das Fenster wechselt zu der Seite, die Du gespeichert hast. Aus: Es lädt die Seite neu, die es zeigt.',
+	'[[/_admin/follow/hint/open]]'	=> 'Öffnet die Website in einem eigenen Fenster, das Du neben die Workbench legen kannst. Es lädt nach jedem Speichern neu.',
+
 	'[[/_admin/label/rail]]'			=> 'Navigation der Workbench',
 	'[[/_admin/label/nav]]'			=> 'Bereiche der Workbench',
 	'[[/_admin/label/skip]]'		=> 'Zum Inhalt springen',
@@ -35,9 +44,7 @@ return [
 	'[[/_admin/nav/group/system]]'		=> 'System',
 
 	// The chip in the rail that says which mode the project is in (see Nino.admin.mode)
-	'[[/_admin/mode/word/production]]'		=> 'Produktion',
 	'[[/_admin/mode/word/development]]'	=> 'Entwicklung',
-	'[[/_admin/mode/hint/production]]'		=> 'Modus Produktion: Die Workbench fragt vor jeder Löschung und jeder größeren Änderung.',
 	'[[/_admin/mode/hint/development]]'	=> 'Modus Entwicklung: Fehler werden angezeigt, nichts wird gecacht, und die Workbench fragt nur vor einer Löschung.',
 	'[[/_admin/mode/confirm/live]]'			=> 'Die Website ist live und nicht in Wartung: Besucher sehen diese Änderung sofort.',
 

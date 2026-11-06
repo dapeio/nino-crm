@@ -690,7 +690,10 @@ class Admin {
 
 			self::$_made['crm-clients/account-resend'] = $client['number']. ( $notify === true ? '' : ', without mail' );
 
-			\Nino\Http::ok( $request, [ 'sent' => $notify, 'kind' => $account['login'] === null ? 'invite' : 'login' ] + ( $notify === false ? [ 'link' => (string) $sent ] : [] ) );
+			$kind = $account['login'] === null ? 'invite' : 'login';
+
+			// A link that is shown says how long it stays good
+			\Nino\Http::ok( $request, [ 'sent' => $notify, 'kind' => $kind ] + ( $notify === false ? [ 'link' => (string) $sent, 'expires' => \Crm\Clients::linkSeconds( $appData, $kind ) ] : [] ) );
 		} );
 	}
 

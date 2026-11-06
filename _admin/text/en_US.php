@@ -23,6 +23,15 @@ return [
 	'[[/_admin/user/settings]]'			=> 'Settings',
 	'[[/_admin/user/rail]]'					=> 'Fold or unfold the navigation',
 
+	'[[/_admin/follow/label/back]]'	=> 'Workbench',
+	'[[/_admin/follow/label/path]]'	=> 'The page shown',
+	'[[/_admin/follow/label/reload]]'	=> 'Reload',
+	'[[/_admin/follow/label/switch]]'	=> 'Follow the page',
+	'[[/_admin/follow/label/frame]]'	=> 'The website',
+	'[[/_admin/follow/label/open]]'	=> 'Website window',
+	'[[/_admin/follow/hint/switch]]'	=> 'On, the window goes to the page you saved; off, it loads again the page it shows.',
+	'[[/_admin/follow/hint/open]]'	=> 'Opens the website in a window of its own to put next to the workbench. It loads again after every save.',
+
 	'[[/_admin/label/rail]]'			=> 'Workbench navigation',
 	'[[/_admin/label/nav]]'			=> 'Workbench sections',
 	'[[/_admin/label/skip]]'		=> 'Skip to content',
@@ -34,9 +43,7 @@ return [
 	'[[/_admin/nav/group/system]]'		=> 'System',
 
 	// The chip in the rail that says which mode the project is in (see Nino.admin.mode)
-	'[[/_admin/mode/word/production]]'		=> 'Production',
 	'[[/_admin/mode/word/development]]'	=> 'Development',
-	'[[/_admin/mode/hint/production]]'		=> 'Production mode: the workbench asks before every deletion and every larger change.',
 	'[[/_admin/mode/hint/development]]'	=> 'Development mode: errors are shown, nothing is cached, and the workbench asks only before a deletion.',
 	'[[/_admin/mode/confirm/live]]'			=> 'The website is live and not in maintenance: visitors see this change at once.',
 

@@ -378,3 +378,16 @@ input[role="switch"]:focus-visible { outline: 2px solid var(--accent); outline-o
 /* The download of a project: its state and the switch in the head of the card, and the arrow beside the state in the list */
 .dl { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px }
 .dl-mark { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: 6px; border-radius: 50%; background: var(--good-soft); color: var(--good); font-size: 12px; font-weight: 600; vertical-align: middle }
+
+/* Link für den Kunden: the button with an icon (two links of a chain) and a word, 44px high where a finger meets it */
+.btn.link-btn { height: 44px; min-width: 44px; justify-content: center }
+.link-icon { display: inline-block; width: 18px; height: 8px; border: 2px solid currentColor; border-radius: 6px; transform: rotate(-35deg); position: relative; flex: none }
+.link-icon::after { content: ""; position: absolute; left: 4px; top: -2px; width: 8px; height: 8px; border: 2px solid currentColor; border-radius: 6px; background: var(--surface) }
+.btn.primary .link-icon::after { background: var(--accent) }
+fieldset.choice { border: 0; margin: 0 0 8px; padding: 0 }
+fieldset.choice legend { padding: 0; margin-bottom: 4px; color: var(--fg-2); font-size: 12px }
+fieldset.choice .check { display: flex; min-height: 44px; align-items: center }
+.state-note.bad { color: var(--bad) }
+dialog.dlg label.check { min-height: 44px }
+.head:has(> .link-btn) { column-gap: 8px }
+.head > .link-btn { padding: 0 8px; gap: 4px }

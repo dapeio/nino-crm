@@ -1637,7 +1637,7 @@ check( '...the filters: a client\'s projects by its id, the open ones, a search 
 	&& array_column( surfaceApi( $appData, 'crm-projekte/list', [ 'open' => true ] )[1]['projects'], 'title' ) === [ 'Podcast', 'Album 2027 neu' ] && array_column( surfaceApi( $appData, 'crm-projekte/list', [ 'q' => 'fert' ] )[1]['projects'], 'title' ) === [ 'Fertig' ]
 	&& surfaceApi( $appData, 'crm-projekte/list', [ 'client' => '99999' ] )[1]['projects'] === [] && surfaceApi( $appData, 'crm-projekte/list', [ 'client' => 'x' ] )[0] === 400 && array_column( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'], 'id' ) === [ '00004', '00003', '00001' ] );
 [ $status, $got ] = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] );
-check( 'get answers one project the same way, with its client, the language, whether Files is on, no folder and no list of files where it has no folder', $status === 200 && $got['project']['id'] === '00001' && $got['project']['documents'] === 3 && $got['project']['open'] === 1 && $got['client'] === [ 'id' => $a['id'], 'number' => $a['number'], 'title' => 'Studio Nord GmbH', 'active' => true ]
+check( 'get answers one project the same way, with its client, the language, whether Files is on, no folder and no list of files where it has no folder', $status === 200 && $got['project']['id'] === '00001' && $got['project']['documents'] === 3 && $got['project']['open'] === 1 && $got['client'] === [ 'id' => $a['id'], 'number' => $a['number'], 'title' => 'Studio Nord GmbH', 'active' => true, 'active_accounts' => 2 ]
 	&& $got['native'] === 'de_DE' && $got['files'] === true && $got['folder'] === null && $got['list'] === [] && isset( $got['project']['file_list'] ) === false );
 check( '...a project nobody has is 404 crm_projekte_unknown at the field id; an id that is no id as well', ( $r = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00099' ] ) )[0] === 404 && $r[1]['code'] === 'crm_projekte_unknown' && $r[1]['field'] === 'id' && surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '../x' ] )[1]['code'] === 'crm_projekte_unknown' );
 
@@ -2357,6 +2357,85 @@ sort( $handed );
 check( 'the placeholders of the menu - Beleg, Rechnung, Angebot, Kunde, Portal - are exactly the tokens Render::data() hands a template for an invoice and an offer', $menu === $handed && count( $menu ) === 32 );
 
 
+// --- Link für den Kunden: what the surface asks of the answers -------------------------------------------------------------
+
+/**
+ *	The checks of the links for the customer in the surface: how long a link that is shown stays good, the active accounts on the card of a project, and the pages of the table
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$a						The client of the project 00001, with its accounts anna and carl
+ *	@param		array 		$accounts			The accounts of the section, by name
+ *	@param		\Closure	$asLinker			Signs in the account that holds the permissions of the CRM and of Members
+ *	@param		\Closure	$asCrm
+ *	@param		\Closure	$reset				Gives the cap of mails back
+ *
+ *	@return 	void
+ */
+function surfaceLinkChecks( array &$appData, array $a, array $accounts, \Closure $asLinker, \Closure $asCrm, \Closure $reset ): void {
+
+	$asLinker();
+	$reset();
+	$kinds = [];
+
+	// A link that is shown says how long it stays good: the days of an invitation, the minutes of a link to sign in - the settings of Members, as Members::link() reads them
+	foreach( [ 'anna', 'carl' ] as $name ) {
+		[ $status, $shown ] = surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts[$name]['id'], 'notify' => false, 'target' => '/portal/meine-daten' ] );
+		$kinds[$shown['kind'] ?? ''] = [ $status, $shown['expires'] ?? null ];
+	}
+
+	[ $status, $mailed ] = surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts['anna']['id'], 'notify' => true ] );
+	check( 'a link that is made without the mail carries expires, in seconds: 900 for a link to sign in and seven days for an invitation, by default; the answer of a mailed link has none', array_keys( $kinds ) === [ 'login', 'invite' ] && array_diff_key( $kinds, [ 'invite' => 0, 'login' => 0 ] ) === []
+		&& array_filter( [ 'invite' => 604800, 'login' => 900 ], static fn( int $seconds, string $kind ): bool => isset( $kinds[$kind] ) === true && $kinds[$kind] !== [ 200, $seconds ], ARRAY_FILTER_USE_BOTH ) === [] && $status === 200 && array_key_exists( 'expires', $mailed ) === false && array_key_exists( 'link', $mailed ) === false );
+
+	$saved = \Nino\Features::saveSettings( $appData, 'members', [ 'linkMinutes' => '20', 'inviteDays' => '3' ] );
+	$reset();
+	$changed = [];
+
+	foreach( [ 'anna', 'carl' ] as $name ) {
+		[ , $shown ] = surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts[$name]['id'], 'notify' => false ] );
+		$changed[$shown['kind'] ?? ''] = $shown['expires'] ?? null;
+	}
+
+	\Nino\Features::saveSettings( $appData, 'members', [ 'linkMinutes' => '15', 'inviteDays' => '7' ] );
+	check( '...and what the owner set in Members is what it says: twenty minutes, three days', $saved === [] && array_filter( [ 'invite' => 259200, 'login' => 1200 ], static fn( int $seconds, string $kind ): bool => isset( $changed[$kind] ) === true && $changed[$kind] !== $seconds, ARRAY_FILTER_USE_BOTH ) === [] && count( $changed ) === count( $kinds ) );
+
+	// The card of a project says how many accounts of its client are on: the button of the card is there for one
+	$asCrm();
+	$on = static function() use ( &$appData ): int { return surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['client']['active_accounts'] ?? -1; };
+	$before = $on();
+	$asLinker();
+	surfaceApi( $appData, 'crm-clients/account-active', [ 'id' => (string) $a['id'], 'account' => $accounts['carl']['id'], 'active' => false ] );
+	$asCrm();
+	$after = $on();
+	$asLinker();
+	surfaceApi( $appData, 'crm-clients/account-active', [ 'id' => (string) $a['id'], 'account' => $accounts['carl']['id'], 'active' => true ] );
+	$asCrm();
+	check( 'the card of a project carries active_accounts of its client, the accounts that are on: two, one while an account is switched off, two again after it is on', [ $before, $after, $on() ] === [ 2, 1, 2 ] );
+
+	// Every page of the table of the surface is a target of the portal, as it stands: the action takes it, and the token keeps it
+	$asLinker();
+	$reset();
+	$pages = [ '/portal/projekte?projekt=00001', '/portal/projekte?projekt=00001&tab=dateien', '/portal/projekte?projekt=00001&review=a00000000001&tab=dateien', '/portal/projekte?projekt=00001&tab=angebot#angebot-12', '/portal/projekte?projekt=00001&tab=belege#beleg-12',
+		'/portal/belege#beleg-12', '/portal/belege?beleg=12', '/portal/meine-daten', '/portal/datenschutz' ];
+	$taken = [];
+	$links = [];
+
+	foreach( $pages as $page ) {
+		[ $status, $answer ] = surfaceApi( $appData, 'crm-clients/account-resend', [ 'id' => (string) $a['id'], 'account' => $accounts['anna']['id'], 'notify' => false, 'target' => $page ] );
+		$taken[$page] = \Crm\Portal::target( $page ) === $page && $status === 200 && is_string( $answer['link'] ?? null ) === true;
+		$links[] = (string) ( $answer['link'] ?? '' );
+	}
+
+	check( 'each page of the table of the links for the customer is a target the portal takes as it stands - a project and its tabs, a file by its id, the card of an offer, a document, the list, Meine Daten, Datenschutz', array_keys( array_filter( $taken, static fn( bool $same ): bool => $same === false ) ) === [] && array_filter( $links, static fn( string $link ): bool => $link === '' ) === [] );
+
+	// The link is shown once and is in no line of the log: a line says the client and the account, never the link or its token
+	$lines = implode( "\n", \Nino\Modules\Logs\Admin::recentLines( $appData, 500 ) );
+	$tokens = array_map( static fn( string $link ): string => (string) substr( $link, (int) strrpos( $link, '=' ) + 1 ), $links );
+	check( '...and no line of the activity log holds a link or a token of the links that were made, though the log says that links were made without mail', array_filter( array_merge( $links, $tokens ), static fn( string $part ): bool => strlen( $part ) < 20 || str_contains( $lines, $part ) === true ) === [] && str_contains( $lines, 'without mail' ) === true );
+	$asCrm();
+}
+
+
 // --- Einwilligungen: the lines on the card of a project, the mark in the list, the records of the client, the veto --------------------------------
 
 /**
@@ -2454,6 +2533,7 @@ function surfaceConsentChecks( array &$appData, array $a, array $b, array $proje
 }
 
 surfaceConsentChecks( $appData, $a, $b, $project, $asCrm, $asItems );
+surfaceLinkChecks( $appData, $a, $accounts, $asLinker, $asCrm, $reset );
 
 // --- The script of the surface ---------------------------------------------------------------------------------------
 
