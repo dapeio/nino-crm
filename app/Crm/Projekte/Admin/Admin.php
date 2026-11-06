@@ -9,7 +9,8 @@ declare(strict_types=1);
  *												crm-projekte/list		the projects (a client's, the open ones, a search in the title) with their client, the number of their documents
  *																						and of the offers among them that wait, and the number of their files; and native, the language the screens save in, and allowed -
  *																						whether the account holds the permission of the Files panel while the feature is on, as it is now (a setup changes it under the page)
- *												crm-projekte/get		one project with its client, its folder and the files in it
+ *												crm-projekte/get		one project with its client, its folder and the files in it - each audio or video file with the number of its comments and of the open ones,
+ *																						where the feature Review is on (review says whether it is)
  *
  *												The files are read from the feature (Files::folders(), Files::files(), Files::url()) by the CRM's own read: the permission of the
  *												CRM is the owner's, and the list is for looking. The feature may be off; then there are no files to count and the answer says so.
@@ -41,6 +42,18 @@ class Admin {
 	public static function filesOn( array &$appData ): bool {
 
 		return class_exists( '\\Nino\\Modules\\Files' ) === true && \Crm\Crm::featureOn( $appData, 'files' ) === true;
+	}
+
+	/**
+	 *	Whether the comments on the files can be read: the feature Review is on
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	bool
+	 */
+	public static function reviewOn( array &$appData ): bool {
+
+		return class_exists( '\\Nino\\Modules\\Review' ) && \Crm\Crm::featureOn( $appData, 'review' ) === true;
 	}
 
 	/**
@@ -132,6 +145,7 @@ class Admin {
 				'client'  => $shown['client_id'] === 0 ? null : [ 'id' => $shown['client_id'], 'number' => $shown['client'], 'title' => $shown['client_title'], 'active' => $shown['client_active'] ],
 				'files'   => self::filesOn( $appData ),
 				'allowed' => \Crm\Surface\Files::allowed( $appData ),
+				'review'  => self::filesOn( $appData ) === true && self::reviewOn( $appData ) === true,
 				'folder'  => $folder,
 				'list'    => $list,
 				// The setting of the feature Files that mails the members of a file made visible: what the box of the tab starts at
@@ -237,7 +251,7 @@ class Admin {
 	}
 
 	/**
-	 *	The files of a folder as the tab shows them: the name, the size, the day, who put it there and whether the members see it, with the address it is downloaded at and - for a file that was removed from the server - the time its bytes went
+	 *	The files of a folder as the tab shows them, the files of one title together (title, version - the digits of the name, '' for none -, versions, how many files the title has, and group, the place of the title in the list): the name, the size, the day, who put it there and whether the members see it, with the address it is downloaded at and - for a file that was removed from the server - the time its bytes went. An audio or video file carries its comments, all and open (comments), where the feature Review is on; null for any other
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$files				As Files::files() has them
@@ -248,8 +262,15 @@ class Admin {
 
 		$labels = [];
 		$shown = [];
+		$counts = self::reviewOn( $appData ) === true ? \Nino\Modules\Review::counts( $appData, array_map( static fn( array $file ): string => (string) $file['id'], $files ) ) : [];
+		$ordered = [];
 
-		foreach( $files as $file ) {
+		// The files of a title together, the titles newest first and the versions of a title from the highest number down (Files::grouped()); group counts the titles
+		foreach( \Nino\Modules\Files::grouped( $files ) as $index => $title )
+			foreach( $title['versions'] as $file )
+				$ordered[] = $file + [ 'group' => $index, 'title' => $title['title'], 'count' => count( $title['versions'] ) ];
+
+		foreach( $ordered as $file ) {
 
 			$kind = (string) ( $file['by']['kind'] ?? '' );
 			$who = (string) ( $file['by']['id'] ?? '' );
@@ -260,16 +281,21 @@ class Admin {
 			}
 
 			$shown[] = [
-				'id'      => (string) $file['id'],
-				'name'    => (string) $file['name'],
-				'ext'     => (string) $file['ext'],
-				'size'    => (int) $file['size'],
-				'mime'    => (string) $file['mime'],
-				'created' => (string) $file['created'],
-				'visible' => ( $file['visible'] ?? false ) === true,
-				'gone'    => (string) ( $file['gone'] ?? '' ),
-				'by'      => [ 'kind' => $kind, 'label' => $kind === 'member' ? $labels[$who] : '' ],
-				'url'     => \Nino\Modules\Files::url( $appData, (string) $file['id'] ),
+				'id'       => (string) $file['id'],
+				'name'     => (string) $file['name'],
+				'ext'      => (string) $file['ext'],
+				'size'     => (int) $file['size'],
+				'mime'     => (string) $file['mime'],
+				'created'  => (string) $file['created'],
+				'visible'  => ( $file['visible'] ?? false ) === true,
+				'gone'     => (string) ( $file['gone'] ?? '' ),
+				'by'       => [ 'kind' => $kind, 'label' => $kind === 'member' ? $labels[$who] : '' ],
+				'url'      => \Nino\Modules\Files::url( $appData, (string) $file['id'] ),
+				'title'    => (string) $file['title'],
+				'version'  => (string) $file['version'],
+				'versions' => (int) $file['count'],
+				'group'    => (int) $file['group'],
+				'comments' => isset( $counts[(string) $file['id']] ) === true && \Nino\Modules\Review::kind( (string) $file['mime'] ) !== '' ? $counts[(string) $file['id']] : null,
 			];
 		}
 

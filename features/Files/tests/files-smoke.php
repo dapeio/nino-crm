@@ -534,6 +534,58 @@ check( 'an id of twelve digits, which php makes a whole number of as an array ke
 echo "\n";
 
 
+// --- The versions of a title - read from the names ------------------------------------
+//
+// Title.NN.ext: the version is one to three digits between two dots, after a title and before an extension. Pure functions: nothing is looked up
+
+$read = static fn( string $name ): array => \Nino\Modules\Files::version( $name );
+
+check( 'a name that says a version is read as title, the digits as written and the number: TobiaRegner-Istillburn.03.wav',
+	$read( 'TobiaRegner-Istillburn.03.wav' ) === [ 'title' => 'TobiaRegner-Istillburn', 'version' => '03', 'number' => 3 ] );
+check( '...one, two and three digits are a version, four are not - the number is the integer of them, and a version of nothing but zeros is the number 0',
+	$read( 'Song.1.mp3' )['number'] === 1 && $read( 'Song.12.mp3' )['number'] === 12 && $read( 'Song.123.mp3' ) === [ 'title' => 'Song', 'version' => '123', 'number' => 123 ]
+	&& $read( 'Song.1234.mp3' ) === [ 'title' => 'Song.1234', 'version' => '', 'number' => null ] && $read( 'Song.0.mp3' )['number'] === 0 && $read( 'Song.000.mp3' ) === [ 'title' => 'Song', 'version' => '000', 'number' => 0 ] );
+check( '...a name with no extension after the digits - Song.03 - says none, and its title is what stands before the last dot',
+	$read( 'Song.03' ) === [ 'title' => 'Song', 'version' => '', 'number' => null ] && $read( 'Song' ) === [ 'title' => 'Song', 'version' => '', 'number' => null ] );
+check( '...the extension is read in any case: Song.03.MP3 is the version 03 of Song',
+	$read( 'Song.03.MP3' ) === [ 'title' => 'Song', 'version' => '03', 'number' => 3 ] );
+check( '...a title with dots keeps them: the last version before the extension is the one - Kunde-Titel.final.03.wav is the title Kunde-Titel.final, and Song.03.04.mp3 the title Song.03',
+	$read( 'Kunde-Titel.final.03.wav' )['title'] === 'Kunde-Titel.final' && $read( 'Song.03.04.mp3' ) === [ 'title' => 'Song.03', 'version' => '04', 'number' => 4 ] );
+check( '...nothing but digits, a leading version and a doubled dot are no version the way they are: 123.mp3, .03.mp3, Song..mp3 and Song.a1.mp3 are titles of their own',
+	$read( '123.mp3' ) === [ 'title' => '123', 'version' => '', 'number' => null ] && $read( '.03.mp3' )['version'] === '' && $read( 'Song..mp3' )['version'] === '' && $read( 'Song.a1.mp3' )['version'] === ''
+	&& $read( 'Notizen.txt' ) === [ 'title' => 'Notizen', 'version' => '', 'number' => null ] );
+check( '...markup, a bracket and a null byte in a name are text: they stay in the title as they are and make no version of their own',
+	$read( 'a<b>.01.mp3' ) === [ 'title' => 'a<b>', 'version' => '01', 'number' => 1 ] && $read( 'x[[/a/b/c/d]].02.mp3' )['title'] === 'x[[/a/b/c/d]]' && $read( "Song\0.1.mp3" )['title'] === "Song\0" && $read( "Song.1\0.mp3" )['version'] === ''
+	&& $read( '.1.mp3' )['version'] === '' && $read( ' .1.mp3' )['version'] === '' );
+
+$entry = static fn( string $name, string $created ): array => [ 'id' => substr( md5( $name. $created ), 0, 12 ), 'name' => $name, 'ext' => strtolower( (string) pathinfo( $name, PATHINFO_EXTENSION ) ), 'created' => $created ];
+$titles = \Nino\Modules\Files::grouped( [
+	$entry( 'Song.03.mp3', '2026-10-05T10:00:00Z' ), $entry( 'Notizen.txt', '2026-10-04T10:00:00Z' ), $entry( 'Song.03.wav', '2026-10-03T10:00:00Z' ),
+	$entry( 'Song.01.mp3', '2026-10-01T10:00:00Z' ), $entry( 'Song.02.mp3', '2026-10-02T10:00:00Z' ),
+] );
+$view = static fn( array $titles ): array => array_map( static fn( array $title ): string => $title['title']. '.'. $title['ext']. ': '. implode( ',', array_column( $title['versions'], 'name' ) ), $titles );
+
+check( 'grouped puts the versions of a title together, the highest number first, and the titles in the order of their newest file',
+	$view( $titles ) === [ 'Song.mp3: Song.03.mp3,Song.02.mp3,Song.01.mp3', 'Notizen.txt: Notizen.txt', 'Song.wav: Song.03.wav' ] );
+check( '...Song.03.wav and Song.03.mp3 are two titles - the extension is part of what makes files one title - and a file keeps what it was given, with version and number added',
+	count( $titles ) === 3 && $titles[2]['versions'][0]['name'] === 'Song.03.wav' && $titles[0]['versions'][0]['version'] === '03' && $titles[0]['versions'][0]['number'] === 3 && $titles[0]['versions'][0]['id'] === $entry( 'Song.03.mp3', '2026-10-05T10:00:00Z' )['id']
+	&& $titles[1]['versions'] === [ $entry( 'Notizen.txt', '2026-10-04T10:00:00Z' ) + [ 'version' => '', 'number' => null ] ] );
+check( '...a file without a version is a title of its own with one version that has no number',
+	$titles[1]['title'] === 'Notizen' && count( $titles[1]['versions'] ) === 1 && $titles[1]['versions'][0]['number'] === null );
+
+$same = \Nino\Modules\Files::grouped( [ $entry( 'Song.02.mp3', '2026-10-01T10:00:00Z' ), $entry( 'Song.02.mp3', '2026-10-09T10:00:00Z' ), $entry( 'Song.mp3', '2026-10-20T10:00:00Z' ), $entry( 'Song.10.mp3', '2026-09-01T10:00:00Z' ) ] );
+check( '...two files of the same number: the one that came later first; a file with no version goes after the numbered ones, though it is the newest; ten is above two',
+	count( $same ) === 1 && array_column( $same[0]['versions'], 'created' ) === [ '2026-09-01T10:00:00Z', '2026-10-09T10:00:00Z', '2026-10-01T10:00:00Z', '2026-10-20T10:00:00Z' ] );
+check( '...the title with the newest file is first even when it is listed last, and of two titles with a file of the very same time the one listed first stays first',
+	$view( \Nino\Modules\Files::grouped( [ $entry( 'A.01.mp3', '2026-10-01T10:00:00Z' ), $entry( 'B.01.mp3', '2026-10-01T10:00:00Z' ), $entry( 'C.01.mp3', '2026-10-02T10:00:00Z' ) ] ) ) === [ 'C.mp3: C.01.mp3', 'A.mp3: A.01.mp3', 'B.mp3: B.01.mp3' ]
+	&& \Nino\Modules\Files::grouped( [] ) === [] );
+$orderShown = \Nino\Modules\Files::grouped( [ $entry( 'A.mp3', '2026-10-20T10:00:00Z' ), $entry( 'A.01.mp3', '2026-10-01T10:00:00Z' ), $entry( 'B.01.mp3', '2026-10-10T10:00:00Z' ) ] );
+$goneFirst = [ $entry( 'C.02.mp3', '2026-10-30T10:00:00Z' ) + [ 'gone' => '2026-11-01T00:00:00Z' ], $entry( 'C.01.mp3', '2026-10-02T10:00:00Z' ), $entry( 'D.01.mp3', '2026-10-05T10:00:00Z' ) ];
+check( '...the titles are in the order of the day of the version the list shows - the highest number: a title with a younger file that has no number comes after one whose shown version is younger - and where that version was removed from the server, of the next one',
+	$view( $orderShown ) === [ 'B.mp3: B.01.mp3', 'A.mp3: A.01.mp3,A.mp3' ] && array_column( \Nino\Modules\Files::grouped( $goneFirst ), 'title' ) === [ 'D', 'C' ] );
+check( '...the case of a title counts as it stands - Song.01.mp3 and song.02.mp3 are two titles - and a title with a null byte is not the title before it',
+	count( \Nino\Modules\Files::grouped( [ $entry( 'Song.01.mp3', '2026-10-01T10:00:00Z' ), $entry( 'song.02.mp3', '2026-10-02T10:00:00Z' ), $entry( "Song\0.01.mp3", '2026-10-03T10:00:00Z' ) ] ) ) === 3 );
+
 // --- The download ---------------------------------------------------------------
 
 echo "GET /.files/<id> - the file the kernel streams\n";

@@ -52,7 +52,7 @@ function words() {
 	while( ( found = re.exec( text ) ) )
 		map[found[1]] = found[2].replace( /\\(['\\])/g, '$1' );
 
-	[ 'app/Crm/Clients/Admin/text/de_DE.php', 'app/Crm/Documents/Admin/text/de_DE.php', 'app/Crm/Crm/Admin/text/de_DE.php', 'features/Pdf/text/de_DE.php', 'features/Files/text/de_DE.php', '_admin/Nino/Modules/Elements/text/de_DE.php', '_admin/Nino/Modules/Text/text/de_DE.php' ].forEach( function( file ) {
+	[ 'app/Crm/Clients/Admin/text/de_DE.php', 'app/Crm/Documents/Admin/text/de_DE.php', 'app/Crm/Crm/Admin/text/de_DE.php', 'features/Pdf/text/de_DE.php', 'features/Files/text/de_DE.php', 'features/Review/text/de_DE.php', '_admin/Nino/Modules/Elements/text/de_DE.php', '_admin/Nino/Modules/Text/text/de_DE.php' ].forEach( function( file ) {
 		const sentences = fills( file );
 		Object.keys( sentences ).forEach( function( key ) {
 
@@ -4032,13 +4032,13 @@ function press( w, key, target, mods ) {
 		jrow(),
 	];
 	const jfiles = [
-		{ id : 'a00000000001', name : 'Notizen.txt', ext : 'txt', size : 1140004, mime : 'text/plain', created : '2026-11-03T10:00:00Z', visible : true, by : { kind : 'owner', label : '' }, url : '/.files/a00000000001' },
-		{ id : 'a00000000002', name : '<b>Cover</b>.png', ext : 'png', size : 52000, mime : 'image/png', created : '2026-11-02T09:00:00Z', visible : false, by : { kind : 'member', label : 'Lena Brandt' }, url : '/.files/a00000000002' },
+		{ id : 'a00000000001', name : 'Notizen.txt', ext : 'txt', size : 1140004, mime : 'text/plain', created : '2026-11-03T10:00:00Z', visible : true, by : { kind : 'owner', label : '' }, url : '/.files/a00000000001', title : 'Notizen', version : '', versions : 1, group : 0, comments : null },
+		{ id : 'a00000000002', name : '<b>Cover</b>.png', ext : 'png', size : 52000, mime : 'image/png', created : '2026-11-02T09:00:00Z', visible : false, by : { kind : 'member', label : 'Lena Brandt' }, url : '/.files/a00000000002', title : '<b>Cover</b>', version : '', versions : 1, group : 1, comments : null },
 	];
 	let jpermsNow = jperms;
 	const jlist = function( over ) { return Object.assign( { missing : false, native : 'de_DE', files : true, allowed : jpermsNow.files === true, projects : jprojects }, over || {} ) };
 	const jget = function( over ) {
-		return JSON.parse( JSON.stringify( Object.assign( { native : 'de_DE', project : jrow(), client : jclient1, files : true, allowed : jpermsNow.files === true, folder : { id : 'f00000000001', name : 'Album 2027' }, list : jfiles }, over || {} ) ) );
+		return JSON.parse( JSON.stringify( Object.assign( { native : 'de_DE', project : jrow(), client : jclient1, files : true, allowed : jpermsNow.files === true, folder : { id : 'f00000000001', name : 'Album 2027' }, list : jfiles, review : false }, over || {} ) ) );
 	};
 	const jposts = [];
 	let jnext = 5;
@@ -4341,7 +4341,7 @@ function press( w, key, target, mods ) {
 
 	// --- a file removed from the server: the tab, the line of the Übersicht and the screen Uploads
 	const fillT = function( key, ...values ) { let at = 0; return texts[key].replace( /%s/g, function() { return String( values[at++] ?? '' ) } ) };
-	const rgone = { id : 'a00000000009', name : 'Gone <i>Take</i>.wav', ext : 'wav', size : 3000000, mime : 'audio/wav', created : '2026-09-01T10:00:00Z', visible : true, gone : '2026-11-02T08:00:00Z', by : { kind : 'owner', label : '' }, url : '/.files/a00000000009' };
+	const rgone = { id : 'a00000000009', name : 'Gone <i>Take</i>.wav', ext : 'wav', size : 3000000, mime : 'audio/wav', created : '2026-09-01T10:00:00Z', visible : true, gone : '2026-11-02T08:00:00Z', by : { kind : 'owner', label : '' }, url : '/.files/a00000000009', title : 'Gone <i>Take</i>', version : '', versions : 1, group : 7, comments : null };
 	const rwithGone = { 'crm-projekte/get' : function() { return [ 200, jget( { list : [ jfiles[0], rgone, jfiles[1] ] } ) ] } };
 	const rrm = await jopen( '#projekt-00001-dateien', rwithGone );
 	const rremoveOf = function( row ) { return all( row, 'button' ).find( function( b ) { return b.dataset.remove !== undefined } ) };
@@ -4394,6 +4394,124 @@ function press( w, key, target, mods ) {
 	check( '...none for no such project - and then the card says there is nothing - and one is something that waits: the sentence for nothing is gone', rsLine( rsNone ) === undefined && textOf( rsNone.main ).indexOf( texts['needs.none'] ) !== -1 && textOf( rsOne.main ).indexOf( texts['needs.none'] ) === -1 );
 	click( rsMany, all( rsLine( rsMany ), 'a' )[0] );
 	check( '...and the click on it leaves the done projects shown in the list', rsMany.app.state.jfilter.all === true );
+
+	// The Übersicht: the comments nobody has settled
+	const rvOverview = async function( review ) { return jopen( '#uebersicht', { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], stale : { count : 0, bytes : 0, days : 60 }, review : review, recent : [], settings : settings } ] } } ) };
+	const rvMany = await rvOverview( { count : 3, files : 2 } );
+	const rvFew = await rvOverview( { count : 2, files : 1 } );
+	const rvOne = await rvOverview( { count : 1, files : 1 } );
+	const rvNone = await rvOverview( { count : 0, files : 0 } );
+	const rvLine = function( w ) { return all( w.main, '#needs-review' )[0] };
+	check( 'the Übersicht has a line for the comments that nobody has settled - how many, on how many files, in the words of its number - in the card that needs the owner, with a link to the projects',
+		rvLine( rvMany ) !== undefined && textOf( rvLine( rvMany ) ) === fillT( 'needs.review-many', 3, 2 ) && textOf( rvLine( rvFew ) ) === fillT( 'needs.review-few', 2, 1 ) && textOf( rvLine( rvOne ) ) === fillT( 'needs.review-one', 1, 1 )
+		&& new Set( [ texts['needs.review-many'], texts['needs.review-few'], texts['needs.review-one'] ] ).size === 3 && all( rvLine( rvMany ), 'a' )[0].getAttribute( 'href' ) === '#projekte' && rvLine( rvMany ).parentNode.classList.contains( 'list-mini' ) === true );
+	check( '...none where nothing is open - and then the card says there is nothing - and the line is something that waits: the sentence for nothing is gone', rvLine( rvNone ) === undefined && textOf( rvNone.main ).indexOf( texts['needs.none'] ) !== -1 && textOf( rvMany.main ).indexOf( texts['needs.none'] ) === -1 );
+	click( rvMany, all( rvLine( rvMany ), 'a' )[0] );
+	check( '...the click leaves the done projects shown, where the files are too, and an answer without the count has no line at all', rvMany.app.state.jfilter.all === true && rvLine( await jopen( '#uebersicht' ) ) === undefined );
+
+	// The card: titles over their versions, the counters of the comments, the comments of a file with the box that settles each
+	const cm = function( id, over ) { return Object.assign( { id : id, by : { kind : 'member', id : 'm00000000001', label : 'Lena Brandt' }, at : null, text : 'Text', parent : '', done : false, created : '2026-11-03T08:00:00Z', page : '', answers : [] }, over || {} ) };
+	const thread1 = [
+		cm( 'c00000000001', { at : 12.0, text : 'Zu laut <i>hier</i>\nZweite Zeile', answers : [ cm( 'c00000000003', { by : { kind : 'owner', id : '', label : '' }, text : 'Ist gemacht', done : false } ) ] } ),
+		cm( 'c00000000002', { at : 65.4, text : 'Ende abrupt', by : { kind : 'member', id : 'm00000000002', label : '' } } ),
+	];
+	const vfile = function( id, name, title, version, versions, group, comments, over ) { return Object.assign( { id : id, name : name, ext : 'wav', size : 3000000, mime : 'audio/wav', created : '2026-10-02T10:00:00Z', visible : true, gone : '', by : { kind : 'owner', label : '' }, url : '/.files/'+ id, title : title, version : version, versions : versions, group : group, comments : comments }, over || {} ) };
+	const vfiles = [
+		vfile( 'v00000000001', 'Andere.wav', 'Andere', '', 1, 0, { total : 0, open : 0 } ),
+		vfile( 'v00000000002', 'Song.02.wav', 'Song', '02', 2, 1, { total : 1, open : 1 } ),
+		vfile( 'v00000000003', 'Song.01.wav', 'Song', '01', 2, 1, { total : 3, open : 2 } ),
+		vfile( 'v00000000004', 'Lies mich.txt', 'Lies mich', '', 1, 2, null, { ext : 'txt', mime : 'text/plain' } ),
+		vfile( 'v00000000005', '<b>Dub</b>.01.wav', '<b>Dub</b>', '01', 1, 3, { total : 0, open : 0 } ),
+	];
+	const vposts = [];
+	const vanswers = function( over ) {
+		return Object.assign( {
+			'crm-projekte/get' : function() { return [ 200, jget( { review : true, list : vfiles } ) ] },
+			'review/comments' : function( data ) { vposts.push( [ 'review/comments', data ] ); return [ 200, { file : { id : data.file, name : 'x', kind : 'audio', url : '/.files/'+ data.file, playable : true }, comments : data.file === 'v00000000003' ? JSON.parse( JSON.stringify( thread1 ) ) : [], length : 2000, notify : false, files : true } ] },
+			'review/done' : function( data ) { vposts.push( [ 'review/done', data ] ); return [ 200, { comment : { id : data.id, done : true } } ] },
+		}, over || {} );
+	};
+	const vopen = async function( over, perms ) { vposts.length = 0; return jopen( '#projekt-00001-dateien', vanswers( over ), perms === undefined ? Object.assign( {}, jperms, { review : true } ) : perms ); };
+	const vtrs = function( w ) { return all( jf( w, 'project-file-table' ), 'tbody tr' ) };
+	const vrows = function( w ) { return vtrs( w ).filter( function( r ) { return r.classList.contains( 'cm-row' ) === false } ) };
+	const vfileRows = function( w ) { return vrows( w ).filter( function( r ) { return r.dataset.id !== undefined } ) };
+	const vw = await vopen();
+	check( 'with Review on the table has a column Kommentare, and the files of a title stand under a line of their own - the title, how many versions, the comments that are open over all of them - the versions with their number, the highest first; a title of one version has no line',
+		all( jf( vw, 'project-file-table' ), 'thead th' ).map( textOf ).join( '|' ) === [ texts['projects.file-name'], texts['projects.file-size'], texts['projects.file-day'], texts['projects.file-by'], texts['projects.file-visible'], texts['projects.file-comments'], '' ].join( '|' )
+		&& vrows( vw ).map( function( r ) { return r.dataset.id || ( r.classList.contains( 'group' ) ? 'group '+ r.dataset.group : r.className ) } ).join( ' ' ) === 'v00000000001 group 1 v00000000002 v00000000003 v00000000004 v00000000005'
+		&& all( vrows( vw )[1], 'strong' )[0].textContent === 'Song' && textOf( all( vrows( vw )[1], 'td' )[0] ).indexOf( fillT( 'projects.versions', 2 ) ) !== -1 && all( vrows( vw )[1], 'td' )[0].getAttribute( 'colspan' ) === '7' );
+	check( '...the number of a version is a badge beside the name - v02, v01 - a file that says none has no badge, the name of a title is text and so is the markup in a name',
+		all( vfileRows( vw )[1], '.ver-no' ).map( textOf ).join() === 'v02' && all( vfileRows( vw )[2], '.ver-no' ).map( textOf ).join() === 'v01' && all( vfileRows( vw )[0], '.ver-no' ).length === 0 && all( vfileRows( vw )[4], '.ver-no' ).map( textOf ).join() === 'v01' && all( vfileRows( vw )[3], '.ver-no' ).length === 0
+		&& findAll( jf( vw, 'project-file-table' ), function( n ) { return n.tagName === 'B' } ).length === 0 && textOf( vfileRows( vw )[4].children[0] ).indexOf( '<b>Dub</b>.01.wav' ) === 0 && vfileRows( vw )[1].classList.contains( 'ver' ) === true && vfileRows( vw )[0].classList.contains( 'ver' ) === false );
+	const counterOf = function( w, id ) { return all( w.main, '[data-counter="'+ id+ '"]' )[0] };
+	const headOf = function( w ) { return all( vrows( w )[1], '.badge' ).find( function( b ) { return b.classList.contains( 'b-portal' ) } ) };
+	check( '...each audio and video file has its counter - open and all, in the words of the page - and a file that is neither has a dash; the line of a title says how many comments are open over its versions',
+		textOf( counterOf( vw, 'v00000000002' ) ) === fillT( 'projects.comments-count', 1, 1 ) && textOf( counterOf( vw, 'v00000000003' ) ) === fillT( 'projects.comments-count', 2, 3 ) && textOf( counterOf( vw, 'v00000000001' ) ) === fillT( 'projects.comments-count', 0, 0 ) && counterOf( vw, 'v00000000004' ) === undefined
+		&& textOf( vfileRows( vw )[3].children[5] ) === '–' && counterOf( vw, 'v00000000003' ).classList.contains( 'open' ) === true && counterOf( vw, 'v00000000001' ).classList.contains( 'open' ) === false && headOf( vw ) !== undefined && textOf( headOf( vw ) ) === fillT( 'projects.comments-open', 3 ) && headOf( vw ).hidden === false );
+	const opener = function( w, id ) { return all( w.main, '[data-comments="'+ id+ '"]' )[0] };
+	check( '...a file with comments to read has the button Kommentare, closed, that names the row it opens; a file that is no medium has none',
+		opener( vw, 'v00000000003' ) !== undefined && opener( vw, 'v00000000003' ).getAttribute( 'aria-expanded' ) === 'false' && opener( vw, 'v00000000004' ) === undefined && all( vw.main, '#'+ opener( vw, 'v00000000003' ).getAttribute( 'aria-controls' ) )[0].hidden === true && vposts.length === 0 );
+	const rowOfThread = function( w, id ) { return all( w.main, '[data-thread="'+ id+ '"]' )[0] };
+
+	click( vw, opener( vw, 'v00000000003' ) );
+	await settle();
+	check( 'the button reads the comments from the Review panel\'s action review/comments with the id of the file - nothing else is posted - and opens the row under the file',
+		JSON.stringify( vposts ) === JSON.stringify( [ [ 'review/comments', { file : 'v00000000003' } ] ] ) && rowOfThread( vw, 'v00000000003' ).hidden === false && opener( vw, 'v00000000003' ).getAttribute( 'aria-expanded' ) === 'true' && vtrs( vw )[vtrs( vw ).indexOf( rowOfThread( vw, 'v00000000003' ) ) - 1].dataset.id === 'v00000000003' );
+	const vitems = all( rowOfThread( vw, 'v00000000003' ), '.cm' );
+	check( '...each comment shows its time as m:ss, who wrote it - the name, Du for the owner, the word for a member without a name -, the day and its text with the markup in it as text; the answer stands under its comment',
+		vitems.length === 3 && textOf( all( vitems[0], '.cm-at' )[0] ) === '0:12' && textOf( all( vitems[0], 'strong' )[0] ) === 'Lena Brandt' && textOf( all( vitems[0], '.cm-head .muted' )[0] ) === '03.11.2026' && all( vitems[0], '.cm-text' )[0].textContent === 'Zu laut <i>hier</i>\nZweite Zeile'
+		&& findAll( rowOfThread( vw, 'v00000000003' ), function( n ) { return n.tagName === 'I' } ).length === 0 && textOf( all( vitems[1], 'strong' )[0] ) === texts['projects.by-owner'] && all( vitems[1].parentNode.parentNode, '.cm-text' )[0].textContent.indexOf( 'Zu laut' ) === 0 && vitems[1].parentNode.classList.contains( 'cm-answers' ) === true
+		&& textOf( all( vitems[2], '.cm-at' )[0] ) === '1:05' && textOf( all( vitems[2], 'strong' )[0] ) === texts['projects.by-member'] && all( vitems[1], '.cm-at' ).length === 0 );
+	check( '...and a box Erledigt for each comment of a member - not for the answer of the owner, which is never open - ticked for one that is done and not for one that is not',
+		all( rowOfThread( vw, 'v00000000003' ), 'input' ).map( function( n ) { return n.checked } ).join() === 'false,false' && textOf( all( vitems[0], 'label' )[0] ).trim() === texts['projects.comment-done'] && all( rowOfThread( vw, 'v00000000003' ), 'input' ).filter( function( n ) { return n.type === 'checkbox' } ).length === 2 && all( vitems[1], 'input' ).length === 0 && all( vitems[1], 'label' ).length === 0 );
+
+	vposts.length = 0;
+	jtoggle( all( vitems[0], 'input' )[0], true );
+	await settle();
+	check( 'the box posts review/done with the file and the comment - the panel turns the mark around, so nothing more - and the counter follows at once: one comment less is open, in the row and in the line of the title',
+		JSON.stringify( vposts ) === JSON.stringify( [ [ 'review/done', { file : 'v00000000003', id : 'c00000000001' } ] ] ) && all( vitems[0], 'input' )[0].checked === true && all( vitems[0], 'input' )[0].disabled === false && textOf( counterOf( vw, 'v00000000003' ) ) === fillT( 'projects.comments-count', 1, 3 )
+		&& textOf( headOf( vw ) ) === fillT( 'projects.comments-open', 2 ) && counterOf( vw, 'v00000000003' ).classList.contains( 'open' ) === true );
+	vposts.length = 0;
+	jtoggle( all( vitems[2], 'input' )[0], true );
+	await settle();
+	check( '...the last open comment of a file takes its counter off the warning, and a title with none open hides its badge - the answer of the owner was never open', counterOf( vw, 'v00000000003' ).classList.contains( 'open' ) === false && textOf( counterOf( vw, 'v00000000003' ) ) === fillT( 'projects.comments-count', 0, 3 ) && textOf( headOf( vw ) ) === fillT( 'projects.comments-open', 1 ) );
+	vposts.length = 0;
+	click( vw, opener( vw, 'v00000000003' ) );
+	check( '...the button closes the row again and reads nothing a second time, the box stays as it was set',
+		rowOfThread( vw, 'v00000000003' ).hidden === true && opener( vw, 'v00000000003' ).getAttribute( 'aria-expanded' ) === 'false' && vposts.length === 0 );
+	click( vw, opener( vw, 'v00000000003' ) );
+	await settle();
+	check( '...opened again it shows the comments it has, as the box was set', rowOfThread( vw, 'v00000000003' ).hidden === false && vposts.length === 0 && all( rowOfThread( vw, 'v00000000003' ), 'input' )[0].checked === true );
+
+	// A refusal puts the box back and says the panel's sentence; a refused read leaves the row closed
+	const vno = await vopen( { 'review/done' : function( data ) { vposts.push( [ 'review/done', data ] ); return [ 404, { error : 'x', code : 'review_unknown' } ] } } );
+	click( vno, opener( vno, 'v00000000003' ) );
+	await settle();
+	jtoggle( all( rowOfThread( vno, 'v00000000003' ), 'input' )[0], true );
+	await settle();
+	check( 'a refusal of the switch puts the box back as it was, says the sentence of the code and leaves the counters alone', all( rowOfThread( vno, 'v00000000003' ), 'input' )[0].checked === false && all( rowOfThread( vno, 'v00000000003' ), 'input' )[0].disabled === false && vno.toast.classList.contains( 'bad' ) === true && vno.toast.textContent === texts['error.review_unknown']
+		&& textOf( counterOf( vno, 'v00000000003' ) ) === fillT( 'projects.comments-count', 2, 3 ) );
+	const vdenied = await vopen( { 'review/comments' : function( data ) { vposts.push( [ 'review/comments', data ] ); return [ 409, { error : 'x', code : 'review_off' } ] } } );
+	click( vdenied, opener( vdenied, 'v00000000003' ) );
+	await settle();
+	check( '...a refusal of the read - the feature went off under the page - says its sentence, the row stays closed and the button is closed, and it can be tried again', rowOfThread( vdenied, 'v00000000003' ).hidden === true && opener( vdenied, 'v00000000003' ).getAttribute( 'aria-expanded' ) === 'false' && vdenied.toast.textContent === texts['error.review_off'] && vposts.length === 1 );
+	click( vdenied, opener( vdenied, 'v00000000003' ) );
+	await settle();
+	check( '...tried again it asks again, as nothing was read', vposts.length === 2 );
+	const vempty = await vopen();
+	click( vempty, opener( vempty, 'v00000000001' ) );
+	await settle();
+	check( 'a file with no comments says so under its row, with no box', textOf( rowOfThread( vempty, 'v00000000001' ) ) === texts['projects.comments-none'] && all( rowOfThread( vempty, 'v00000000001' ), 'input' ).length === 0 );
+
+	const vzero = await jopen( '#projekt-00001-dateien', vanswers( { 'crm-projekte/get' : function() { return [ 200, jget( { review : true, list : vfiles.map( function( f ) { return Object.assign( {}, f, { comments : f.comments === null ? null : { total : f.comments.total, open : 0 } } ) } ) } ) ] } } ), Object.assign( {}, jperms, { review : true } ) );
+	check( 'a title with no open comment over its versions has no badge of open ones: it is there, hidden', headOf( vzero ) !== undefined && headOf( vzero ).hidden === true );
+
+	// Without the permission of the Review panel the counters are there and nothing is offered; with the feature off there is no column at all
+	const vlocked = await vopen( {}, Object.assign( {}, jperms, { review : false } ) );
+	check( 'without the permission of the Review panel the counters can be read - the numbers come with the card - and there is no button Kommentare and no row for the comments: the read would be refused',
+		counterOf( vlocked, 'v00000000003' ) !== undefined && textOf( counterOf( vlocked, 'v00000000003' ) ) === fillT( 'projects.comments-count', 2, 3 ) && all( vlocked.main, '[data-comments]' ).length === 0 && all( vlocked.main, '[data-thread]' ).length === 0 && all( vlocked.main, 'tr.cm-row' ).length === 0 );
+	const voff = await jopen( '#projekt-00001-dateien', vanswers( { 'crm-projekte/get' : function() { return [ 200, jget( { review : false, list : vfiles.map( function( f ) { return Object.assign( {}, f, { comments : null } ) } ) } ) ] } } ), Object.assign( {}, jperms, { review : true } ) );
+	check( 'with the feature off the column is not drawn - seven columns become six - and a title still stands over its versions', all( jf( voff, 'project-file-table' ), 'thead th' ).length === 6 && all( voff.main, '[data-counter]' ).length === 0 && all( voff.main, '[data-comments]' ).length === 0 && all( voff.main, 'tr.group' ).length === 1 && all( voff.main, 'tr.group td' )[0].getAttribute( 'colspan' ) === '6' );
 
 	// The screen Uploads
 	const urow = function( over ) { return Object.assign( { id : 'u00000000001', client_id : 1, client : 'K-0001', client_title : 'Nordlicht Records GmbH', name : 'Take 1.wav', ext : 'wav', size : 5000000, created : '2026-09-20T10:00:00Z', age : 46, by : { kind : 'member', label : 'Lena Brandt' }, gone : '' }, over || {} ) };

@@ -323,7 +323,7 @@ namespace Nino\Modules\Review {
 					'folderName'	=> $places[ $entry['folder'] ]['name'] ?? '',
 					'group'			=> $places[ $entry['folder'] ]['group'] ?? '',
 					'count'			=> count( $comments ),
-					'open'			=> count( array_filter( $comments, static fn( array $comment ): bool => $comment['by']['kind'] === 'member' && $comment['done'] === false ) ),
+					'open'			=> Store::open( $comments ),
 				];
 			}
 

@@ -512,6 +512,21 @@ $sameTime = [ \Nino\Modules\Review::add( $appData, $clip['id'], $owner, 5.0, 'On
 check( 'comments of the same time keep the order they were written in', array_column( \Nino\Modules\Review::comments( $appData, $clip['id'] ), 'text' ) === [ 'One', 'Two', 'Three' ] );
 check( 'a comment is on its own file: the comments of one file are not the comments of another', array_column( \Nino\Modules\Review::comments( $appData, $clip['id'] ), 'id' ) === array_column( $sameTime, 'id' ) && \Nino\Modules\Review::comments( $appData, $guestTrack['id'] ) === [] );
 
+// counts(): the comments of files and the open ones, read once - a member's comment that is not done is open, the owner's is never
+$ownerComments = array_filter( array_column( \Nino\Modules\Review::comments( $appData, $track['id'] ), null, 'id' ), static fn( array $comment ): bool => $comment['by']['kind'] === 'owner' );
+check( 'counts() gives each file its comments and the open ones: the comments of the owner count as comments and are never open',
+	\Nino\Modules\Review::counts( $appData, [ $track['id'], $clip['id'] ] ) === [ $track['id'] => [ 'total' => 7, 'open' => 5 ], $clip['id'] => [ 'total' => 3, 'open' => 0 ] ] && $ownerComments !== [] );
+\Nino\Modules\Review\Store::toggle( $appData, $track['id'], $early['id'] );
+\Nino\Modules\Review\Store::toggle( $appData, $track['id'], $plain['id'] );
+check( '...a member\'s comment marked as done is not open any more, and the owner\'s marked as done changes nothing; marked open again it is counted again',
+	\Nino\Modules\Review::counts( $appData, [ $track['id'] ] ) === [ $track['id'] => [ 'total' => 7, 'open' => 4 ] ] );
+\Nino\Modules\Review\Store::toggle( $appData, $track['id'], $early['id'] );
+\Nino\Modules\Review\Store::toggle( $appData, $track['id'], $plain['id'] );
+check( '...and the toggles back leave the numbers where they were',
+	\Nino\Modules\Review::counts( $appData, [ $track['id'] ] )[$track['id']] === [ 'total' => 7, 'open' => 5 ] );
+check( '...a file without comments and an id that is none have zeros - nothing is looked up that is not asked - and what is no string is left out',
+	\Nino\Modules\Review::counts( $appData, [ 'ffffffffffff', '../../etc/passwd', 5, null ] ) === [ 'ffffffffffff' => [ 'total' => 0, 'open' => 0 ], '../../etc/passwd' => [ 'total' => 0, 'open' => 0 ] ] && \Nino\Modules\Review::counts( $appData, [] ) === [] );
+
 $refused = [
 	'a file nobody has'			=> \Nino\Modules\Review::add( $appData, 'ffffffffffff', $owner, null, 'x' ),
 	'something that is no id'	=> \Nino\Modules\Review::add( $appData, '../x', $owner, null, 'x' ),
@@ -925,6 +940,14 @@ check( 'with ?review=<id> of an audio file the box is the player of it: no list,
 	count( $boxes ) === 1 && reviewClasses( $boxes[0] ) === [ 'review-player' ] && $boxes[0]->getAttribute( 'data-review-file' ) === $track['id'] && $boxes[0]->getAttribute( 'data-review-kind' ) === 'audio' && count( $media ) === 1 && reviewFind( $html, '//video | //li[contains(@class, "review-item")]' ) === []
 	&& $media[0]->getAttribute( 'src' ) === \Nino\Modules\Files::url( $appData, $track['id'] ) && $media[0]->getAttribute( 'src' ) === '/.files/'. $track['id'] && $media[0]->hasAttribute( 'controls' ) === true && $media[0]->getAttribute( 'preload' ) === 'metadata'
 	&& reviewFind( $html, '//h3' )[0]->textContent === 'Demo.mp3' && reviewFind( $html, '//p[contains(@class, "review-player__back")]/a' )[0]->getAttribute( 'href' ) === '/club/review' && str_contains( $html, '[[' ) === false );
+
+// ...a caller in php may put its own markup between the title and the medium; a shortcode cannot
+$withVersions = \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'versions' => '<p class="review-test-versions">V</p>' ] );
+$order = array_map( static fn( DOMElement $node ): string => $node->nodeName. '.'. $node->getAttribute( 'class' ), reviewFind( $withVersions, '//h3 | //p[@class="review-test-versions"] | //audio' ) );
+check( 'the player has a place for markup of its caller between the title and the medium - given in php as versions, and nowhere but there',
+	$order === [ 'h3.review-player__title', 'p.review-test-versions', 'audio.review-player__media' ] && substr_count( $withVersions, 'review-test-versions' ) === 1 && str_contains( $withVersions, '[[versions]]' ) === false );
+check( '...a shortcode cannot hand it markup - the attribute is no attribute of the schema -, and a player without it has no trace of the place',
+	str_contains( \Nino\Html::renderHtml( $appData, '[review-player versions="<i class=\'x\'>V</i>"]' ), "class='x'" ) === false && str_contains( $html, '[[versions]]' ) === false && count( reviewFind( $html, '//p[@class="review-test-versions"]' ) ) === 0 );
 
 ninoVisit( $appData, '/club/review?review='. $clip['id'] );
 $videoHtml = \Nino\Html::renderHtml( $appData, '[review-player]' );

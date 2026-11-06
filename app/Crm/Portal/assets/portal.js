@@ -7,7 +7,7 @@
  *							leave the page); a message the address carries (?state=..., ?sign-state=...) is taken out of the address once the page has shown it,
  *							so that a reload does not say it again; the card or the row an anchor names (#angebot-<id>, #beleg-<id>), or the row of the document
  *							Sign has just brought back (data-sign-state), is unfolded and brought into view, also when it stands in a tab the kernel's script has
- *							hidden; and the drop zone of the upload says that a file hangs over it. No markup is made here, nothing is sent and nothing is stored.
+ *							hidden; the drop zone of the upload says that a file hangs over it; and the select of the versions over a player sends its form when the choice changes - at once for the mouse and touch, on Enter or on leaving for the keyboard - and gets the focus back after the page is loaded (the button that does it without the script is taken away). No markup is made here, nothing is sent but that form (a plain GET) and nothing is stored.
  */
 ( function() {
 
@@ -107,7 +107,8 @@
 			target.scrollIntoView( { block: 'start', behavior: 'auto' } );
 			if( target.hasAttribute( 'tabindex' ) === false )
 				target.setAttribute( 'tabindex', '-1' );
-			target.focus( { preventScroll: true } );
+			// After a change of version the address names the form: the focus goes back to its select, where the person left it
+			( target.id === 'crm-versions' && target.querySelector( 'select' ) !== null ? target.querySelector( 'select' ) : target ).focus( { preventScroll: true } );
 		} );
 	}
 
@@ -121,11 +122,61 @@
 		} );
 	}
 
+	// The select of the versions over a player asks the page for the version chosen, with a plain GET: the button that does it without the script goes. A choice
+	// made with the mouse or by touch sends the form at once; a choice made with the keyboard (arrows, Home, End, PageUp, PageDown, a letter) only marks it, and
+	// the form is sent on Enter or when the select is left with another version than the page has chosen - every arrow would otherwise load a page and drop the
+	// focus
+	function watchVersions() {
+		dc.querySelectorAll( '.crm-versions' ).forEach( function( form ) {
+			const select = form.querySelector( 'select' );
+			const button = form.querySelector( '.crm-versions__go' );
+			if( select === null )
+				return;
+			if( button !== null )
+				button.hidden = true;
+			let keyboard = false;
+			const changed = function() {
+				const option = select.options[ select.selectedIndex ];
+				return option !== undefined && option.defaultSelected !== true;
+			};
+			const send = function() {
+				if( typeof form.requestSubmit === 'function' )
+					form.requestSubmit();
+				else
+					form.submit();
+			};
+			[ 'pointerdown', 'mousedown', 'touchstart' ].forEach( function( name ) { select.addEventListener( name, function() { keyboard = false; } ); } );
+			select.addEventListener( 'keydown', function( event ) {
+				if( event.key === 'Enter' ) {
+					keyboard = false;
+					if( changed() ) {
+						event.preventDefault();
+						send();
+					}
+					return;
+				}
+				if( [ 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown' ].indexOf( event.key ) !== -1 || ( event.key.length === 1 && event.ctrlKey !== true && event.metaKey !== true && event.altKey !== true ) )
+					keyboard = true;
+			} );
+			select.addEventListener( 'change', function() {
+				if( keyboard === false )
+					send();
+			} );
+			select.addEventListener( 'blur', function() {
+				const was = keyboard;
+				keyboard = false;
+				if( was === true && changed() )
+					send();
+			} );
+		} );
+	}
+
 	function init() {
 		if( dc.querySelector( '.crm-portal' ) === null )
 			return;
 		followTabs();
 		watchDrop();
+		watchVersions();
 		forgetState();
 		revealTarget();
 		window.addEventListener( 'hashchange', revealTarget );

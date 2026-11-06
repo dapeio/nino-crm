@@ -1883,6 +1883,37 @@ a.crm-files__name:hover {
 }
 
 
+/*	11 Parts - the versions of a title: the pills in its row and the select over its player	*/
+
+.crm-files__version,
+.crm-files__ext,
+.crm-files__versions,
+.crm-files__open {
+	flex: 0 0 auto;
+}
+
+.crm-versions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: var(--crm-3);
+	margin: 0 0 var(--crm-4);
+}
+
+.crm-versions__field {
+	flex: 1 1 16rem;
+	max-width: 30rem;
+}
+
+.crm-versions__go {
+	flex: 0 0 auto;
+}
+
+.crm-versions__go[hidden] {
+	display: none;
+}
+
+
 /*	11 Parts - the uploads	*/
 
 .crm-uploads {

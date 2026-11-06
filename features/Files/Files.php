@@ -40,7 +40,8 @@ namespace Nino\Modules {
 	 *										the Builder composes (componentFilesBrowser() and
 	 *										componentFilesUpload(); the manifest declares them), and the panel
 	 *										in Admin/Admin.php manages everything. Other features build on it
-	 *										through folders(), files(), file(), path(), allowed() and url(), and
+	 *										through folders(), files(), file(), path(), allowed() and url() - and
+	 *										version() and grouped(), which read the versions of a title from the names (Title.03.ext) -, and
 	 *										the callbacks '/files/upload' (a member's upload), '/files/add' (the
 	 *										owner's) and '/files/delete', each fired with the entry.
 	 *
@@ -190,6 +191,79 @@ namespace Nino\Modules {
 		public static function url( array &$appData, string $id ): string {
 
 			return preg_match( \Nino\Modules\Files\Store::ID, $id ) === 1 ? \Nino\Filesystem::getDir( $appData ). '/.files/'. $id : '';
+		}
+
+		/**
+		 *	The title and the version a file name says: Title.NN.ext, the version one to three digits between two dots and the
+		 *	extension one to eight letters and digits, in any case. The title is what stands before the version, dots among it
+		 *	('Kunde-Titel.final.03.wav' is the title 'Kunde-Titel.final'). A name that does not say it - no version, a version of
+		 *	four digits, no extension after it - is a title of its own: the name without its extension. Pure; a name is read as
+		 *	it stands and nothing is looked up
+		 *
+		 *	@param		string		$name					A name as the index keeps it
+		 *
+		 *	@return 	array											title, version (the digits as written, '' for none) and number (the version as an integer, null for none)
+		 */
+		public static function version( string $name ): array {
+
+			if( preg_match( '/^(.+)\.([0-9]{1,3})\.[A-Za-z0-9]{1,8}$/D', $name, $found ) === 1 && trim( $found[1] ) !== '' )
+				return [ 'title' => $found[1], 'version' => $found[2], 'number' => (int) $found[2] ];
+
+			return [ 'title' => preg_match( '/^(.+)\.[A-Za-z0-9]{1,8}$/D', $name, $found ) === 1 ? $found[1] : $name, 'version' => '', 'number' => null ];
+		}
+
+		/**
+		 *	Files of one folder as the titles they are versions of: two files belong together when the title version() reads
+		 *	from their names is the same, in the case it stands in, and so is their extension (Song.03.wav and Song.03.mp3 are
+		 *	two titles). The versions of a title stand from the highest
+		 *	number down, the one of the same number that came later first and a file without a version after the numbered ones: it counts as the
+		 *	oldest version of its title, so that the version a list shows is never older than a file it leaves out. The titles come in the order of the day of
+		 *	that shown version - the first that is not removed from the server, else the first. A file whose name says no version is a title with one version
+		 *	that has no number. The files of one call are the
+		 *	caller's choice of one folder: nothing is looked up, so a title never spans two folders. Pure
+		 *
+		 *	@param		array 		$files				A list of files as files() has them
+		 *
+		 *	@return 	array											A list of titles: title, ext and versions - a list of the files as they were given, each with version and number added
+		 */
+		public static function grouped( array $files ): array {
+
+			$titles = [];
+
+			foreach( $files as $file ) {
+
+				if( is_array( $file ) === false )
+					continue;
+
+				$read = self::version( (string) ( $file['name'] ?? '' ) );
+				$ext = strtolower( (string) ( $file['ext'] ?? '' ) );
+				$key = $ext. "\0". $read['title'];
+
+				$titles[$key] ??= [ 'title' => $read['title'], 'ext' => $ext, 'versions' => [] ];
+				$titles[$key]['versions'][] = $file + [ 'version' => $read['version'], 'number' => $read['number'] ];
+			}
+
+			foreach( $titles as $key => $title ) {
+
+				// A stable sort: the files of the same number keep the order they were given in, the newer first among them
+				usort( $title['versions'], static fn( array $a, array $b ): int => [ $b['number'] ?? -1, (string) ( $b['created'] ?? '' ) ] <=> [ $a['number'] ?? -1, (string) ( $a['created'] ?? '' ) ] );
+				$titles[$key] = $title;
+			}
+
+			// The title whose shown version - the highest number on the server - is the newest first; of two of the same time the one that was listed first
+			$order = array_keys( $titles );
+			$newest = static function( string $key ) use ( $titles ): string {
+
+				foreach( $titles[$key]['versions'] as $file )
+					if( isset( $file['gone'] ) === false )
+						return (string) ( $file['created'] ?? '' );
+
+				return (string) ( $titles[$key]['versions'][0]['created'] ?? '' );
+			};
+
+			usort( $order, static fn( string $a, string $b ): int => strcmp( $newest( $b ), $newest( $a ) ) );
+
+			return array_map( static fn( string $key ): array => $titles[$key], $order );
 		}
 
 		/**

@@ -815,7 +815,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 172 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 177 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -2743,6 +2743,178 @@ check( '...and no page of the portal holds one either: the only script is the fi
 $script = (string) file_get_contents( $root. \Crm\Portal::SCRIPT );
 check( 'the script file is there, a strict module of its own that keeps the address true with the tab (replaceState), takes the state out of the address after it was shown (the state of a form and what Sign said) and leaves a click on a tab of the kernel\'s script on the page - and writes no markup from text', str_starts_with( ltrim( $script ), '/**' ) === true && str_contains( $script, "'use strict'" ) === true && str_contains( $script, 'replaceState' ) === true && str_contains( $script, "'sign-state'" ) === true && str_contains( $script, 'preventDefault' ) === true
 	&& preg_match( '/innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function/', $script ) !== 1 );
+
+// --- The versions of a title ------------------------------------------------------------------------------------------------------
+
+echo "\nThe versions of a title\n";
+
+portalSignIn( $appData, $accounts['anna'] );
+$folderV = $store::addFolder( $appData, $a['group'], 'Versionen' );
+$song1 = $put( $folderV, 'Song.01.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-10-01T10:00:00Z' );
+$song2 = $put( $folderV, 'Song.02.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-10-12T10:00:00Z' );
+$song3 = $put( $folderV, 'Song.03.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-10-20T10:00:00Z' );
+$song4 = $put( $folderV, 'Song.04.mp3', 'mp3', 'audio/mpeg', false, $owner, '2026-10-25T10:00:00Z' );
+$songWav = $put( $folderV, 'Song.03.wav', 'wav', 'audio/wav', true, $owner, '2026-10-05T10:00:00Z' );
+$mixOld = $put( $folderV, 'Mix.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-10-02T10:00:00Z' );
+$mixOne = $put( $folderV, 'Mix.01.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-10-14T10:00:00Z' );
+$solo = $put( $folderV, 'Solo.01.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-10-08T10:00:00Z' );
+$text = $put( $folderV, 'Notizen.txt', 'txt', 'text/plain', true, $owner, '2026-09-20T10:00:00Z' );
+$evilName = 'Evil <b>x</b> [[/project/company/general/name]]';
+$evil1 = $put( $folderV, $evilName. '.01.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-10-03T10:00:00Z' );
+$evil2 = $put( $folderV, $evilName. '.02.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-10-04T10:00:00Z' );
+$strangerSong = $put( $folderB, 'Song.09.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-10-30T10:00:00Z' );
+$pV = $made( 'Versionen', $a['number'], [ 'folder' => $folderV['id'] ] );
+
+// Comments: two of Anna on the first version (one settled later), one on the second, one of the owner on the third
+$cmA1 = \Nino\Modules\Review::add( $appData, $song1['id'], $byAnna, 12.0, 'Zu laut <i>hier</i>' );
+$cmA2 = \Nino\Modules\Review::add( $appData, $song1['id'], $byAnna, 40.0, 'Ende abrupt' );
+$cmB1 = \Nino\Modules\Review::add( $appData, $song2['id'], $byAnna, 5.5, 'Einsatz zu früh' );
+\Nino\Modules\Review::add( $appData, $song3['id'], $owner, null, 'Ist gemacht' );
+\Nino\Modules\Review::add( $appData, $song4['id'], $byAnna, null, 'Nicht zu sehen' );
+
+$versionsUri = '/portal/projekte?projekt='. $pV;
+$versionsHtml = portalPage( $appData, $versionsUri )[1];
+$rowOf = static fn( string $html, string $id ): string => ( $found = portalFind( $html, '//li[@data-files-id="'. $id. '"]' ) ) === [] ? '' : $found[0]->ownerDocument->saveHTML( $found[0] );
+$pillOf = static fn( string $row, string $class ): string => portalText( $row, '//span[contains(concat(" ", normalize-space(@class), " "), " crm-files__'. $class. ' ")]' );
+$namesOf = static fn( string $html ): array => array_map( static fn( \DOMElement $link ): string => trim( (string) preg_replace( '/\s+/', ' ', $link->textContent ) ), portalFind( $html, '//section[contains(@class, "crm-project__section--files")]//a[contains(@class, "crm-files__name")]' ) );
+
+check( 'Dateien lists one row for each title, not for each file: the titles in the order of their newest file, a title that is two files of the same name with another extension a row of its own, a file that says no version with its name as it is',
+	$namesOf( $versionsHtml ) === [ 'Song', 'Mix', 'Solo', 'Song', $evilName, 'Notizen.txt' ] && count( portalFind( $versionsHtml, '//section[contains(@class, "crm-project__section--files")]//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' ) ) === 6 );
+$songRow = $rowOf( $versionsHtml, $song3['id'] );
+check( '...the row of a title is the row of its newest version - its id, its size, its day, the link to listen to it and the download of it - with the number of that version, how many versions the title has and how many comments are open over all of them',
+	$songRow !== '' && $pillOf( $songRow, 'version' ) === 'v03' && (int) $pillOf( $songRow, 'versions' ) === 3 && (int) $pillOf( $songRow, 'open' ) === 3
+	&& portalFind( $songRow, '//a[contains(@class, "crm-files__name")]/@href' )[0]->nodeValue === '/portal/projekte?projekt='. $pV. '&review='. $song3['id']. '#projekt-files' && portalFind( $songRow, '//a[contains(@class, "crm-files__listen")]/@href' )[0]->nodeValue === '/portal/projekte?projekt='. $pV. '&review='. $song3['id']. '#projekt-files'
+	&& portalFind( $songRow, '//a[contains(@class, "crm-files__download")]/@href' )[0]->nodeValue === '/.files/'. $song3['id']. '?download=1' && portalFind( $songRow, '//time/@datetime' )[0]->nodeValue === $song3['created'] && $rowOf( $versionsHtml, $song1['id'] ) === '' && $rowOf( $versionsHtml, $song2['id'] ) === '' );
+check( '...the open comments are those of members that the owner has not settled, counted over every version of the title: not the owner\'s own comment on the newest, and not a comment on a version the member may not see (Song.04 is hidden)',
+	(int) $pillOf( $songRow, 'open' ) === 3 && (int) $pillOf( $songRow, 'versions' ) === 3 && str_contains( $versionsHtml, 'Nicht zu sehen' ) === false && str_contains( $versionsHtml, $song4['id'] ) === false );
+$mixRow = $rowOf( $versionsHtml, $mixOne['id'] );
+check( '...a file without a version joins the title that its name belongs to: Mix.mp3 and Mix.01.mp3 are the title Mix, the numbered one the newest here, and the plain one a version of it that has no number',
+	$mixRow !== '' && $pillOf( $mixRow, 'version' ) === 'v01' && (int) $pillOf( $mixRow, 'versions' ) === 2 && $pillOf( $mixRow, 'open' ) === '' && $rowOf( $versionsHtml, $mixOld['id'] ) === '' );
+$soloRow = $rowOf( $versionsHtml, $solo['id'] );
+$textRow = $rowOf( $versionsHtml, $text['id'] );
+check( '...a title of one version has its number and no count of versions; a file that says no version is a row as the page of a project always had it - its name, no pill of version, of versions or of comments, and the download',
+	$pillOf( $soloRow, 'version' ) === 'v01' && $pillOf( $soloRow, 'versions' ) === '' && $pillOf( $soloRow, 'open' ) === '' && trim( portalText( $textRow, '//a[contains(@class, "crm-files__name")]' ) ) === 'Notizen.txt'
+	&& $pillOf( $textRow, 'version' ) === '' && $pillOf( $textRow, 'versions' ) === '' && $pillOf( $textRow, 'open' ) === '' && portalFind( $textRow, '//a[contains(@class, "crm-files__listen")]' ) === [] && portalFind( $textRow, '//a[contains(@class, "crm-files__name")]/@href' )[0]->nodeValue === '/.files/'. $text['id']. '?download=1' );
+$evilRow = $rowOf( $versionsHtml, $evil2['id'] );
+check( '...a name with markup and a key in it is text in the row - the title, the version and the label of the buttons - and a bracket of it is no fill of the page',
+	portalFind( $evilRow, '//b | //i' ) === [] && trim( portalText( $evilRow, '//a[contains(@class, "crm-files__name")]' ) ) === $evilName && str_contains( $versionsHtml, 'Evil &lt;b&gt;x&lt;/b&gt; &#91;&#91;/project/company/general/name]]' ) === true && str_contains( $evilRow, 'The Club' ) === false
+	&& str_contains( portalText( $evilRow, '//a[contains(@class, "crm-files__download")]/span[contains(@class, "nino-sr-only")]' ), $evilName ) === true && $pillOf( $evilRow, 'version' ) === 'v02' );
+$wavRow = $rowOf( $versionsHtml, $songWav['id'] );
+check( '...the extension is a pill beside the version in the row of a title and in the label of its buttons: Song.03.mp3 and Song.03.wav are two rows of the same name that differ by it - and a file that is drawn with its own name has none, the name says it',
+	$wavRow !== '' && trim( portalText( $wavRow, '//a[contains(@class, "crm-files__name")]' ) ) === 'Song' && $pillOf( $wavRow, 'version' ) === 'v03' && $pillOf( $wavRow, 'ext' ) === 'WAV' && $pillOf( $songRow, 'ext' ) === 'MP3' && $pillOf( $textRow, 'ext' ) === '' && $pillOf( $mixRow, 'ext' ) === 'MP3'
+	&& str_contains( portalText( $wavRow, '//a[contains(@class, "crm-files__download")]/span[contains(@class, "nino-sr-only")]' ), 'Song 03 WAV' ) === true && str_contains( portalText( $songRow, '//a[contains(@class, "crm-files__listen")]/span[contains(@class, "nino-sr-only")]' ), 'Song 03 MP3' ) === true );
+check( '...the tab counts files, as the project row and the start page do: the page lists 6 titles of the 10 files the member may see',
+	(int) trim( ltrim( portalFind( $versionsHtml, '//a[@data-tab="dateien"]/span[contains(@class, "crm-project__count")]' )[0]->textContent, ', ' ) ) === 10 );
+
+// The player: the select of the versions of the title that is played
+$played2 = portalPage( $appData, $versionsUri. '&review='. $song2['id'] )[1];
+$selects = portalFind( $played2, '//select' );
+$options = portalFind( $played2, '//select[@name="review"]/option' );
+check( 'with ?review=<version> a title of several versions has a row Version over the medium of its player: a select with one option for each version the member may see, the newest first, the one that plays selected - and no version of another title',
+	count( $selects ) === 1 && array_map( static fn( \DOMElement $option ): string => $option->getAttribute( 'value' ), $options ) === [ $song3['id'], $song2['id'], $song1['id'] ] && array_map( static fn( \DOMElement $option ): bool => $option->hasAttribute( 'selected' ), $options ) === [ false, true, false ]
+	&& count( portalFind( $played2, '//div[contains(@class, "review-player")]//select' ) ) === 1 && count( portalFind( $played2, '//label[@for="'. $selects[0]->getAttribute( 'id' ). '"]' ) ) === 1 && $selects[0]->getAttribute( 'id' ) !== '' );
+$order = array_map( static fn( \DOMElement $node ): string => $node->nodeName, portalFind( $played2, '//div[contains(@class, "review-player")]/*[self::h3 or self::form or self::audio]' ) );
+check( '...it stands between the title and the medium of the player, and the player is the one of Review: its form of comments, the audio element with the file that was asked for',
+	$order === [ 'h3', 'form', 'audio', 'form' ] && portalFind( $played2, '//audio/@src | //audio/source/@src' )[0]->nodeValue === '/.files/'. $song2['id'] && portalFind( $played2, '//form[@class="review-form"]/input[@name="file"]/@value' )[0]->nodeValue === $song2['id'] );
+$switch = portalFind( $played2, '//form[contains(@class, "crm-versions")]' );
+check( '...without the script the select is a form: a GET to the page of the projects with the project, the select named review and a button that sends it - the page of a version is an address that can be linked to',
+	count( $switch ) === 1 && $switch[0]->getAttribute( 'method' ) === 'get' && $switch[0]->getAttribute( 'action' ) === '/portal/projekte#crm-versions' && portalFind( $played2, '//form[contains(@class, "crm-versions")]/input[@type="hidden"]/@name' )[0]->nodeValue === 'projekt'
+	&& portalFind( $played2, '//form[contains(@class, "crm-versions")]/input[@type="hidden"]/@value' )[0]->nodeValue === $pV && count( portalFind( $played2, '//form[contains(@class, "crm-versions")]//button[@type="submit"]' ) ) === 1 && $switch[0]->getAttribute( 'id' ) === 'crm-versions' && portalFind( $played2, '//form[contains(@class, "crm-versions")][@onsubmit]' ) === [] );
+$texts = array_map( static fn( \DOMElement $option ): string => trim( $option->textContent ), $options );
+check( '...an option says the number of the version, the day it was put there and - where comments are open - how many: Song.03 has none, Song.02 one and Song.01 two',
+	preg_match( '/^03 · \d\d\.\d\d\.\d{4}$/u', $texts[0] ) === 1 && preg_match( '/^02 · 12\.10\.2026 · 1 \S+$/u', $texts[1] ) === 1 && preg_match( '/^01 · 01\.10\.2026 · 2 \S+$/u', $texts[2] ) === 1 && str_contains( implode( '', $texts ), '[[' ) === false );
+check( '...the title that is played is marked in the list, once - a row of its own, whichever of its versions plays', count( portalFind( $played2, '//li[contains(@class, "crm-files__row--playing")]' ) ) === 1 && portalFind( $played2, '//li[contains(@class, "crm-files__row--playing")]/@data-files-id' )[0]->nodeValue === $song3['id']
+	&& portalFind( $played2, '//li[contains(@class, "crm-files__row--playing")]/@aria-current' )[0]->nodeValue === 'true' );
+check( '...the comments are those of that version: the one on Song.02 and none of Song.01 or Song.03, with the player of the version', str_contains( $played2, 'Einsatz zu früh' ) === true && str_contains( $played2, 'Zu laut' ) === false && str_contains( $played2, 'Ist gemacht' ) === false && count( portalFind( $played2, '//li[contains(@class, "review-comment")]' ) ) === 1 );
+$played1 = portalPage( $appData, $versionsUri. '&review='. $song1['id'] )[1];
+$played3 = portalPage( $appData, $versionsUri. '&review='. $song3['id'] )[1];
+check( '...and the other versions the same: Song.01 has its two, with the markup of one of them as text, Song.03 the owner\'s only, and the select names the same three with another one selected',
+	count( portalFind( $played1, '//li[contains(@class, "review-comment")]' ) ) === 2 && str_contains( $played1, 'Zu laut &lt;i&gt;hier&lt;/i&gt;' ) === true && portalFind( $played1, '//li[contains(@class, "review-comment")]//i' ) === [] && count( portalFind( $played3, '//li[contains(@class, "review-comment")]' ) ) === 1
+	&& array_map( static fn( \DOMElement $option ): string => $option->getAttribute( 'value' ), portalFind( $played1, '//select/option[@selected]' ) ) === [ $song1['id'] ] && array_map( static fn( \DOMElement $option ): string => $option->getAttribute( 'value' ), portalFind( $played3, '//select/option[@selected]' ) ) === [ $song3['id'] ] );
+check( '...a title of one version has no row Version: neither Solo.01 nor a file of a title that was never versioned shows a select',
+	portalFind( portalPage( $appData, $versionsUri. '&review='. $solo['id'] )[1], '//select | //form[contains(@class, "crm-versions")]' ) === [] && count( portalFind( portalPage( $appData, $versionsUri. '&review='. $solo['id'] )[1], '//div[contains(@class, "review-player")]' ) ) === 1 );
+$mixPlayed = portalPage( $appData, $versionsUri. '&review='. $mixOld['id'] )[1];
+check( '...a version without a number is an option of its title, after the numbered ones, with its name in place of the number',
+	array_map( static fn( \DOMElement $option ): string => $option->getAttribute( 'value' ), portalFind( $mixPlayed, '//select/option' ) ) === [ $mixOne['id'], $mixOld['id'] ] && str_starts_with( trim( portalFind( $mixPlayed, '//select/option' )[1]->textContent ), 'Mix.mp3 · ' ) === true );
+$evilPlayed = portalPage( $appData, $versionsUri. '&review='. $evil1['id'] )[1];
+check( '...a name with markup and a key in it is text in the option and the title of the player as well',
+	portalFind( $evilPlayed, '//select//b | //h3//b' ) === [] && portalFind( $evilPlayed, '//select/option/@value' )[0]->nodeValue === $evil2['id'] && trim( portalFind( $evilPlayed, '//h3[contains(@class, "review-player__title")]' )[0]->textContent ) === $evilName. '.01.mp3' && str_contains( $evilPlayed, 'The Club' ) === false );
+
+// A select names the files of the folder of this project and nobody else's
+$foreign = portalPage( $appData, $versionsUri. '&review='. $strangerSong['id'] )[1];
+$hiddenAsked = portalPage( $appData, $versionsUri. '&review='. $song4['id'] )[1];
+$otherProject = portalPage( $appData, '/portal/projekte?projekt='. $p1. '&review='. $song2['id'] )[1];
+check( 'a file of another client asked for with the project of this one is not played and no select names it - the page is the list; so is a version the member may not see, and a file of another project of the same client',
+	array_filter( [ $foreign, $hiddenAsked, $otherProject ], static fn( string $html ): bool => portalFind( $html, '//select | //div[contains(@class, "review-player")] | //form[contains(@class, "crm-versions")]' ) !== [] ) === []
+	&& str_contains( $foreign. $hiddenAsked. $otherProject, $strangerSong['id'] ) === false && str_contains( $played2, $strangerSong['id'] ) === false && str_contains( $played2, $song4['id'] ) === false
+	&& in_array( $songWav['id'], array_map( static fn( \DOMElement $option ): string => $option->getAttribute( 'value' ), $options ), true ) === false );
+$allIds = [];
+
+foreach( [ $played1, $played2, $played3, $mixPlayed, $evilPlayed ] as $one )
+	foreach( portalFind( $one, '//select[@name="review"]/option/@value' ) as $value )
+		$allIds[] = $value->nodeValue;
+
+$visibleHere = array_column( \Crm\Portal\Files::visible( $appData, $folderV['id'] ), 'id' );
+check( '...every option of every select of the page is a file of the folder of the project that the member sees', $allIds !== [] && array_diff( $allIds, $visibleHere ) === [] );
+$otherQuery = portalPage( $appData, '/portal/projekte?projekt='. $pV. '&review[]=x&projekt2='. $song2['id'] )[1];
+check( 'a query that is no id - a list in the place of a file, a name that is none - leaves the page of the project with no select',
+	portalFind( $otherQuery, '//select | //form[contains(@class, "crm-versions")]' ) === [] && count( portalFind( portalPage( $appData, $versionsUri. '&review=..%2F..%2Fx' )[1], '//article[contains(@class, "crm-project")]' ) ) === 1 );
+
+// A comment settled is a comment that is not open: the pill, the options, the mark of the comment
+\Nino\Modules\Review\Store::toggle( $appData, $song1['id'], $cmA1['id'] );
+$settled = portalPage( $appData, $versionsUri. '&review='. $song1['id'] )[1];
+check( 'a comment the owner has marked as done is no open comment on the row of its title, and the player says it is done; the options count the open ones that are left',
+	(int) $pillOf( $rowOf( $settled, $song3['id'] ), 'open' ) === 2 && count( portalFind( $settled, '//li[contains(@class, "review-comment--done")]' ) ) === 1 && count( portalFind( $settled, '//li[contains(@class, "review-comment--done")]//span[contains(@class, "review-comment__done")]' ) ) === 1
+	&& count( portalFind( $settled, '//li[contains(@class, "review-comment") and not(contains(@class, "review-comment--done"))]//span[contains(@class, "review-comment__done")]' ) ) === 0 );
+\Nino\Modules\Review\Store::toggle( $appData, $song1['id'], $cmA2['id'] );
+\Nino\Modules\Review\Store::toggle( $appData, $song2['id'], $cmB1['id'] );
+$allSettled = portalPage( $appData, $versionsUri )[1];
+check( '...with every comment settled the title has no pill of open comments, and a select has no count in its options',
+	$pillOf( $rowOf( $allSettled, $song3['id'] ), 'open' ) === '' && (int) $pillOf( $rowOf( $allSettled, $song3['id'] ), 'versions' ) === 3 && array_filter( portalFind( portalPage( $appData, $versionsUri. '&review='. $song3['id'] )[1], '//select/option' ), static fn( \DOMElement $option ): bool => str_contains( $option->textContent, ' · ' ) === true && substr_count( $option->textContent, ' · ' ) !== 1 ) === [] );
+\Nino\Modules\Review\Store::toggle( $appData, $song1['id'], $cmA1['id'] );
+\Nino\Modules\Review\Store::toggle( $appData, $song1['id'], $cmA2['id'] );
+\Nino\Modules\Review\Store::toggle( $appData, $song2['id'], $cmB1['id'] );
+
+// Review off: the titles stay, the comments are not there to count, and nothing is played
+\Nino\Features::deactivate( $appData, 'review' );
+$noReviewV = portalPage( $appData, $versionsUri. '&review='. $song3['id'] )[1];
+check( 'with Review off the titles are rows all the same - with their versions and no count of comments - and there is no player and no select',
+	$namesOf( $noReviewV ) === [ 'Song', 'Mix', 'Solo', 'Song', $evilName, 'Notizen.txt' ] && portalFind( $noReviewV, '//span[contains(@class, "crm-files__open")] | //select | //div[contains(@class, "review-player")] | //a[contains(@class, "crm-files__listen")]' ) === [] );
+\Nino\Features::activate( $appData, 'review' );
+
+// A version that was removed from the server: still an option, its comments stay, its player has no medium
+\Nino\Modules\Files\Store::removeBytes( $appData, $song3['id'] );
+$goneVersion = portalPage( $appData, $versionsUri. '&review='. $song3['id'] )[1];
+$goneTop = portalPage( $appData, $versionsUri )[1];
+check( 'a removed version is an option that says so, with its comments and no medium; the row of the title is the newest version that is on the server - the highest number is gone, so the row is Song.02: its id, its number, its link',
+	count( portalFind( $goneVersion, '//select/option' ) ) === 3 && portalFind( $goneVersion, '//audio | //video' ) === [] && portalFind( $goneVersion, '//p[contains(@class, "crm-files__gone-note")]' ) !== [] && substr_count( trim( portalFind( $goneVersion, '//select/option[@selected]' )[0]->textContent ), ' · ' ) === 2
+	&& $rowOf( $goneTop, $song3['id'] ) === '' && ( $topRow = $rowOf( $goneTop, $song2['id'] ) ) !== '' && $pillOf( $topRow, 'version' ) === 'v02' && (int) $pillOf( $topRow, 'versions' ) === 3 && portalFind( $topRow, '//a[contains(@class, "crm-files__name")]/@href' )[0]->nodeValue === '/portal/projekte?projekt='. $pV. '&review='. $song2['id']. '#projekt-files'
+	&& portalFind( $topRow, '//a[contains(@class, "crm-files__download")]/@href' )[0]->nodeValue === '/.files/'. $song2['id']. '?download=1' );
+\Nino\Modules\Files\Store::removeBytes( $appData, $song2['id'] );
+check( '...and the next one down when that is removed too: the row is Song.01', ( $lowRow = $rowOf( portalPage( $appData, $versionsUri )[1], $song1['id'] ) ) !== '' && $pillOf( $lowRow, 'version' ) === 'v01' );
+\Nino\Modules\Files\Store::removeBytes( $appData, $song1['id'] );
+$allGone = portalPage( $appData, $versionsUri )[1];
+check( '...a title whose every version was removed is one row of the newest, as a removed file is drawn: its name, no link that opens it',
+	count( portalFind( $allGone, '//li[contains(@class, "crm-files__row--gone")]' ) ) === 1 && portalFind( $allGone, '//li[contains(@class, "crm-files__row--gone")]/@data-files-id' )[0]->nodeValue === $song3['id'] && portalFind( $allGone, '//li[contains(@class, "crm-files__row--gone")]//a[not(starts-with(@href, "mailto:"))]' ) === [] );
+
+// The uploads list files, not titles: a file is a row of its own
+$uploadV1 = $put( $folderUp, 'Take.01.txt', 'txt', 'text/plain', true, $owner, $ago( 50 ) );
+$uploadV2 = $put( $folderUp, 'Take.02.txt', 'txt', 'text/plain', true, $owner, $ago( 40 ) );
+$store::markUpload( $appData, $folderUp['id'], true );
+$uploadsV = \Nino\Html::renderHtml( $appData, '[crm-uploads]' );
+check( 'the list of the uploads is a list of files: Take.01.txt and Take.02.txt are a row each, with their names, and no pill of version, of versions or of comments',
+	array_values( array_filter( array_map( static fn( \DOMElement $link ): string => trim( $link->textContent ), portalFind( $uploadsV, '//a[contains(@class, "crm-files__name")]' ) ), static fn( string $name ): bool => str_starts_with( $name, 'Take.' ) ) ) === [ 'Take.02.txt', 'Take.01.txt' ] && portalFind( $uploadsV, '//span[contains(@class, "crm-files__version") or contains(@class, "crm-files__versions") or contains(@class, "crm-files__open")]' ) === [] );
+
+// The script: the select sends its form when the choice changes, and the button that does it without the script goes
+$portalScript = (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.js' );
+$versionsScript = (string) preg_replace( '/^\s*\/\/.*$/m', '', $portalScript );
+check( 'the script of the portal takes the button of the select of the versions away and sends its form - a plain GET, with requestSubmit so that a browser that checks the form does - when the choice changes with the mouse or by touch',
+	preg_match( '/function watchVersions\(\)[\s\S]*?\.hidden\s*=\s*true[\s\S]*?form\.requestSubmit\(\)[\s\S]*?addEventListener\(\s*[\'"]change[\'"][\s\S]{0,120}?keyboard === false[\s\S]{0,40}?send\(\)/', $versionsScript ) === 1 );
+check( '...a choice with the keyboard - the arrows, Home, End, PageUp, PageDown, a letter - only marks the select (a keydown branch), the change that follows sends nothing, and the form is sent on Enter and when the select is left (blur) with another option than the page has chosen (defaultSelected)',
+	preg_match( '/addEventListener\(\s*[\'"]keydown[\'"][\s\S]{0,900}?\'ArrowDown\'[\s\S]{0,200}?\'PageDown\'[\s\S]{0,200}?keyboard = true/', $versionsScript ) === 1 && preg_match( '/event\.key === \'Enter\'[\s\S]{0,200}?changed\(\)[\s\S]{0,120}?send\(\)/', $versionsScript ) === 1
+	&& preg_match( '/addEventListener\(\s*[\'"]blur[\'"][\s\S]{0,200}?changed\(\)[\s\S]{0,60}?send\(\)/', $versionsScript ) === 1 && str_contains( $versionsScript, 'defaultSelected' ) === true );
+check( '...and the page that the form leads to - the address names the form, #crm-versions - gets the focus back on the select without a jump of the scroll',
+	preg_match( '/target\.id === \'crm-versions\'[\s\S]{0,200}?\.focus\(\s*\{\s*preventScroll:\s*true\s*\}\s*\)/', $portalScript ) === 1 );
 
 // The rest of the suite runs as it did before: Review and Events off
 foreach( [ 'events', 'review' ] as $key )

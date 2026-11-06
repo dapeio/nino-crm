@@ -790,8 +790,8 @@ foreach( [ 'not json', '[]', '{"action":["crm-documents/list"]}', '{"action":1}'
 	check( 'a body that is no action ('. $broken. ') is 404 action as well', $answer['statusCode'] === 404 && $answer['body']['code'] === 'action' );
 }
 
-check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the seven of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - the list of the uploads and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/delete', 'files/remove' ], [ 'crm-uploads/list' ] )
-	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|delete|remove)|crm-uploads/list)$~D', $action ) !== 1 ) === []
+check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the seven of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - the two of the Review panel that read and settle the comments on them, the list of the uploads and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/delete', 'files/remove' ], [ 'review/comments', 'review/done' ], [ 'crm-uploads/list' ] )
+	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|delete|remove)|review/(comments|done)|crm-uploads/list)$~D', $action ) !== 1 ) === []
 	&& in_array( 'crm-clients/setup', array_keys( Surface::actions() ), true ) === false && in_array( 'crm-clients/status', array_keys( Surface::actions() ), true ) === false );
 
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiList' ], [ 'year' => (string) date( 'Y' ) ], 'crm-documents/list' );
@@ -799,8 +799,8 @@ check( 'the table is the API of the clients and of the documents by their names,
 check( 'a list through the endpoint equals the answer of the panel, to the byte of its JSON', $viaStatus === $status && json_encode( $via ) === json_encode( $direct ) && count( $via['documents'] ) > 10 );
 [ $viaStatus, $via ] = surfaceApi( $appData, 'crm-documents/get', [ 'id' => (string) $late1['id'] ] );
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiGet' ], [ 'id' => (string) $late1['id'] ], 'crm-documents/get' );
-check( '...so does a document, with its templates, clients and accounts - and the overview the screens start from has the books, what needs the owner, the finished projects whose files lie on the server and the latest documents', json_encode( $via ) === json_encode( $direct ) && $viaStatus === 200 && ( $overview = surfaceApi( $appData, 'crm-documents/overview' )[1] )
-	&& array_keys( $overview ) === [ 'summary', 'needs', 'stale', 'recent', 'settings' ] && $overview['summary'] === Documents::summary( $appData ) + [ 'clients' => \Crm\Clients::countActive( $appData ) ] && $overview['summary']['clients'] === 3 && count( $overview['needs'] ) === count( Documents::needs( $appData ) ) && count( $overview['recent'] ) === 8 && $overview['settings']['currency'] === '€' );
+check( '...so does a document, with its templates, clients and accounts - and the overview the screens start from has the books, what needs the owner, the finished projects whose files lie on the server, the comments that nobody has settled and the latest documents', json_encode( $via ) === json_encode( $direct ) && $viaStatus === 200 && ( $overview = surfaceApi( $appData, 'crm-documents/overview' )[1] )
+	&& array_keys( $overview ) === [ 'summary', 'needs', 'stale', 'review', 'recent', 'settings' ] && $overview['summary'] === Documents::summary( $appData ) + [ 'clients' => \Crm\Clients::countActive( $appData ) ] && $overview['summary']['clients'] === 3 && count( $overview['needs'] ) === count( Documents::needs( $appData ) ) && count( $overview['recent'] ) === 8 && $overview['settings']['currency'] === '€' );
 [ $status, $answer ] = surfaceApi( $appData, 'crm-clients/list' );
 check( '...and the actions of the other panel go through it, too', $status === 200 && count( $answer['clients'] ) === 4 );
 
@@ -1220,7 +1220,7 @@ $perms = static function( string $mail, string $password ) use ( $asUser, &$appD
 	$asUser( $mail, $password );
 	return surfaceData( (string) surfaceServe( $appData, 'GET', '/crm' )['body'] )['perms'] ?? [];
 };
-check( 'the data block carries which permissions the account has: crm, pdf, elements, text, files, members and sign - the account of the CRM alone has the first only, the account with both has both', $perms( 'crm@example.com', 'crm password' ) === [ 'crm' => true, 'pdf' => false, 'elements' => false, 'text' => false, 'files' => false, 'members' => false, 'sign' => false ] && $perms( 'pdf@example.com', 'pdf password' ) === [ 'crm' => true, 'pdf' => true, 'elements' => false, 'text' => false, 'files' => false, 'members' => false, 'sign' => false ] && $perms( 'linker@example.com', 'linker password' )['members'] === true && $perms( 'linker@example.com', 'linker password' )['sign'] === true && array_intersect_key( $perms( 'onlysign@example.com', 'onlysign password' ), [ 'members' => 1, 'sign' => 1 ] ) === [ 'members' => false, 'sign' => true ] && array_intersect_key( $perms( 'onlymembers@example.com', 'onlymembers password' ), [ 'members' => 1, 'sign' => 1 ] ) === [ 'members' => true, 'sign' => false ] && $perms( 'admin@example.com', 'correct horse battery staple' )['pdf'] === true );
+check( 'the data block carries which permissions the account has: crm, pdf, elements, text, files, review, members and sign - the account of the CRM alone has the first only, the account with both has both', $perms( 'crm@example.com', 'crm password' ) === [ 'crm' => true, 'pdf' => false, 'elements' => false, 'text' => false, 'files' => false, 'review' => false, 'members' => false, 'sign' => false ] && $perms( 'pdf@example.com', 'pdf password' ) === [ 'crm' => true, 'pdf' => true, 'elements' => false, 'text' => false, 'files' => false, 'review' => false, 'members' => false, 'sign' => false ] && $perms( 'linker@example.com', 'linker password' )['members'] === true && $perms( 'linker@example.com', 'linker password' )['sign'] === true && array_intersect_key( $perms( 'onlysign@example.com', 'onlysign password' ), [ 'members' => 1, 'sign' => 1 ] ) === [ 'members' => false, 'sign' => true ] && array_intersect_key( $perms( 'onlymembers@example.com', 'onlymembers password' ), [ 'members' => 1, 'sign' => 1 ] ) === [ 'members' => true, 'sign' => false ] && $perms( 'admin@example.com', 'correct horse battery staple' )['pdf'] === true );
 $asPdf();
 $html = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
 check( '...the rail has the entry PDF-Vorlagen at #pdf, hidden in the markup (the script shows it for the permission), between Positionen and Einstellungen', preg_match( '~<a href="#pdf" data-r="pdf" id="nav-pdf" hidden>PDF-Vorlagen</a>~', $html ) === 1
@@ -1750,7 +1750,7 @@ $notifyOn = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['
 check( 'the card of a project says the setting of Dateien that mails the members as notify, for the box of the tab to start from', $notifyOn === true && ( surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['notify'] ?? null ) === false );
 [ , $list ] = surfaceApi( $appData, 'crm-projekte/list' );
 check( 'with a folder the list counts the files of the project and the card lists them with the address each is downloaded at, who put it there and whether the members see it - for the account of the CRM alone', array_column( $list['projects'], 'files', 'id' )['00001'] === 1 && array_column( $list['projects'], 'files', 'id' )['00003'] === 0
-	&& ( $got = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1] )['folder'] === [ 'id' => $folderId, 'name' => 'Album 2027' ] && count( $got['list'] ) === 1 && $got['list'][0] === [ 'id' => $fileId, 'name' => 'Notizen.txt', 'ext' => 'txt', 'size' => $total, 'mime' => 'text/plain', 'created' => $stored[0]['created'], 'visible' => false, 'gone' => '', 'by' => [ 'kind' => 'owner', 'label' => '' ], 'url' => '/.files/'. $fileId ] );
+	&& ( $got = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1] )['folder'] === [ 'id' => $folderId, 'name' => 'Album 2027' ] && count( $got['list'] ) === 1 && $got['list'][0] === [ 'id' => $fileId, 'name' => 'Notizen.txt', 'ext' => 'txt', 'size' => $total, 'mime' => 'text/plain', 'created' => $stored[0]['created'], 'visible' => false, 'gone' => '', 'by' => [ 'kind' => 'owner', 'label' => '' ], 'url' => '/.files/'. $fileId, 'title' => 'Notizen', 'version' => '', 'versions' => 1, 'group' => 0, 'comments' => null ] );
 $asItems();
 surfaceApi( $appData, 'elements/save', [ 'uri' => '00004', 'isNew' => false, 'fields' => [ 'folder' => 'dddddddddddd' ] ] + $project );
 $asCrm();
@@ -1853,6 +1853,155 @@ check( 'the overview says how many finished projects have files on the server th
 \Nino\Features::deactivate( $appData, 'files' );
 check( '...with the feature off there is none', ( $stales()['count'] ?? -1 ) === 0 );
 \Nino\Features::activate( $appData, 'files' );
+
+// --- Kommentare: the Review panel's reads and its switch through the endpoint, the count of the Übersicht, the counts of the card ---------------------
+
+echo "\nKommentare zu den Dateien\n";
+
+\Nino\Auth::insertUser( $appData, 'review@example.com', 'review password', [ '/_admin/crm/manage', '/_admin/review/manage' ] );
+\Nino\Auth::insertUser( $appData, 'reviewonly@example.com', 'reviewonly password', [ '/_admin/review/manage' ] );
+$asReview = static function() use ( $asUser ): void { $asUser( 'review@example.com', 'review password' ); };
+$audio = static function( string $folder, string $name, string $created ) use ( &$appData ): array {
+	[ $clean, $ext ] = \Nino\Modules\Files\Store::cleanName( $name );
+	$id = bin2hex( random_bytes( 6 ) );
+	@mkdir( dirname( (string) \Nino\Modules\Files\Store::bytes( $appData, $id, $ext ) ), 0775, true );
+	file_put_contents( (string) \Nino\Modules\Files\Store::bytes( $appData, $id, $ext ), 'abc' );
+	$entry = \Nino\Modules\Files\Store::addFile( $appData, $id, [ 'folder' => $folder, 'name' => $clean, 'ext' => $ext, 'size' => 3, 'mime' => $ext === 'wav' ? 'audio/wav' : 'text/plain', 'sha256' => hash( 'sha256', 'abc' ), 'by' => [ 'kind' => 'owner', 'id' => '' ], 'visible' => true, 'created' => $created ], 0 );
+
+	return is_array( $entry ) === true ? $entry : [ 'id' => '' ];
+};
+$memberId = 'aaaaaaaaaaaa';
+$byMember = [ 'kind' => 'member', 'id' => $memberId ];
+$folderK = \Nino\Modules\Files\Store::addFolder( $appData, $group, 'Kommentare' );
+$folderForeign = \Nino\Modules\Files\Store::addFolder( $appData, 'allgemein', 'Kommentare fremd' );
+$song1 = $audio( $folderK['id'], 'Song.01.wav', '2026-10-01T10:00:00Z' );
+$song2 = $audio( $folderK['id'], 'Song.02.wav', '2026-10-02T10:00:00Z' );
+$readme = $audio( $folderK['id'], 'Lies mich.txt', '2026-09-01T10:00:00Z' );
+$foreign = $audio( $folderForeign['id'], 'Fremd.wav', '2026-10-03T10:00:00Z' );
+
+$asVisitor();
+$actions = [ 'review/comments' => [ 'file' => $song1['id'] ], 'review/done' => [ 'file' => $song1['id'], 'id' => 'bbbbbbbbbbbb' ] ];
+check( 'the two actions of the Review panel that the card needs are in the table by their names: 401 for nobody',
+	array_filter( $actions, static fn( array $data, string $action ): bool => surfaceApi( $appData, $action, $data )[0] !== 401, ARRAY_FILTER_USE_BOTH ) === [] && array_intersect( array_keys( $actions ), array_keys( Surface::actions() ) ) === array_keys( $actions )
+	&& array_intersect( [ 'review/list', 'review/answer', 'review/delete' ], array_keys( Surface::actions() ) ) === [] );
+
+// The feature is off: 409 review_off with every permission there is, as files_off is for the Files panel
+$asReview();
+$reviewBefore = \Nino\Modules\Review\Store::read( $appData );
+$offAnswer = array_map( static fn( string $action ): array => surfaceApi( $appData, $action, $actions[$action] ), array_keys( $actions ) );
+check( 'where the feature Review is not active both actions are 409 review_off, with the permission of the panel, as files_off is for the Files panel',
+	array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $offAnswer ) === [ '409 review_off', '409 review_off' ] && ( Surface::texts()['error.review_off'] ?? '' ) !== '' );
+check( '...the Review panel\'s own class is not asked: nothing is changed, nothing is made, no line of the log', \Nino\Modules\Review\Store::read( $appData ) === $reviewBefore && $lines( 'Marked comment' ) === 0 );
+check( '...the first screen counts nothing, the card has no counts and says the feature is off, and the data block has no permission of the panel to give', ( $offOverview = surfaceApi( $appData, 'crm-documents/overview' )[1] ) !== [] && $offOverview['review'] === [ 'count' => 0, 'files' => 0 ]
+	&& surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['review'] === false && Surface\Review::allowed( $appData ) === false );
+
+\Nino\Features::activate( $appData, 'review' );
+$comment1 = \Nino\Modules\Review::add( $appData, $song1['id'], $byMember, 12.0, 'Zu laut <i>hier</i>' );
+$comment2 = \Nino\Modules\Review::add( $appData, $song1['id'], $byMember, null, 'Ende abrupt' );
+$answer1 = \Nino\Modules\Review::add( $appData, $song1['id'], [ 'kind' => 'owner', 'id' => '' ], null, 'Ist gemacht', $comment1['id'] );
+$comment3 = \Nino\Modules\Review::add( $appData, $song2['id'], $byMember, 5.5, 'Einsatz zu früh' );
+$commentForeign = \Nino\Modules\Review::add( $appData, $foreign['id'], $byMember, 1.0, 'Ein Kommentar im Ordner einer anderen Gruppe' );
+
+// The permissions
+$asCrm();
+$crmAlone = array_map( static fn( string $action ): int => surfaceApi( $appData, $action, $actions[$action] )[0], array_keys( $actions ) );
+$crmForeign = array_map( static fn( string $action ): int => surfaceApi( $appData, $action, [ 'file' => $foreign['id'], 'id' => $commentForeign['id'] ] )[0], array_keys( $actions ) );
+$asUser( 'reviewonly@example.com', 'reviewonly password' );
+$reviewAlone = array_map( static fn( string $action ): int => surfaceApi( $appData, $action, $actions[$action] )[0], array_keys( $actions ) );
+$asFiles();
+$filesOnly = array_map( static fn( string $action ): int => surfaceApi( $appData, $action, $actions[$action] )[0], array_keys( $actions ) );
+check( 'with the feature on both actions are 403 for the account of the CRM alone, for the one that holds the permission of the Files panel and for the one of the Review panel alone - the CRM\'s permission comes first - and nothing is read or changed',
+	$crmAlone === [ 403, 403 ] && $crmForeign === [ 403, 403 ] && $reviewAlone === [ 403, 403 ] && $filesOnly === [ 403, 403 ] && \Nino\Modules\Review::comments( $appData, $song1['id'] )[0]['done'] === false );
+
+// review/comments
+$asReview();
+[ $status, $read ] = surfaceApi( $appData, 'review/comments', [ 'file' => $song1['id'] ] );
+check( 'review/comments gives the comments on a file of a client\'s folder as the panel gives them: 200, the file, the comments in the order of the track with their answers under them, each with the name of its author',
+	$status === 200 && $read['file']['id'] === $song1['id'] && $read['file']['name'] === 'Song.01.wav' && $read['file']['kind'] === 'audio' && array_column( $read['comments'], 'id' ) === [ $comment1['id'], $comment2['id'] ] && array_column( $read['comments'][0]['answers'], 'id' ) === [ $answer1['id'] ]
+	&& $read['comments'][0]['text'] === 'Zu laut <i>hier</i>' && $read['comments'][0]['at'] === 12.0 && $read['comments'][1]['at'] === null && $read['comments'][0]['done'] === false && isset( $read['comments'][0]['by']['label'] ) === true && $read['comments'][0]['answers'][0]['by']['kind'] === 'owner' );
+[ , $direct ] = ninoCall( $appData, [ \Nino\Modules\Review\Admin::class, 'apiComments' ], [ 'file' => $song1['id'] ], 'review/comments' );
+check( '...and it is the panel\'s answer to the byte of its JSON, with the panel\'s own refusal for a file nobody has - 404 review_unknown, for an id that is none as well',
+	json_encode( $read ) === json_encode( $direct ) && ( $r = surfaceApi( $appData, 'review/comments', [ 'file' => 'cccccccccccc' ] ) )[0] === 404 && $r[1]['code'] === 'review_unknown' && surfaceApi( $appData, 'review/comments', [ 'file' => '../etc/passwd' ] )[1]['code'] === 'review_unknown' && surfaceApi( $appData, 'review/comments' )[1]['code'] === 'review_unknown' );
+check( '...a file that is no audio or video is the panel\'s 404 as well, as it has no comments to read', surfaceApi( $appData, 'review/comments', [ 'file' => $readme['id'] ] )[1]['code'] === 'review_unknown' );
+
+// A file of a folder of another group: nothing delegated
+$refusedAll = [];
+
+foreach( [ 'review/comments' => [ 'file' => $foreign['id'] ], 'review/done' => [ 'file' => $foreign['id'], 'id' => $commentForeign['id'] ] ] as $action => $data ) {
+	$r = surfaceApi( $appData, $action, $data );
+	$refusedAll[$action] = $r[0]. ' '. ( $r[1]['code'] ?? '' ). ' '. implode( ',', array_keys( $r[1] ) );
+}
+
+check( 'a file in the folder of a group that is no client\'s is 404 crm_files_group for both actions - nothing of the panel in the answer, the comment is still open, no line in the log',
+	$refusedAll === [ 'review/comments' => '404 crm_files_group error,code', 'review/done' => '404 crm_files_group error,code' ] && \Nino\Modules\Review::comments( $appData, $foreign['id'] )[0]['done'] === false && $lines( 'Marked comment '. $commentForeign['id'] ) === 0 );
+
+// Comments under an id that Files has no entry of: refused, and nothing switched
+$ghost = 'dddddddddddd';
+$ghostComment = \Nino\Modules\Review\Store::insert( $appData, $ghost, [ 'by' => $byMember, 'at' => null, 'text' => 'Verwaist', 'done' => false, 'created' => '2026-10-01T10:00:00Z', 'page' => '' ], '' );
+$ghostDone = surfaceApi( $appData, 'review/done', [ 'file' => $ghost, 'id' => $ghostComment['id'] ] );
+check( 'a comment left under an id that Files has no entry of is not switched: review/done is 404 review_unknown without the panel, the mark stays, no line of the log - and review/comments is the same 404',
+	is_array( $ghostComment ) && $ghostDone[0] === 404 && $ghostDone[1]['code'] === 'review_unknown' && array_keys( $ghostDone[1] ) === [ 'error', 'code' ] && \Nino\Modules\Review\Store::of( $appData, $ghost )[$ghostComment['id']]['done'] === false && $lines( 'Marked comment '. $ghostComment['id'] ) === 0
+	&& surfaceApi( $appData, 'review/comments', [ 'file' => $ghost ] )[1]['code'] === 'review_unknown' );
+// review/done
+$linesBefore = $lines( 'Marked comment' );
+[ $status, $done ] = surfaceApi( $appData, 'review/done', [ 'file' => $song1['id'], 'id' => $comment1['id'] ] );
+check( 'review/done turns the mark of a comment of a client\'s file around, as the panel does: 200, the id and the mark it has now - and it is stored',
+	$status === 200 && $done === [ 'comment' => [ 'id' => $comment1['id'], 'done' => true ] ] && \Nino\Modules\Review::comments( $appData, $song1['id'] )[0]['done'] === true );
+check( '...the log has the panel\'s line, once, with the ids of the file and the comment and no text', $lines( 'Marked comment '. $comment1['id']. ' of file '. $song1['id']. ' done' ) === 1 && $lines( 'Marked comment' ) === $linesBefore + 1 && $lines( 'Zu laut' ) === 0 );
+[ $status, $undone ] = surfaceApi( $appData, 'review/done', [ 'file' => $song1['id'], 'id' => $comment1['id'] ] );
+check( '...the same again is open again, and a comment nobody has - one of another file, one that is none - is the panel\'s 404 review_unknown and changes nothing',
+	$status === 200 && $undone['comment']['done'] === false && ( $r = surfaceApi( $appData, 'review/done', [ 'file' => $song1['id'], 'id' => $comment3['id'] ] ) )[0] === 404 && $r[1]['code'] === 'review_unknown' && surfaceApi( $appData, 'review/done', [ 'file' => $song1['id'], 'id' => '../x' ] )[1]['code'] === 'review_unknown'
+	&& surfaceApi( $appData, 'review/done', [ 'file' => $song1['id'] ] )[0] === 404 && \Nino\Modules\Review::comments( $appData, $song2['id'] )[0]['done'] === false );
+surfaceApi( $appData, 'review/done', [ 'file' => $song1['id'], 'id' => $answer1['id'] ] );
+check( '...an answer is a comment of its own to settle', \Nino\Modules\Review::comments( $appData, $song1['id'] )[0]['answers'][0]['done'] === true );
+surfaceApi( $appData, 'review/done', [ 'file' => $song1['id'], 'id' => $answer1['id'] ] );
+
+// The permission in the data block
+$reviewPerms = [ $perms( 'review@example.com', 'review password' )['review'], $perms( 'admin@example.com', 'correct horse battery staple' )['review'], $perms( 'crm@example.com', 'crm password' )['review'], $perms( 'files@example.com', 'files password' )['review'] ];
+\Nino\Features::deactivate( $appData, 'review' );
+$reviewOff = $perms( 'review@example.com', 'review password' )['review'];
+\Nino\Features::activate( $appData, 'review' );
+check( 'the data block says whether the account holds the permission of the Review panel with the feature on: true for the account that has it and for the owner, false for the CRM alone and for the Files panel\'s - and false where the feature is off',
+	$reviewPerms === [ true, true, false, false ] && $reviewOff === false );
+check( '...and the sentences are the page\'s: the codes of the Review panel come from its text file', ( Surface::texts()['error.review_unknown'] ?? '' ) !== '' && str_contains( Surface::texts()['error.review_long'] ?? '', '%s' ) === true && Surface\Review::textFile() !== '' && str_ends_with( Surface\Review::textFile(), '/Review/text/de_DE.php' ) === true );
+
+// The Übersicht: the comments nobody has settled, on the files of the clients' folders
+$asReview();
+$openOf = static function() use ( &$appData ): array { return surfaceApi( $appData, 'crm-documents/overview' )[1]['review'] ?? []; };
+check( 'the overview counts the comments of members that nobody has settled on files of the folders of the clients, and the files they are on: three comments on two files - the owner\'s answer is no task and a comment in another group\'s folder is none of it',
+	$openOf() === [ 'count' => 3, 'files' => 2 ] );
+surfaceApi( $appData, 'review/done', [ 'file' => $song2['id'], 'id' => $comment3['id'] ] );
+check( '...a comment settled is not counted, and a file whose comments are all settled is not counted as a file', $openOf() === [ 'count' => 2, 'files' => 1 ] );
+surfaceApi( $appData, 'review/done', [ 'file' => $song2['id'], 'id' => $comment3['id'] ] );
+\Nino\Modules\Files\Store::removeBytes( $appData, $song2['id'] );
+check( '...a file that was removed from the server keeps its open comments in the count', $openOf() === [ 'count' => 3, 'files' => 2 ] );
+\Nino\Modules\Files\Store::deleteFile( $appData, $song2['id'] );
+check( '...and a file that is deleted takes its comments with it: Files tells Review, and the count follows', $openOf() === [ 'count' => 2, 'files' => 1 ] );
+$asCrm();
+check( '...the count is read under the permission of the CRM alone, as the rest of the overview is', surfaceApi( $appData, 'crm-documents/overview' )[1]['review'] === [ 'count' => 2, 'files' => 1 ] );
+
+// The card: the files in the order of their titles, each with its numbers
+$song2 = $audio( $folderK['id'], 'Song.02.wav', '2026-10-02T10:00:00Z' );
+\Nino\Modules\Review::add( $appData, $song2['id'], $byMember, 5.5, 'Einsatz zu früh' );
+$other = $audio( $folderK['id'], 'Andere.wav', '2026-10-05T10:00:00Z' );
+$asItems();
+surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'folder' => $folderK['id'] ] ] + $project );
+$asCrm();
+[ $status, $card ] = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] );
+$byName = array_column( $card['list'], null, 'name' );
+check( 'the card lists the files of a title together - the titles with the newest file first, the versions from the highest number down - each with its title, its version, how many versions its title has and the place of the title in the list',
+	$status === 200 && array_column( $card['list'], 'name' ) === [ 'Andere.wav', 'Song.02.wav', 'Song.01.wav', 'Lies mich.txt' ] && array_column( $card['list'], 'title' ) === [ 'Andere', 'Song', 'Song', 'Lies mich' ] && array_column( $card['list'], 'version' ) === [ '', '02', '01', '' ]
+	&& array_column( $card['list'], 'versions' ) === [ 1, 2, 2, 1 ] && array_column( $card['list'], 'group' ) === [ 0, 1, 1, 2 ] );
+check( '...and each audio or video file with the number of its comments and of the open ones - the owner\'s answer counts as a comment and is never open - and null for a file that is neither',
+	$byName['Song.01.wav']['comments'] === [ 'total' => 3, 'open' => 2 ] && $byName['Song.02.wav']['comments'] === [ 'total' => 1, 'open' => 1 ] && $byName['Andere.wav']['comments'] === [ 'total' => 0, 'open' => 0 ] && $byName['Lies mich.txt']['comments'] === null && $card['review'] === true );
+\Nino\Modules\Review\Store::toggle( $appData, $song1['id'], $comment2['id'] );
+check( '...the numbers follow a comment that is settled', array_column( surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['list'], 'comments', 'name' )['Song.01.wav'] === [ 'total' => 3, 'open' => 1 ] );
+\Nino\Features::deactivate( $appData, 'review' );
+$cardNoReview = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1];
+check( '...where the feature is off the card says so and has no counts - the files are as they were', $cardNoReview['review'] === false && array_unique( array_column( $cardNoReview['list'], 'comments' ) ) === [ null ] && count( $cardNoReview['list'] ) === 4 );
+\Nino\Features::activate( $appData, 'review' );
+\Nino\Features::deactivate( $appData, 'review' );
+$asCrm();
 
 // --- Uploads: the list of every file in the upload folders of the clients, and the ZIP of a choice -------------------------------------
 

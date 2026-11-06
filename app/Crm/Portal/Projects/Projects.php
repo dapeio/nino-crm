@@ -5,9 +5,10 @@ declare(strict_types=1);
  *												query it is the list - the open projects first, the one that was last active at the top, the done ones under their own
  *												heading - and with ?projekt=<id> the page of one project: the kernel's tabs Angebot (the released offers of the project, the
  *												ones that can be ordered first and open, the done and the expired ones folded to a line), Dateien (the files of the
- *												project's folder in the feature Files that the member may see, with the player of Review for an audio or video file) and
- *												Belege (the released documents of the project, as [crm-documents] draws them). The head of the page - the breadcrumb, the
- *												title, the state and the description - is the page head's ([crm-portal-head], which reads current()). The tab that stands
+ *												project's folder in the feature Files that the member may see, one row for each title - the files that are versions of one
+ *												title are one row - with the player of Review for an audio or video file and, over the player, the select of the versions of
+ *												its title) and Belege (the released documents of the project, as [crm-documents] draws them). The head of the page - the
+ *												breadcrumb, the title, the state and the description - is the page head's ([crm-portal-head], which reads current()). The tab that stands
  *												open is the one of the query (?tab=angebot, dateien or belege; the first where there is none) and always Dateien where a
  *												file is asked to be played. The tabs are links to the three sections, there from the server: the script of the kernel makes
  *												them tabs and the portal's own script writes the tab into the address, and without them the links jump to the panels, which
@@ -314,7 +315,7 @@ class Projects {
 	}
 
 	/**
-	 *	The section Dateien: the player where a file is asked for, then the files the member may see
+	 *	The section Dateien: the player where a file is asked for, with the versions of its title over it, then the titles of the files the member may see
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$project
@@ -339,25 +340,30 @@ class Projects {
 
 		$player = '';
 		$playing = '';
+		$page = \Nino\Filesystem::getDir( $appData ). self::PAGE;
 
 		if( $review !== '' && Crm::featureOn( $appData, 'review' ) === true )
-			foreach( $files as $file ) {
+			foreach( \Nino\Modules\Files::grouped( $files ) as $title )
+				foreach( $title['versions'] as $file ) {
 
-				if( $file['id'] !== $review || \Nino\Modules\Review::kind( $file['mime'] ) === '' )
-					continue;
+					if( $file['id'] !== $review || \Nino\Modules\Review::kind( $file['mime'] ) === '' )
+						continue;
 
-				// A file that was removed from the server has its comments and no medium: the sentence stands over them
-				if( isset( $file['gone'] ) === true )
-					$player = Files::goneNote( $appData ). \Nino\Modules\Review::componentReviewPlayer( $appData, [] );
-				elseif( \Nino\Modules\Files::path( $appData, $file['id'] ) !== null ) {
-					$player = \Nino\Modules\Review::componentReviewPlayer( $appData, [] );
-					$playing = $file['id'];
+					// The versions of the title stand over the player: the folder of this project holds them, and no file of another project or client can be among them
+					$versions = Files::versions( $appData, $title, $file['id'], $project['id'], $page );
+
+					// A file that was removed from the server has its comments and no medium: the sentence stands over them
+					if( isset( $file['gone'] ) === true )
+						$player = Files::goneNote( $appData ). \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'versions' => $versions ] );
+					elseif( \Nino\Modules\Files::path( $appData, $file['id'] ) !== null ) {
+						$player = \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'versions' => $versions ] );
+						$playing = $file['id'];
+					}
 				}
-			}
 
 		return [ Portal::render( 'project-files', [
 			'[[player]]' => $player,
-			'[[rows]]'   => Files::rows( $appData, $files, \Nino\Filesystem::getDir( $appData ). self::PAGE. '?projekt='. rawurlencode( $project['id'] ). '&review=', $playing ),
+			'[[rows]]'   => Files::titles( $appData, $files, $page. '?projekt='. rawurlencode( $project['id'] ). '&review=', $playing ),
 		] ), count( $files ) ];
 	}
 

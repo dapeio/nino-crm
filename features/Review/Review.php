@@ -31,7 +31,7 @@ namespace Nino\Modules {
 	 *										reads, answers, marks as done and deletes in the panel (Review\Admin). The data is
 	 *										Review\Store's, /data/review.php.
 	 *
-	 *										Other features build on it through comments(), add(), media() and seconds(), and the
+	 *										Other features build on it through comments(), counts(), add(), media() and seconds(), and the
 	 *										callback '/review/comment', which is fired with the entry of every comment a member
 	 *										posts through the route and the owner answers with in the panel.
 	 *
@@ -185,6 +185,27 @@ namespace Nino\Modules {
 			}
 
 			return $top;
+		}
+
+		/**
+		 *	How many comments files have and how many of them are open - a member's comment the owner has not marked as done -,
+		 *	read once for all of them
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		$files				The ids of files
+		 *
+		 *	@return 	array										[ <id> => [ 'total' => ..., 'open' => ... ] ] - zeros for a file without comments, and for an id that is none
+		 */
+		public static function counts( array &$appData, array $files ): array {
+
+			$all = Review\Store::read( $appData );
+			$counts = [];
+
+			foreach( $files as $file )
+				if( is_string( $file ) === true )
+					$counts[$file] = [ 'total' => count( $all[$file] ?? [] ), 'open' => Review\Store::open( $all[$file] ?? [] ) ];
+
+			return $counts;
 		}
 
 		/**
@@ -375,7 +396,7 @@ namespace Nino\Modules {
 		 *	the list) when it is one of STATES. Nothing for a visitor
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
-		 *	@param		array			$args					The resolved arguments (see \Nino\Modules\Components::dispatch())
+		 *	@param		array			$args					The resolved arguments (see \Nino\Modules\Components::dispatch()); a caller in php may add 'versions', the markup of its own that stands between the title and the medium of the player - a shortcode has no such argument, only the attributes of the schema reach this function
 		 *
 		 *	@return 	string
 		 */
@@ -678,7 +699,7 @@ namespace Nino\Modules {
 			);
 
 			return str_replace(
-				[ '[[classes]]', '[[file]]', '[[kind]]', '[[back]]', '[[name]]', '[[count]]', '[[media]]', '[[comments]]', '[[form]]' ],
+				[ '[[classes]]', '[[file]]', '[[kind]]', '[[back]]', '[[name]]', '[[count]]', '[[media]]', '[[comments]]', '[[form]]', '[[versions]]' ],
 				[
 					\Nino\Feature::classes( $args ). ( $removed === true ? ' review-player--removed' : '' ),
 					$file['id'],
@@ -689,6 +710,7 @@ namespace Nino\Modules {
 					$removed === true ? '' : str_replace( [ '[[src]]', '[[name]]' ], [ $source, \Nino\Modules\Components::escape( $file['name'] ) ], \Nino\Feature::template( $appData, self::TEMPLATES, 'review-'. $kind ) ),
 					$items !== '' ? str_replace( '[[items]]', $items, \Nino\Feature::template( $appData, self::TEMPLATES, 'review-comments' ) ) : \Nino\Feature::template( $appData, self::TEMPLATES, 'review-none' ),
 					$form,
+					is_string( $args['versions'] ?? null ) === true ? $args['versions'] : '',
 				],
 				\Nino\Feature::template( $appData, self::TEMPLATES, 'review-player' )
 			);

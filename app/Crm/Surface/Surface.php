@@ -17,7 +17,7 @@ declare(strict_types=1);
  *																					404 with the code action; the four actions of the Elements panel (elements/list, get, save, delete) are for the types positionen and projekte alone, any
  *																					other type is the 404 with the code crm_positionen_type; the two of the Text panel (text/keys, text/savebatch) are for the keys below /project/company/
  *																					alone, a batch with another key is the 404 with the code crm_texts_key, and the seven of the Files panel (files/list, folder/add, folder/save,
- *																					upload, save, remove, delete) are for the folders of the clients alone, any other is the 404 with the code crm_files_group; crm-uploads/list reads the files of the upload folders of the clients for the screen Uploads. The upload of a picture (pdf/layout/image) comes as a multipart post with the action and the
+ *																					upload, save, remove, delete) and the two of the Review panel (review/comments, review/done; the permission of the panel besides the CRM's, the feature on or the 409 with the code review_off) are for the folders of the clients alone, any other is the 404 with the code crm_files_group; crm-uploads/list reads the files of the upload folders of the clients for the screen Uploads. The upload of a picture (pdf/layout/image) comes as a multipart post with the action and the
  *																					data as fields and the file, which the method reads from $_FILES; no other action takes a file
  *								GET  /crm/assets/<hash>-<name>		a file of ASSETS whose content hash is the one in the name, for a year
  *								GET  /crm/preview/<id>		the PDF of a draft as its template makes it now, inline, nothing stored
@@ -91,7 +91,7 @@ class Surface {
 	 */
 	public static function actions(): array {
 
-		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), \Crm\Projekte\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions(), Surface\Texts::actions(), Surface\Files::actions(), Surface\Uploads::actions() );
+		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), \Crm\Projekte\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions(), Surface\Texts::actions(), Surface\Files::actions(), Surface\Review::actions(), Surface\Uploads::actions() );
 	}
 
 	/**
@@ -127,6 +127,10 @@ class Surface {
 			// ...and those of the Files panel, whose actions keep the files of a project
 			if( Surface\Files::textFile() !== '' )
 				$files[] = Surface\Files::textFile();
+
+			// ...and those of the Review panel, whose actions read and settle the comments on a file of a project
+			if( Surface\Review::textFile() !== '' )
+				$files[] = Surface\Review::textFile();
 
 			foreach( $files as $file )
 				foreach( (array) require $file as $key => $text )
@@ -203,7 +207,7 @@ class Surface {
 			'csrf'  => \Nino\Csrf::getToken( $appData ),
 			'user'  => [ 'name' => (string) $user['mail'] ],
 			'perm'  => \Crm\Crm::MANAGE_PERM,
-			'perms' => [ 'crm' => true, 'pdf' => Surface\Pdf::allowed( $appData ), 'elements' => Surface\Elements::allowed( $appData ), 'text' => Surface\Texts::allowed( $appData ), 'files' => Surface\Files::allowed( $appData ), 'members' => \Crm\Crm::featureOn( $appData, 'members' ) === true && \Crm\Crm::mayLink( $appData, 'members' ), 'sign' => \Crm\Crm::featureOn( $appData, 'sign' ) === true && \Crm\Crm::mayLink( $appData, 'sign' ) ],
+			'perms' => [ 'crm' => true, 'pdf' => Surface\Pdf::allowed( $appData ), 'elements' => Surface\Elements::allowed( $appData ), 'text' => Surface\Texts::allowed( $appData ), 'files' => Surface\Files::allowed( $appData ), 'review' => Surface\Review::allowed( $appData ), 'members' => \Crm\Crm::featureOn( $appData, 'members' ) === true && \Crm\Crm::mayLink( $appData, 'members' ), 'sign' => \Crm\Crm::featureOn( $appData, 'sign' ) === true && \Crm\Crm::mayLink( $appData, 'sign' ) ],
 			'pdf_available' => Surface\Pdf::available(),
 			'texts' => self::texts(),
 			'links' => $links + array_map( static fn( string $panel ): string => $dir. '/_admin/#'. $panel, self::PANELS ),
@@ -302,6 +306,12 @@ class Surface {
 		// The tab Dateien of a project needs the feature to be on, too
 		if( Surface\Files::owns( $action ) === true && \Crm\Crm::featureOn( $appData, 'files' ) === false ) {
 			\Nino\Http::fail( $request, 409, 'the feature Files is not active', 'files_off' );
+			return;
+		}
+
+		// ...and so do the comments on them: the Review panel's two actions
+		if( Surface\Review::owns( $action ) === true && \Crm\Crm::featureOn( $appData, 'review' ) === false ) {
+			\Nino\Http::fail( $request, 409, 'the feature Review is not active', 'review_off' );
 			return;
 		}
 

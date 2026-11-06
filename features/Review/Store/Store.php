@@ -132,6 +132,19 @@ namespace Nino\Modules\Review {
 		}
 
 		/**
+		 *	How many of the comments on a file are open: those of members that the owner has not marked as done. A comment of
+		 *	the owner is no task of its own, so it is never open
+		 *
+		 *	@param		array 		$comments			[ <comment id> => comment ], as of() has them
+		 *
+		 *	@return 	int
+		 */
+		public static function open( array $comments ): int {
+
+			return count( array_filter( $comments, static fn( array $comment ): bool => $comment['by']['kind'] === 'member' && $comment['done'] === false ) );
+		}
+
+		/**
 		 *	Put a comment on a file. An answer to an answer is an answer to the comment that one answers; a parent that is not a
 		 *	comment of the file is refused - decided inside the write, so that a comment deleted at the same moment cannot be
 		 *	answered

@@ -336,6 +336,21 @@ input[role="switch"]:focus-visible { outline: 2px solid var(--accent); outline-o
 .tbl input[role="switch"] { vertical-align: middle }
 .tbl td .gone-note { display: block; margin-top: 2px; color: var(--fg-2); font-size: 12px }
 
+/* Projekte, tab Dateien: a title over its versions, the comments on a file under its row */
+.tbl tr.group td { height: 32px; background: var(--surface-2) }
+.tbl tr.ver td:first-child { padding-left: 24px }
+.tbl .ver-no { margin-left: 8px }
+.tbl .cm-count { color: var(--fg-2) }
+.tbl .cm-count.open { color: var(--warn); font-weight: 600 }
+.tbl tr.cm-row > td { padding: 10px 10px 14px 24px; white-space: normal; background: var(--bg) }
+.tbl tr.cm-row > td > * { position: sticky; left: 0; max-width: min(100%, calc(100vw - 80px)) }
+.cm-list, .cm-answers { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px }
+.cm-answers { margin: 8px 0 0 12px; padding-left: 12px; border-left: 2px solid var(--line) }
+.cm-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px }
+.cm-head .check { margin: 0 0 0 auto; min-height: 24px }
+.cm-at { color: var(--accent); font-family: var(--mono); font-size: 12.5px }
+.cm-text { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere }
+
 /* Uploads: the column of the boxes, the line of the choice beside the buttons */
 .tbl th.pick, .tbl td.pick { width: 36px; padding-right: 0 }
 #uploads-actions { align-items: center; margin: 0 0 12px }

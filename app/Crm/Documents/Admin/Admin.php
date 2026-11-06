@@ -185,7 +185,7 @@ class Admin {
 	}
 
 	/**
-	 *	What the first screen of the surface shows: the books at a glance - and the count of the active clients, which the rail shows - what needs the owner, the finished projects whose files lie on the server for long (stale, see Projekte\Admin::stale()) and the documents of the latest dates, with the settings the amounts are written by
+	 *	What the first screen of the surface shows: the books at a glance - and the count of the active clients, which the rail shows - what needs the owner, the finished projects whose files lie on the server for long (stale, see Projekte\Admin::stale()), the comments of the customers that no one has settled (review, see Surface\Review::open()) and the documents of the latest dates, with the settings the amounts are written by
 	 */
 	public static function apiOverview( array &$appData, array &$request ): void {
 
@@ -198,6 +198,7 @@ class Admin {
 				'summary'  => Documents::summary( $appData ) + [ 'clients' => \Crm\Clients::countActive( $appData ) ],
 				'needs'    => Documents::needs( $appData ),
 				'stale'    => \Crm\Projekte\Admin::stale( $appData ),
+				'review'   => \Crm\Surface\Review::open( $appData ),
 				'recent'   => Documents::recent( $appData, 8 ),
 				'settings' => self::_settings( $appData ),
 			] );

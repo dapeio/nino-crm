@@ -1313,10 +1313,18 @@
 				state.jfilter.page = 1;
 			} } } ) ) );
 
+			const unsettled = answer.body.review;
+
+			// The comments of the customers that no one has settled: a line that points at the projects, whose cards hold the files
+			const reviewLine = unsettled === undefined || unsettled === null || unsettled.count === 0 ? null : el( 'li', { id: 'needs-review' }, el( 'span', {}, el( 'span', { class: 'dot warn' } ), link( '#projekte', t( unsettled.count === 1 ? 'needs.review-one' : ( unsettled.files === 1 ? 'needs.review-few' : 'needs.review-many' ), unsettled.count, unsettled.files ), { on: { click: function() {
+				state.jfilter.all = true;
+				state.jfilter.page = 1;
+			} } } ) ) );
+
 			state.main.appendChild( el( 'div', { class: 'cols' },
 				card( t( 'needs.title' ), el( 'ul', { class: 'list-mini' },
-					shown.length === 0 && staleLine === null ? el( 'li', { class: 'muted', text: t( 'needs.none' ) } ) : shown.map( needLine ),
-					needs.length > shown.length ? el( 'li', { class: 'muted', text: t( 'needs.more', needs.length - shown.length ) } ) : null, staleLine ) ),
+					shown.length === 0 && staleLine === null && reviewLine === null ? el( 'li', { class: 'muted', text: t( 'needs.none' ) } ) : shown.map( needLine ),
+					needs.length > shown.length ? el( 'li', { class: 'muted', text: t( 'needs.more', needs.length - shown.length ) } ) : null, reviewLine, staleLine ) ),
 				card( t( 'recent.title' ), el( 'ul', { class: 'list-mini' },
 					answer.body.recent.length === 0 ? el( 'li', { class: 'muted', text: t( 'recent.none' ) } )
 						: answer.body.recent.map( function( doc ) {
@@ -5488,77 +5496,283 @@
 
 		holder.appendChild( tableBox );
 
+		// The comments on a file: the Review panel's, read when the row is opened, each with the box that settles it
+		const commentsOn = view.review === true && state.perms.review === true;
+		const showComments = view.review === true;
+		const columns = showComments === true ? 7 : 6;
+		const counters = {};
+		const heads = {};
+
+		/**
+		 *	Write the numbers of the comments again where they stand: the counter of each file and the open comments of each title
+		 *
+		 *	@return		{void}
+		 */
+		const paint = function() {
+
+			( view.list || [] ).forEach( function( file ) {
+
+				if( counters[file.id] === undefined || file.comments === null )
+					return;
+
+				counters[file.id].textContent = t( 'projects.comments-count', file.comments.open, file.comments.total );
+				counters[file.id].title = t( 'projects.comments-count-title', file.comments.open, file.comments.total );
+				counters[file.id].classList.toggle( 'open', file.comments.open > 0 );
+			} );
+
+			Object.keys( heads ).forEach( function( group ) {
+
+				const open = ( view.list || [] ).filter( function( file ) { return String( file.group ) === group && file.comments !== null } ).reduce( function( sum, file ) { return sum+ file.comments.open }, 0 );
+
+				heads[group].textContent = t( 'projects.comments-open', open );
+				heads[group].hidden = open === 0;
+			} );
+		};
+
+		/**
+		 *	The open and the total of the comments on a file, counted from the thread that is read: a member's comment that is not done is open
+		 *
+		 *	@param		{Object}	file
+		 *
+		 *	@return		{void}
+		 */
+		const recount = function( file ) {
+
+			const all = file.thread.reduce( function( list, comment ) { return list.concat( [ comment ], comment.answers ) }, [] );
+
+			file.comments = { total : all.length, open : all.filter( function( comment ) { return comment.by.kind === 'member' && comment.done !== true } ).length };
+		};
+
+		/**
+		 *	@param		{number}	seconds
+		 *
+		 *	@return		{string}									m:ss
+		 */
+		const clockText = function( seconds ) {
+			const whole = Math.floor( Math.max( 0, seconds ) );
+			return Math.floor( whole / 60 )+ ':'+ pad( whole % 60 );
+		};
+
+		/**
+		 *	One comment, or one answer, with the box that settles it - for a comment of a member: the owner's own are never open, there is nothing to settle
+		 *
+		 *	@param		{Object}	file
+		 *	@param		{Object}	comment					As the panel has it: id, by, at, text, done, created and answers
+		 *
+		 *	@return		{Object}
+		 */
+		const commentItem = function( file, comment ) {
+
+			const box = el( 'input', { type: 'checkbox', checked: comment.done === true, dataset: { done: comment.id }, on: { change: function( event ) {
+
+				const input = event.target;
+
+				input.disabled = true;
+
+				call( 'review/done', { file : file.id, id : comment.id }, 'projects.error-comment-done' ).then( function( answer ) {
+
+					input.disabled = false;
+
+					if( answer.ok === true && answer.body !== null && typeof answer.body === 'object' && answer.body.comment !== undefined ) {
+						comment.done = answer.body.comment.done === true;
+						input.checked = comment.done;
+						recount( file );
+						paint();
+					}
+					else
+						input.checked = comment.done === true;
+				} );
+			} } } );
+
+			const who = comment.by.kind === 'owner' ? t( 'projects.by-owner' ) : ( comment.by.label !== '' ? comment.by.label : t( 'projects.by-member' ) );
+
+			return el( 'li', { class: 'cm', dataset: { comment: comment.id } },
+				el( 'div', { class: 'cm-head' },
+					comment.at === null || comment.at === undefined ? null : el( 'span', { class: 'num cm-at', text: clockText( comment.at ) } ),
+					el( 'strong', { text: who } ),
+					el( 'span', { class: 'muted', text: dmy( comment.created ) } ),
+					comment.by.kind === 'member' ? el( 'label', { class: 'check sf' }, box, ' '+ t( 'projects.comment-done' ) ) : null ),
+				el( 'p', { class: 'cm-text', text: comment.text } ),
+				Array.isArray( comment.answers ) === true && comment.answers.length > 0 ? el( 'ul', { class: 'cm-answers' }, comment.answers.map( function( answer ) { return commentItem( file, Object.assign( {}, answer, { answers : [] } ) ) } ) ) : null );
+		};
+
+		/**
+		 *	The cell of a file that holds its comments: the thread, or the line that there are none
+		 *
+		 *	@param		{Object}	file
+		 *	@param		{Object}	holder
+		 *
+		 *	@return		{void}
+		 */
+		const drawThread = function( file, holder ) {
+
+			clear( holder );
+
+			if( file.thread.length === 0 ) {
+				holder.appendChild( el( 'p', { class: 'state-note', text: t( 'projects.comments-none' ) } ) );
+				return;
+			}
+
+			holder.appendChild( el( 'ul', { class: 'cm-list' }, file.thread.map( function( comment ) { return commentItem( file, comment ) } ) ) );
+		};
+
+		/**
+		 *	The opener of the comments of a file and the row that holds them, read from the panel when the row is opened first
+		 *
+		 *	@param		{Object}	file
+		 *	@param		{Object}	row							The row that holds the comments, hidden
+		 *	@param		{Object}	holder					The cell of that row
+		 *
+		 *	@return		{Object}
+		 */
+		const opener = function( file, row, holder ) {
+
+			const button = el( 'button', { type: 'button', class: 'btn sm quiet', 'aria-expanded': 'false', 'aria-controls': row.id, dataset: { comments: file.id }, text: t( 'projects.file-comments' ), on: { click: function() {
+
+				const opening = row.hidden === true;
+
+				row.hidden = opening === false;
+				button.setAttribute( 'aria-expanded', opening === true ? 'true' : 'false' );
+
+				if( opening === false || file.thread !== undefined )
+					return;
+
+				clear( holder );
+				holder.appendChild( el( 'p', { class: 'state-note', role: 'status', text: t( 'loading' ) } ) );
+
+				call( 'review/comments', { file : file.id }, 'projects.error-comments' ).then( function( answer ) {
+
+					if( answer.ok !== true || answer.body === null || typeof answer.body !== 'object' ) {
+						clear( holder );
+						row.hidden = true;
+						button.setAttribute( 'aria-expanded', 'false' );
+						return;
+					}
+
+					file.thread = answer.body.comments;
+					recount( file );
+					paint();
+					drawThread( file, holder );
+				} );
+			} } } );
+
+			return button;
+		};
+
 		const filesTable = function() {
 
 			const files = view.list || [];
+			const rows = [];
+			let group = -1;
 
-			return el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static', id: 'project-file-table' },
-				el( 'thead', {}, el( 'tr', {}, el( 'th', { text: t( 'projects.file-name' ) } ), el( 'th', { class: 'r', text: t( 'projects.file-size' ) } ), el( 'th', { text: t( 'projects.file-day' ) } ), el( 'th', { text: t( 'projects.file-by' ) } ),
-					el( 'th', { text: t( 'projects.file-visible' ) } ), el( 'th' ) ) ),
-				el( 'tbody', {}, files.length === 0
-					? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '6', class: 'muted', text: t( 'projects.files-empty' ) } ) )
-					: files.map( function( file ) {
+			files.forEach( function( file ) {
 
-						const visibleBox = el( 'input', { type: 'checkbox', role: 'switch', checked: file.visible, disabled: editable === false, 'aria-label': t( 'projects.file-visible' ), dataset: { id: file.id }, on: { change: function( event ) {
+				const gone = isGone( file );
 
-							const box = event.target;
-							const wanted = box.checked;
+				// A title with several versions has a line of its own over them, with the open comments of all of them
+				if( file.versions > 1 && file.group !== group ) {
 
-							box.disabled = true;
+					heads[file.group] = el( 'span', { class: 'badge b-portal', hidden: true } );
 
-							call( 'files/save', { id : file.id, visible : wanted, notify : wantsNotify( view ) }, 'projects.error-file' ).then( function( answer ) {
+					rows.push( el( 'tr', { class: 'plain group', dataset: { group: file.group } },
+						el( 'td', { colspan: String( columns ), class: 'wrap' }, el( 'strong', { text: file.title } ), ' ', el( 'span', { class: 'badge b-draft', text: t( 'projects.versions', file.versions ) } ), ' ', heads[file.group] ) ) );
+				}
 
-								box.disabled = false;
+				group = file.group;
 
-								if( answer.ok === true ) {
-									file.visible = wanted;
+				const visibleBox = el( 'input', { type: 'checkbox', role: 'switch', checked: file.visible, disabled: editable === false, 'aria-label': t( 'projects.file-visible' ), dataset: { id: file.id }, on: { change: function( event ) {
 
-									if( wanted === true )
-										toast( t( answer.body !== null && typeof answer.body === 'object' && answer.body.mailed > 0 ? 'projects.shown-informed' : 'projects.shown-not-informed' ) );
+					const box = event.target;
+					const wanted = box.checked;
+
+					box.disabled = true;
+
+					call( 'files/save', { id : file.id, visible : wanted, notify : wantsNotify( view ) }, 'projects.error-file' ).then( function( answer ) {
+
+						box.disabled = false;
+
+						if( answer.ok === true ) {
+							file.visible = wanted;
+
+							if( wanted === true )
+								toast( t( answer.body !== null && typeof answer.body === 'object' && answer.body.mailed > 0 ? 'projects.shown-informed' : 'projects.shown-not-informed' ) );
+						}
+						else
+							box.checked = file.visible;
+					} );
+				} } } );
+
+				const comments = showComments === true ? el( 'td', { class: 'r' } ) : null;
+				let thread = null;
+
+				if( comments !== null && file.comments !== null && file.comments !== undefined ) {
+
+					counters[file.id] = el( 'span', { class: 'num cm-count', dataset: { counter: file.id } } );
+					comments.appendChild( counters[file.id] );
+
+					if( commentsOn === true ) {
+
+						const holder = el( 'td', { colspan: String( columns ), class: 'wrap cm-cell' } );
+
+						thread = el( 'tr', { class: 'plain cm-row', id: 'comments-'+ file.id, hidden: true, dataset: { thread: file.id } }, holder );
+						comments.appendChild( dc.createTextNode( ' ' ) );
+						comments.appendChild( opener( file, thread, holder ) );
+					}
+				}
+				else if( comments !== null )
+					comments.appendChild( el( 'span', { class: 'muted', text: '–' } ) );
+
+				rows.push( el( 'tr', { dataset: { id: file.id }, class: ( gone === true ? 'dim' : '' )+ ( file.versions > 1 ? ' ver' : '' ) },
+					el( 'td', { class: 'wrap' }, editable === true && file.url !== '' && gone === false ? link( file.url, file.name, { target: '_blank', rel: 'noopener' } ) : file.name, file.version !== '' ? el( 'span', { class: 'badge b-draft ver-no', text: 'v'+ file.version } ) : null, gone === true ? el( 'span', { class: 'gone-note', dataset: { gone: file.id }, text: t( 'projects.file-gone', dmy( file.gone ) ) } ) : null ),
+					el( 'td', { class: 'r num', text: sizeText( file.size ) } ),
+					el( 'td', { text: dmy( file.created ) } ),
+					el( 'td', { text: file.by.kind === 'owner' ? t( 'projects.by-owner' ) : ( file.by.label !== '' ? file.by.label : t( 'projects.by-member' ) ) } ),
+					el( 'td', {}, gone === true ? el( 'span', { class: 'muted', text: '–' } ) : visibleBox ),
+					comments,
+					el( 'td', { class: 'r' }, editable === true && gone === false ? el( 'button', { type: 'button', class: 'btn sm quiet', text: t( 'projects.file-remove' ), dataset: { remove: file.id }, on: { click: function() {
+
+						ask( { title : t( 'projects.file-remove' ), text : t( 'projects.file-remove-text', file.name ), yes : t( 'projects.file-remove' ), danger : true } ).then( function( yes ) {
+
+							if( yes !== true || state.view !== mine )
+								return;
+
+							call( 'files/remove', { id : file.id }, 'projects.error-remove' ).then( function( answer ) {
+								if( answer.ok === true && state.view === mine ) {
+									toast( t( 'projects.file-removed' ) );
+									reloadProjekt( view );
 								}
-								else
-									box.checked = file.visible;
 							} );
-						} } } );
+						} );
+					} } } ) : null, editable === true ? el( 'button', { type: 'button', class: 'btn sm quiet danger', text: t( 'projects.file-delete' ), dataset: { del: file.id }, on: { click: function() {
 
-						const gone = isGone( file );
+						ask( { title : t( 'projects.file-delete' ), text : t( gone === true ? 'projects.file-delete-gone-text' : 'projects.file-delete-text', file.name ), yes : t( 'projects.file-delete' ), danger : true } ).then( function( yes ) {
 
-						return el( 'tr', { dataset: { id: file.id }, class: gone === true ? 'dim' : null },
-							el( 'td', { class: 'wrap' }, editable === true && file.url !== '' && gone === false ? link( file.url, file.name, { target: '_blank', rel: 'noopener' } ) : file.name, gone === true ? el( 'span', { class: 'gone-note', dataset: { gone: file.id }, text: t( 'projects.file-gone', dmy( file.gone ) ) } ) : null ),
-							el( 'td', { class: 'r num', text: sizeText( file.size ) } ),
-							el( 'td', { text: dmy( file.created ) } ),
-							el( 'td', { text: file.by.kind === 'owner' ? t( 'projects.by-owner' ) : ( file.by.label !== '' ? file.by.label : t( 'projects.by-member' ) ) } ),
-							el( 'td', {}, gone === true ? el( 'span', { class: 'muted', text: '–' } ) : visibleBox ),
-							el( 'td', { class: 'r' }, editable === true && gone === false ? el( 'button', { type: 'button', class: 'btn sm quiet', text: t( 'projects.file-remove' ), dataset: { remove: file.id }, on: { click: function() {
+							if( yes !== true || state.view !== mine )
+								return;
 
-								ask( { title : t( 'projects.file-remove' ), text : t( 'projects.file-remove-text', file.name ), yes : t( 'projects.file-remove' ), danger : true } ).then( function( yes ) {
+							call( 'files/delete', { id : file.id }, 'projects.error-file' ).then( function( answer ) {
+								if( answer.ok === true && state.view === mine ) {
+									toast( t( 'projects.file-deleted' ) );
+									reloadProjekt( view );
+								}
+							} );
+						} );
+					} } } ) : null ) ) );
 
-									if( yes !== true || state.view !== mine )
-										return;
+				if( thread !== null )
+					rows.push( thread );
+			} );
 
-									call( 'files/remove', { id : file.id }, 'projects.error-remove' ).then( function( answer ) {
-										if( answer.ok === true && state.view === mine ) {
-											toast( t( 'projects.file-removed' ) );
-											reloadProjekt( view );
-										}
-									} );
-								} );
-							} } } ) : null, editable === true ? el( 'button', { type: 'button', class: 'btn sm quiet danger', text: t( 'projects.file-delete' ), dataset: { del: file.id }, on: { click: function() {
+			const table = el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static', id: 'project-file-table' },
+				el( 'thead', {}, el( 'tr', {}, el( 'th', { text: t( 'projects.file-name' ) } ), el( 'th', { class: 'r', text: t( 'projects.file-size' ) } ), el( 'th', { text: t( 'projects.file-day' ) } ), el( 'th', { text: t( 'projects.file-by' ) } ),
+					el( 'th', { text: t( 'projects.file-visible' ) } ), showComments === true ? el( 'th', { class: 'r', text: t( 'projects.file-comments' ), title: t( 'projects.comments-head' ) } ) : null, el( 'th' ) ) ),
+				el( 'tbody', {}, files.length === 0
+					? el( 'tr', { class: 'plain' }, el( 'td', { colspan: String( columns ), class: 'muted', text: t( 'projects.files-empty' ) } ) )
+					: rows ) ) );
 
-								ask( { title : t( 'projects.file-delete' ), text : t( gone === true ? 'projects.file-delete-gone-text' : 'projects.file-delete-text', file.name ), yes : t( 'projects.file-delete' ), danger : true } ).then( function( yes ) {
+			paint();
 
-									if( yes !== true || state.view !== mine )
-										return;
-
-									call( 'files/delete', { id : file.id }, 'projects.error-file' ).then( function( answer ) {
-										if( answer.ok === true && state.view === mine ) {
-											toast( t( 'projects.file-deleted' ) );
-											reloadProjekt( view );
-										}
-									} );
-								} );
-							} } } ) : null ) );
-					} ) ) ) );
+			return table;
 		};
 
 		// The table is drawn again where the files changed under it (an upload); the rest of the tab stays as it is
