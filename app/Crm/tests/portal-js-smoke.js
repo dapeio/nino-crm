@@ -128,6 +128,29 @@ function run( model, over ) {
 }
 
 /**
+ *	A page of a project with its row of tabs: four tabs of 100px in a box of 358px that is scrolled to the left, the open one the last
+ *
+ *	@param		{number}		open				The index of the open tab
+ *	@param		{number}		[scrolled]	The scroll of the box at the start
+ *
+ *	@return		{Object}
+ */
+function tabsPage( open, scrolled ) {
+	const tabs = [ 0, 1, 2, 3 ].map( function( index ) { return make( 'a', 'crm-project__tab nino-tabs-tab'+ ( index === open ? ' nino-is-active' : '' ), { 'data-tab' : String( index ) } ); } );
+	const nav = make( 'div', 'crm-project__nav nino-tabs-nav', {}, tabs );
+	nav.scrollLeft = scrolled || 0;
+	nav.getBoundingClientRect = function() { return { left : 16, right : 374, width : 358 }; };
+	tabs.forEach( function( tab, index ) {
+		tab.getBoundingClientRect = function() { return { left : 16 + index * 100 - nav.scrollLeft, right : 116 + index * 100 - nav.scrollLeft, width : 100 }; };
+	} );
+	const mount = make( 'div', 'root', {}, [ make( 'div', 'crm-portal' ), nav ] );
+	findAll( mount, function() { return true; } ).concat( [ mount ] ).forEach( function( el ) {
+		Object.defineProperty( el, 'parentElement', { get : function() { return el.parentNode; } } );
+	} );
+	return { mount : mount, rows : [], nav : nav, tabs : tabs };
+}
+
+/**
  *	Let the promises of a post run
  *
  *	@return		{Promise}
@@ -267,6 +290,17 @@ async function suite() {
 	model = page( {} );
 	calls = run( model, { fetch : null } );
 	check( 'where the browser has no fetch it posts the form itself: no stop', submit( model.forms[0] ) === false && model.forms[0].card.isConnected === true );
+
+	// The row of tabs of a project page, wider than the box: the open tab is brought into the box by the box's own scroll
+	model = tabsPage( 3 );
+	run( model );
+	check( 'a row of tabs wider than its box is scrolled at the start so that the open tab lies in it: the last tab ends at the right edge of the box, and nothing else is scrolled', model.nav.scrollLeft === 42 && model.tabs[3].getBoundingClientRect().right === 374 && model.tabs[3].getBoundingClientRect().left >= 16 );
+	model = tabsPage( 0 );
+	run( model );
+	check( '...the first tab stands where it is: no scroll', model.nav.scrollLeft === 0 );
+	model = tabsPage( 0, 60 );
+	run( model );
+	check( '...an open tab that lies left of the box is scrolled back into it', model.nav.scrollLeft === 0 );
 
 	done();
 }

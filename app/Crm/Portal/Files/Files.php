@@ -11,9 +11,10 @@ declare(strict_types=1);
  *											and how many comments of Review are open over all of them, and the versions() of the title that is played are a select
  *											above its player. The page of the uploads lists files (rows()), each one a row.
  *
- *											A row has the download only where the project of the folder has it switched on (Projekte::state()) - the files a member put there
- *											are the member's and are always saved. Without it the row of an audio or video file is for listening and the row of any other file
- *											has its name without a link and the sentence that the studio releases it; the route says the same (Portal::callbackFileAllowed()).
+ *											A row of a medium (audio or video, what the player plays: Portal::medium()) has the download only where the project of the folder has it
+ *											switched on (Projekte::state()) - the files a member put there are the member's and are always saved. Without it the row of a medium is
+ *											for listening; the row of any other file has its name as a link to the download and the button Herunterladen whatever the switch
+ *											says, and the route says the same (Portal::callbackFileAllowed()).
  */
 namespace Crm\Portal;
 
@@ -93,16 +94,9 @@ class Files {
 	 */
 	public static function visible( array &$appData, string $folder ): array {
 
-		$appData[Portal::LISTING] = true;
-
-		try {
-			return array_values( array_filter( \Nino\Modules\Files::files( $appData, $folder ), static function( array $file ) use ( &$appData ): bool {
-				return \Nino\Modules\Files::allowed( $appData, $file ) === true;
-			} ) );
-		}
-		finally {
-			unset( $appData[Portal::LISTING] );
-		}
+		return array_values( array_filter( \Nino\Modules\Files::files( $appData, $folder ), static function( array $file ) use ( &$appData ): bool {
+			return \Nino\Modules\Files::allowed( $appData, $file ) === true;
+		} ) );
 	}
 
 	/**
@@ -115,7 +109,7 @@ class Files {
 	 *	@param		array 		$files				As Files::files() has them
 	 *	@param		string		$listen				The address of the page the player stands on, up to and with 'review=' ('' for no link that plays)
 	 *	@param		string		$playing			The id of the file the player plays ('' for none)
-	 *	@param		bool			$download			Whether the files may be saved: the project of the folder has its download switched on, or the folder is the member's own to upload into
+	 *	@param		bool			$download			Whether the media may be saved: the project of the folder has its download switched on, or the folder is the member's own to upload into; any other file may always be
 	 *
 	 *	@return 	string										'' for no file
 	 */
@@ -225,6 +219,18 @@ class Files {
 	}
 
 	/**
+	 *	The player of Review as the page of a project has it: the paragraph that leads back to the list of the player is left out, because the list stands beside the player
+	 *
+	 *	@param		string		$player				The markup of Review::componentReviewPlayer()
+	 *
+	 *	@return 	string
+	 */
+	public static function beside( string $player ): string {
+
+		return (string) preg_replace( '~<p class="review-player__back">.*?</p>\s*~s', '', $player, 1 );
+	}
+
+	/**
 	 *	The comments of Review on files, all and open: nothing where Review is off
 	 *
 	 *	@param		array 		&$appData
@@ -264,7 +270,7 @@ class Files {
 	 *	@param		bool			$current			Whether the player plays this file - or, for a title, one of its versions
 	 *	@param		array 		$title				[] for a file of its own; else the title of Files::grouped()
 	 *	@param		int				$open					The open comments on the file - on all the versions of the title
-	 *	@param		bool			$download			Whether the file may be saved; a file the member signed in put there may always
+	 *	@param		bool			$download			Whether a medium may be saved; a file that is none and a file the member signed in put there may always
 	 *
 	 *	@return 	string
 	 */
@@ -289,15 +295,16 @@ class Files {
 		$created = strtotime( $file['created'] );
 		$review = $listen !== '' && Crm::featureOn( $appData, 'review' ) === true;
 		$plays = $review === true && \Nino\Modules\Review::kind( $file['mime'] ) !== '';
+		$medium = Portal::medium( $appData, $file['mime'] );
 		$name = \Nino\Modules\Components::escape( $title === [] ? $file['name'] : $title['title'] );
 		$ext = $title === [] ? '' : \Nino\Modules\Components::escape( strtoupper( (string) ( $file['ext'] ?? '' ) ) );
 		$label = ( $title === [] || $file['version'] === '' ? $name : $name. ' '. \Nino\Modules\Components::escape( $file['version'] ) ). ( $ext === '' ? '' : ' '. $ext );
 		$href = \Nino\Modules\Components::escape( $listen. $file['id'] );
 		$many = $title === [] ? 0 : count( $title['versions'] );
 		$member = \Nino\Modules\Members::current( $appData );
-		$saves = $download === true || ( $member !== null && ( $file['by']['kind'] ?? '' ) === 'member' && ( $file['by']['id'] ?? '' ) === $member['id'] );
+		$saves = $download === true || $medium === false || ( $member !== null && ( $file['by']['kind'] ?? '' ) === 'member' && ( $file['by']['id'] ?? '' ) === $member['id'] );
 
-		// The name is a link to the player or, where the file may be saved, to the download; a file that can be neither played nor saved has its name alone
+		// The name is a link to the player or, where the file may be saved, to the download; a medium that can be neither played nor saved has its name alone
 		$link = $plays === true ? $href. '#projekt-files' : ( $saves === true ? \Nino\Modules\Components::escape( $url ). '?download=1' : '' );
 
 		return Portal::render( 'file', [

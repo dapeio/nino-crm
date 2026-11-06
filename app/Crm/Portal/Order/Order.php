@@ -39,7 +39,7 @@ class Order {
 		'expired'   => [ 'error', 'circle-alert', 'alert' ],
 		'changed'   => [ 'error', 'circle-alert', 'alert' ],
 	];
-	public const array FROM = [ 'belege', 'projekt' ];
+	public const array FROM = [ 'belege', 'projekt', 'uebersicht' ];
 
 	/**
 	 *	The part of an offer's content that is about ordering it
@@ -47,7 +47,7 @@ class Order {
 	 *	@param		array 		&$appData
 	 *	@param		array 		$client				As Clients::get() has it
 	 *	@param		array 		$offer				A document of the client: id, category, number, title, state, valid_until, expired and project (Documents::released() has them as Documents::get() does)
-	 *	@param		string		$from					belege (the list of documents) or projekt (the page of a project)
+	 *	@param		string		$from					belege (the list of documents), projekt (the tab Angebot of a project) or uebersicht (its tab Übersicht)
 	 *	@param		string		$dir					The directory the project is served from, escaped
 	 *
 	 *	@return 	string										The form; the line that says it was ordered; or nothing for an offer that cannot be ordered and while the Datenschutz comes first
@@ -117,23 +117,25 @@ class Order {
 
 	/**
 	 *	The sentence about the state the query names, for the page the form stood on: in the card of the offer the query names (?beleg=<id>) where
-	 *	it names one, else at the top of the list or the section
+	 *	it names one, else at the top of the list or the section. A form that stood in the tab Übersicht (?tab=uebersicht) is answered there and nowhere else
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		int				$for					The document whose card asks, 0 for the slot at the top
+	 *	@param		string		$at						'' for the places of the list and the tab Angebot, uebersicht for the card of the tab Übersicht
 	 *
 	 *	@return 	string										'' where the query names no state, or names it for another place
 	 */
-	public static function state( array &$appData, int $for = 0 ): string {
+	public static function state( array &$appData, int $for = 0, string $at = '' ): string {
 
 		$query = Portal::query( $appData );
 		$state = is_string( $query['state'] ?? null ) === true && isset( self::STATES[$query['state']] ) === true ? $query['state'] : '';
+		$overview = ( $query['tab'] ?? null ) === 'uebersicht';
 
 		// The states of a request for the tab Dateien are those of the approval
-		if( $state === '' || Approval::asked( $appData ) === true || self::named( $appData ) !== $for )
+		if( $state === '' || Approval::asked( $appData ) === true || self::named( $appData ) !== $for || $overview !== ( $at === 'uebersicht' ) )
 			return '';
 
-		return Portal::render( 'order-state', [ '[[state]]' => $state, '[[tone]]' => self::STATES[$state][0], '[[icon]]' => self::STATES[$state][1], '[[role]]' => self::STATES[$state][2], '[[id]]' => (string) $for ] );
+		return Portal::render( 'order-state', [ '[[state]]' => $state, '[[tone]]' => self::STATES[$state][0], '[[icon]]' => self::STATES[$state][1], '[[role]]' => self::STATES[$state][2], '[[id]]' => (string) $for, '[[at]]' => $at === '' ? '' : '-'. $at ] );
 	}
 
 	/**
@@ -253,7 +255,7 @@ class Order {
 	/**
 	 *	The redirect to the page the form stood on, with a state - and, where the offer is still shown, the offer it is about (?beleg=<id>) and the
 	 *	anchor of its card, so that the sentence stands at the offer: #angebot-<id> in the section Angebot of the project page, #beleg-<id> in the list
-	 *	of documents. An offer that may not be shown any more (invalid) is not named: the sentence stands at the top
+	 *	of documents, #crm-needs in the tab Übersicht. An offer that may not be shown any more (invalid) is not named: the sentence stands at the top
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$request
@@ -265,9 +267,17 @@ class Order {
 	 */
 	private static function redirect( array &$appData, array &$request, string $state, string $from, ?array $document ): void {
 
-		$project = $document !== null && $from === 'projekt' && preg_match( Projekte::ID, (string) $document['project'] ) === 1 ? (string) $document['project'] : '';
-		$named = $document !== null && $state !== 'invalid' ? '&beleg='. $document['id']. '#'. ( $project === '' ? 'beleg-' : 'angebot-' ). $document['id'] : '';
-		$target = $project === '' ? self::PAGE_DOCUMENTS. '?state='. $state. $named : self::PAGE_PROJECTS. '?projekt='. rawurlencode( $project ). '&tab=angebot&state='. $state. $named;
+		$project = $document !== null && $from !== 'belege' && preg_match( Projekte::ID, (string) $document['project'] ) === 1 ? (string) $document['project'] : '';
+		$tab = $from === 'uebersicht' ? 'uebersicht' : 'angebot';
+		$beleg = $document !== null && $state !== 'invalid' ? '&beleg='. $document['id'] : '';
+
+		// The anchor is the card of the offer; in the tab Übersicht the card of what waits, whether an offer is named or not
+		if( $project !== '' && $tab === 'uebersicht' )
+			$named = $beleg. '#crm-needs';
+		else
+			$named = $beleg === '' ? '' : $beleg. '#'. ( $project === '' ? 'beleg-' : 'angebot-' ). $document['id'];
+
+		$target = $project === '' ? self::PAGE_DOCUMENTS. '?state='. $state. $named : self::PAGE_PROJECTS. '?projekt='. rawurlencode( $project ). '&tab='. $tab. '&state='. $state. $named;
 
 		\Nino\Http::redirect( $appData, $request, $target, 303 );
 	}

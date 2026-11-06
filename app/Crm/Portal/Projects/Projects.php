@@ -6,17 +6,19 @@ declare(strict_types=1);
  *												heading - and with ?projekt=<id> the page of one project: the kernel's tabs Angebot (the released offers of the project, the
  *												ones that can be ordered first and open, the done and the expired ones folded to a line), Dateien (the files of the
  *												project's folder in the feature Files that the member may see, one row for each title - the files that are versions of one
- *												title are one row - with the player of Review for an audio or video file and, over the player, the select of the versions of
- *												its title) and Belege (the released documents of the project, as [crm-documents] draws them). The head of the page - the
- *												breadcrumb, the title, the state and the description - is the page head's ([crm-portal-head], which reads current()). The tab that stands
- *												open is the one of the query (?tab=angebot, dateien or belege; the first where there is none) and always Dateien where a
- *												file is asked to be played. The tabs are links to the three sections, there from the server: the script of the kernel makes
+ *												title are one row - with the player of Review beside the list as a column and, over the player, the select of the versions of
+ *												its title), Belege (the released documents of the project, as [crm-documents] draws them) and Übersicht (the project at a glance:
+ *												its title, badges and description, what waits for the client with the form of the order of an offer, and the data). The head of
+ *												the page is the breadcrumb alone ([crm-portal-head], which reads current()), so that the tabs stand directly under it. The tab that stands
+ *												open is the one of the query (?tab=angebot, dateien, belege or uebersicht; Übersicht where there is none) and always Dateien where a
+ *												file is asked to be played. The tabs are links to the four sections, there from the server: the script of the kernel makes
  *												them tabs and the portal's own script writes the tab into the address, and without them the links jump to the panels, which
- *												stand open one under the other. The label of a tab carries the count of what is in it.
+ *												stand open one under the other. The label of a tab carries the count of what is in it (Übersicht has none).
  *
  *												The files are the owner's to give: while an offer of the project waits for the order (Projekte::waiting()) the tab Dateien is a note that
- *												leads to the offer - no list, no player, no count -, and while the download of the project is not switched on the list says it is for
- *												listening and its rows have no download (Portal\Files). Under the list of files stands the block Abnahme (Portal\Approval).
+ *												leads to the offer - no list, no player, no count -, and while the download of the project is not switched on the media (audio and video)
+ *												are for listening and their rows have no download, which a note over the list says (Portal\Files); any other file loads always. Under the
+ *												list of files stands the block Abnahme (Portal\Approval).
  *
  *												Nothing here is stored or sent, and every value enters the markup escaped. A project of another client and an id that is none
  *												are the list with a sentence that the project is unknown. The player of Review returns to the page it stands on without the
@@ -38,8 +40,8 @@ class Projects {
 	// The page the component stands on, from the directory the project is served from
 	private const string PAGE = '/portal/projekte';
 
-	// The tabs of the page of a project in their order: the value of ?tab= and the name of the section (its id is projekt-<name>) it opens
-	public const array TABS = [ 'angebot' => 'offer', 'dateien' => 'files', 'belege' => 'documents' ];
+	// The tabs of the page of a project: the value of ?tab= and the name of the section (its id is projekt-<name>) it opens; their order on the page is that of the sections in page()
+	public const array TABS = [ 'angebot' => 'offer', 'dateien' => 'files', 'belege' => 'documents', 'uebersicht' => 'overview' ];
 
 	// The project of this request, once it was looked up
 	private const string CURRENT = './crm/portal/project';
@@ -242,7 +244,7 @@ class Projects {
 	/**
 	 *	A count with the word of its number
 	 *
-	 *	@param		string		$kind					files or documents
+	 *	@param		string		$kind					files, documents or offers
 	 *	@param		int				$number
 	 *
 	 *	@return 	string
@@ -252,7 +254,7 @@ class Projects {
 		return Portal::render( 'project-count', [
 			'[[kind]]'   => $kind,
 			'[[number]]' => (string) $number,
-			'[[word]]'   => '[[/project/crm-portal/projects/'. ( $kind === 'files' ? 'file' : 'document' ). '-'. ( $number === 1 ? 'one' : 'many' ). ']]',
+			'[[word]]'   => '[[/project/crm-portal/projects/'. [ 'files' => 'file', 'documents' => 'document', 'offers' => 'offer' ][$kind]. '-'. ( $number === 1 ? 'one' : 'many' ). ']]',
 		] );
 	}
 
@@ -273,14 +275,18 @@ class Projects {
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 		$documents = Documents::released( $appData, $client['id'], $project['id'] );
 		$files = self::files( $appData, $client, $project, $review );
+		$offers = self::offers( $appData, $client, $documents, $dir );
 		$sections = [
-			'offer'     => self::offers( $appData, $client, $documents, $dir ),
+			'offer'     => $offers,
 			'files'     => $files,
 			'documents' => [ Portal::documentList( $appData, $documents, '', false ), count( $documents ) ],
 		];
 
-		// A file asked to be played is played in Dateien; else the tab of the query, and the first where it names none
-		$open = $review !== '' ? 'files' : ( self::TABS[$tab] ?? 'offer' );
+		// The tab Übersicht is the last, with no count: it counts the others itself
+		$sections['overview'] = [ self::overview( $appData, $client, $project, $documents, [ 'files' => $files[1], 'offers' => $offers[1], 'documents' => count( $documents ) ], $files[2], $dir ), null ];
+
+		// A file asked to be played is played in Dateien; else the tab of the query, and Übersicht where it names none
+		$open = $review !== '' ? 'files' : ( self::TABS[$tab] ?? 'overview' );
 		$queries = array_flip( self::TABS );
 		$tabs = '';
 		$html = '';
@@ -303,6 +309,109 @@ class Projects {
 			'[[state]]'    => $project['done'] === true ? 'done' : 'open',
 			'[[tabs]]'     => $tabs,
 			'[[sections]]' => $html,
+		] );
+	}
+
+	/**
+	 *	The tab Übersicht: the project at a glance. At the top its title, the line of its badges (the state, abgenommen, the start) and its description; then,
+	 *	only where something waits, the card of what the client has to do - the offer that can be ordered with the form of its order (the form of the tab Angebot, posting
+	 *	from here), the approval while the project can be approved (a sentence with the way to the block in the tab Dateien) and an invoice of the project that is
+	 *	open, with the way to its row in the tab Belege; the note of an order that was made from here stands in that card -, then the card of the data: the client, the
+	 *	start, the state, the download, and how many files, offers and documents the project has
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client
+	 *	@param		array 		$project			As Projekte::get() has it
+	 *	@param		array 		$documents		As Documents::released() has them for the project
+	 *	@param		array 		$counts				files (null where the tab Dateien counts none), offers and documents
+	 *	@param		array|null	$files				The files the member may see, as files() read them; null where there are none to look at
+	 *	@param		string		$dir					Escaped
+	 *
+	 *	@return 	string
+	 */
+	private static function overview( array &$appData, array $client, array $project, array $documents, array $counts, ?array $files, string $dir ): string {
+
+		// A null byte is no part of a title or a text
+		$escape = static fn( string $value ): string => \Nino\Modules\Components::escape( str_replace( "\0", '', $value ) );
+		$id = $escape( $project['id'] );
+		$state = $project['done'] === true ? 'done' : 'open';
+		$day = Documents\Render::day( $project['started'] );
+		$approved = Approval::approved( $appData, $client, $project ) !== null ? Portal::template( 'head-approved' ) : '';
+		$since = $day === '' ? '' : Portal::render( 'head-since', [ '[[iso]]' => $escape( $project['started'] ), '[[date]]' => $escape( $day ) ] );
+		$items = '';
+
+		foreach( $documents as $document ) {
+
+			if( $document['category'] === 'offer' && Documents::orderable( $document ) === true ) {
+
+				$valid = Documents\Render::day( (string) $document['valid_until'] );
+				$items .= Portal::render( 'overview-offer', [
+					'[[id]]'      => (string) $document['id'],
+					'[[project]]' => rawurlencode( $project['id'] ),
+					'[[dir]]'     => $dir,
+					'[[title]]'   => Portal::documentTitle( $document ),
+					'[[number]]'  => $escape( $document['number'] !== '' ? $document['number'] : $document['title'] ),
+					'[[gross]]'   => Portal::amount( $appData, $document ),
+					'[[valid]]'   => $valid === '' ? '' : Portal::render( 'offer-valid', [ '[[iso]]' => $escape( (string) $document['valid_until'] ), '[[date]]' => $escape( $valid ) ] ),
+					'[[order]]'   => Portal::pending( $appData, $client ) === 'privacy' ? Order::privacyHint( $dir ) : Order::block( $appData, $client, $document, 'uebersicht', $dir ),
+				] );
+			}
+		}
+
+		if( $files !== null && Approval::standing( $appData, $client, $project, $files )['open'] === true )
+			$items .= Portal::render( 'overview-approval', [ '[[project]]' => rawurlencode( $project['id'] ), '[[dir]]' => $dir ] );
+
+		foreach( $documents as $document ) {
+
+			$due = Portal::customerState( $document );
+
+			if( $document['category'] === 'invoice' && in_array( $due, [ 'open', 'overdue' ], true ) === true )
+				$items .= Portal::render( 'overview-invoice', [
+					'[[id]]'      => (string) $document['id'],
+					'[[project]]' => rawurlencode( $project['id'] ),
+					'[[dir]]'     => $dir,
+					'[[title]]'   => Portal::documentTitle( $document ),
+					'[[number]]'  => $escape( $document['number'] !== '' ? $document['number'] : $document['title'] ),
+					'[[gross]]'   => Portal::amount( $appData, $document ),
+					'[[tone]]'    => Portal::tone( $due ),
+					'[[word]]'    => Portal::stateWord( $due ),
+					'[[due]]'     => Portal::dueCell( $document, $due ),
+				] );
+		}
+
+		// The note of an order made from this tab: it stands over what waits, and alone where nothing waits any more
+		$note = Order::state( $appData, Order::named( $appData ), 'uebersicht' );
+		$needs = $items === '' && $note === '' ? '' : Portal::render( 'overview-needs', [ '[[state]]' => $note, '[[items]]' => $items === '' ? '' : Portal::render( 'overview-items', [ '[[items]]' => $items ] ) ] );
+		$download = Projekte::state( $appData, $project['id'] );
+		$released = Documents\Render::day( substr( $download['download_at'], 0, 10 ) );
+		$folder = self::folder( $appData, $project ) !== null;
+		$waits = $folder === true && Projekte::waiting( $appData, $project['id'], (int) $client['id'] ) !== null;
+		$word = $waits === true ? 'waiting' : ( $download['download'] === false ? 'locked' : ( $released === '' ? 'free' : 'since' ) );
+		$counted = array_filter( [ $counts['files'] === null ? '' : self::count( 'files', $counts['files'] ), self::count( 'offers', $counts['offers'] ), self::count( 'documents', $counts['documents'] ) ], static fn( string $count ): bool => $count !== '' );
+		$facts = [
+			'client'   => [ 'overview-client', $escape( $client['company'] !== '' ? $client['company'] : $client['name'] ) ],
+			'started'  => [ 'started', $day === '' ? '' : Portal::render( 'overview-since', [ '[[iso]]' => $escape( $project['started'] ), '[[date]]' => $escape( $day ) ] ) ],
+			'state'    => [ 'overview-state', Portal::render( 'overview-state', [ '[[tone]]' => Portal::tone( $state ), '[[state]]' => '[[/project/crm-portal/projects/state-'. $state. ']]', '[[approved]]' => $approved ] ) ],
+			'download' => [ 'overview-download', $folder === false ? '' : Portal::render( 'overview-download', [
+				'[[state]]' => $download['download'] === true && $waits === false ? 'free' : 'locked',
+				'[[word]]'  => '[[/project/crm-portal/projects/overview-download-'. $word. ']]',
+				'[[since]]' => $word === 'since' ? ' '. Portal::render( 'overview-since', [ '[[iso]]' => $escape( substr( $download['download_at'], 0, 10 ) ), '[[date]]' => $escape( $released ) ] ) : '',
+			] ) ],
+			// The counts are separated for a screen reader: "3 Dateien, 2 Angebote, 3 Belege"
+			'content'  => [ 'overview-content', Portal::render( 'overview-content', [ '[[counts]]' => implode( Portal::template( 'overview-sep' ), $counted ) ] ) ],
+		];
+		$rows = '';
+
+		foreach( $facts as $name => [ $label, $value ] )
+			if( $value !== '' )
+				$rows .= Portal::render( 'overview-row', [ '[[name]]' => $name, '[[label]]' => '[[/project/crm-portal/projects/'. $label. ']]', '[[value]]' => $value ] );
+
+		return Portal::render( 'project-overview', [
+			'[[title]]'       => $escape( $project['title'] ),
+			'[[badge]]'       => Portal::render( 'head-badge', [ '[[tone]]' => Portal::tone( $state ), '[[state]]' => '[[/project/crm-portal/projects/state-'. $state. ']]', '[[approved]]' => $approved, '[[since]]' => $since ] ),
+			'[[description]]' => $project['description'] === '' ? '' : Portal::render( 'project-description', [ '[[text]]' => str_replace( [ "\r\n", "\r", "\n" ], '<br>', $escape( $project['description'] ) ) ] ),
+			'[[needs]]'       => $needs,
+			'[[rows]]'        => $rows,
 		] );
 	}
 
@@ -362,33 +471,34 @@ class Projects {
 	 *	@param		array 		$project
 	 *	@param		string		$review				The file asked to be played
 	 *
-	 *	@return 	array											The markup and the count of files the member may see (null where there is no folder to count and where the offer comes first)
+	 *	@return 	array											The markup, the count of files the member may see (null where there is no folder to count and where the offer comes first) and those files (null where there is nothing to look at)
 	 */
 	private static function files( array &$appData, array $client, array $project, string $review ): array {
 
 		if( Crm::featureOn( $appData, 'files' ) === false )
-			return [ self::message( $appData, 'files-off', '', 'project-message' ), null ];
+			return [ self::message( $appData, 'files-off', '', 'project-message' ), null, null ];
 
 		$folder = self::folder( $appData, $project );
 
 		if( $folder === null )
-			return [ self::message( $appData, 'files-none', '', 'project-message' ), null ];
+			return [ self::message( $appData, 'files-none', '', 'project-message' ), null, null ];
 
 		$waiting = Projekte::waiting( $appData, $project['id'], (int) $client['id'] );
 
 		if( $waiting !== null )
-			return [ self::waitingNote( $appData, $project, $waiting ), null ];
+			return [ self::waitingNote( $appData, $project, $waiting ), null, null ];
 
 		$files = Files::visible( $appData, $folder['id'] );
 
 		if( $files === [] )
-			return [ self::message( $appData, 'files-empty', '', 'project-message' ), 0 ];
+			return [ self::message( $appData, 'files-empty', '', 'project-message' ), 0, [] ];
 
 		$player = '';
 		$playing = '';
 		$page = \Nino\Filesystem::getDir( $appData ). self::PAGE;
+		$review = $review !== '' && Crm::featureOn( $appData, 'review' ) === true ? $review : '';
 
-		if( $review !== '' && Crm::featureOn( $appData, 'review' ) === true )
+		if( $review !== '' )
 			foreach( \Nino\Modules\Files::grouped( $files ) as $title )
 				foreach( $title['versions'] as $file ) {
 
@@ -400,19 +510,26 @@ class Projects {
 
 					// A file that was removed from the server has its comments and no medium: the sentence stands over them
 					if( isset( $file['gone'] ) === true )
-						$player = Files::goneNote( $appData ). \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'versions' => $versions ] );
+						$player = Files::goneNote( $appData ). Files::beside( \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'versions' => $versions ] ) );
 					elseif( \Nino\Modules\Files::path( $appData, $file['id'] ) !== null ) {
-						$player = \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'versions' => $versions ] );
+						$player = Files::beside( \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'versions' => $versions ] ) );
 						$playing = $file['id'];
 					}
 				}
 
+		// The player is a column beside the list (over it on a narrow screen); with no file chosen it is an empty card that says how to open one. Without Review there is no player
+		if( Crm::featureOn( $appData, 'review' ) === true )
+			$player = Portal::render( 'project-player', [ '[[state]]' => $player === '' ? ' crm-player--empty' : '', '[[player]]' => $player === '' ? Portal::template( 'project-player-empty' ) : $player ] );
+
+		// The note over the list is for the media: they are there to listen to until the project's download is switched on
+		$locked = $project['download'] === false && array_filter( $files, static fn( array $file ): bool => Portal::medium( $appData, $file['mime'] ) === true ) !== [];
+
 		return [ Portal::render( 'project-files', [
-			'[[note]]'     => $project['download'] === true ? '' : Portal::render( 'note', [ '[[classes]]' => 'crm-project__locked', '[[tone]]' => 'info', '[[role]]' => 'note', '[[icon]]' => 'lock', '[[text]]' => '[[/project/crm-portal/projects/files-locked]]' ] ),
+			'[[note]]'     => $locked === false ? '' : Portal::render( 'note', [ '[[classes]]' => 'crm-project__locked', '[[tone]]' => 'info', '[[role]]' => 'note', '[[icon]]' => 'lock', '[[text]]' => '[[/project/crm-portal/projects/files-locked]]' ] ),
 			'[[player]]'   => $player,
 			'[[rows]]'     => Files::titles( $appData, $files, $page. '?projekt='. rawurlencode( $project['id'] ). '&review=', $playing, $project['download'] ),
 			'[[approval]]' => Approval::block( $appData, $client, $project, $files, \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) ) ),
-		] ), count( $files ) ];
+		] ), count( $files ), $files ];
 	}
 
 	/**

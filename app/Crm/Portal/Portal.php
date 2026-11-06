@@ -40,9 +40,6 @@ class Portal {
 
 	private const string CACHE = './crm/portal/client';
 
-	// Set while the list of a folder is drawn: the files that are listed are those the route would refuse to give, too (see callbackFileAllowed())
-	public const string LISTING = './crm/portal/listing';
-
 	// The style sheet and the script of the portal, as the bundles of the site name them, and where the markup and the words of the portal are
 	public const string STYLE = '/app/Crm/Portal/assets/portal.css';
 	public const string SCRIPT = '/app/Crm/Portal/assets/portal.js';
@@ -382,10 +379,11 @@ class Portal {
 	/**
 	 *	'/files/allowed': what Files lets a member of a client have, narrowed by what the owner holds back. A file is not for a member whose client has a step of the gate
 	 *	pending - the bytes of a project are not given to somebody who has not taken note of the Datenschutz or has not given the data of the invoice -, and a file of the
-	 *	folder of a project is not for its client while an offer of the project waits for the order (Projekte::waiting()), inline or as a download. Where no offer waits, the
-	 *	folder is open to be played and its files are not to be saved before the owner switched the download of the project on (Projekte::state()): a file the player does not play
-	 *	(Review::kind()) is not given at all, inline or saved, and listed only as a name; the files the member put there are the member's own and are given whatever the switch says. The hook only takes away: the member of no client and a file of no project of the client are
-	 *	left as Files has them, and an answer of false is never turned into true
+	 *	folder of a project is not for its client while an offer of the project waits for the order (Projekte::waiting()), inline or as a download. Where no offer waits, only
+	 *	what the player plays (medium(): audio and video) is held back, and only its download, until the owner switched the download of the project on (Projekte::state()): a medium is
+	 *	given to be played, any other file - a PDF, a text, an archive - is given inline and as a download whatever the switch says. The files the member put there are the
+	 *	member's own and are given whatever the switch says. The hook only takes away: the member of no client and a file of no project of the client are left as Files has them,
+	 *	and an answer of false is never turned into true
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$args				file, member, download and allowed
@@ -422,11 +420,23 @@ class Portal {
 		if( $project['download'] === true || $own === true )
 			return;
 
-		// Without the download only what the player plays is open, and only to be played: a file it does not play is neither shown nor saved - the list of the portal asks to see them, to say that the studio releases them
-		$plays = Crm::featureOn( $appData, 'review' ) === true && \Nino\Modules\Review::kind( (string) ( $args['file']['mime'] ?? '' ) ) !== '';
-
-		if( ( $args['download'] ?? false ) === true || ( $plays === false && ( $appData[self::LISTING] ?? false ) !== true ) )
+		// Without the download a medium is open to be played and not to be saved; any other file is not the player's and is given
+		if( ( $args['download'] ?? false ) === true && self::medium( $appData, (string) ( $args['file']['mime'] ?? '' ) ) === true )
 			$args['allowed'] = false;
+	}
+
+	/**
+	 *	Whether the player plays a file of this type - audio and video, as Review::kind() has it; where Review is off nothing is played, and the type decides all the same, so that the
+	 *	owner's download switch holds back the same files with Review on and off
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$mime					The type of a file, as the index of Files has it
+	 *
+	 *	@return 	bool
+	 */
+	public static function medium( array &$appData, string $mime ): bool {
+
+		return Crm::featureOn( $appData, 'review' ) === true ? \Nino\Modules\Review::kind( $mime ) !== '' : preg_match( '#^(audio|video)/#', $mime ) === 1;
 	}
 
 	/**
@@ -475,8 +485,9 @@ class Portal {
 	 *	componentCrmPortalNav()), then the title and the lead of the page (its name and description, as the head of the site reads them). The bar takes the
 	 *	place of the head of the site on the page (the style sheet sets that head aside where the bar is). nav="0" leaves the bar and the navigation out,
 	 *	for a template that sets the navigation itself. On the page of a project (?projekt=<id>, or ?review=<file> of a
-	 *	file of one of the client's projects) the breadcrumb Projekte › the project, the project's title as the title with its state and its start,
-	 *	and its description as the lead. With calendar="1" the subscription of the calendar stands among the actions (where Events is on). Nothing
+	 *	file of one of the client's projects) the head is the breadcrumb Projekte › the project (and the project's title as a heading for a screen reader) - the tabs of the page stand directly under it, and
+	 *	the title, the state, the start and the description of the project are the tab Übersicht's (Portal\Projects). With calendar="1" the subscription of the
+	 *	calendar stands among the actions (where Events is on). Nothing
 	 *	for a visitor
 	 *
 	 *	@param		array 		&$appData
@@ -501,26 +512,20 @@ class Portal {
 		$name = self::nameOf( $member );
 		$project = $client === null ? null : Portal\Projects::current( $appData, $client );
 
-		if( $project !== null ) {
-
-			$day = Documents\Render::day( $project['started'] );
-			$state = $project['done'] === true ? 'done' : 'open';
-			$crumbs = self::render( 'head-crumbs', [ '[[href]]' => $dir. '/portal/projekte', '[[parent]]' => '[[/_nino/webpage/portal/projekte/name]]', '[[here]]' => \Nino\Modules\Components::escape( $project['title'] ) ] );
-			$title = \Nino\Modules\Components::escape( $project['title'] );
-			$badge = self::render( 'head-badge', [
-				'[[tone]]'  => self::tone( $state ),
-				'[[state]]' => '[[/project/crm-portal/projects/state-'. $state. ']]',
-				'[[approved]]' => Portal\Approval::approved( $appData, $client, $project ) === null ? '' : self::template( 'head-approved' ),
-				'[[since]]' => $day === '' ? '' : self::render( 'head-since', [ '[[iso]]' => \Nino\Modules\Components::escape( $project['started'] ), '[[date]]' => \Nino\Modules\Components::escape( $day ) ] ),
+		// The page of a project has the path alone over its tabs: its title, state, start and description are the tab Übersicht's
+		if( $project !== null )
+			$head = self::render( 'head-path', [
+				'[[classes]]' => \Nino\Feature::classes( $args ),
+				'[[title]]'   => \Nino\Modules\Components::escape( str_replace( "\0", '', $project['title'] ) ),
+				'[[crumbs]]'  => self::render( 'head-crumbs', [ '[[href]]' => $dir. '/portal/projekte', '[[parent]]' => '[[/_nino/webpage/portal/projekte/name]]', '[[here]]' => \Nino\Modules\Components::escape( str_replace( "\0", '', $project['title'] ) ) ] ),
 			] );
-			$lead = $project['description'] === '' ? '' : self::render( 'head-lead', [ '[[text]]' => str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $project['description'] ) ) ] );
-		}
-		else {
-			$crumbs = '';
-			$title = '[[/_nino/webpage[[/nino/http/response/uri]]/title]]';
-			$badge = '';
-			$lead = self::render( 'head-lead', [ '[[text]]' => '[[/_nino/webpage[[/nino/http/response/uri]]/description]]' ] );
-		}
+		else
+			$head = self::render( 'head', [
+				'[[classes]]' => \Nino\Feature::classes( $args ),
+				'[[title]]'   => '[[/_nino/webpage[[/nino/http/response/uri]]/title]]',
+				'[[lead]]'    => self::render( 'head-lead', [ '[[text]]' => '[[/_nino/webpage[[/nino/http/response/uri]]/description]]' ] ),
+				'[[actions]]' => ( $args['calendar'] ?? '0' ) === '1' && Crm::featureOn( $appData, 'events' ) === true ? self::template( 'head-calendar' ) : '',
+			] );
 
 		$bar = '';
 		$navigation = '';
@@ -539,14 +544,7 @@ class Portal {
 			$navigation = self::componentCrmPortalNav( $appData, [] );
 		}
 
-		return $bar. $navigation. ( $client === null ? '' : self::messages( $appData, $client ) ). self::render( 'head', [
-			'[[classes]]' => \Nino\Feature::classes( $args ),
-			'[[crumbs]]'  => $crumbs,
-			'[[title]]'   => $title,
-			'[[badge]]'   => $badge,
-			'[[lead]]'    => $lead,
-			'[[actions]]' => ( $args['calendar'] ?? '0' ) === '1' && Crm::featureOn( $appData, 'events' ) === true ? self::template( 'head-calendar' ) : '',
-		] );
+		return $bar. $navigation. ( $client === null ? '' : self::messages( $appData, $client ) ). $head;
 	}
 
 	/**
@@ -1100,7 +1098,7 @@ class Portal {
 	 *
 	 *	@return 	string										Markup
 	 */
-	private static function dueCell( array $document, string $state ): string {
+	public static function dueCell( array $document, string $state ): string {
 
 		if( $document['category'] !== 'invoice' )
 			return '';

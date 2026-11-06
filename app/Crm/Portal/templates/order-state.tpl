@@ -1,1 +1,1 @@
-<p class="crm-order__state crm-order__state--[[state]] crm-note crm-note--[[tone]]" role="[[role]]" id="crm-order-state-[[id]]">[[icon:[[icon]]]]<span class="crm-note__text">[[/project/crm-portal/order/state-[[state]]]]</span></p>
+<p class="crm-order__state crm-order__state--[[state]] crm-note crm-note--[[tone]]" role="[[role]]" id="crm-order-state[[at]]-[[id]]">[[icon:[[icon]]]]<span class="crm-note__text">[[/project/crm-portal/order/state-[[state]]]]</span></p>

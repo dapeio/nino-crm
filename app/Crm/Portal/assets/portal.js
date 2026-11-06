@@ -2,9 +2,9 @@
  *	Crm - Portal
  *	portal.js		The one script of the customer portal, bundled into the project's own /.cache/script.js by \Crm\Crm::init() (the module adds it
  *							with \Nino\Html::addAsset(), as it adds portal.css). It wires what the pages cannot say in markup alone, and every page works without
- *							it: the tab of a project page is written into the address when it is switched (?tab=angebot, dateien, belege), so that a reload and
+ *							it: the tab of a project page is written into the address when it is switched (?tab=angebot, dateien, belege, uebersicht), so that a reload and
  *							the back button keep it (the tabs are links to the sections, and once the kernel's script has made them tabs a click on one does not
- *							leave the page); a message the address carries (?state=..., ?sign-state=...) is taken out of the address once the page has shown it,
+ *							leave the page); the open tab is scrolled into the row of tabs where the row is wider than the window; a message the address carries (?state=..., ?sign-state=...) is taken out of the address once the page has shown it,
  *							so that a reload does not say it again; the card or the row an anchor names (#angebot-<id>, #beleg-<id>), or the row of the document
  *							Sign has just brought back (data-sign-state), is unfolded and brought into view, also when it stands in a tab the kernel's script has
  *							hidden; the field of Meine Daten the server refused gets the focus; the drop zone of the upload says that a file hangs over it; and the select of the versions over a player sends its form when the choice changes - at once for the mouse and touch, on Enter or on leaving for the keyboard - and gets the focus back after the page is loaded (the button that does it without the script is taken away). The pills over the list of documents are shown and filter its rows (a row that does not fit is hidden, the number over the list says how many are shown; the pill the server pressed is the one that applies at first, and a row that is hidden is not unfolded by an anchor); a message of the owner is put away by posting the form on its card, and the card goes from the page once the server has answered (it stays where the post fails). No markup is made here, nothing is sent but those two forms (a plain GET, a post to the same site) and nothing is stored.
@@ -80,6 +80,21 @@
 			} );
 			tab.addEventListener( 'keydown', function() { tabs.forEach( function( other ) { other.removeAttribute( 'data-crm-initial' ); } ); } );
 		} );
+	}
+
+	// The row of tabs scrolls inside its box where it is wider than the window: the open tab is brought into the box (the box scrolls, the page does not), so that
+	// a person who opens the page sees which tab is open
+	function showOpenTab() {
+		const nav = dc.querySelector( '.crm-project__nav' );
+		const open = nav === null ? null : nav.querySelector( '.nino-is-active' );
+		if( open === null )
+			return;
+		const box = nav.getBoundingClientRect();
+		const tab = open.getBoundingClientRect();
+		if( tab.right > box.right )
+			nav.scrollLeft += tab.right - box.right;
+		else if( tab.left < box.left )
+			nav.scrollLeft -= box.left - tab.left;
 	}
 
 	// What an anchor names is unfolded and brought into view - after the kernel's script has hidden the other tabs, so the place is the final one
@@ -261,6 +276,8 @@
 			return;
 		focusRefused();
 		followTabs();
+		showOpenTab();
+		window.addEventListener( 'load', showOpenTab );
 		watchDrop();
 		watchVersions();
 		watchFilter();

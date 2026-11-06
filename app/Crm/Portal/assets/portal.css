@@ -46,9 +46,9 @@
  *	2 Page			.crm-portal on the wrap, .crm-page on the section: the page's ground, the inner column at most 80rem wide, 16px (the row's
  *							gutter below 768px) at the sides and more above. The preloader of the kernel is off on a portal page; the burger of the
  *							main menu gets a touch-sized hit area; everything else of the frame is the theme's.
- *	3 Head			.crm-head: the breadcrumb (.crm-crumbs) where there is a parent, the title as the largest text (xxl, 24px) with its state -
- *							a pill and the start - beside it as a line of its own where the page has one, the lead (s, ink 3, at most 60 characters)
- *							and the actions (the calendar). A head with a lead is 54px high.
+ *	3 Head			.crm-head: the title as the largest text (xxl, 24px), the lead (s, ink 3, at most 60 characters) and the actions (the calendar). A head with a
+ *							lead is 54px high. On the page of a project the head is .crm-head--path, the breadcrumb (.crm-crumbs) alone with no space under it, so that the
+ *							tabs stand directly under the path; the title and the state of the project are the tab Übersicht's (.crm-overview).
  *							Section titles .crm-section__title (l) with .crm-section__head for a title and an action in one line.
  *	4 Surfaces	.crm-card (surface, line, soft shadow), --link (elevation on hover and focus), --nested (the second level, no line),
  *							--warning (an edge in the warning tone). .crm-fold: a details whose summary is a ghost button and whose body is a nested block.
@@ -71,7 +71,7 @@
  *							its sentence. The forms of the features on the portal's pages (Files' upload with its drop zone, Review's comment,
  *							Members' login on the door) take the same look, scoped to the portal's own markup; their files are not touched.
  *	10 Tabs		The kernel's tabs restyled: .crm-project__tab is an underlined link with its count, there from the server (a list of jumps
- *							to the three sections without the kernel's script, tabs with it); the panels are plain. The address follows the tab through
+ *							to the four sections without the kernel's script, tabs with it); the panels are plain. The address follows the tab through
  *							portal.js.
  *	11 Parts		The key figures and the start cards, the projects (tiles from 640px), the offer card (a details that folds to its head line),
  *							the order, how to pay, the files, the dates, the data form with the card of the sign-in address, the Datenschutz, the uploads and the door - each in its own
@@ -266,6 +266,14 @@ a.crm-crumbs__link:hover {
 
 .crm-crumbs__here {
 	color: var(--crm-ink-2);
+}
+
+.crm-head--path {
+	margin: 0;
+}
+
+.crm-head--path .crm-crumbs {
+	margin: 0;
 }
 
 .crm-head__row {
@@ -1049,6 +1057,14 @@ time.crm-table__cell {
 
 	.crm-project__section.nino-tabs-panel {
 		display: block;
+	}
+}
+
+/*	Without the script nothing scrolls the open tab into view: a row of tabs that is wider than a phone wraps	*/
+@media (scripting: none) and (max-width: 479.98px) {
+
+	.crm-project__nav.nino-tabs-nav {
+		flex-wrap: wrap;
 	}
 }
 
@@ -2547,6 +2563,286 @@ a.crm-files__name:hover {
 	margin: 0;
 }
 
+/*	11 Parts - the page of a project: the tab Dateien is the list with the player beside it, the tab Übersicht the project at a glance	*/
+
+/*	Below 1024px the column is a block over the list: the list stands first in the markup (the keyboard reaches it before the player when the two are columns),
+	and the player is moved over it here	*/
+.crm-files-layout {
+	display: flex;
+	flex-direction: column;
+}
+
+.crm-files-layout__list {
+	container-type: inline-size;
+	min-width: 0;
+}
+
+.crm-player {
+	order: -1;
+	margin: 0 0 var(--crm-5);
+	scroll-padding-block: var(--crm-5);
+}
+
+.crm-player--empty {
+	display: none;
+}
+
+.crm-player__empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--crm-3);
+	padding: var(--crm-6) var(--crm-5);
+	text-align: center;
+	color: var(--crm-ink-2);
+}
+
+.crm-player__text {
+	max-width: 24ch;
+	margin: 0;
+	font-size: var(--crm-text-s);
+	line-height: 1.5;
+}
+
+.crm-project .crm-player .review-player {
+	margin: 0;
+}
+
+.crm-player audio,
+.crm-player video {
+	width: 100%;
+	min-width: 14rem;
+}
+
+@media (min-width: 1024px) {
+
+	.crm-files-layout:has(> .crm-player) {
+		display: grid;
+		grid-template-columns: minmax(0, 3fr) minmax(20rem, 2fr);
+		gap: 0 var(--crm-5);
+		align-items: start;
+	}
+
+	.crm-files-layout__list {
+		grid-column: 1;
+		grid-row: 1;
+	}
+
+	.crm-files-layout > .crm-player {
+		grid-column: 2;
+		grid-row: 1;
+		order: 0;
+		position: sticky;
+		top: calc( var(--crm-bar) + var(--crm-4) );
+		max-height: calc( 100dvh - var(--crm-bar) - var(--crm-5) );
+		margin: 0;
+		padding: 2px;
+		overflow-y: auto;
+	}
+
+	.crm-player--empty {
+		display: block;
+	}
+
+	/*	The list beside the player is as wide as its column and not as the window: where the column is narrower than 640px its rows are the stacked ones of the
+		narrow window - the facts under the name, the buttons under them - with the words on the buttons	*/
+	@container (max-width: 639.98px) {
+
+		.crm-files .crm-table__body {
+			display: block;
+		}
+
+		.crm-files .crm-table__row {
+			display: block;
+		}
+
+		.crm-files .crm-table__head {
+			display: none;
+		}
+
+		.crm-files .crm-table__line {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: var(--crm-2) var(--crm-3);
+			padding: var(--crm-4);
+		}
+
+		.crm-files .crm-table__line > .crm-table__cell:first-child {
+			flex: 1 1 100%;
+		}
+
+		.crm-files .crm-table__line > .crm-table__cell:empty {
+			display: none;
+		}
+
+		.crm-files .crm-table__actions {
+			flex: 1 1 100%;
+			flex-wrap: wrap;
+			margin-left: 0;
+			justify-content: flex-start;
+		}
+
+		.crm-files .crm-files__size::after {
+			content: "·";
+			margin-left: var(--crm-3);
+			color: var(--crm-ink-3);
+		}
+
+		.crm-files .crm-files__download > span:not(.nino-sr-only) {
+			position: static;
+			width: auto;
+			height: auto;
+			overflow: visible;
+			clip: auto;
+			white-space: normal;
+		}
+
+		.crm-files .crm-files__download {
+			min-width: 0;
+			padding: 0 var(--crm-3);
+			border-color: var(--crm-line-strong);
+			background-color: var(--crm-surface);
+			color: var(--crm-ink);
+		}
+	}
+}
+
+.crm-overview__title {
+	margin: 0;
+	color: var(--crm-ink);
+	font-size: var(--crm-text-xxl);
+	font-weight: 700;
+	letter-spacing: -.02em;
+	line-height: 1.2;
+	overflow-wrap: anywhere;
+}
+
+.crm-overview .crm-head__badge {
+	margin: var(--crm-2) 0 0;
+}
+
+.crm-project__description {
+	max-width: 60ch;
+	margin: var(--crm-3) 0 0;
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-m);
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+}
+
+.crm-overview__needs,
+.crm-overview__data {
+	margin: var(--crm-5) 0 0;
+	padding: var(--crm-4) var(--crm-5);
+}
+
+.crm-overview__needs .crm-section__title {
+	display: flex;
+	align-items: center;
+	gap: var(--crm-2);
+}
+
+.crm-overview__needs .crm-section__title .crm-icon {
+	color: var(--crm-warning);
+}
+
+.crm-overview__needs .crm-order__state {
+	margin: 0 0 var(--crm-4);
+}
+
+.crm-overview__needs-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.crm-overview__need + .crm-overview__need {
+	margin-top: var(--crm-4);
+	padding-top: var(--crm-4);
+	border-top: 1px solid var(--crm-line);
+}
+
+.crm-overview__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--crm-1) var(--crm-3);
+	margin: 0;
+}
+
+.crm-overview__what {
+	color: var(--crm-ink);
+	font-weight: 700;
+	overflow-wrap: anywhere;
+}
+
+.crm-overview__meta,
+.crm-overview__due {
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+}
+
+.crm-overview__link {
+	margin: 0;
+}
+
+.crm-overview__link a {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--crm-touch);
+	font-weight: 600;
+}
+
+.crm-overview__need .crm-order--form {
+	margin: 0;
+}
+
+.crm-overview__need .crm-order--privacy {
+	margin: var(--crm-2) 0 0;
+}
+
+.crm-overview__facts {
+	margin: 0;
+}
+
+.crm-overview__fact {
+	display: grid;
+	gap: var(--crm-1) var(--crm-4);
+	padding: var(--crm-3) 0;
+	border-top: 1px solid var(--crm-line);
+}
+
+.crm-overview__fact:first-child {
+	border-top: 0;
+	padding-top: 0;
+}
+
+.crm-overview__label {
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+}
+
+.crm-overview__value {
+	margin: 0;
+	color: var(--crm-ink);
+	overflow-wrap: anywhere;
+}
+
+.crm-overview__counts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--crm-1) var(--crm-4);
+}
+
+@media (min-width: 640px) {
+
+	.crm-overview__fact {
+		grid-template-columns: 9rem minmax(0, 1fr);
+		align-items: baseline;
+	}
+}
+
 /*	11 Parts - the player of Review on the project page	*/
 
 .crm-project .review-player {
@@ -2561,24 +2857,6 @@ a.crm-files__name:hover {
 	background-color: var(--crm-surface);
 	color: var(--crm-ink);
 	box-shadow: var(--crm-shadow-1);
-}
-
-.crm-project .review-player__back {
-	margin: 0 0 var(--crm-2);
-	font-size: var(--crm-text-s);
-}
-
-.crm-project .review-player__back a {
-	display: inline-flex;
-	align-items: center;
-	min-height: var(--crm-touch);
-	color: var(--crm-link);
-	font-weight: 600;
-	text-decoration: none;
-}
-
-.crm-project .review-player__back a:hover {
-	text-decoration: underline;
 }
 
 .crm-project .review-player__title {
