@@ -7,7 +7,7 @@
  *							leave the page); a message the address carries (?state=..., ?sign-state=...) is taken out of the address once the page has shown it,
  *							so that a reload does not say it again; the card or the row an anchor names (#angebot-<id>, #beleg-<id>), or the row of the document
  *							Sign has just brought back (data-sign-state), is unfolded and brought into view, also when it stands in a tab the kernel's script has
- *							hidden; the drop zone of the upload says that a file hangs over it; and the select of the versions over a player sends its form when the choice changes - at once for the mouse and touch, on Enter or on leaving for the keyboard - and gets the focus back after the page is loaded (the button that does it without the script is taken away). No markup is made here, nothing is sent but that form (a plain GET) and nothing is stored.
+ *							hidden; the field of Meine Daten the server refused gets the focus; the drop zone of the upload says that a file hangs over it; and the select of the versions over a player sends its form when the choice changes - at once for the mouse and touch, on Enter or on leaving for the keyboard - and gets the focus back after the page is loaded (the button that does it without the script is taken away). No markup is made here, nothing is sent but that form (a plain GET) and nothing is stored.
  */
 ( function() {
 
@@ -19,6 +19,7 @@
 	function cleanQuery( params, dropTab ) {
 		params.delete( 'state' );
 		params.delete( 'field' );
+		params.delete( 'why' );
 		params.delete( 'beleg' );
 		params.delete( 'sign' );
 		params.delete( 'sign-state' );
@@ -171,9 +172,17 @@
 		} );
 	}
 
+	// A field the server refused is where the person goes on: the form of Meine Daten marks it, and the focus is put there
+	function focusRefused() {
+		const field = dc.querySelector( '.crm-data__form [aria-invalid="true"]' );
+		if( field !== null )
+			field.focus();
+	}
+
 	function init() {
 		if( dc.querySelector( '.crm-portal' ) === null )
 			return;
+		focusRefused();
 		followTabs();
 		watchDrop();
 		watchVersions();

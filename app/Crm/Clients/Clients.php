@@ -6,7 +6,12 @@ declare(strict_types=1);
  *								as a slug (k-0001). All storage is Crm\Db; every statement is prepared.
  *
  *								A client carries privacy (Records::privacy(): whether the portal asks for a text, whether the client has agreed to it, when and by whom) from get() and list().
- *								A write answers the client as list() has it, or a string: 'empty' (neither company nor name),
+ *								A client is known by its title(): the company, else the name, else the address - the client's own or, for one made with nothing but the address of its first
+ *								account, that one. Only the address is needed to make a client (add() with a first account whose address is valid); change() keeps asking for a company
+ *								or a name. A client is ready for an invoice (invoiceReady()) when it has a company or a name and a street, a postal code, a city and a country; get() and list()
+ *								carry ready and title.
+ *
+ *								A write answers the client as list() has it, or a string: 'empty' (neither company nor name - and, for add(), no valid address of a first account),
  *								'email:email', 'long:<field>' or 'format:<field>' (the field a value was refused for; format:business for a flag that is none),
  *								'unknown' (no such client). A database failure is a \PDOException the caller answers.
  *
@@ -99,6 +104,42 @@ class Clients {
 	}
 
 	/**
+	 *	How a client is called: its company, else its name, else its address
+	 *
+	 *	@param		array 		$client				company, name and email - a frozen client of a document has them as well
+	 *	@param		string		$account			The address of its first account, for a client that has none of its own
+	 *
+	 *	@return 	string										'' for a client with nothing to be called by
+	 */
+	public static function title( array $client, string $account = '' ): string {
+
+		foreach( [ 'company', 'name', 'email' ] as $field )
+			if( trim( (string) ( $client[$field] ?? '' ) ) !== '' )
+				return trim( (string) $client[$field] );
+
+		return trim( $account );
+	}
+
+	/**
+	 *	Whether a client has what an offer or an invoice names it by: a company or a name, and a street, a postal code, a city and a country
+	 *
+	 *	@param		array 		$client				company, name, street, zip, city and country
+	 *
+	 *	@return 	bool
+	 */
+	public static function invoiceReady( array $client ): bool {
+
+		if( trim( (string) ( $client['company'] ?? '' ) ) === '' && trim( (string) ( $client['name'] ?? '' ) ) === '' )
+			return false;
+
+		foreach( [ 'street', 'zip', 'city', 'country' ] as $field )
+			if( trim( (string) ( $client[$field] ?? '' ) ) === '' )
+				return false;
+
+		return true;
+	}
+
+	/**
 	 *	Add a client with the next number
 	 *
 	 *	@param		array 		&$appData
@@ -112,10 +153,15 @@ class Clients {
 	 */
 	public static function add( array &$appData, array $input, ?array $first = null ): array|string {
 
-		$values = self::clean( $input );
+		$address = self::address( (string) ( $first['email'] ?? '' ) );
+		$values = self::clean( $input, $address !== '' );
 
 		if( is_string( $values ) === true )
 			return $values;
+
+		// The address of the first account is the client's own where the master data has none: a client made with nothing but an address is known by it
+		if( $values['email'] === '' )
+			$values['email'] = $address;
 
 		$pdo = Db::pdo( $appData );
 		$now = gmdate( self::TIME );
@@ -614,10 +660,11 @@ class Clients {
 	 *	Trim and check the fields of a client
 	 *
 	 *	@param		array 		$input
+	 *	@param		bool			$bare					Whether a client with neither company nor name is allowed (add() has a valid address of a first account to call it by)
 	 *
 	 *	@return 	array|string							name => value for every field; or why not
 	 */
-	private static function clean( array $input ): array|string {
+	private static function clean( array $input, bool $bare = false ): array|string {
 
 		$values = [];
 
@@ -648,7 +695,7 @@ class Clients {
 			$values[$field] = $value;
 		}
 
-		if( $values['company'] === '' && $values['name'] === '' )
+		if( $bare === false && $values['company'] === '' && $values['name'] === '' )
 			return 'empty';
 
 		// Whether the client is a business, and so gets an electronic invoice: a flag the editor posts as a boolean; a text is none
@@ -663,11 +710,25 @@ class Clients {
 	}
 
 	/**
+	 *	The address of a first account as the model takes it
+	 *
+	 *	@param		string		$email
+	 *
+	 *	@return 	string										The address trimmed; '' for one that is none or longer than a client's email takes
+	 */
+	private static function address( string $email ): string {
+
+		$email = trim( $email );
+
+		return $email !== '' && mb_strlen( $email, 'UTF-8' ) <= self::FIELDS['email'] && filter_var( $email, FILTER_VALIDATE_EMAIL ) !== false ? $email : '';
+	}
+
+	/**
 	 *	@param		array 		$row
 	 *	@param		array 		$linked				The ids of the rows of the client
 	 *	@param		array 		$members			As members() has them
 	 *
-	 *	@return 	array										With accounts, how many are the client's, and active_accounts, how many of them are on
+	 *	@return 	array										With accounts, how many are the client's, and active_accounts, how many of them are on; title, how the client is called; and ready, whether an invoice can name it
 	 */
 	private static function shape( array $row, array $linked, array $members ): array {
 
@@ -679,6 +740,8 @@ class Clients {
 		$row['accounts'] = count( $ids );
 		$row['active_accounts'] = count( array_filter( $ids, static fn( string $id ): bool => ( $members[$id]['active'] ?? false ) === true ) );
 		$row['group'] = self::group( (string) $row['number'] );
+		$row['ready'] = self::invoiceReady( $row );
+		$row['title'] = self::title( $row, (string) ( $members[$ids[0] ?? '']['email'] ?? '' ) );
 
 		return $row;
 	}

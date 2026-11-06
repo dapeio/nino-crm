@@ -9,6 +9,10 @@ declare(strict_types=1);
  *												Only the signed-in member of a client may post (a visitor and a member of no client are answered 404). Every answer is a redirect to the
  *												page with a state in the query: agreed (the record is kept - or was kept before; a second post makes no second record), unchecked (the box was
  *												not ticked), invalid (there is no text to agree to) or expired (the token of the form was not the session's). No mail goes out.
+ *
+ *												What the portal keeps is that the client took note of the text, not a consent: the box says it has read it and taken note of it, the button confirms,
+ *												and the lines of the standing say confirmed. The page is the first step of the gate of the client (Portal::pending()): its form carries the page to go on to
+ *												(weiter, see Portal::onward()), and once the text is confirmed the form goes on to the next step or to that page.
  */
 namespace Crm\Portal;
 
@@ -33,7 +37,8 @@ class Privacy {
 	];
 
 	/**
-	 *	[crm-privacy] - the text, the state and the form. A member of no client is told that the page is for clients; nothing for a visitor
+	 *	[crm-privacy] - the text, the state and the form; while the page is the step the client is asked for (Portal::pending()) a note over it says so and where it goes
+	 *	on to. A member of no client is told that the page is for clients; nothing for a visitor
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$args
@@ -84,15 +89,16 @@ class Privacy {
 
 		return Portal::render( 'privacy', [
 			'[[classes]]'  => $classes,
+			'[[gate]]'     => Portal::gateNote( $appData, $client, 'privacy' ),
 			'[[state]]'    => $state === '' ? '' : $said( $state ),
 			'[[text]]'     => str_replace( [ "\r\n", "\r", "\n" ], '<br>', \Nino\Modules\Components::escape( $text ) ),
 			'[[standing]]' => $line,
-			'[[form]]'     => $standing['agreed'] === true ? '' : Portal::render( 'privacy-form', [ '[[dir]]' => $dir, '[[hash]]' => Records::hash( $text ) ] ),
+			'[[form]]'     => $standing['agreed'] === true ? '' : Portal::render( 'privacy-form', [ '[[dir]]' => $dir, '[[hash]]' => Records::hash( $text ), '[[weiter]]' => Portal::onwardField( $appData ) ] ),
 		] );
 	}
 
 	/**
-	 *	The line about the Datenschutz for the page Meine Daten and the start page: whether the client has agreed and when. Empty where the owner keeps no text
+	 *	The line about the Datenschutz for the page Meine Daten and the start page: whether the client has confirmed it and when. Empty where the owner keeps no text
 	 *
 	 *	@param		array 		$standing			As Records::privacy() has it
 	 *
@@ -129,8 +135,10 @@ class Privacy {
 			return;
 		}
 
+		$onward = Portal::onward( $_POST['weiter'] ?? null );
+
 		if( \Nino\Form::blocked( $request ) === true ) {
-			self::redirect( $appData, $request, 'expired' );
+			self::redirect( $appData, $request, 'expired', $onward );
 
 			return;
 		}
@@ -138,20 +146,20 @@ class Privacy {
 		$text = Records::privacyText( $appData );
 
 		if( $text === '' ) {
-			self::redirect( $appData, $request, 'invalid' );
+			self::redirect( $appData, $request, 'invalid', $onward );
 
 			return;
 		}
 
 		// What the customer read is what is kept: the form carries the hash of the text it showed, and a text that was changed meanwhile is not agreed to by a click on the old one
 		if( ( $_POST['shown'] ?? null ) !== Records::hash( $text ) ) {
-			self::redirect( $appData, $request, 'changed' );
+			self::redirect( $appData, $request, 'changed', $onward );
 
 			return;
 		}
 
 		if( ( $_POST['agree'] ?? null ) !== '1' ) {
-			self::redirect( $appData, $request, 'unchecked' );
+			self::redirect( $appData, $request, 'unchecked', $onward );
 
 			return;
 		}
@@ -162,18 +170,21 @@ class Privacy {
 				'kind' => 'privacy', 'client_id' => $client['id'], 'member' => [ 'id' => $member['id'], 'email' => $member['email'], 'name' => $member['name'] ], 'shown' => $text,
 			] + Records::source( $appData, $request ) );
 
-		self::redirect( $appData, $request, 'agreed' );
+		// The next step (the data of the invoice) or the page the member wanted; with neither, this page and its state
+		self::redirect( $appData, $request, 'agreed', $onward, Portal::proceed( $appData, $client, $onward ) );
 	}
 
 	/**
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$request
 	 *	@param		string		$state				One of STATES
+	 *	@param		string		$onward				The page to go on to, as Portal::onward() has it; the page of the form keeps it
+	 *	@param		string		$next					Where a confirmed text goes on to, as Portal::proceed() has it; '' for the page itself
 	 *
 	 *	@return 	void
 	 */
-	private static function redirect( array &$appData, array &$request, string $state ): void {
+	private static function redirect( array &$appData, array &$request, string $state, string $onward, string $next = '' ): void {
 
-		\Nino\Http::redirect( $appData, $request, self::PAGE. '?state='. $state, 303 );
+		\Nino\Http::redirect( $appData, $request, $next !== '' ? $next : self::PAGE. '?state='. $state. ( $onward === '' ? '' : '&weiter='. rawurlencode( $onward ) ), 303 );
 	}
 }

@@ -57,7 +57,7 @@ return [
 	'[[/feature/members/mail/login-notice]]'	=> 'If you did not ask for it, ignore this email: without the link nobody can sign in with your address.',
 	'[[/feature/members/mail/invite-subject]]'	=> 'Your invitation',
 	'[[/feature/members/mail/invite-title]]'	=> 'You are invited to',
-	'[[/feature/members/mail/invite-intro]]'	=> 'An account has been set up for you. The button opens a page where you confirm your first sign-in with one more click - you need no password. Later you ask for a new link on the login page.',
+	'[[/feature/members/mail/invite-intro-code]]'	=> 'An account has been set up for you. The button opens a page where you confirm your first sign-in with one more click - you need no password. Later you enter your address on the login page and get a code by e-mail.',
 	'[[/feature/members/mail/invite-button]]'	=> 'Accept the invitation',
 	'[[/feature/members/mail/invite-valid]]'	=> 'The invitation works once and is valid for',
 	'[[/feature/members/mail/invite-days]]'		=> 'days.',

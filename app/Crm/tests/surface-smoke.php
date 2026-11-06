@@ -1082,7 +1082,7 @@ check( 'the actions of the panel CRM are the endpoint\'s too: 401 for a visitor,
 $asCrm();
 $routesBefore = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 [ $status, $statusAnswer ] = surfaceApi( $appData, 'crm/status' );
-check( 'status through the endpoint is the answer of the panel: the module, the data directory, the six features, the portal, the PDF templates, the start page and the cap of mails - which the surface says as sentences, and not whole yet', $status === 200 && array_column( $statusAnswer['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap' ] && array_column( $statusAnswer['items'], 'state', 'key' )['portal'] !== 'ok' && array_column( $statusAnswer['items'], 'state', 'key' )['members'] === 'ok' && $statusAnswer['whole'] === false );
+check( 'status through the endpoint is the answer of the panel: the module, the data directory, the six features, the portal, the PDF templates, the start page, the cap of mails and the notification of the owner - which the surface says as sentences, and not whole yet', $status === 200 && array_column( $statusAnswer['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap', 'notify' ] && array_column( $statusAnswer['items'], 'state', 'key' )['portal'] !== 'ok' && array_column( $statusAnswer['items'], 'state', 'key' )['members'] === 'ok' && $statusAnswer['whole'] === false );
 $settingsView = surfaceApi( $appData, 'crm-documents/settings-get' )[1];
 check( 'the portal as the settings tell it - read, written nowhere: the address of its start page from the address of the site, the pages the unit brings with the ones this site has no route for marked missing, the settings of Members with their German labels and the cap of mails of the kernel where the kernel has one', $settingsView['portal']['address'] === 'https://example.org/club/portal'
 	&& array_column( $settingsView['portal']['pages'], 'uri' ) === [ '/portal', '/portal/meine-daten', '/portal/projekte', '/portal/upload', '/portal/belege', '/portal/termine', '/portal/datenschutz' ] && array_unique( array_column( $settingsView['portal']['pages'], 'present' ) ) === [ false ]
@@ -1090,6 +1090,7 @@ check( 'the portal as the settings tell it - read, written nowhere: the address 
 $appData['/nino/mail/cap'] = 50;
 check( '...the cap is the key of config.php, read as it stands', surfaceApi( $appData, 'crm-documents/settings-get' )[1]['portal']['mail_cap'] === 50 );
 unset( $appData['/nino/mail/cap'] );
+check( 'before the setup the notification of the owner is the lacking line through the endpoint: default, no value of its own, Review does not mail - and the product is not whole', ( array_column( surfaceApi( $appData, 'crm/status' )[1]['items'], null, 'key' )['notify'] ?? [] ) === [ 'key' => 'notify', 'state' => 'default', 'value' => false ] );
 $linesBefore = count( \Nino\Modules\Logs\Admin::recentLines( $appData, 200 ) );
 [ $status, $setupAnswer ] = surfaceApi( $appData, 'crm/setup' );
 $portalAfter = surfaceApi( $appData, 'crm-documents/settings-get' )[1]['portal'];
@@ -1099,6 +1100,14 @@ check( '...and it sets the cap of mails where config.php had none: 100 in the an
 	&& array_column( surfaceApi( $appData, 'crm/status' )[1]['items'], null, 'key' )['mail-cap'] === [ 'key' => 'mail-cap', 'state' => 'ok', 'value' => 100 ] );
 $setupLines = array_values( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 20 ), static fn( string $entry ): bool => str_contains( $entry, 'Set the CRM up' ) === true ) );
 check( '...and the activity log has its line, by the account that did it, and the status a read leaves none', count( $setupLines ) === 1 && str_contains( $setupLines[0], 'crm@example.com' ) === true && count( \Nino\Modules\Logs\Admin::recentLines( $appData, 200 ) ) === $linesBefore + 1 );
+$notifyOf = static function() use ( &$appData ): array {
+	return array_column( surfaceApi( $appData, 'crm/status' )[1]['items'], null, 'key' )['notify'] ?? [];
+};
+check( '...and it switches the notification of the owner of Review on where the setting has no value: true in the answer, a value of its own in the settings of Review, the status line ok with it - and the answer of a second press leaves it', $setupAnswer['added']['notify'] === true && $notifyOf() === [ 'key' => 'notify', 'state' => 'ok', 'value' => true ] && \Nino\Features::setting( $appData, 'review', 'notifyOwner', false ) === true
+	&& surfaceApi( $appData, 'crm/setup' )[1]['added']['notify'] === false );
+\Nino\Features::saveSettings( $appData, 'review', [ 'notifyOwner' => false ] );
+check( '...a value the owner set stays through the endpoint, off among them: the line is ok with false and a press changes nothing', $notifyOf() === [ 'key' => 'notify', 'state' => 'ok', 'value' => false ] && surfaceApi( $appData, 'crm/setup' )[1]['added']['notify'] === false && \Nino\Features::setting( $appData, 'review', 'notifyOwner', true ) === false );
+\Nino\Features::saveSettings( $appData, 'review', [ 'notifyOwner' => true ] );
 [ $status, $answer ] = surfaceApi( $appData, 'crm-documents/positionen' );
 check( 'the items through the endpoint: the type is there now, empty - the locales of the site, the native one, the settings the prices are written by', $status === 200 && $answer['missing'] === false && $answer['items'] === [] && $answer['locales'] === [ 'de_DE', 'en_US' ] && $answer['native'] === 'de_DE' && $answer['settings']['currency'] === '€' );
 

@@ -746,6 +746,9 @@ $mailText = strip_tags( (string) ( $mails[0]['body'] ?? '' ) );
 check( 'add with the invitation ticked sends one mail to the address: a link of the website with a token of 43 characters, the site named and no key or token left in the text',
 	$status === 200 && $body['invited'] === true && count( $mails ) === 1 && $mails[0]['to'] === 'bert@example.org' && strlen( $token ) === 43 && trim( (string) $mails[0]['subject'] ) !== '' && str_contains( (string) $mails[0]['subject'], '[[' ) === false
 	&& str_contains( (string) $mails[0]['body'], '[[' ) === false && str_contains( $mailText, \Nino\Html::renderTextfill( $appData, '/project/company/general/name' ) ) === true );
+$introCode = trim( strip_tags( \Nino\Html::renderTextfill( $appData, '/feature/members/mail/invite-intro-code' ) ) );
+check( '...the intro of the invitation is the key invite-intro-code - the words of a sign-in with a code - and the unit has it in both languages', $introCode !== '' && str_contains( $mailText, $introCode ) === true && str_contains( (string) file_get_contents( $dir. '/templates/mail-invite.tpl' ), 'mail/invite-intro-code]]' ) === true
+	&& array_filter( $unitWords, static fn( array $words ): bool => trim( (string) ( $words['[[/feature/members/mail/invite-intro-code]]'] ?? '' ) ) === '' ) === [] );
 check( '...the mail replies to the contact address of the project', $mails[0]['replyTo'] === \Nino\Html::renderTextfill( $appData, '/project/company/contact/email' ) && $mails[0]['replyTo'] !== '' );
 check( '...the file of the links keeps the sha256 of the token and never the token: an invitation of this account, good for the days of the setting, with no page to go on to',
 	count( $tokens ) === 1 && array_keys( $entry ) === [ 'account', 'kind', 'expires', 'target' ] && $entry['account'] === $bert && $entry['kind'] === 'invite' && $entry['target'] === ''

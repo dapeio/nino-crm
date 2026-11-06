@@ -43,7 +43,8 @@ namespace Nino\Modules {
 	 *										through folders(), files(), file(), path(), allowed() and url() - and
 	 *										version() and grouped(), which read the versions of a title from the names (Title.03.ext) -, and
 	 *										the callbacks '/files/upload' (a member's upload), '/files/add' (the
-	 *										owner's) and '/files/delete', each fired with the entry.
+	 *										owner's) and '/files/delete', each fired with the entry, and '/files/allowed',
+	 *										which allowed() fires when it would say yes and which can withhold the file.
 	 *
 	 *	@package					Dape/Nino
 	 *	@author						David Perchermeier <mail@dape.io>
@@ -154,14 +155,19 @@ namespace Nino\Modules {
 		 *	this one filter with: a member of the group the folder of the file belongs to, if the file is visible - and
 		 *	the member who uploaded the file, whatever it is and wherever it is now. The owner's workbench session is no
 		 *	member: nobody who is not signed in as a member is allowed anything here. The route answers the owner by the
-		 *	permission of the panel on its own (see callbackDownload()) and leaves this rule as it is
+		 *	permission of the panel on its own (see callbackDownload()) and leaves this rule as it is.
+		 *
+		 *	Where the rule says yes, the callback '/files/allowed' is asked before the answer is given, with the file, the member, whether the request is a download and
+		 *	allowed (true): a project that has a reason to withhold a file from a member - a condition of its own, before the member has what the group is given - sets
+		 *	allowed to false. It never makes a no a yes: a value other than false is ignored, a no of one callback - allowed false, or the false a callback returns as a veto - stays whatever the next sets, and a no of the rule is not asked about
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		$file					An entry, as file() answers it
+		 *	@param		bool			$download			Whether the file is asked for to be saved (?download=1) and not shown
 		 *
 		 *	@return 	bool
 		 */
-		public static function allowed( array &$appData, array $file ): bool {
+		public static function allowed( array &$appData, array $file, bool $download = false ): bool {
 
 			$member = \Nino\Modules\Members::current( $appData );
 
@@ -169,14 +175,30 @@ namespace Nino\Modules {
 				return false;
 
 			if( ( $file['by']['kind'] ?? null ) === 'member' && ( $file['by']['id'] ?? null ) === $member['id'] )
-				return true;
+				$allowed = true;
+			else if( ( $file['visible'] ?? false ) !== true || $member['group'] === '' )
+				$allowed = false;
+			else {
+				$folder = \Nino\Modules\Files\Store::folder( $appData, (string) ( $file['folder'] ?? '' ) );
+				$allowed = $folder !== null && $folder['group'] === $member['group'];
+			}
 
-			if( ( $file['visible'] ?? false ) !== true || $member['group'] === '' )
+			if( $allowed === false )
 				return false;
 
-			$folder = \Nino\Modules\Files\Store::folder( $appData, (string) ( $file['folder'] ?? '' ) );
+			// Each callback is asked in turn with allowed true, and a no stays a no: what a later callback sets does not take it back
+			$asked = [ 'file' => $file, 'member' => $member, 'download' => $download, 'allowed' => true ];
+			$denied = false;
 
-			return $folder !== null && $folder['group'] === $member['group'];
+			foreach( \Nino\Callbacks::registered( $appData, '/files/allowed' ) as $callback ) {
+
+				$asked['allowed'] = true;
+				$replaced = call_user_func_array( $callback, [ &$appData, &$asked ] );
+				$asked = is_array( $replaced ) === true ? $replaced : $asked;
+				$denied = $denied === true || $replaced === false || ( $asked['allowed'] ?? true ) === false;
+			}
+
+			return $denied === false;
 		}
 
 		/**
@@ -306,7 +328,9 @@ namespace Nino\Modules {
 			$uri = (string) ( $request['/nino/http/request']['uri'] ?? '' );
 			$id = str_starts_with( $uri, '/.files/' ) === true ? substr( $uri, 8 ) : '';
 			$file = $id !== '' ? \Nino\Modules\Files\Store::file( $appData, $id ) : null;
-			$may = $file !== null && ( self::allowed( $appData, $file ) === true || \Nino\Auth::checkPermission( $appData, \Nino\Modules\Files\Admin::MANAGE_PERM ) === true );
+			$query = $request['/nino/http/request']['query'] ?? [];
+			$saved = is_array( $query ) === true && ( $query['download'] ?? null ) === '1';
+			$may = $file !== null && ( self::allowed( $appData, $file, $saved ) === true || \Nino\Auth::checkPermission( $appData, \Nino\Modules\Files\Admin::MANAGE_PERM ) === true );
 			$path = $may === true ? \Nino\Modules\Files\Store::path( $appData, $id ) : null;
 
 			if( $may === true && isset( $file['gone'] ) === true ) {
@@ -328,9 +352,6 @@ namespace Nino\Modules {
 
 				return;
 			}
-
-			$query = $request['/nino/http/request']['query'] ?? [];
-			$saved = is_array( $query ) === true && ( $query['download'] ?? null ) === '1';
 
 			$request['/nino/http/response']['file']															= $path;
 			$request['/nino/http/response']['header']['Content-Type']						= $file['mime'] !== '' ? $file['mime'] : 'application/octet-stream';

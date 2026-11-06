@@ -319,7 +319,7 @@ check( 'it says all six sections of its manual in both languages, and its sectio
 			if( is_array( $line ) === false || trim( (string) ( $line['en_US'] ?? '' ) ) === '' || trim( (string) ( $line['de_DE'] ?? '' ) ) === '' )
 				return false;
 	return isset( $manifest['manual']['install']['elements/privacy.php'], $manifest['manual']['install']['backup'] ) === true && count( $manifest['manual']['shortcodes'] ) >= 2
-		&& count( $manifest['manual']['routes'] ) === 3 && count( $manifest['manual']['callbacks'] ) === 4 && count( $manifest['manual']['panel'] ) >= 1;
+		&& count( $manifest['manual']['routes'] ) === 3 && count( $manifest['manual']['callbacks'] ) === 5 && count( $manifest['manual']['panel'] ) >= 1;
 } )() );
 
 // The catalogue's preview reads every manifest through the kernel, and is a script of the catalogue: it is there when
@@ -751,6 +751,69 @@ foreach( [ 'ada' => 'ada', 'bob' => 'bob', 'cyd' => 'cyd', 'a visitor' => '' ] a
 }
 check( 'allowed() is the rule of the route for the member who is signed in: the group, the visibility, the uploader - and nobody at all for a visitor',
 	$rule === [ 'ada' => [ true, false, false, false ], 'bob' => [ false, false, false, true ], 'cyd' => [ true, false, true, false ], 'a visitor' => [ false, false, false, false ] ] );
+
+// The hook '/files/allowed': asked when the rule would say yes, with the file, the member, whether the request is a download and allowed (true); it can take the file away, never give it
+$asked = [];
+$hookNo = [];
+$hook = static function( array &$appData, array &$args ) use ( &$asked, &$hookNo ): void {
+	$asked[] = [ $args['file']['id'], $args['member']['id'], $args['download'], $args['allowed'] ];
+
+	if( in_array( $args['file']['id'], $hookNo, true ) === true )
+		$args['allowed'] = false;
+};
+\Nino\Callbacks::registerCallback( $appData, '/files/allowed', $hook );
+
+filesAs( 'ada' );
+$viewed = filesServe( $appData, '/.files/'. $track['id'] );
+$saved = filesServe( $appData, '/.files/'. $track['id']. '?download=1' );
+check( 'the hook is fired when the rule says yes, with the file, the member, whether it is a download - false for the view, true for ?download=1 - and allowed true; the answer stays a 200', $viewed['/nino/http/response']['statusCode'] === 200 && $saved['/nino/http/response']['statusCode'] === 200
+	&& $asked === [ [ $track['id'], $ada['id'], false, true ], [ $track['id'], $ada['id'], true, true ] ] );
+$asked = [];
+check( '...allowed() fires it with download false by default and takes it as the third argument', \Nino\Modules\Files::allowed( $appData, $track ) === true && \Nino\Modules\Files::allowed( $appData, $track, true ) === true && $asked === [ [ $track['id'], $ada['id'], false, true ], [ $track['id'], $ada['id'], true, true ] ] );
+$asked = [];
+filesAs( 'bob' );
+$notHis = filesServe( $appData, '/.files/'. $track['id'] )['/nino/http/response']['statusCode'];
+filesAs( '' );
+$visitor = filesServe( $appData, '/.files/'. $track['id'] )['/nino/http/response']['statusCode'];
+check( '...a no of the rule is not asked about: another group, a visitor - the hook is not fired and the answer is the 404 it was', $notHis === 404 && $visitor === 404 && $asked === [] );
+
+$hookNo = [ $track['id'] ];
+filesAs( 'ada' );
+$asked = [];
+$taken = filesServe( $appData, '/.files/'. $track['id'] );
+$takenSaved = filesServe( $appData, '/.files/'. $track['id']. '?download=1' );
+check( 'a callback that sets allowed to false takes the file away: the route answers the 404 of a stranger, inline and as a download, with no file named - and allowed() says the same', $taken['/nino/http/response']['statusCode'] === 404 && $takenSaved['/nino/http/response']['statusCode'] === 404 && isset( $taken['/nino/http/response']['file'] ) === false && ( $taken['/nino/http/response']['body'] ?? '' ) === 'Not Found'
+	&& \Nino\Modules\Files::allowed( $appData, $track ) === false && \Nino\Modules\Files::allowed( $appData, $track, true ) === false );
+$listed = array_map( static fn( array $file ): string => $file['id'], array_filter( \Nino\Modules\Files::files( $appData, $track['folder'] ), static fn( array $file ): bool => \Nino\Modules\Files::allowed( $appData, $file ) === true ) );
+check( '...everything that asks the rule gets the same answer: the files a member may see no longer hold it', in_array( $track['id'], $listed, true ) === false );
+filesWorkbench( 'admin' );
+$asOwner = filesServe( $appData, '/.files/'. $track['id'] )['/nino/http/response']['statusCode'];
+filesWorkbench( '' );
+check( '...the owner\'s workbench session is not asked: the permission of the panel opens the file whatever the hook says', $asOwner === 200 );
+
+// ...and a callback never gives: true is no yes - not for a file the rule refuses, not after another callback said no
+$hookNo = [];
+$yes = static function( array &$appData, array &$args ): void {
+	$args['allowed'] = true;
+};
+\Nino\Callbacks::registerCallback( $appData, '/files/allowed', $yes );
+filesAs( 'bob' );
+$bobYes = filesServe( $appData, '/.files/'. $track['id'] )['/nino/http/response']['statusCode'];
+filesAs( 'ada' );
+$hookNo = [ $track['id'] ];
+$afterNo = filesServe( $appData, '/.files/'. $track['id'] )['/nino/http/response']['statusCode'];
+$hookNo = [];
+$adaYes = filesServe( $appData, '/.files/'. $track['id'] )['/nino/http/response']['statusCode'];
+check( 'a callback that sets allowed to true gives nothing: a member of another group still has the 404, a no of an earlier callback stays one, and a file that was allowed is allowed all the same', $bobYes === 404 && $afterNo === 404 && $adaYes === 200 );
+\Nino\Callbacks::removeCallbacks( $appData, '/files/allowed' );
+$veto = static fn( array &$appData, array &$args ): bool => false;
+\Nino\Callbacks::registerCallback( $appData, '/files/allowed', $veto );
+filesAs( 'ada' );
+check( 'a callback that answers false - the veto of the kernel\'s callbacks - takes the file away as one that sets allowed to false does: 404 for the view and the download, allowed() says no', filesServe( $appData, '/.files/'. $track['id'] )['/nino/http/response']['statusCode'] === 404 && filesServe( $appData, '/.files/'. $track['id']. '?download=1' )['/nino/http/response']['statusCode'] === 404 && \Nino\Modules\Files::allowed( $appData, $track ) === false );
+\Nino\Callbacks::removeCallbacks( $appData, '/files/allowed' );
+filesAs( 'ada' );
+check( '...and with no callback the rule is the answer, as before', filesServe( $appData, '/.files/'. $track['id'] )['/nino/http/response']['statusCode'] === 200 && \Nino\Modules\Files::allowed( $appData, $track ) === true );
+check( 'the manual of the feature names the hook with its four arguments, in both languages', isset( $manifest['manual']['callbacks']['/files/allowed'] ) === true && array_filter( [ 'en_US', 'de_DE' ], static fn( string $locale ): bool => array_filter( [ 'file', 'member', 'download', 'allowed' ], static fn( string $name ): bool => str_contains( (string) $manifest['manual']['callbacks']['/files/allowed'][$locale], $name ) === false ) !== [] ) === [] );
 
 // The kernel's part, pinned once: a regression of the file response shows here
 filesAs( 'ada' );

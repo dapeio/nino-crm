@@ -308,7 +308,7 @@ class Projects {
 				$rest .= $card;
 		}
 
-		$hint = $waits === true && Order::privacyFirst( $appData, $client ) === true ? Order::privacyHint( $dir ) : '';
+		$hint = $waits === true && Portal::pending( $appData, $client ) === 'privacy' ? Order::privacyHint( $dir ) : '';
 		$html = $hint. Order::state( $appData ). $orderable. ( $rest === '' ? '' : ( $orderable === '' ? '' : self::template( 'project-offers-rest' ) ). $rest );
 
 		return [ $count === 0 ? self::template( 'project-offer-none' ) : $html, $count ];

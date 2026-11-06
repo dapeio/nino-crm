@@ -464,7 +464,7 @@ $stateOf = static function( array $body, string $key ): string {
 };
 
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/status' );
-check( 'status names the module, the data directory, the six features, the portal, the PDF templates, the start page and the cap of mails', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap' ] );
+check( 'status names the module, the data directory, the six features, the portal, the PDF templates, the start page, the cap of mails and the notification of the owner', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap', 'notify' ] );
 check( 'the module and the features are ok, the portal is not set up yet', $stateOf( $body, 'module' ) === 'ok' && $stateOf( $body, 'data' ) === 'ok' && $stateOf( $body, 'members' ) === 'ok' && $stateOf( $body, 'sign' ) === 'ok' && $stateOf( $body, 'portal' ) === 'none' );
 
 $modulesNow = $appData['/nino/modules'];
@@ -713,6 +713,9 @@ $ownHome = $appData['/nino/http/routes']['GET://'];
 $appData['/nino/http/routes']['GET://']['body'] = '<p>Mein eigener Start</p>';
 check( '...a start page that is not the door is left as it is: the member is served it', crmServe( $appData, '/' )[0] === 200 && crmServe( $appData, '/' )[2] === '<p>Mein eigener Start</p>' );
 $appData['/nino/http/routes']['GET://'] = $ownHome;
+// The client has given what an invoice names it by: the gate of the portal lets the member through
+\Crm\Clients::change( $appData, $first['id'], [ 'street' => 'Hafenstr. 1', 'city' => 'Hamburg' ] );
+\Crm\Portal::forget( $appData );
 $page = crmServe( $appData, '/portal' );
 check( 'the member is served the portal: 200', $page[0] === 200 && $page[2] === '[template /templates/page-portal]' );
 $html = crmPage( $appData, '/portal' );
@@ -1303,7 +1306,7 @@ check( '...the footer of a new install carries the particulars of the owner as o
 
 [ $status, $body ] = $run( 'crm/status' );
 check( 'after the run the product is whole, and the run is written down: first_run false, the day in the setting setup_done - which is no setting of the screen Einstellungen', $status === 200 && $body['whole'] === true && $body['first_run'] === false && preg_match( '/^\d{4}-\d{2}-\d{2}$/D', \Crm\Settings::setupDone( $fresh ) ) === 1 && isset( \Crm\Settings::all( $fresh )[\Crm\Settings::SETUP_KEY] ) === false );
-check( 'after the run the product is whole: every item ok, whole true', $status === 200 && $body['whole'] === true && array_unique( array_values( $itemsOf( $body ) ) ) === [ 'ok' ] && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap' ] );
+check( 'after the run the product is whole: every item ok, whole true', $status === 200 && $body['whole'] === true && array_unique( array_values( $itemsOf( $body ) ) ) === [ 'ok' ] && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap', 'notify' ] );
 check( '...and the cap line is ok, with the cap that is in force: 100', $capItem( $body )['state'] === 'ok' && $capItem( $body )['value'] === 100 );
 
 // A second press adds nothing; what the owner changed stays
@@ -1313,7 +1316,7 @@ $own['name'] = 'Meine Rechnung';
 \Nino\Filesystem::putFileContent( $fresh, '/data/pdf/layout.php', array_merge( \Nino\Modules\Pdf::layout( $fresh ), [ 'header' => '<p>Mein Kopf</p>' ] ) );
 $routesBeforeTwice = \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'];
 [ $status, $body ] = $run( 'crm/setup' );
-check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false ]
+check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false ]
 	&& $body['existed']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['pdf']['templates'] === $keys && $body['existed']['home'] === 'door' && count( $body['existed']['routes'] ) === 7 );
 check( '...the template the owner changed is the owner\'s still, so is the header; the routes are as they were', ( \Nino\Modules\Pdf::template( $fresh, 'rechnung' )['name'] ?? '' ) === 'Meine Rechnung' && \Nino\Modules\Pdf::layout( $fresh )['header'] === '<p>Mein Kopf</p>' && \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'] === $routesBeforeTwice );
 check( '...and the status is still whole', $run( 'crm/status' )[1]['whole'] === true );
@@ -1347,6 +1350,36 @@ check( 'a cap that is not in config.php (the owner took it out, or never had one
 check( '...and a press sets it to 100 again, nothing else', $status === 200 && $body['added']['cap'] === 100 && $storedCap() === 100 && $run( 'crm/status' )[1]['whole'] === true && array_filter( $body['added'], static fn( mixed $one ): bool => $one !== false && $one !== [] && $one !== 0 && $one !== [ 'blocks' => [], 'templates' => [], 'layout' => [] ] ) === [ 'cap' => 100 ] );
 $panelTexts = [ 'de_DE' => (array) require $root. '/app/Crm/Crm/Admin/text/de_DE.php', 'en_US' => (array) require $root. '/app/Crm/Crm/Admin/text/en_US.php' ];
 check( '...the words of the line are in both languages of the panel, with the cap as the one %s: ok and default, and the sentence of the setup', array_filter( $panelTexts, static fn( array $words ): bool => substr_count( (string) ( $words['[[/_admin/crm/status/mail-cap-ok]]'] ?? '' ), '%s' ) !== 1 || substr_count( (string) ( $words['[[/_admin/crm/status/mail-cap-default]]'] ?? '' ), '%s' ) !== 1 || substr_count( (string) ( $words['[[/_admin/crm/setup/cap]]'] ?? '' ), '%s' ) !== 1 ) === [] );
+
+// The notification of the owner: Review mails the contact address of a comment where the setting has no value of its own; a value that is there - off among them - stays
+$notifyItem = static fn( array $body ): array => array_column( $body['items'], null, 'key' )['notify'] ?? [];
+$storedNotify = static fn(): mixed => ( \Nino\AppData::stored( $fresh, '/nino/features', [] )['review']['settings'] ?? [] )['notifyOwner'] ?? 'none';
+$dropNotify = static function() use ( &$fresh ): void {
+	\Nino\Filesystem::mutate( $fresh, '/config.php', static function( array $content ): array {
+		unset( $content['/nino/features']['review']['settings']['notifyOwner'] );
+		return $content;
+	} );
+	unset( $fresh['/nino/features']['review']['settings']['notifyOwner'] );
+};
+[ , $body ] = $run( 'crm/status' );
+check( 'the first press switched the notification of the owner on: Review has the value true of its own, in config.php and live, and the status calls it ok with that value', $storedNotify() === true && \Nino\Features::setting( $fresh, 'review', 'notifyOwner', false ) === true && $notifyItem( $body )['state'] === 'ok' && $notifyItem( $body )['value'] === true );
+$dropNotify();
+[ , $body ] = $run( 'crm/status' );
+check( 'a setting that has no value of its own is the lacking line: default, the product is not whole - and the status wrote nothing', $storedNotify() === 'none' && $notifyItem( $body )['state'] === 'default' && $notifyItem( $body )['value'] === false && $body['whole'] === false );
+[ $status, $body ] = $run( 'crm/setup' );
+check( '...a press switches it on and nothing else: added.notify true, the other settings of Review as they were', $status === 200 && $body['added']['notify'] === true && $storedNotify() === true && $run( 'crm/status' )[1]['whole'] === true && array_filter( $body['added'], static fn( mixed $one ): bool => $one !== false && $one !== [] && $one !== 0 && $one !== [ 'blocks' => [], 'templates' => [], 'layout' => [] ] ) === [ 'notify' => true ] );
+
+foreach( [ false, true ] as $own ) {
+	\Nino\Features::saveSettings( $fresh, 'review', [ 'notifyOwner' => $own ] );
+	[ , $before ] = $run( 'crm/status' );
+	[ $status, $body ] = $run( 'crm/setup' );
+	check( 'a value the owner set stays, off among them: '. ( $own === true ? 'on' : 'off' ). ' is ok for the status and a press leaves it - added.notify false, existed.notify '. ( $own === true ? 'true' : 'false' ), $notifyItem( $before )['state'] === 'ok' && $notifyItem( $before )['value'] === $own && $status === 200 && $body['added']['notify'] === false && $body['existed']['notify'] === $own
+		&& $storedNotify() === $own && \Nino\Features::setting( $fresh, 'review', 'notifyOwner', null ) === $own && $run( 'crm/status' )[1]['whole'] === true );
+}
+
+\Nino\Features::saveSettings( $fresh, 'review', [ 'notifyOwner' => true ] );
+check( '...and the words of the line are in both languages of the panel, and the surface says its row', array_filter( $panelTexts, static fn( array $words ): bool => trim( (string) ( $words['[[/_admin/crm/status/notify-default]]'] ?? '' ) ) === '' || trim( (string) ( $words['[[/_admin/crm/status/notify-ok]]'] ?? '' ) ) === '' || trim( (string) ( $words['[[/_admin/crm/setup/notify]]'] ?? '' ) ) === '' ) === []
+	&& trim( (string) ( \Crm\Surface::texts()['einrichtung.row-notify'] ?? '' ) ) !== '' );
 
 // A word the owner took away is brought back as a missing word, the template he edited is not touched
 $wording = (array) \Nino\Filesystem::getFileContent( $fresh, '/text/de_DE.php', [] );
@@ -1488,6 +1521,46 @@ unset( $fresh['./nino/auth/current'] );
 \Nino\Auth::insertUser( $fresh, 'plain2@example.com', 'plain password', [] );
 \Nino\Auth::loginUser( $fresh, 'plain2@example.com', 'plain password' );
 check( 'an account without the permission of the CRM gets 403 from the status and from the run', $run( 'crm/status' )[0] === 403 && $run( 'crm/setup' )[0] === 403 );
+
+// --- A client with nothing but an address ---------------------------------------------------------------------------------
+
+echo "\nA client with nothing but an address\n";
+
+\Nino\Features::activate( $appData, 'members' );
+$resetCap();
+$bare = \Crm\Clients::add( $appData, [], [ 'email' => ' mika@example.org ', 'name' => '' ] );
+check( 'add() with neither company nor name is a client when its first account has a valid address: the address (trimmed) is the email of the client and what it is called by - and the client is not ready for an invoice', is_array( $bare ) && $bare['company'] === '' && $bare['name'] === '' && $bare['email'] === 'mika@example.org' && $bare['title'] === 'mika@example.org' && $bare['ready'] === false
+	&& ( $bare['first']['account']['email'] ?? '' ) === 'mika@example.org' && $bare['accounts'] === 1 );
+check( '...without a valid address of a first account it stays refused as empty: none, an empty one, one that is none, one that is valid and longer than an email of a client is, one that is not text - and an address in the master data alone is no first account', array_unique( array_map( static fn( mixed $first ): mixed => \Crm\Clients::add( $appData, [], $first ), [ null, [ 'email' => '' ], [ 'email' => '  ' ], [ 'email' => 'not-an-address' ], [ 'email' => str_repeat( 'a', 60 ). '@'. str_repeat( 'b', 63 ). '.'. str_repeat( 'c', 40 ). '.org' ], [ 'name' => 'Nur Name' ] ] ) ) === [ 'empty' ]
+	&& \Crm\Clients::add( $appData, [ 'email' => 'master@example.org' ] ) === 'empty' && \Crm\Clients::add( $appData, [], [ 'email' => [ 'x' ] ] ) === 'empty' );
+$masterOwn = \Crm\Clients::add( $appData, [ 'email' => 'rechnung@example.org' ], [ 'email' => 'person@example.org', 'name' => '' ] );
+check( 'the address of the client is its own where the master data has one: the address of the first account does not replace it - and a company or a name is what the client is called by before any address', is_array( $masterOwn ) && $masterOwn['email'] === 'rechnung@example.org' && $masterOwn['title'] === 'rechnung@example.org' && $masterOwn['accounts'] === 1
+	&& ( \Crm\Clients::add( $appData, [ 'name' => 'Nina Name' ], [ 'email' => 'nina@example.org', 'name' => '' ] )['title'] ?? '' ) === 'Nina Name' && ( \Crm\Clients::add( $appData, [ 'company' => 'Firma X', 'name' => 'Nina' ], [ 'email' => 'x@example.org', 'name' => '' ] )['title'] ?? '' ) === 'Firma X' );
+$before = count( \Crm\Clients::list( $appData ) );
+$takenFirst = \Crm\Clients::add( $appData, [], [ 'email' => 'mika@example.org', 'name' => '' ] );
+check( 'an address that is an account already: the client is made all the same and called by it, the account refused as taken - nobody is left with a client that cannot be told from the address', is_array( $takenFirst ) && $takenFirst['title'] === 'mika@example.org' && $takenFirst['first'] === 'taken' && $takenFirst['accounts'] === 0 && count( \Crm\Clients::list( $appData ) ) === $before + 1 );
+check( 'change() keeps asking for a company or a name: a client that has none cannot be saved with a phone number, and with a name it can - the title follows the name', \Crm\Clients::change( $appData, $bare['id'], [ 'phone' => '+49 40 1' ] ) === 'empty' && \Crm\Clients::change( $appData, $bare['id'], [ 'company' => '', 'name' => '' ] ) === 'empty'
+	&& ( $named = \Crm\Clients::change( $appData, $bare['id'], [ 'name' => 'Mika Neu' ] ) ) !== 'empty' && is_array( $named ) && $named['title'] === 'Mika Neu' && $named['ready'] === false && $named['email'] === 'mika@example.org' );
+$ready = \Crm\Clients::change( $appData, $bare['id'], [ 'street' => 'Weg 1', 'zip' => '20095', 'city' => 'Hamburg' ] );
+check( '...and with the four fields of the address and the name the client is ready for an invoice; get() and list() carry ready and the title as the model has them', is_array( $ready ) && $ready['ready'] === true && \Crm\Clients::get( $appData, $bare['id'] )['ready'] === true
+	&& array_column( \Crm\Clients::list( $appData ), 'ready', 'id' )[$bare['id']] === true && array_column( \Crm\Clients::list( $appData ), 'title', 'id' )[$bare['id']] === 'Mika Neu' && array_column( \Crm\Clients::list( $appData ), 'ready', 'id' )[$masterOwn['id']] === false );
+$whole = [ 'company' => 'Firma', 'name' => '', 'street' => 'Weg 1', 'zip' => '20095', 'city' => 'Hamburg', 'country' => 'DE' ];
+check( 'a client is ready for an invoice with a company or a name and a street, a postal code, a city and a country - each of the five lacking makes it not, a name alone does as a company does, and blanks are none', \Crm\Clients::invoiceReady( $whole ) === true && \Crm\Clients::invoiceReady( [ 'company' => '', 'name' => 'Ben' ] + $whole ) === true
+	&& array_filter( [ 'street', 'zip', 'city', 'country' ], static fn( string $field ): bool => \Crm\Clients::invoiceReady( [ $field => '' ] + $whole ) === true || \Crm\Clients::invoiceReady( [ $field => '   ' ] + $whole ) === true || \Crm\Clients::invoiceReady( array_diff_key( $whole, [ $field => 1 ] ) ) === true ) === []
+	&& \Crm\Clients::invoiceReady( [ 'company' => '', 'name' => '' ] + $whole ) === false && \Crm\Clients::invoiceReady( [ 'company' => '  ', 'name' => ' ' ] + $whole ) === false && \Crm\Clients::invoiceReady( [] ) === false );
+check( 'title() is the company, else the name, else the address of the client, else the address of its first account - and nothing where there is none of them', \Crm\Clients::title( [ 'company' => 'A', 'name' => 'B', 'email' => 'c@example.org' ] ) === 'A' && \Crm\Clients::title( [ 'company' => '', 'name' => 'B', 'email' => 'c@example.org' ] ) === 'B'
+	&& \Crm\Clients::title( [ 'company' => ' ', 'name' => '', 'email' => 'c@example.org' ], 'd@example.org' ) === 'c@example.org' && \Crm\Clients::title( [ 'company' => '', 'name' => '', 'email' => '' ], 'd@example.org' ) === 'd@example.org' && \Crm\Clients::title( [ 'company' => '', 'name' => '', 'email' => '' ] ) === '' && \Crm\Clients::title( [] ) === '' );
+\Crm\Db::exec( $appData, 'UPDATE clients SET company = \'\', name = \'\', email = \'\' WHERE id = :id', [ 'id' => $masterOwn['id'] ] );
+check( '...the first account\'s address is the title of a client that has nothing else: the first of the accounts that are still its own', \Crm\Clients::get( $appData, $masterOwn['id'] )['title'] === 'person@example.org' && array_column( \Crm\Clients::list( $appData ), 'title', 'id' )[$masterOwn['id']] === 'person@example.org' );
+
+$resetCap();
+[ $status, $body ] = $call( 'crm-clients/save', [ 'account_email' => 'nur@example.org' ] );
+check( 'through the endpoint: a client is made with an address alone - 200, no company, no name, the address as its email and title, the account invited', $status === 200 && $body['client']['company'] === '' && $body['client']['email'] === 'nur@example.org' && $body['client']['title'] === 'nur@example.org' && ( $body['first']['account']['email'] ?? '' ) === 'nur@example.org' && $body['client']['ready'] === false );
+check( '...and the log line of it holds the number of the client and no address', \Crm\Clients\Admin::log( 'crm-clients/save', [ 'account_email' => 'nur@example.org' ] ) === 'Added client '. $body['client']['number'] && str_contains( \Crm\Clients\Admin::log( 'crm-clients/save', [ 'account_email' => 'nur@example.org' ] ), '@' ) === false );
+[ $status, $body ] = $call( 'crm-clients/save', [ 'phone' => '+49 40 1' ] );
+check( '...without an address it is 400 crm_clients_empty at the company, and with an address that is none the same - nothing is made', $status === 400 && $body['code'] === 'crm_clients_empty' && $body['field'] === 'company' && $call( 'crm-clients/save', [ 'account_email' => 'no' ] )[0] === 400 && count( \Crm\Clients::list( $appData ) ) === $before + 2 );
+$sentences = [ 'de_DE' => (array) require $root. '/app/Crm/Clients/Admin/text/de_DE.php', 'en_US' => (array) require $root. '/app/Crm/Clients/Admin/text/en_US.php' ];
+check( '...the sentence of the refusal is in both languages and names the address of the first account as the third way to a client', array_filter( $sentences, static fn( array $words ): bool => str_contains( (string) ( $words['[[/_admin/error/crm_clients_empty]]'] ?? '' ), '@' ) === true || trim( (string) ( $words['[[/_admin/error/crm_clients_empty]]'] ?? '' ) ) === '' ) === [] );
 
 // --- Records: what a customer agreed to -----------------------------------------------------------------------------------
 

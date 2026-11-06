@@ -7,7 +7,7 @@ return [
 
 	'[[/_admin/error/crm_clients_database]]' => 'Die Datenbank hat die Anfrage nicht angenommen.',
 	'[[/_admin/error/crm_clients_email]]' => 'Die E-Mail-Adresse ist nicht gültig.',
-	'[[/_admin/error/crm_clients_empty]]' => 'Ein Kunde braucht eine Firma oder einen Namen.',
+	'[[/_admin/error/crm_clients_empty]]' => 'Ein Kunde braucht eine Firma, einen Namen oder die E-Mail-Adresse seines ersten Kontos.',
 	'[[/_admin/error/crm_clients_format]]' => 'Der Wert hat nicht das richtige Format.',
 	'[[/_admin/error/crm_clients_id]]' => 'Die Nummer des Kunden ist nicht gültig.',
 	'[[/_admin/error/crm_clients_inactive]]' => 'Der Kunde ist deaktiviert. Aktiviere ihn, um Konten einzuladen, zu verknüpfen oder einzuschalten.',

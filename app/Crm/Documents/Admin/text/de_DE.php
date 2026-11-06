@@ -13,6 +13,7 @@ return [
 	'[[/_admin/error/crm_documents_category]]' => 'Die Art des Belegs ist nicht gültig.',
 	'[[/_admin/error/crm_documents_client]]' => 'Wähle einen Kunden.',
 	'[[/_admin/error/crm_documents_inactive]]' => 'Der Kunde ist deaktiviert. Aktiviere ihn auf der Karte des Kunden.',
+	'[[/_admin/error/crm_documents_unready]]' => 'Der Kunde hat noch keine vollständige Anschrift. Bitte warte, bis er sie im Portal eingetragen hat, oder trage sie auf der Kundenkarte ein.',
 	'[[/_admin/error/crm_documents_date]]' => 'Das Datum ist nicht gültig.',
 	'[[/_admin/error/crm_documents_period]]' => 'Gib beide Tage der Leistung an, den ersten nicht nach dem zweiten.',
 	'[[/_admin/error/crm_documents_long]]' => 'Der Wert darf höchstens %s Zeichen haben.',

@@ -28,6 +28,7 @@ class Admin {
 		'category' => [ 400, 'crm_documents_category', 'category' ],
 		'client'   => [ 400, 'crm_documents_client', 'client_id' ],
 		'inactive' => [ 409, 'crm_documents_inactive', 'client_id' ],
+		'unready'  => [ 409, 'crm_documents_unready', 'client_id' ],
 		'period'   => [ 400, 'crm_documents_period', 'period_from' ],
 		'reverse'  => [ 409, 'crm_documents_reverse', 'reverse_charge' ],
 		'lines'    => [ 400, 'crm_documents_lines', 'lines' ],
@@ -1006,11 +1007,11 @@ class Admin {
 	/**
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	array											id, number, title, active, business and buyer_reference of every client, by number
+	 *	@return 	array											id, number, title, ready, bare (neither company nor name), active, business and buyer_reference of every client, by number
 	 */
 	private static function _clients( array &$appData ): array {
 
-		return array_map( static fn( array $client ): array => [ 'id' => $client['id'], 'number' => $client['number'], 'title' => $client['company'] !== '' ? $client['company'] : $client['name'], 'active' => $client['active'], 'business' => $client['business'], 'buyer_reference' => $client['buyer_reference'] ], \Crm\Clients::list( $appData ) );
+		return array_map( static fn( array $client ): array => [ 'id' => $client['id'], 'number' => $client['number'], 'title' => $client['title'], 'ready' => $client['ready'], 'bare' => $client['company'] === '' && $client['name'] === '', 'active' => $client['active'], 'business' => $client['business'], 'buyer_reference' => $client['buyer_reference'] ], \Crm\Clients::list( $appData ) );
 	}
 
 	/**

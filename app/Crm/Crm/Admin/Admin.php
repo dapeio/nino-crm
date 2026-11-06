@@ -32,6 +32,9 @@ class Admin {
 	private const string CAP_KEY = '/nino/mail/cap';
 	public const int CAP = 100;
 
+	// The setting of Review that mails the owner when a customer comments: the owner of a portal wants to know, so the setup switches it on where the setting has no value of its own
+	private const string NOTIFY_SETTING = 'notifyOwner';
+
 	public static function perm(): string {
 		return \Crm\Crm::MANAGE_PERM;
 	}
@@ -91,7 +94,9 @@ class Admin {
 	 *	  5. the start page: the route GET:// becomes the door of the portal where there is none or the wizard's page /home; the door that is there and
 	 *	     a start page of the owner's stay,
 	 *	  6. the cap of mails: '/nino/mail/cap' of config.php is set to CAP where config.php carries no value of its own, the way the Config panel writes a key
-	 *	     (the key in the request's data, then AppData::writeContentData()); a value that is there - the owner's own, 0 for no cap among them - stays.
+	 *	     (the key in the request's data, then AppData::writeContentData()); a value that is there - the owner's own, 0 for no cap among them - stays,
+	 *	  7. the notification of the owner: the setting notifyOwner of Review is switched on (Features::saveSettings()) where the setting has no value of its own; a value that
+	 *	     is there - off among them - stays.
 	 *	Answers what was added and what existed
 	 */
 	public static function apiSetup( array &$appData, array &$request ): void {
@@ -99,8 +104,8 @@ class Admin {
 		if( \Nino\Admin\Admin::guardPerm( $appData, $request, \Crm\Crm::MANAGE_PERM ) === false )
 			return;
 
-		$added = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false ];
-		$existed = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false ];
+		$added = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false ];
+		$existed = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false ];
 
 		// 1. The features. One is on when it is active at its version and nothing is wrong with it; what is on before the first step is "there
 		// already", even where a feature that was switched on before it - Sign takes PDF with it - did the work
@@ -281,6 +286,19 @@ class Admin {
 		else
 			$existed['cap'] = (int) $cap;
 
+		// 7. The notification of the owner: Review mails the contact address when a customer comments, where the setting has no value yet - a value the owner set, off among them, stays
+		if( self::notifySet( $appData ) === false ) {
+
+			if( \Nino\Features::saveSettings( $appData, 'review', [ self::NOTIFY_SETTING => true ] ) !== [] ) {
+				\Nino\Http::fail( $request, 500, 'the setting of Review could not be written' );
+				return;
+			}
+
+			$added['notify'] = true;
+		}
+		else
+			$existed['notify'] = \Nino\Features::setting( $appData, 'review', self::NOTIFY_SETTING, false ) === true;
+
 		// A run that went through is written down: the screen of the first run is for a product that was never set up
 		try {
 			\Crm\Settings::markSetupDone( $appData );
@@ -302,6 +320,7 @@ class Admin {
 	 *	  pdf-templates   ok (every template of the seed is there), partial, none - and lacks lists the keys that are not
 	 *	  home     ok (the start page of the site is the door of the portal), own (a page the owner made: left as it is, and no lack), other (none, or the wizard's own)
 	 *	  mail-cap   ok (config.php carries a cap of its own, the owner's or the one the setup wrote), default (it carries none: the kernel's default stands) - and value, the cap that is in force
+	 *	  notify   ok (the setting notifyOwner of Review has a value of its own, the owner's or the one the setup wrote), default (it has none) - and value, whether Review mails the owner
 	 *	The answer is whole when every item is ok or - the start page - own; it is first_run while it is not whole and no run of the setup went through (the day of
 	 *	the last one is the CRM's setting setup_done): a template deleted afterwards makes it not whole, and not a first run - the screen Einrichtung is shown while it is not
 	 */
@@ -370,9 +389,25 @@ class Admin {
 		$cap = \Nino\AppData::stored( $appData, self::CAP_KEY, null );
 		$items[] = [ 'key' => 'mail-cap', 'state' => $cap === null ? 'default' : 'ok', 'value' => (int) ( $cap ?? \Nino\AppData::DEFAULTS[self::CAP_KEY] ) ];
 
+		$items[] = [ 'key' => 'notify', 'state' => self::notifySet( $appData ) === true ? 'ok' : 'default', 'value' => \Nino\Features::setting( $appData, 'review', self::NOTIFY_SETTING, false ) === true ];
+
 		$whole = array_filter( $items, static fn( array $item ): bool => in_array( $item['state'], [ 'ok', 'own' ], true ) === false ) === [];
 
 		\Nino\Http::ok( $request, [ 'items' => $items, 'whole' => $whole, 'first_run' => $whole === false && \Crm\Settings::setupDone( $appData ) === '' ] );
+	}
+
+	/**
+	 *	Whether the setting notifyOwner of Review has a value of its own: one that is stored, whatever it is (off among them)
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	bool
+	 */
+	private static function notifySet( array &$appData ): bool {
+
+		$settings = $appData[\Nino\Features::STATE_KEY]['review']['settings'] ?? null;
+
+		return is_array( $settings ) === true && array_key_exists( self::NOTIFY_SETTING, $settings ) === true;
 	}
 
 	/**

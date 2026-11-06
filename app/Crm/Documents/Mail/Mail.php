@@ -188,7 +188,7 @@ class Mail {
 			);
 
 		$who = (string) $account['name'] !== '' ? $account['name']. ' <'. $account['email']. '>' : (string) $account['email'];
-		$name = (string) $client['number']. ' '. ( (string) $client['company'] !== '' ? $client['company'] : $client['name'] );
+		$name = (string) $client['number']. ' '. (string) $client['title'];
 		$values = [
 			'[[heading]]' => self::text( 'data.title' ),
 			'[[intro]]'   => self::text( 'data.intro' ),
@@ -262,7 +262,7 @@ class Mail {
 		$replace = static fn( string $markup, array $values ): string => str_replace( array_keys( $values ), array_map( $escape, array_values( $values ) ), $markup );
 		$number = (string) $document['number'] !== '' ? (string) $document['number'] : (string) $document['title'];
 		$who = (string) $record['member_name'] !== '' ? (string) $record['member_name'] : (string) $record['member_email'];
-		$name = (string) $client['number']. ' '. ( (string) $client['company'] !== '' ? (string) $client['company'] : (string) $client['name'] );
+		$name = (string) $client['number']. ' '. (string) $client['title'];
 		$day = Render::day( substr( (string) $record['at'], 0, 10 ) );
 		$mails = [];
 

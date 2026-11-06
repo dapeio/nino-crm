@@ -472,6 +472,14 @@ a.crm-crumbs__link:hover {
 	font-weight: 600;
 }
 
+/*	The note over the page of a step of the gate: the sentence that says what is asked, and under it where it goes on to after it	*/
+
+.crm-gate__next {
+	display: block;
+	margin-top: var(--crm-1);
+	color: var(--crm-ink-2);
+}
+
 /*	7 Buttons	*/
 
 .crm-btn {
@@ -823,6 +831,11 @@ time.crm-table__cell {
 	color: var(--crm-ink-3);
 	font-size: var(--crm-text-xs);
 	line-height: 1.4;
+}
+
+.crm-field__star {
+	color: var(--crm-ink-3);
+	font-weight: 400;
 }
 
 .crm-field__error {
@@ -2138,8 +2151,20 @@ a.crm-files__name:hover {
 	padding: var(--crm-5);
 }
 
+.crm-data > .crm-gate,
+.crm-data__state {
+	max-width: 48rem;
+}
+
 .crm-data__actions {
 	margin: var(--crm-5) 0 0;
+}
+
+.crm-data__required {
+	margin: 0 0 var(--crm-4);
+	color: var(--crm-ink-3);
+	font-size: var(--crm-text-xs);
+	line-height: 1.4;
 }
 
 .crm-data__privacy {

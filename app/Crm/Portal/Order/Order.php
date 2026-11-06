@@ -62,7 +62,7 @@ class Order {
 		if( $record !== null )
 			return self::done( $record, $dir );
 
-		if( Documents::orderable( $offer ) === false || self::privacyFirst( $appData, $client ) === true )
+		if( Documents::orderable( $offer ) === false || Portal::pending( $appData, $client ) === 'privacy' )
 			return '';
 
 		$full = Documents::get( $appData, (int) $offer['id'] );
@@ -79,21 +79,6 @@ class Order {
 			'[[sentence]]' => \Nino\Modules\Components::escape( $sentence ),
 			'[[hash]]'     => Records::hash( Records::orderShown( $appData, $full, $sentence ) ),
 		] );
-	}
-
-	/**
-	 *	Whether the client has to agree to the Datenschutz before it may order: it is asked for one and has not agreed to it
-	 *
-	 *	@param		array 		&$appData
-	 *	@param		array 		$client
-	 *
-	 *	@return 	bool
-	 */
-	public static function privacyFirst( array &$appData, array $client ): bool {
-
-		$standing = Records::privacy( $appData, (int) $client['id'] );
-
-		return $standing['asked'] === true && $standing['agreed'] === false;
 	}
 
 	/**
@@ -210,9 +195,7 @@ class Order {
 			return;
 		}
 
-		$standing = Records::privacy( $appData, $client['id'] );
-
-		if( $standing['asked'] === true && $standing['agreed'] === false ) {
+		if( Portal::pending( $appData, $client ) === 'privacy' ) {
 			self::redirect( $appData, $request, 'privacy', $from, $document );
 
 			return;

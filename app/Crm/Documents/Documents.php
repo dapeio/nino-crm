@@ -20,6 +20,7 @@ declare(strict_types=1);
  *											  reverse                 a reverse charge where the document has VAT mode small_business
  *											  lines, total            more than MAX_LINES lines; a net total past Money::MAX_TOTAL
  *											  line:<i>:<kind>:<field> a line (counted from 0) whose field is wrong, see Lines::clean() and qty; no field for a line that is no array
+ *											  unready                 at finalise of an offer, an invoice or a credit note: the client has no company or name, or no street, postal code, city or country yet (Clients::invoiceReady())
  *											  pdf, template, inputs:<name>, empty    at finalise: Pdf is off; no template of the tag; a required input is
  *											                          missing; the document has no line
  *											  number                  the number format is none or the number is taken
@@ -137,15 +138,14 @@ class Documents {
 
 		$titles = Projekte::titles( $appData );
 
-		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.parent_id, d.project, d.client_json, d.released, d.sign_id, d.sign_state, c.company AS live_company, c.name AS live_name
+		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.parent_id, d.project, d.client_json, d.released, d.sign_id, d.sign_state, c.company AS live_company, c.name AS live_name, c.email AS live_email
 			FROM documents d JOIN clients c ON c.id = d.client_id'. ( $where === [] ? '' : ' WHERE '. implode( ' AND ', $where ) ). ' ORDER BY d.date DESC, d.id DESC', $params );
 
 		return array_map( static function( array $row ) use ( $today, $titles ): array {
 
 			$frozen = json_decode( (string) $row['client_json'], true );
 			$frozen = is_array( $frozen ) === true ? $frozen : [];
-			$company = $row['state'] === 'draft' ? (string) $row['live_company'] : (string) ( $frozen['company'] ?? '' );
-			$name = $row['state'] === 'draft' ? (string) $row['live_name'] : (string) ( $frozen['name'] ?? '' );
+			$shown = $row['state'] === 'draft' ? [ 'company' => $row['live_company'], 'name' => $row['live_name'], 'email' => $row['live_email'] ] : $frozen;
 
 			return [
 				'id'           => (int) $row['id'],
@@ -162,7 +162,7 @@ class Documents {
 				'valid_until'  => $row['valid_until'],
 				'gross'        => (int) $row['gross'],
 				'client_id'    => (int) $row['client_id'],
-				'client_title' => $company !== '' ? $company : $name,
+				'client_title' => Clients::title( $shown ),
 				'parent_id'    => $row['parent_id'] === null ? null : (int) $row['parent_id'],
 				'project'      => (string) $row['project'],
 				'project_title' => $titles[(string) $row['project']] ?? '',
@@ -776,9 +776,8 @@ class Documents {
 
 			$frozen = json_decode( (string) $row['client_json'], true );
 			$frozen = is_array( $frozen ) === true ? $frozen : [];
-			$company = (string) ( $frozen['company'] ?? '' );
 			$entry = [
-				'kind' => '', 'id' => (int) $row['id'], 'client_id' => (int) $row['client_id'], 'client_title' => $company !== '' ? $company : (string) ( $frozen['name'] ?? '' ), 'number' => (string) ( $row['number'] ?? '' ),
+				'kind' => '', 'id' => (int) $row['id'], 'client_id' => (int) $row['client_id'], 'client_title' => Clients::title( $frozen ), 'number' => (string) ( $row['number'] ?? '' ),
 				'title' => (string) $row['title'], 'date' => '', 'gross' => (int) $row['gross'], 'sign_state' => '',
 			];
 
@@ -798,7 +797,7 @@ class Documents {
 
 		foreach( Clients::list( $appData ) as $client )
 			if( $client['active'] === true && $client['accounts'] === 0 )
-				$accounts[] = [ 'kind' => 'account', 'id' => 0, 'client_id' => $client['id'], 'client_title' => (string) ( $client['company'] !== '' ? $client['company'] : $client['name'] ), 'number' => (string) $client['number'], 'title' => '', 'date' => '', 'gross' => 0, 'sign_state' => '' ];
+				$accounts[] = [ 'kind' => 'account', 'id' => 0, 'client_id' => $client['id'], 'client_title' => $client['title'], 'number' => (string) $client['number'], 'title' => '', 'date' => '', 'gross' => 0, 'sign_state' => '' ];
 
 		// The orders of the portal of the last ORDER_DAYS days that no invoice has followed: one line with how many and what they come to
 		$orders = Db::row( $appData, 'SELECT COUNT( DISTINCT d.id ) AS n, COALESCE( SUM( d.gross ), 0 ) AS gross FROM records r JOIN documents d ON d.id = r.document_id
@@ -1464,6 +1463,10 @@ class Documents {
 
 		if( $client === null || $client['active'] === false )
 			return 'inactive';
+
+		// An offer, an invoice and a credit note name the client with its address: a client that has not given it yet cannot be written one
+		if( $plain === false && $client['ready'] === false )
+			return 'unready';
 
 		if( Crm::featureOn( $appData, 'pdf' ) === false )
 			return 'pdf';

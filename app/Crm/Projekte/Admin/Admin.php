@@ -238,7 +238,7 @@ class Admin {
 
 			$shown[] = $project + [
 				'client_id'     => $client === null ? 0 : $client['id'],
-				'client_title'  => $client === null ? '' : ( $client['company'] !== '' ? $client['company'] : $client['name'] ),
+				'client_title'  => $client === null ? '' : $client['title'],
 				'client_active' => $client !== null && $client['active'] === true,
 				'files'         => $files === null ? ( $on === true ? 0 : null ) : count( $files ),
 				'folder_name'   => $folder === null ? null : (string) $folder['name'],

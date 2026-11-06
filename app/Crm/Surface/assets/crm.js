@@ -2135,7 +2135,7 @@
 
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#belege', t( 'list.title' ) ), ' › '+ t( 'category.'+ doc.category ) ) );
 		state.main.appendChild( head( docName( doc ), stateBadge( doc ), marks( doc ),
-			el( 'span', { class: 'sub' }, link( '#kunde-'+ doc.client_id, client.company || client.name ), ' · '+ dmy( doc.date )+ ( doc.due_date ? ' · '+ t( 'head.due', dmy( doc.due_date ) ) : doc.valid_until ? ' · '+ t( 'head.valid', dmy( doc.valid_until ) ) : '' ), doc.project === '' ? null : [ ' · ', link( '#projekt-'+ doc.project, doc.project_title !== '' ? doc.project_title : doc.project, { id: 'doc-project' } ) ] ),
+			el( 'span', { class: 'sub' }, link( '#kunde-'+ doc.client_id, clientTitle( client ) ), ' · '+ dmy( doc.date )+ ( doc.due_date ? ' · '+ t( 'head.due', dmy( doc.due_date ) ) : doc.valid_until ? ' · '+ t( 'head.valid', dmy( doc.valid_until ) ) : '' ), doc.project === '' ? null : [ ' · ', link( '#projekt-'+ doc.project, doc.project_title !== '' ? doc.project_title : doc.project, { id: 'doc-project' } ) ] ),
 			el( 'span', { class: 'grow' } ), isPlain( doc ) ? null : el( 'span', { class: 'big num', id: 'gross', text: cash( doc.gross ) } ), primaryButton, menuOf( view ) ) );
 
 		// An offer the customer ordered in the portal says so under the head; one the owner accepted has no record and says nothing
@@ -2152,9 +2152,9 @@
 
 		state.main.appendChild( el( 'div', { class: 'cols-3 gap' },
 			card( t( 'block.client' ), kv( [
-				[ client.company ? t( 'client.company' ) : t( 'client.name' ), el( 'span', {}, el( 'b', { text: client.company || client.name } ), client.company && client.name ? [ el( 'br' ), client.name ] : null ) ],
+				[ client.company ? t( 'client.company' ) : ( client.name ? t( 'client.name' ) : t( 'client.email' ) ), el( 'span', {}, el( 'b', { text: clientTitle( client ) } ), client.company && client.name ? [ el( 'br' ), client.name ] : null ) ],
 				[ t( 'client.address' ), address.length === 0 ? '' : el( 'span', {}, address.map( function( part, index ) { return [ index === 0 ? null : el( 'br' ), part ] } ) ) ],
-				[ t( 'client.email' ), client.email ],
+				[ t( 'client.email' ), client.company || client.name ? client.email : '' ],
 				[ t( 'client.vat' ), client.vat_id ],
 				[ t( 'client.number' ), client.number ],
 			] ) ),
@@ -2496,11 +2496,16 @@
 			} );
 		};
 
+		// An offer, an invoice and a credit note name the client with its address: while the client has not entered it the draft can be written and seen, not finalised
+		const finaliseButton = el( 'button', { type: 'button', class: 'btn primary', id: 'finalise', text: t( 'editor.finalise' ), on: { click: finalise } } );
+		const unready = el( 'p', { class: 'state-note', id: 'finalise-unready', hidden: true, text: t( 'finalise.unready' ) } );
+
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#belege', t( 'list.title' ) ), ' › '+ t( 'category.'+ draft.category )+ ' · '+ t( 'state.draft' ) ) );
 		state.main.appendChild( head( heading, badge( 'draft', t( 'state.draft' ) ), savedAt, el( 'span', { class: 'grow' } ), plain ? null : gross,
 			el( 'button', { type: 'button', class: 'btn', id: 'save', title: t( 'save.shortcut' ), text: t( 'editor.save' ), on: { click: function() { save( false ) } } } ),
-			el( 'button', { type: 'button', class: 'btn primary', id: 'finalise', text: t( 'editor.finalise' ), on: { click: finalise } } ),
+			finaliseButton,
 			menu( { label : '⋯', items : [ { label : t( 'editor.preview' ), run : preview }, 'sep', { label : t( 'editor.delete' ), danger : true, run : remove } ] } ) ) );
+		state.main.appendChild( unready );
 		state.main.appendChild( message );
 
 		// Strg+S is the button Speichern; the autosave that is running is a save that is running
@@ -2580,12 +2585,28 @@
 			return chosen === undefined || chosen === null ? draft.client_id : String( chosen.client_id );
 		};
 
+		/**
+		 *	The sentence over the draft and the state of the button Festschreiben: off while the client of an offer, an invoice or a credit note is not ready for an invoice
+		 *
+		 *	@return		{void}
+		 */
+		const showReady = function() {
+
+			const known = state.clients.find( function( one ) { return String( one.id ) === chosenClient() } );
+			const blocked = plain === false && known !== undefined && known.ready === false;
+
+			finaliseButton.disabled = blocked;
+			unready.hidden = blocked === false;
+		};
+
 		const drawClient = function() {
 
 			clear( clientBox );
 
 			const id = chosenClient();
 			const known = state.clients.find( function( one ) { return String( one.id ) === id } );
+
+			showReady();
 			const owed = el( 'span', { id: 'client-open', text: '…' } );
 			const where = el( 'span', { id: 'client-address', text: '…' } );
 			const who = el( 'span', { id: 'client-accounts', text: '…' } );
@@ -2606,7 +2627,7 @@
 			} );
 
 			clientBox.appendChild( kv( [
-				[ t( 'client.name' ), known.title ],
+				[ known.bare === true ? t( 'client.email' ) : t( 'client.name' ), known.title ],
 				[ t( 'client.number' ), known.number ],
 				[ t( 'client.address' ), where ],
 				[ t( 'client.accounts' ), who ],
@@ -2620,6 +2641,13 @@
 					return;
 
 				const card = answer.body.client;
+
+				// What the client has now: the list was read when the screen opened
+				if( known.ready !== card.ready ) {
+					known.ready = card.ready;
+					showReady();
+				}
+
 				const lines = [ card.street, ( card.zip+ ' '+ card.city ).trim(), card.country !== '' && card.country !== 'DE' ? card.country : '' ].filter( function( part ) { return part !== '' } );
 				const accounts = answer.body.accounts.filter( function( account ) { return account.gone === false } );
 
@@ -3066,12 +3094,21 @@
 	// --- Kunden ------------------------------------------------------------------------------------------------------
 
 	/**
-	 *	@param		{Object}	client
+	 *	@param		{Object}	client					As the server has it (with its title), or a client frozen into a document
 	 *
-	 *	@return		{string}									Its company, its name where it has none
+	 *	@return		{string}									How it is called: its company, else its name, else its address
 	 */
 	const clientTitle = function( client ) {
-		return client.company !== '' ? client.company : client.name;
+		return typeof client.title === 'string' && client.title !== '' ? client.title : ( client.company || client.name || client.email || '' );
+	};
+
+	/**
+	 *	@param		{Object}	client
+	 *
+	 *	@return		{boolean}									Whether the client has neither a company nor a name yet
+	 */
+	const clientBare = function( client ) {
+		return client.company === '' && client.name === '';
 	};
 
 	const clientKeys = {
@@ -3165,7 +3202,7 @@
 			: shown.map( function( client ) {
 				return el( 'tr', { dataset: { id: client.id }, on: { click: function() { wn.location.hash = '#kunde-'+ client.id } } },
 					el( 'td', { class: 'num' }, link( '#kunde-'+ client.id, client.number ) ),
-					el( 'td', {}, client.company === '' ? el( 'span', { class: 'muted', text: '–' } ) : client.company ),
+					el( 'td', {}, clientBare( client ) ? [ el( 'span', { class: 'bare', text: clientTitle( client ) } ), el( 'span', { class: 'bare', text: ' · '+ t( 'clients.bare' ) } ) ] : ( client.company === '' ? el( 'span', { class: 'muted', text: '–' } ) : client.company ) ),
 					el( 'td', { text: client.name } ),
 					el( 'td', {}, client.city, client.country !== 'DE' ? el( 'span', { class: 'muted', text: ' ('+ client.country+ ')' } ) : null ),
 					el( 'td', {}, client.accounts === 0 ? el( 'span', { class: 'muted', text: t( 'clients.accounts-none' ) } ) : client.active_accounts+ ' / '+ client.accounts ),
@@ -3834,6 +3871,9 @@
 		if( client.active === false )
 			state.main.appendChild( note( '', t( 'card.inactive-note' ) ) );
 
+		if( client.ready === false )
+			state.main.appendChild( el( 'p', { class: 'state-note', id: 'client-unready', text: t( 'card.unready-note' ) } ) );
+
 		view.master = masterCard( view );
 		view.box = accountsCard( view );
 		state.main.appendChild( el( 'div', { class: 'cols-3 gap' }, view.master, view.box ) );
@@ -3936,7 +3976,7 @@
 		const box = el( 'form', { id: 'new-client-form', novalidate: 'novalidate', on: { submit: submit } },
 			head( t( 'newclient.title' ), el( 'span', { class: 'grow' } ), link( '#kunden', t( 'form.cancel' ), { class: 'btn', id: 'client-abort' } ), create ),
 			el( 'div', { class: 'cols' },
-				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'newclient.master' ) } ), master ),
+				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'newclient.master' ) } ), el( 'p', { class: 'state-note', id: 'newclient-master-text', text: t( 'newclient.master-text' ) } ), master ),
 				el( 'div', { class: 'card pad' }, el( 'h3', { text: t( 'newclient.first' ) } ), el( 'p', { class: 'state-note', text: t( 'newclient.first-text' ) } ), account, notify === null ? el( 'p', { class: 'state-note', id: 'account-noquiet', text: t( 'notify.noperm-members' ) } ) : el( 'label', { class: 'check' }, notify, ' '+ t( 'notify.invite' ) ) ) ),
 			el( 'datalist', { id: 'countries' }, [ 'DE', 'AT', 'CH' ].map( function( code ) { return el( 'option', { value: code } ) } ) ) );
 
@@ -6337,12 +6377,13 @@
 	 */
 	const setupSentence = function( answer ) {
 
-		const none = { features : [], routes : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false, cap : false };
+		const none = { features : [], routes : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false, cap : false, notify : false };
 		const added = Object.assign( {}, none, answer.added );
 		const existed = Object.assign( {}, none, answer.existed );
 		const there = existed.features.length+ existed.routes.length+ existed.templates.length+ existed.types.length+ existed.pdf.templates.length;
 		const done = t( 'setup.done', added.features.length, added.routes.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
-		const sentence = typeof added.cap === 'number' ? done+ ' '+ t( 'setup.cap', added.cap ) : done;
+		const capped = typeof added.cap === 'number' ? done+ ' '+ t( 'setup.cap', added.cap ) : done;
+		const sentence = added.notify === true ? capped+ ' '+ t( 'setup.notify' ) : capped;
 
 		// What became of the start page, said in the answer: made the door where there was none or the wizard's page, or kept where it is the owner's
 		return typeof added.home === 'string' ? sentence+ ' '+ t( 'setup.home-'+ added.home ) : ( existed.home === 'own' ? sentence+ ' '+ t( 'setup.home-own' ) : sentence );
@@ -6392,7 +6433,7 @@
 		el( 'p', { class: 'state-note', text: t( 'settings.portal-members-note' ) } ),
 		portal.mail_cap === null ? null : el( 'p', { class: 'state-note', id: 'portal-cap-note', text: t( 'settings.portal-cap-note' ) } ),
 		el( 'h4', { text: t( 'settings.portal-status' ) } ),
-		missing.length === 0 ? el( 'p', { class: 'state-note', id: 'status-ok', text: t( 'status.allok' ) } ) : el( 'ul', { class: 'list-mini', id: 'status-missing' }, missing.map( function( item ) { return el( 'li', { text: ( item.key === 'mail-cap' ? t( 'einrichtung.row-mail-cap' )+ ': ' : '' )+ statusLine( item ) } ) } ) ),
+		missing.length === 0 ? el( 'p', { class: 'state-note', id: 'status-ok', text: t( 'status.allok' ) } ) : el( 'ul', { class: 'list-mini', id: 'status-missing' }, missing.map( function( item ) { return el( 'li', { text: ( [ 'mail-cap', 'notify' ].includes( item.key ) ? t( 'einrichtung.row-'+ item.key )+ ': ' : '' )+ statusLine( item ) } ) } ) ),
 		el( 'div', { class: 'actions' }, setup ), el( 'p', { class: 'state-note', id: 'setup-said', role: 'status', text: said } ) );
 
 		return card;

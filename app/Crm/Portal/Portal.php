@@ -13,6 +13,10 @@ declare(strict_types=1);
  *								([crm-client-data] and the route that saves it). A visitor has no client, and a page view of a visitor never opens the
  *								database. The lookup is kept for the request and dropped when a member signs in or out.
  *
+ *								The gate of the client: before a client reads a page of the portal it has taken note of the Datenschutz it is asked for and given the data an invoice
+ *								names it by (Clients::invoiceReady()), in this order. pending() says which step is next; callbackPending() sends a member whose client has one pending to
+ *								the page of it (303, with ?weiter=<the page the member wanted>), and onward() is the one place that decides whether a weiter from a request is a path to go on to.
+ *
  *								The look of all of it is the portal's own design, portal.css (its head comment says the system); the markup of every
  *								part is a template of templates/, read through template() and filled through render(), which also puts the icons in
  *								(Portal\Icons: a template asks for one with [[icon:<name>]]). The states a customer reads are the customer's words
@@ -35,6 +39,9 @@ class Portal {
 	public const string STYLE = '/app/Crm/Portal/assets/portal.css';
 	public const string SCRIPT = '/app/Crm/Portal/assets/portal.js';
 	private const string NAME = '/^[a-z]{1,20}$/D';
+
+	// The longest page to go on to a request may name: a path under /portal and a short query
+	private const int ONWARD_MAX = 300;
 
 	// The entries of the navigation, in its order: the last part of the address below /portal ('' is the start page), which is also the key of the page's name, and the icon of the entry
 	public const array NAV = [ '' => 'house', 'projekte' => 'folder', 'belege' => 'file-text', 'termine' => 'calendar', 'upload' => 'upload', 'meine-daten' => 'user' ];
@@ -78,6 +85,213 @@ class Portal {
 			$appData[self::CACHE] = Clients::ofMember( $appData, $member['id'] );
 
 		return $appData[self::CACHE];
+	}
+
+	/**
+	 *	What a client has to do before it may read the pages of the portal
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client				As Clients::get() has it
+	 *
+	 *	@return 	string										'privacy' while the Datenschutz is set and the client has not taken note of the text of now; else 'data' while the client has not given what an invoice names it by; else ''
+	 */
+	public static function pending( array &$appData, array $client ): string {
+
+		$standing = Records::privacy( $appData, (int) $client['id'] );
+
+		if( $standing['asked'] === true && $standing['agreed'] === false )
+			return 'privacy';
+
+		return Clients::invoiceReady( $client ) === false ? 'data' : '';
+	}
+
+	/**
+	 *	The page to go on to, as a request names it (?weiter= or the field weiter of a form): a path under /portal and nothing else. A host, a scheme, a second
+	 *	slash, a backslash, a dot segment, an encoded character in the path, a control character or a null byte make it none, and so does a path that is not
+	 *	lower case words between slashes. The query is the characters a query is written with
+	 *
+	 *	@param		mixed			$posted
+	 *
+	 *	@return 	string										The path with its query; '' for none
+	 */
+	public static function onward( mixed $posted ): string {
+
+		if( is_string( $posted ) === false || $posted === '' || strlen( $posted ) > self::ONWARD_MAX )
+			return '';
+
+		[ $path, $query ] = array_pad( explode( '?', $posted, 2 ), 2, '' );
+
+		if( preg_match( '#^/portal(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$#D', $path ) !== 1 || ( $query !== '' && preg_match( '/^[A-Za-z0-9_.~%=&+-]+$/D', $query ) !== 1 ) )
+			return '';
+
+		return $posted;
+	}
+
+	/**
+	 *	The address of a step of the gate, with the page to go on to after it
+	 *
+	 *	@param		string		$step					privacy or data
+	 *	@param		string		$onward				As onward() has it; '' for none
+	 *
+	 *	@return 	string
+	 */
+	public static function stepAddress( string $step, string $onward = '' ): string {
+
+		return ( $step === 'privacy' ? Portal\Privacy::PAGE : Portal\Data::PAGE ). ( $onward === '' ? '' : '?weiter='. rawurlencode( $onward ) );
+	}
+
+	/**
+	 *	Where a form of a step goes on to once it has done its work: the step that is pending next, else the page the member wanted
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client				As Clients::get() has it, read again after the form changed it
+	 *	@param		string		$onward				As onward() has it
+	 *
+	 *	@return 	string										An address under /portal; '' for the page of the form, which answers with its state
+	 */
+	public static function proceed( array &$appData, array $client, string $onward ): string {
+
+		$pending = self::pending( $appData, $client );
+
+		if( $pending === '' )
+			return $onward;
+
+		// A page to go on to that is the pending step itself is not wrapped in it again
+		return explode( '?', $onward, 2 )[0] === self::stepAddress( $pending ) ? $onward : self::stepAddress( $pending, $onward );
+	}
+
+	/**
+	 *	The page a member is sent on to, named in the words of the pages for the note of a step: the name of the page - and, for a project of the client, its title
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client
+	 *	@param		string		$onward				As onward() has it
+	 *
+	 *	@return 	string										Markup (a fill, or the escaped title); '' for no page
+	 */
+	public static function onwardName( array &$appData, array $client, string $onward ): string {
+
+		if( $onward === '' )
+			return '';
+
+		[ $path, $query ] = array_pad( explode( '?', $onward, 2 ), 2, '' );
+		$area = substr( $path, strlen( '/portal/' ) );
+
+		if( $path !== '/portal' && isset( self::NAV[$area] ) === false && $area !== self::PRIVACY )
+			return '';
+
+		parse_str( $query, $asked );
+
+		if( $area === 'projekte' && is_string( $asked['projekt'] ?? null ) === true && preg_match( Projekte::ID, $asked['projekt'] ) === 1 ) {
+
+			$project = Projekte::get( $appData, $asked['projekt'] );
+
+			if( $project !== null && $project['client'] === $client['number'] )
+				return '[[/project/crm-portal/gate/project]] <strong>'. \Nino\Modules\Components::escape( (string) $project['title'] ). '</strong>';
+		}
+
+		return '<strong>[[/_nino/webpage'. $path. '/name]]</strong>';
+	}
+
+	/**
+	 *	The note over the page of a step while the step is the pending one: what is asked first, and - where the member wanted a page - where it goes on to after it
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client
+	 *	@param		string		$step					privacy or data
+	 *
+	 *	@return 	string										Markup; '' while the step is not the pending one
+	 */
+	public static function gateNote( array &$appData, array $client, string $step ): string {
+
+		if( self::pending( $appData, $client ) !== $step )
+			return '';
+
+		$name = self::onwardName( $appData, $client, self::onward( self::query( $appData )['weiter'] ?? null ) );
+
+		return self::render( 'note', [
+			'[[classes]]' => 'crm-gate crm-gate--'. $step,
+			'[[tone]]'    => 'info',
+			'[[role]]'    => 'status',
+			'[[icon]]'    => $step === 'privacy' ? 'shield-check' : 'id-card',
+			'[[text]]'    => '[[/project/crm-portal/gate/'. $step. ']]'. ( $name === '' ? '' : self::render( 'gate-next', [ '[[name]]' => $name ] ) ),
+		] );
+	}
+
+	/**
+	 *	The hidden field a form of a step carries the page to go on to in
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	string										Markup; '' where the address names none
+	 */
+	public static function onwardField( array &$appData ): string {
+
+		$onward = self::onward( self::query( $appData )['weiter'] ?? null );
+
+		return $onward === '' ? '' : self::render( 'gate-field', [ '[[value]]' => \Nino\Modules\Components::escape( $onward ) ] );
+	}
+
+	/**
+	 *	'/nino/http/response': the gate of the client. A member whose client has a step pending (pending()) is answered 303 on every page of the portal but the pages
+	 *	of the steps themselves - the Datenschutz, and Meine Daten while the data is the step that is next; the sign-out is an endpoint of Members and no page of the
+	 *	portal. The Location is the page of the step with ?weiter=<the page the member wanted, path and query> where that is a path under /portal. A client that still
+	 *	has to take note of the Datenschutz is sent there from Meine Daten as well. A visitor, a member of no client and a client with nothing pending are not touched,
+	 *	and a request that is no GET of a page of the portal never opens the database
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackPending( array &$appData, array &$request ): void {
+
+		$route = (string) ( $request['/nino/http/response']['uri'] ?? '' );
+
+		if( ( $route !== '/portal' && str_starts_with( $route, '/portal/' ) === false ) || ( $request['/nino/http/request']['method'] ?? '' ) !== 'GET' || ( $request['/nino/http/response']['statusCode'] ?? 200 ) !== 200 )
+			return;
+
+		if( Crm::featureOn( $appData, 'members' ) === false || \Nino\Modules\Members::current( $appData ) === null )
+			return;
+
+		$client = self::client( $appData );
+		$pending = $client === null ? '' : self::pending( $appData, $client );
+
+		if( $pending === '' || $route === Portal\Privacy::PAGE || ( $route === Portal\Data::PAGE && $pending === 'data' ) )
+			return;
+
+		// The page the member wanted: its path and its query, a weiter of its own among them - it is kept on the way to the same place and checked by onward() once more
+		$query = $request['/nino/http/request']['query'] ?? [];
+		$flat = [];
+
+		foreach( is_array( $query ) === true ? $query : [] as $name => $value )
+			if( is_string( $value ) === true && preg_match( '/^[A-Za-z0-9_-]{1,40}$/D', (string) $name ) === 1 )
+				$flat[(string) $name] = $value;
+
+		$wanted = self::onward( (string) ( $request['/nino/http/request']['uri'] ?? '' ). ( $flat === [] ? '' : '?'. http_build_query( $flat, '', '&', PHP_QUERY_RFC3986 ) ) );
+
+		\Nino\Http::redirect( $appData, $request, self::stepAddress( $pending, $wanted ), 303 );
+	}
+
+	/**
+	 *	'/files/allowed': a file is not for a member whose client has a step of the gate pending - the bytes of a project are not given to somebody who has not taken note
+	 *	of the Datenschutz or has not given the data of the invoice. The hook only takes away: the member of no client and a client with nothing pending are left as
+	 *	Files has them, and an answer of false is never turned into true
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$args				file, member, download and allowed
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackFileAllowed( array &$appData, array &$args ): void {
+
+		if( ( $args['allowed'] ?? false ) !== true )
+			return;
+
+		$client = self::client( $appData );
+
+		if( $client !== null && self::pending( $appData, $client ) !== '' )
+			$args['allowed'] = false;
 	}
 
 	/**
@@ -251,12 +465,8 @@ class Portal {
 		$client = self::client( $appData );
 		$areas = self::NAV;
 
-		if( $client !== null ) {
-			$standing = Records::privacy( $appData, $client['id'] );
-
-			if( $standing['asked'] === true && $standing['agreed'] === false )
-				$areas[self::PRIVACY] = 'shield-check';
-		}
+		if( $client !== null && self::pending( $appData, $client ) === 'privacy' )
+			$areas[self::PRIVACY] = 'shield-check';
 
 		$items = '';
 
@@ -399,7 +609,7 @@ class Portal {
 
 		return self::render( 'documents', [
 			'[[classes]]' => $classes,
-			'[[privacy]]' => $client !== null && $orderable === true && Portal\Order::privacyFirst( $appData, $client ) === true ? Portal\Order::privacyHint( $dir ) : '',
+			'[[privacy]]' => $client !== null && $orderable === true && self::pending( $appData, $client ) === 'privacy' ? Portal\Order::privacyHint( $dir ) : '',
 			'[[state]]'   => $client === null ? '' : Portal\Order::state( $appData ),
 			'[[sign]]'    => $client === null || $back['state'] === '' ? '' : self::render( 'sign-state', [ '[[state]]' => $back['state'], '[[tone]]' => self::SIGN[$back['state']][0], '[[icon]]' => self::SIGN[$back['state']][1] ] ),
 			'[[count]]'   => $count. ' [[/project/crm-portal/projects/document-'. ( $count === 1 ? 'one' : 'many' ). ']]',

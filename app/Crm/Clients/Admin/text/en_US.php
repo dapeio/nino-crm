@@ -7,7 +7,7 @@ return [
 
 	'[[/_admin/error/crm_clients_database]]' => 'The database did not take the request.',
 	'[[/_admin/error/crm_clients_email]]' => 'The email address is not valid.',
-	'[[/_admin/error/crm_clients_empty]]' => 'A client needs a company or a name.',
+	'[[/_admin/error/crm_clients_empty]]' => 'A client needs a company, a name or the e-mail address of its first account.',
 	'[[/_admin/error/crm_clients_format]]' => 'The value does not have the right format.',
 	'[[/_admin/error/crm_clients_id]]' => 'The number of the client is not valid.',
 	'[[/_admin/error/crm_clients_inactive]]' => 'The client is deactivated. Activate it to invite, link or switch on accounts.',

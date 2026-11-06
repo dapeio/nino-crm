@@ -13,6 +13,7 @@ return [
 	'[[/_admin/error/crm_documents_category]]' => 'The kind of document is not valid.',
 	'[[/_admin/error/crm_documents_client]]' => 'Choose a client.',
 	'[[/_admin/error/crm_documents_inactive]]' => 'The client is deactivated. Activate it on the card of the client.',
+	'[[/_admin/error/crm_documents_unready]]' => 'The client has no complete address yet. Please wait until the client has entered it in the portal, or enter it on the card of the client.',
 	'[[/_admin/error/crm_documents_date]]' => 'The date is not valid.',
 	'[[/_admin/error/crm_documents_period]]' => 'Give both days of the service, the first not after the second.',
 	'[[/_admin/error/crm_documents_long]]' => 'The value may have at most %s characters.',

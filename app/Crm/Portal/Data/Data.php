@@ -17,6 +17,11 @@ declare(strict_types=1);
  *										for the code as well and the page shows the second step under the note that it was saved. Nothing of what the address says is
  *										kept in the page: an address a code was asked for is read from the session, and every address is written escaped. The owner is
  *										mailed when the member has changed the address (callbackChanged(), what Members tells under '/members/changed').
+ *
+ *										The form is the second step of the gate of the client (Portal::pending()): street, postal code, city and country are required, and a name
+ *										or a company - the server asks for all of it, Clients::change() does not (the owner may keep a client without an address). The form carries
+ *										the page to go on to (weiter, see Portal::onward()); saved, it goes on to the next step or to that page. A name the client gives is the name of the
+ *										member's account too, where the account has none.
  */
 namespace Crm\Portal;
 
@@ -34,16 +39,17 @@ class Data {
 	public const string ROUTE_CODE = '/.crm/anmeldeadresse/code';
 	public const string PAGE = '/portal/meine-daten';
 
-	// The fields of the form, in their order: the client's fields the member may change, how the input is made and whether it takes the whole line
+	// The fields of the form, in their order: the client's fields the member may change, how the input is made, whether it takes the whole line and whether it is required
+	// (a company or a name is required too, either of the two: the server asks it of the pair)
 	public const array FIELDS = [
-		'company' => [ 'type' => 'text', 'autocomplete' => 'organization', 'wide' => false ],
-		'name'    => [ 'type' => 'text', 'autocomplete' => 'name', 'wide' => false ],
-		'street'  => [ 'type' => 'text', 'autocomplete' => 'street-address', 'wide' => true ],
-		'zip'     => [ 'type' => 'text', 'autocomplete' => 'postal-code', 'wide' => false ],
-		'city'    => [ 'type' => 'text', 'autocomplete' => 'address-level2', 'wide' => false ],
-		'country' => [ 'type' => 'select', 'autocomplete' => 'country', 'wide' => true ],
-		'phone'   => [ 'type' => 'tel', 'autocomplete' => 'tel', 'wide' => false ],
-		'vat_id'  => [ 'type' => 'text', 'autocomplete' => 'off', 'wide' => false ],
+		'company' => [ 'type' => 'text', 'autocomplete' => 'organization', 'wide' => false, 'required' => false ],
+		'name'    => [ 'type' => 'text', 'autocomplete' => 'name', 'wide' => false, 'required' => false ],
+		'street'  => [ 'type' => 'text', 'autocomplete' => 'street-address', 'wide' => true, 'required' => true ],
+		'zip'     => [ 'type' => 'text', 'autocomplete' => 'postal-code', 'wide' => false, 'required' => true ],
+		'city'    => [ 'type' => 'text', 'autocomplete' => 'address-level2', 'wide' => false, 'required' => true ],
+		'country' => [ 'type' => 'select', 'autocomplete' => 'country', 'wide' => true, 'required' => true ],
+		'phone'   => [ 'type' => 'tel', 'autocomplete' => 'tel', 'wide' => false, 'required' => false ],
+		'vat_id'  => [ 'type' => 'text', 'autocomplete' => 'off', 'wide' => false, 'required' => false ],
 	];
 
 	// The countries the select offers, by their code (Clients keeps the code): the neighbours and the usual ones, Deutschland first; the client's own
@@ -65,14 +71,19 @@ class Data {
 		'login-expired' => [ 'error', 'circle-alert', 'alert' ],
 	];
 
+	// The most of a name that the account of Members takes (Members keeps it private; the name of a client is held to the same length)
+	private const int ACCOUNT_NAME = 120;
+
+
 	/**
 	 *	[crm-client-data] - the form with the client's company, name, address (the postal code and the city on one line), country (a select,
-	 *	Deutschland where the client has none), phone and VAT id, the e-mail of the account beside it as a line that is only read, and a button;
+	 *	Deutschland where the client has none), phone and VAT id - street, postal code, city and country required, with a star -, the e-mail of the account beside it as a line that is only read, and a button;
 	 *	under the form the block Anmeldeadresse - the address the account signs in with, the button that opens the form for a new one and, once a code is out,
-	 *	the second step that asks for it (see loginBlock()) - and the block Datenschutz-Zustimmung: whether the client has agreed, and the way to the page. The
-	 *	state the query names is said above the form, or in the block Anmeldeadresse where it is one of that block's, and an invalid field beside the field. A box
-	 *	in the form offers the address of the client as the sign-in address, where the account has another. A member of no client is told there is no client;
-	 *	nothing for a visitor
+	 *	the second step that asks for it (see loginBlock()) - and the block Datenschutzerklärung: whether the client has confirmed it, and the way to the page. While the form is the step
+	 *	the client is asked for (Portal::pending()) a note over it says so and where it goes on to after it. The state the query names is said above the form, or in the block Anmeldeadresse
+	 *	where it is one of that block's, and an invalid field beside the field. A box in the form offers the address of the client as the sign-in address, where the account has another.
+	 *	A member of no client is told there is no client; nothing for a visitor
+
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$args
@@ -102,6 +113,7 @@ class Data {
 		// A token that ran out in the block Anmeldeadresse is said there, not above the form (its other states are none of STATES)
 		if( $state === 'expired' && in_array( $query['login'] ?? null, [ 'change', 'code' ], true ) === true )
 			$state = '';
+		$why = is_string( $query['why'] ?? null ) === true ? $query['why'] : '';
 
 		$fields = '';
 
@@ -109,7 +121,7 @@ class Data {
 
 			$invalid = $state === 'invalid' && $field === $name;
 			$value = (string) ( $client[$name] ?? '' );
-			$described = $invalid === true ? ' aria-invalid="true" aria-describedby="crm-data-'. $name. '-error"' : '';
+			$described = ( $invalid === true ? ' aria-invalid="true" aria-describedby="crm-data-'. $name. '-error"' : '' ). ( $kind['required'] === true ? ' required aria-required="true"' : '' );
 
 			if( $kind['type'] === 'select' )
 				$input = Portal::render( 'data-select', [ '[[name]]' => $name, '[[autocomplete]]' => $kind['autocomplete'], '[[described]]' => $described, '[[options]]' => self::countries( $value ) ] );
@@ -125,10 +137,11 @@ class Data {
 
 			$fields .= Portal::render( 'data-field', [
 				'[[name]]'    => $name,
+				'[[star]]'    => $kind['required'] === true ? Portal::template( 'data-star' ) : '',
 				'[[wide]]'    => $kind['wide'] === true ? ' crm-field--wide' : '',
 				'[[invalid]]' => $invalid === true ? ' crm-field--invalid crm-data__field--invalid' : '',
 				'[[input]]'   => $input,
-				'[[error]]'   => $invalid === true ? Portal::render( 'data-error', [ '[[name]]' => $name ] ) : '',
+				'[[error]]'   => $invalid === true ? Portal::render( 'data-error', [ '[[name]]' => $name, '[[sentence]]' => self::sentence( $why ) ] ) : '',
 			] );
 		}
 
@@ -146,6 +159,8 @@ class Data {
 		return Portal::render( 'data', [
 			'[[classes]]' => $classes,
 			'[[dir]]'     => $dir,
+			'[[gate]]'    => Portal::gateNote( $appData, $client, 'data' ),
+			'[[weiter]]'  => Portal::onwardField( $appData ),
 			'[[state]]'   => $note,
 			'[[fields]]'  => $fields,
 			'[[also]]'    => $client['email'] !== '' && mb_strtolower( $client['email'], 'UTF-8' ) !== $member['email'] ? Portal::render( 'data-login-also', [ '[[address]]' => \Nino\Modules\Components::escape( $client['email'] ) ] ) : '',
@@ -159,6 +174,19 @@ class Data {
 				'[[dir]]'      => $dir,
 			] ),
 		] );
+	}
+
+	/**
+	 *	The sentence beside a field that was refused, by the reason the server put in the address (?why=): required (the field is empty), name (company and name are both
+	 *	empty), long, format - and the generic one for any other word, which is never put on the page
+	 *
+	 *	@param		string		$why
+	 *
+	 *	@return 	string										The end of the key of the words: field-required, field-name, field-long or field-error
+	 */
+	private static function sentence( string $why ): string {
+
+		return [ 'required' => 'field-required', 'name' => 'field-name', 'long' => 'field-long', 'format' => 'field-error' ][$why] ?? 'field-error';
 	}
 
 	/**
@@ -204,15 +232,33 @@ class Data {
 		}
 
 		if( \Nino\Form::blocked( $request ) === true ) {
-			self::redirect( $appData, $request, 'expired' );
+			self::redirect( $appData, $request, 'expired', Portal::onward( $_POST['weiter'] ?? null ) );
 
 			return;
 		}
 
 		$input = [];
+		$onward = Portal::onward( $_POST['weiter'] ?? null );
+
+		// The Datenschutz comes first: nothing is saved, nobody is mailed and no account is named before it is confirmed
+		if( Portal::pending( $appData, $client ) === 'privacy' ) {
+			\Nino\Http::redirect( $appData, $request, Portal::stepAddress( 'privacy', self::PAGE. ( $onward === '' ? '' : '?weiter='. rawurlencode( $onward ) ) ), 303 );
+
+			return;
+		}
 
 		foreach( array_keys( self::FIELDS ) as $name )
 			$input[$name] = $_POST[$name] ?? '';
+
+		// What an invoice names the client by: a company or a name, then the four fields of the address - the first that is empty is the one the page points at
+		foreach( [ 'name' => [ 'company', 'name' ], 'street' => [ 'street' ], 'zip' => [ 'zip' ], 'city' => [ 'city' ], 'country' => [ 'country' ] ] as $field => $names ) {
+
+			if( array_filter( $names, static fn( string $name ): bool => is_string( $input[$name] ) === true && trim( $input[$name] ) !== '' ) === [] ) {
+				self::redirect( $appData, $request, 'invalid', $onward, $field, '', $field === 'name' ? 'name' : 'required' );
+
+				return;
+			}
+		}
 
 		$changed = Clients::change( $appData, $client['id'], $input );
 
@@ -227,12 +273,20 @@ class Data {
 				return;
 			}
 
-			self::redirect( $appData, $request, 'invalid', $field );
+			self::redirect( $appData, $request, 'invalid', $onward, $field, '', $changed === 'empty' ? 'name' : ( str_starts_with( $changed, 'long:' ) === true ? 'long' : 'format' ) );
 
 			return;
 		}
 
 		Portal::forget( $appData );
+
+		// The name of the client is the name of the account that has none: the chip of the bar, the comments and the mail to the owner read it from there
+		if( trim( (string) $changed['name'] ) !== '' && trim( (string) $member['name'] ) === '' ) {
+
+			$named = \Nino\Modules\Members::change( $appData, $member['id'], [ 'name' => mb_substr( trim( (string) $changed['name'] ), 0, self::ACCOUNT_NAME, 'UTF-8' ) ] );
+			$member = is_array( $named ) === true ? $named : $member;
+		}
+
 		$differences = [];
 
 		foreach( array_keys( self::FIELDS ) as $name )
@@ -249,19 +303,19 @@ class Data {
 			$asked = \Nino\Modules\Members::askChange( $appData, $member, (string) $changed['email'] );
 
 			if( $asked === 'sent' ) {
-				self::redirect( $appData, $request, 'saved', '', 'code' );
+				self::redirect( $appData, $request, 'saved', $onward, '', '', '', 'code' );
 
 				return;
 			}
 
 			if( $asked === 'limit' ) {
-				self::redirect( $appData, $request, 'limit' );
+				self::redirect( $appData, $request, 'limit', $onward );
 
 				return;
 			}
 		}
 
-		self::redirect( $appData, $request, 'saved' );
+		self::redirect( $appData, $request, 'saved', $onward, '', Portal::proceed( $appData, $changed, $onward ) );
 	}
 
 	/**
@@ -330,7 +384,7 @@ class Data {
 		}
 
 		if( \Nino\Form::blocked( $request ) === true ) {
-			self::redirect( $appData, $request, 'expired', '', 'change' );
+			self::redirect( $appData, $request, 'expired', '', '', '', '', 'change' );
 
 			return;
 		}
@@ -338,8 +392,8 @@ class Data {
 		$status = \Nino\Modules\Members::askChange( $appData, $member, is_string( $_POST['email'] ?? null ) === true ? $_POST['email'] : '' );
 
 		match( $status ) {
-			'sent'    => self::redirect( $appData, $request, '', '', 'code' ),
-			'invalid' => self::redirect( $appData, $request, 'invalid', 'login' ),
+			'sent'    => self::redirect( $appData, $request, '', '', '', '', '', 'code' ),
+			'invalid' => self::redirect( $appData, $request, 'invalid', '', 'login' ),
 			default   => self::redirect( $appData, $request, $status ),
 		};
 	}
@@ -366,7 +420,7 @@ class Data {
 		}
 
 		if( \Nino\Form::blocked( $request ) === true ) {
-			self::redirect( $appData, $request, 'expired', '', 'code' );
+			self::redirect( $appData, $request, 'expired', '', '', '', '', 'code' );
 
 			return;
 		}
@@ -375,7 +429,7 @@ class Data {
 
 		match( $status ) {
 			'ok'    => self::redirect( $appData, $request, 'login-changed' ),
-			'wrong' => self::redirect( $appData, $request, 'wrong', '', 'code' ),
+			'wrong' => self::redirect( $appData, $request, 'wrong', '', '', '', '', 'code' ),
 			default => self::redirect( $appData, $request, 'gone' ),
 		};
 	}
@@ -440,16 +494,19 @@ class Data {
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$request
-	 *	@param		string		$state				One of STATES or LOGIN_STATES; '' for none
+	 *	@param		string		$state				One of STATES
+	 *	@param		string		$onward				The page to go on to, as Portal::onward() has it; the page of the form keeps it
 	 *	@param		string		$field				For invalid: the field that was refused
+	 *	@param		string		$next					Where a saved form goes on to, as Portal::proceed() has it; '' for the page itself
+	 *	@param		string		$why					For invalid: required, name, long or format - the page words the sentence beside the field by it
 	 *	@param		string		$login				change or code: the step of the block Anmeldeadresse the page shows
 	 *
 	 *	@return 	void
 	 */
-	private static function redirect( array &$appData, array &$request, string $state, string $field = '', string $login = '' ): void {
+	private static function redirect( array &$appData, array &$request, string $state, string $onward = '', string $field = '', string $next = '', string $why = '', string $login = '' ): void {
 
-		$query = array_filter( [ 'state' => $state, 'field' => $field, 'login' => $login ], static fn( string $value ): bool => $value !== '' );
+		$query = array_filter( [ 'state' => $state, 'field' => $field, 'why' => $why, 'login' => $login, 'weiter' => $onward ], static fn( string $value ): bool => $value !== '' );
 
-		\Nino\Http::redirect( $appData, $request, self::PAGE. '?'. http_build_query( $query ), 303 );
+		\Nino\Http::redirect( $appData, $request, $next !== '' ? $next : self::PAGE. '?'. http_build_query( $query, '', '&', PHP_QUERY_RFC3986 ), 303 );
 	}
 }

@@ -364,7 +364,7 @@ class Admin {
 		[ $kind, $field ] = array_pad( explode( ':', $why, 2 ), 2, '' );
 
 		match( $kind ) {
-			'empty'   => \Nino\Http::fail( $request, 400, 'a client needs a company or a name', 'crm_clients_empty', [], 'company' ),
+			'empty'   => \Nino\Http::fail( $request, 400, 'a client needs a company, a name or the address of its first account', 'crm_clients_empty', [], 'company' ),
 			'email'   => \Nino\Http::fail( $request, 400, 'the address is not valid', 'crm_clients_email', [], 'email' ),
 			'long'    => \Nino\Http::fail( $request, 400, 'the value is too long', 'crm_clients_long', [ \Crm\Clients::FIELDS[$field] ?? 0 ], $field ),
 			'format'  => \Nino\Http::fail( $request, 400, 'the value has a wrong format', 'crm_clients_format', [], $field ),

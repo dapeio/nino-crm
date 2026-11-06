@@ -24,9 +24,9 @@ return [
 	'[[/_nino/webpage/portal/termine/name]]' => 'Termine',
 	'[[/_nino/webpage/portal/termine/title]]' => 'Deine Termine',
 	'[[/_nino/webpage/portal/termine/description]]' => 'Die Termine, die für Dich anstehen – mit dem Abo für Deinen Kalender.',
-	'[[/_nino/webpage/portal/datenschutz/name]]' => 'Datenschutz-Zustimmung',
-	'[[/_nino/webpage/portal/datenschutz/title]]' => 'Datenschutz-Zustimmung',
-	'[[/_nino/webpage/portal/datenschutz/description]]' => 'Deine Zustimmung zur Datenschutzerklärung des Kundenportals. Wir halten fest, wann Du zugestimmt hast; ändert sich der Text, fragen wir noch einmal.',
+	'[[/_nino/webpage/portal/datenschutz/name]]' => 'Datenschutzerklärung',
+	'[[/_nino/webpage/portal/datenschutz/title]]' => 'Datenschutzerklärung',
+	'[[/_nino/webpage/portal/datenschutz/description]]' => 'Die Datenschutzerklärung des Kundenportals. Wir halten fest, wann Du sie zur Kenntnis genommen hast; ändert sich der Text, fragen wir noch einmal.',
 
 	// Die Angaben der Startseite, des Tors (der Element-URI ist '/', wie ihn der Assistent für die Startseite schreibt): der Kopf liest sie
 	'[[/_nino/webpage//name]]' => 'Kundenportal',

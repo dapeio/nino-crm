@@ -58,7 +58,7 @@ return [
 	'[[/feature/members/mail/login-notice]]'	=> 'Wenn Du ihn nicht angefordert hast, ignoriere diese E-Mail: Ohne den Link kann sich niemand mit Deiner Adresse anmelden.',
 	'[[/feature/members/mail/invite-subject]]'	=> 'Deine Einladung',
 	'[[/feature/members/mail/invite-title]]'	=> 'Du bist eingeladen zu',
-	'[[/feature/members/mail/invite-intro]]'	=> 'Für Dich wurde ein Konto angelegt. Der Button öffnet eine Seite, auf der Du Deine erste Anmeldung mit einem weiteren Klick bestätigst - ein Passwort brauchst Du nicht. Später forderst Du auf der Anmeldeseite einen neuen Link an.',
+	'[[/feature/members/mail/invite-intro-code]]'	=> 'Für Dich wurde ein Konto angelegt. Der Button öffnet eine Seite, auf der Du Deine erste Anmeldung mit einem weiteren Klick bestätigst – ein Passwort brauchst Du nicht. Später gibst Du auf der Anmeldeseite Deine Adresse ein und bekommst einen Code per E-Mail.',
 	'[[/feature/members/mail/invite-button]]'	=> 'Einladung annehmen',
 	'[[/feature/members/mail/invite-valid]]'	=> 'Die Einladung funktioniert einmal und ist gültig für',
 	'[[/feature/members/mail/invite-days]]'		=> 'Tage.',

@@ -629,6 +629,29 @@ $stopped( $idle['id'], 'inactive', 'the client was switched off after the draft 
 \Crm\Clients::setActive( $appData, $first['id'], true );
 Documents::remove( $appData, $idle['id'] );
 
+// A client that has not given what an invoice names it by cannot be written an offer, an invoice or a credit note: the draft is made, saved and seen, finalising stops before anything is spent
+$sparse = (array) \Crm\Clients::get( $appData, $second['id'] );
+Db::exec( $appData, 'UPDATE clients SET street = \'\', zip = \'\', city = \'\', country = \'\' WHERE id = :id', [ 'id' => $sparse['id'] ] );
+$thin = Documents::add( $appData, 'invoice', $sparse['id'], [ 'lines' => $lines, 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+check( 'a draft is made, saved and seen as a preview for a client with no address: the client is not ready for an invoice, and nothing of that is in the way of the draft', is_array( $thin ) && $thin['client']['ready'] === false && is_array( Documents::change( $appData, $thin['id'], [ 'notes' => 'ein Satz' ] ) ) && is_array( Documents::preview( $appData, $thin['id'] ) ) );
+$stopped( $thin['id'], 'unready', 'the client has a name and no address at all' );
+\Crm\Clients::change( $appData, $sparse['id'], [ 'street' => 'Kaistr. 9', 'zip' => '24103' ] );
+$stopped( $thin['id'], 'unready', 'the client has a street and a postal code and no city' );
+
+foreach( [ 'street', 'zip', 'city', 'country' ] as $missing ) {
+	Db::exec( $appData, 'UPDATE clients SET city = \'Kiel\', street = \'Kaistr. 9\', zip = \'24103\', country = \'DE\' WHERE id = :id', [ 'id' => $sparse['id'] ] );
+	Db::exec( $appData, 'UPDATE clients SET '. $missing. ' = \'\' WHERE id = :id', [ 'id' => $sparse['id'] ] );
+	$offer = Documents::add( $appData, 'offer', $sparse['id'], [ 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
+	$stopped( $offer['id'], 'unready', 'an offer, '. $missing. ' missing' );
+	$stopped( $thin['id'], 'unready', 'an invoice, '. $missing. ' missing' );
+	Documents::remove( $appData, $offer['id'] );
+}
+
+Db::exec( $appData, 'UPDATE clients SET city = \'Kiel\', street = \'Kaistr. 9\', zip = \'24103\', country = \'DE\', company = \'\', name = \'\' WHERE id = :id', [ 'id' => $sparse['id'] ] );
+$stopped( $thin['id'], 'unready', 'an address and neither a company nor a name' );
+Documents::remove( $appData, $thin['id'] );
+Db::exec( $appData, 'UPDATE clients SET company = :company, name = :name, street = :street, zip = :zip, city = :city, country = :country WHERE id = :id', array_intersect_key( $sparse, array_flip( [ 'id', 'company', 'name', 'street', 'zip', 'city', 'country' ] ) ) );
+
 $gone = Documents::add( $appData, 'invoice', $first['id'], [ 'lines' => $lines ] );
 $post( 'pdf/templates/save', [ 'key' => 'zeitweise', 'isNew' => true, 'name' => 'Zeitweise', 'tag' => 'invoice', 'blocks' => [] ] );
 Documents::change( $appData, $gone['id'], [ 'template_key' => 'zeitweise' ] );
@@ -1495,7 +1518,7 @@ echo "\nEvery refusal of the model has its answer\n";
 $refuse = new \ReflectionMethod( \Crm\Documents\Admin::class, '_refused' );
 $answers = [];
 
-foreach( [ 'unknown', 'fixed', 'state', 'category', 'client', 'inactive', 'period', 'reverse', 'lines', 'total', 'pdf', 'template', 'empty', 'number', 'exists:/data/crm/pdf/2026/R-2026-0001.pdf', 'render', 'write',
+foreach( [ 'unknown', 'fixed', 'state', 'category', 'client', 'inactive', 'unready', 'period', 'reverse', 'lines', 'total', 'pdf', 'template', 'empty', 'number', 'exists:/data/crm/pdf/2026/R-2026-0001.pdf', 'render', 'write',
 	'date:due_date', 'long:notes', 'format:inputs', 'format:number_offer', 'inputs:intro', 'line:2:amount:qty', 'line:0:empty:title', 'line:0:format:', 'value:currency', 'surprise',
 	'offer', 'empty:title', 'long:title', 'format:title', 'address', 'limit', 'pending', 'days', 'field', 'account', 'sign', 'sign:template', 'sign:input', 'sign:render', 'sign:write', 'sign:surprise' ] as $why ) {
 	$request = ninoVisit( $appData, '/refused' );
@@ -1505,7 +1528,7 @@ foreach( [ 'unknown', 'fixed', 'state', 'category', 'client', 'inactive', 'perio
 
 check( 'the kinds of refusal are answered with their status, code, field and params: not found, conflicts, bad requests and the two that are the server\'s', $answers === [
 	'unknown' => '404 crm_documents_unknown id ', 'fixed' => '409 crm_documents_fixed  ', 'state' => '409 crm_documents_state  ', 'category' => '400 crm_documents_category category ', 'client' => '400 crm_documents_client client_id ',
-	'inactive' => '409 crm_documents_inactive client_id ', 'period' => '400 crm_documents_period period_from ', 'reverse' => '409 crm_documents_reverse reverse_charge ', 'lines' => '400 crm_documents_lines lines 200', 'total' => '400 crm_documents_total lines ',
+	'inactive' => '409 crm_documents_inactive client_id ', 'unready' => '409 crm_documents_unready client_id ', 'period' => '400 crm_documents_period period_from ', 'reverse' => '409 crm_documents_reverse reverse_charge ', 'lines' => '400 crm_documents_lines lines 200', 'total' => '400 crm_documents_total lines ',
 	'pdf' => '409 crm_documents_pdf  ', 'template' => '409 crm_documents_template template_key ', 'empty' => '409 crm_documents_empty lines ', 'number' => '409 crm_documents_number  ', 'exists:/data/crm/pdf/2026/R-2026-0001.pdf' => '409 crm_documents_exists  R-2026-0001,data/crm/pdf/2026/R-2026-0001.pdf',
 	'render' => '500 crm_documents_render  ', 'write' => '500 crm_documents_write  ', 'date:due_date' => '400 crm_documents_date due_date ', 'long:notes' => '400 crm_documents_long notes 5000', 'format:inputs' => '400 crm_documents_format inputs ',
 	'format:number_offer' => '400 crm_documents_numberformat number_offer ', 'inputs:intro' => '409 crm_documents_inputs inputs.intro ', 'line:2:amount:qty' => '400 crm_documents_line_amount lines.2.qty 3', 'line:0:empty:title' => '400 crm_documents_line_empty lines.0.title 1',
@@ -2512,6 +2535,22 @@ if( is_string( $fixtures ) === true && is_dir( $fixtures ) === true )
 
 
 // --- Eight processes finalising at once -------------------------------------------------------------------------------
+
+echo "\nThe documents that do not wait for the address\n";
+
+// A contract, the Datenschutz and an information name the client by nothing an invoice needs: a client with no address has them finalised, an offer stops - the rule is for the three with lines
+Db::exec( $appData, 'UPDATE clients SET street = \'\', zip = \'\', city = \'\', country = \'\' WHERE id = :id', [ 'id' => $second['id'] ] );
+$noAddress = (array) \Crm\Clients::get( $appData, $second['id'] );
+$waiting = Documents::add( $appData, 'offer', $second['id'], [ 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
+$plainOnes = [
+	'information' => Documents::add( $appData, 'information', $second['id'], [ 'title' => 'Ohne Anschrift', 'template_key' => 'zugang' ] ),
+	'privacy'     => Documents::add( $appData, 'privacy', $second['id'], [ 'title' => 'Ohne Anschrift', 'template_key' => 'datenschutz' ] ),
+	'contract'    => Documents::add( $appData, 'contract', 0, [ 'parent_id' => $otherFinal['id'], 'title' => 'Ohne Anschrift', 'template_key' => 'dienstleistung', 'inputs' => [ 'zusatz' => 'x' ] ] ),
+];
+$plainDone = array_map( static fn( mixed $draft ): mixed => is_array( $draft ) === true ? Documents::finalise( $appData, $draft['id'] ) : $draft, $plainOnes );
+check( 'a client with no address is not ready, and has its contract, its Datenschutz and its information finalised all the same - they carry no line and no number and name it by nothing an invoice needs', $noAddress['ready'] === false && array_map( static fn( mixed $done ): string => is_array( $done ) === true ? $done['state'] : (string) $done, $plainDone ) === [ 'information' => 'open', 'privacy' => 'open', 'contract' => 'open' ]
+	&& is_array( $waiting ) === true && Documents::finalise( $appData, $waiting['id'] ) === 'unready' && Documents::get( $appData, $waiting['id'] )['state'] === 'draft' );
+Documents::remove( $appData, $waiting['id'] );
 
 echo "\nNumbers under concurrency\n";
 

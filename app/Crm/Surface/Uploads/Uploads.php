@@ -133,7 +133,7 @@ class Uploads {
 				'id'           => (string) $id,
 				'client_id'    => $client['id'],
 				'client'       => $client['number'],
-				'client_title' => $client['company'] !== '' ? $client['company'] : $client['name'],
+				'client_title' => $client['title'],
 				'name'         => $file['name'],
 				'ext'          => $file['ext'],
 				'size'         => $file['size'],

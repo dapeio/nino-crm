@@ -88,6 +88,22 @@ function portalNavAt( array &$appData, string $uri ): string {
 }
 
 /**
+ *	A component as the request for a path draws it: the shortcode on its own, whatever the gate of the client would make of the page
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$uri
+ *	@param		string		$shortcode
+ *
+ *	@return 	string
+ */
+function portalComponentAt( array &$appData, string $uri, string $shortcode ): string {
+
+	ninoVisit( $appData, $uri );
+
+	return \Nino\Html::renderHtml( $appData, $shortcode );
+}
+
+/**
  *	The head of a page as the request for a path draws it: the component on its own, the bar of the application, the navigation and the head of the page
  *
  *	@param		array 		&$appData
@@ -307,7 +323,7 @@ foreach( [
 
 $a = \Crm\Clients::add( $appData, [ 'company' => 'Studio Nord GmbH', 'name' => 'Anna Nord', 'street' => 'Hafenstr. 1', 'zip' => '20095', 'city' => 'Hamburg' ] );
 $b = \Crm\Clients::add( $appData, [ 'name' => 'Ben Süd', 'street' => 'Lindenweg 3', 'zip' => '10115', 'city' => 'Berlin' ] );
-$c = \Crm\Clients::add( $appData, [ 'company' => 'Ohne Konto AG' ] );
+$c = \Crm\Clients::add( $appData, [ 'company' => 'Ohne Konto AG', 'street' => 'Kaistr. 9', 'zip' => '24103', 'city' => 'Kiel' ] );
 $accounts = [];
 
 foreach( [ 'anna' => [ $a, 'Anna Nord' ], 'carl' => [ $a, 'Carl Nord' ], 'olga' => [ $a, 'Olga Alt' ], 'ben' => [ $b, 'Ben Süd' ] ] as $name => [ $client, $label ] ) {
@@ -815,7 +831,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 177 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 185 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -1607,7 +1623,7 @@ $expired = portalPage( $appData, '/portal/meine-daten?state=expired' )[1];
 $invalid = portalPage( $appData, '/portal/meine-daten?state=invalid&field=zip' )[1];
 check( 'the state of the query is said above the form: saved as a status in the success tone, expired and invalid as an alert in the error tone - the invalid one names the field - and the field says it beside itself, marked invalid and described by its sentence', portalFind( $saved, '//p[@role="status"][contains(@class, "crm-data__state--saved")][contains(@class, "crm-note--success")]' ) !== [] && portalFind( $expired, '//p[@role="alert"][contains(@class, "crm-data__state--expired")][contains(@class, "crm-note--error")]' ) !== []
 	&& portalText( $saved, '//p[contains(@class, "crm-data__state")]' ) !== portalText( $expired, '//p[contains(@class, "crm-data__state")]' ) && count( portalFind( $invalid, '//p[@role="alert"][contains(@class, "crm-data__state--invalid")]' ) ) === 1
-	&& str_contains( portalText( $invalid, '//p[@role="alert"]' ), portalText( $invalid, '//label[@for="crm-data-zip"]' ) ) === true && portalFind( $invalid, '//input[@name="zip"]/@aria-invalid' )[0]->nodeValue === 'true' && portalFind( $invalid, '//input[@name="zip"]/@aria-describedby' )[0]->nodeValue === 'crm-data-zip-error'
+	&& str_contains( portalText( $invalid, '//p[@role="alert"]' ), portalText( $invalid, '//label[@for="crm-data-zip"]/text()' ) ) === true && portalFind( $invalid, '//input[@name="zip"]/@aria-invalid' )[0]->nodeValue === 'true' && portalFind( $invalid, '//input[@name="zip"]/@aria-describedby' )[0]->nodeValue === 'crm-data-zip-error'
 	&& portalText( $invalid, '//span[@id="crm-data-zip-error"]' ) !== '' && count( portalFind( $invalid, '//*[@aria-invalid]' ) ) === 1 && count( portalFind( $invalid, '//span[contains(@class, "crm-data__error")]' ) ) === 1 );
 check( '...and the states are notes in the manner of the toast of the surface: .crm-note on the paragraph of saved, expired and invalid', count( portalFind( $saved . $expired . $invalid, '//p[contains(@class, "crm-data__state")][contains(concat(" ", normalize-space(@class), " "), " crm-note ")]' ) ) === 3 && portalFind( $saved . $expired . $invalid, '//p[contains(@class, "crm-data__state")][not(contains(concat(" ", normalize-space(@class), " "), " crm-note "))]' ) === [] );
 check( '...a state that is none, an invalid state without a field and a field that is none say nothing; the typed values are not kept', array_filter( [ 'state=bogus', 'state=invalid', 'state=invalid&field=email', 'state=invalid&field=..', 'field=zip', 'state[]=saved' ], static fn( string $query ): bool => portalFind( portalPage( $appData, '/portal/meine-daten?'. $query )[1], '//*[contains(@class, "crm-data__state") or contains(@class, "crm-data__error")]' ) !== [] ) === []
@@ -1633,19 +1649,19 @@ check( 'a token that is not the session\'s is the redirect with ?state=expired, 
 	&& \Crm\Clients::get( $appData, $a['id'] )['city'] === 'Kiel' && count( $mails ) === $beforeMails );
 
 $refusals = [
-	'a zip that is no zip'              => [ [ 'zip' => 'a!b' ], 'zip' ],
-	'a city that is too long'           => [ [ 'city' => str_repeat( 'x', 81 ) ], 'city' ],
-	'a country of three letters'        => [ [ 'country' => 'DEU' ], 'country' ],
-	'a country that is no letters'      => [ [ 'country' => '1!' ], 'country' ],
-	'a phone number that is none'       => [ [ 'phone' => 'abc' ], 'phone' ],
-	'a VAT id that is none'             => [ [ 'vat_id' => 'x' ], 'vat_id' ],
-	'a street that is a list'           => [ [ 'street' => [ 'a', 'b' ] ], 'street' ],
-	'neither a company nor a name'      => [ [ 'company' => ' ', 'name' => '' ], 'name' ],
+	'a zip that is no zip'              => [ [ 'zip' => 'a!b' ], 'zip', 'format' ],
+	'a city that is too long'           => [ [ 'city' => str_repeat( 'x', 81 ) ], 'city', 'long' ],
+	'a country of three letters'        => [ [ 'country' => 'DEU' ], 'country', 'long' ],
+	'a country that is no letters'      => [ [ 'country' => '1!' ], 'country', 'format' ],
+	'a phone number that is none'       => [ [ 'phone' => 'abc' ], 'phone', 'format' ],
+	'a VAT id that is none'             => [ [ 'vat_id' => 'x' ], 'vat_id', 'format' ],
+	'a street that is a list'           => [ [ 'street' => [ 'a', 'b' ] ], 'street', 'required' ],
+	'neither a company nor a name'      => [ [ 'company' => ' ', 'name' => '' ], 'name', 'name' ],
 ];
 
-foreach( $refusals as $why => [ $over, $field ] ) {
+foreach( $refusals as $what => [ $over, $field, $why ] ) {
 	$answer = portalServe( $appData, '/.crm/daten', 'POST', $fields( $over ) );
-	check( 'refused - '. $why. ': the redirect names the field ('. $field. '), nothing is saved, no mail', $answer['statusCode'] === 303 && $location( $answer ) === '/portal/meine-daten?state=invalid&field='. $field
+	check( 'refused - '. $what. ': the redirect names the field ('. $field. ') and the reason ('. $why. '), nothing is saved, no mail', $answer['statusCode'] === 303 && $location( $answer ) === '/portal/meine-daten?state=invalid&field='. $field. '&why='. $why
 		&& \Crm\Clients::get( $appData, $a['id'] ) === $client && count( $mails ) === $beforeMails );
 }
 
@@ -1658,7 +1674,7 @@ $changed = portalServe( $appData, '/.crm/daten', 'POST', $fields( [ 'company' =>
 $after = (array) \Crm\Clients::get( $appData, $a['id'] );
 check( 'a post that changes fields is saved: ?state=saved, the fields through the validation of the client (trimmed, the country in capitals) - and what the form does not have (e-mail, notes, number, active) is not touched', $changed['statusCode'] === 303 && $location( $changed ) === '/portal/meine-daten?state=saved'
 	&& $after['company'] === 'Nord & Söhne <GmbH>' && $after['city'] === 'Bremen' && $after['country'] === 'AT' && $after['email'] === $client['email'] && $after['notes'] === $client['notes'] && $after['number'] === $client['number'] && $after['active'] === true && $after['id'] === $a['id']
-	&& array_diff_key( array_diff_assoc( $after, $client ), [ 'updated' => 1 ] ) === [ 'company' => 'Nord & Söhne <GmbH>', 'city' => 'Bremen', 'country' => 'AT' ] );
+	&& array_diff_key( array_diff_assoc( $after, $client ), [ 'updated' => 1, 'title' => 1 ] ) === [ 'company' => 'Nord & Söhne <GmbH>', 'city' => 'Bremen', 'country' => 'AT' ] );
 $sentMails = portalMailsFrom( $beforeMails );
 check( 'the owner is mailed once: to the contact address of the company, the reply to the account that changed it, the subject with the number and the company', count( $sentMails ) === 1 && $sentMails[0]['to'] === 'owner@example.org' && $sentMails[0]['replyTo'] === 'anna@example.org' && str_contains( $sentMails[0]['subject'], 'K-0001' ) === true && str_contains( $sentMails[0]['subject'], 'Nord &amp; Söhne' ) === false );
 $mailRows = portalFind( $sentMails[0]['body'] ?? '', '//tbody/tr' );
@@ -2064,7 +2080,7 @@ check( 'the nav has a seventh link, to the page, as long as the client has not a
 check( '...the link has the name of its page, in the words of the pages, and the dot that says it waits for the client: a mark in the markup and the word for a screen reader', portalText( portalNavAt( $appData, '/portal' ), '//nav//a[@href="/portal/datenschutz"]/span[@class="crm-nav__text"]' ) === $unitDe['[[/_nino/webpage/portal/datenschutz/name]]']
 	&& count( portalFind( portalNavAt( $appData, '/portal' ), '//nav//a[@href="/portal/datenschutz"]/span[@class="crm-nav__dot"][@aria-hidden="true"]' ) ) === 1 && portalText( portalNavAt( $appData, '/portal' ), '//nav//a[@href="/portal/datenschutz"]/span[contains(@class, "nino-sr-only")]' ) === $wordsDe['[[/project/crm-portal/nav/pending]]']
 	&& portalFind( portalNavAt( $appData, '/portal' ), '//nav//a[not(@href="/portal/datenschutz")]//span[contains(@class, "crm-nav__dot")]' ) === [] && $wordsEn['[[/project/crm-portal/nav/pending]]'] !== '' );
-$data = portalPage( $appData, '/portal/meine-daten' )[1];
+$data = portalComponentAt( $appData, '/portal/meine-daten', '[crm-client-data]' );
 check( 'Meine Daten has a line with the state and the link to the page, while the owner asks for a text', portalFind( $data, '//section[contains(@class, "crm-data__privacy")][@data-agreed="0"]' ) !== [] && portalFind( $data, '//section[contains(@class, "crm-data__privacy")]//a[contains(@class, "crm-data__link")]/@href' )[0]->nodeValue === '/portal/datenschutz'
 	&& str_contains( portalFind( $data, '//section[contains(@class, "crm-data__privacy")]//span[contains(@class, "crm-pill")]' )[0]->getAttribute( 'class' ), 'crm-pill--warning' ) === true );
 
@@ -2130,7 +2146,7 @@ check( '...agreeing to the new text is a record of its own, with the hash of the
 check( 'a save that leaves the text as it is changes no day', \Crm\Settings::get( $appData, 'privacy_changed' ) === '2026-11-01' && \Crm\Records::privacy( $appData, $a['id'] )['agreed'] === true );
 
 // a client of its own: the name of the account that agreed is text on the page, and the address of the request is the peer's, whatever a header says
-$e = \Crm\Clients::add( $appData, [ 'company' => 'Eins E GmbH', 'name' => 'Edda E' ] );
+$e = \Crm\Clients::add( $appData, [ 'company' => 'Eins E GmbH', 'name' => 'Edda E', 'street' => 'Ring 1', 'zip' => '50667', 'city' => 'Köln' ] );
 $edda = \Nino\Modules\Members::add( $appData, 'edda@example.org', '<i>Edda</i> [members-name]', $e['group'] );
 \Crm\Clients::link( $appData, $e['id'], $edda['id'] );
 portalSignIn( $appData, $edda );
@@ -2186,11 +2202,11 @@ $orderable = array_map( 'strval', [ $orderOne['id'], $orderThree['id'], $orderTo
 
 // the Datenschutz comes first
 \Crm\Settings::set( $appData, 'privacy_text', \Crm\Settings::get( $appData, 'privacy_text' ). ' Und noch eins.' );
-$projectPage = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
+$projectPage = portalComponentAt( $appData, '/portal/projekte?projekt='. $p1, '[crm-projects]' );
 $notes = portalFind( $projectPage, '//section[contains(@class, "crm-project__section--offer")]//p[contains(@class, "crm-order--privacy")]' );
 check( 'while the client has not agreed to the Datenschutz there is no form under the offers that can be ordered; the sentence that the Datenschutz comes first, with the link to the page, stands once, above the offers and not under each of them', count( $notes ) === 1 && array_unique( array_map( static fn( \DOMElement $note ): string => portalFind( $note->ownerDocument->saveHTML( $note ), '//a/@href' )[0]->nodeValue, $notes ) ) === [ '/portal/datenschutz' ]
 	&& portalFind( $projectPage, '//form[contains(@class, "crm-order")]' ) === [] && portalFind( $projectPage, '//p[contains(@class, "crm-order--privacy")]/following-sibling::details[contains(@class, "crm-offer")]' ) !== [] && portalFind( $projectPage, '//details[contains(@class, "crm-offer")]//p[contains(@class, "crm-order--privacy")]' ) === []
-	&& count( portalFind( portalPage( $appData, '/portal/belege' )[1], '//p[contains(@class, "crm-order--privacy")]' ) ) === 1 );
+	&& count( portalFind( portalComponentAt( $appData, '/portal/belege', '[crm-documents]' ), '//p[contains(@class, "crm-order--privacy")]' ) ) === 1 );
 $privacyFirst = portalServe( $appData, '/.crm/auftrag', 'POST', [ 'document' => (string) $orderOne['id'], 'from' => 'projekt', 'agree' => '1' ] );
 check( '...a post is ?state=privacy, back to the page of the project, and nothing is kept: no record, the offer is as it was', $location( $privacyFirst ) === '/portal/projekte?projekt='. $p1. '&tab=angebot&state=privacy&beleg='. $orderOne['id']. '#angebot-'. $orderOne['id'] && $recordsOf( $a['id'], 'order' ) === [] && in_array( Documents::get( $appData, $orderOne['id'] )['state'], [ 'open', 'sent' ], true ) === true );
 portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1' ] );
@@ -2390,7 +2406,7 @@ $asVisitor();
 check( 'a visitor gets nothing of the start page', trim( \Nino\Html::renderHtml( $appData, '[crm-portal-start]' ) ) === '' );
 portalSignIn( $appData, $stray );
 check( '...nor does a member of no client', trim( \Nino\Html::renderHtml( $appData, '[crm-portal-start]' ) ) === '' );
-$d = \Crm\Clients::add( $appData, [ 'company' => 'Leer GmbH', 'name' => 'Dora Leer' ] );
+$d = \Crm\Clients::add( $appData, [ 'company' => 'Leer GmbH', 'name' => 'Dora Leer', 'street' => 'Weg 2', 'zip' => '80331', 'city' => 'München' ] );
 $dora = \Nino\Modules\Members::add( $appData, 'dora@example.org', 'Dora Leer', $d['group'] );
 \Crm\Clients::link( $appData, $d['id'], $dora['id'] );
 \Crm\Settings::set( $appData, 'privacy_text', '' );
@@ -2406,7 +2422,8 @@ $onlyDate = portalPage( $appData, '/portal' )[1];
 \Nino\Features::deactivate( $appData, 'events' );
 check( '...a date alone is no figure: a client with nothing but a public date coming (the date is on the card of the dates) reads no row of key figures, with Events on', in_array( 'dates', $cards( $onlyDate ), true ) === true && $cards( $onlyDate ) === [ 'dates' ] && portalFind( $onlyDate, '//ul[contains(@class, "crm-kpis")] | //a[@data-kpi]' ) === [] );
 \Crm\Settings::set( $appData, 'privacy_text', $text );
-check( 'the card Datenschutz stands there while the owner asks for a text that the client has not agreed to, with the link - and alone it is the only card, and still no row of key figures', $cards( portalPage( $appData, '/portal' )[1] ) === [ 'privacy' ] && portalFind( portalPage( $appData, '/portal' )[1], '//article[@data-card="privacy"]//a/@href' )[0]->nodeValue === '/portal/datenschutz' && portalFind( portalPage( $appData, '/portal' )[1], '//ul[contains(@class, "crm-kpis")]' ) === [] );
+$privacyStart = portalComponentAt( $appData, '/portal', '[crm-portal-start]' );
+check( 'the card Datenschutz stands there while the owner asks for a text that the client has not agreed to, with the link - and alone it is the only card, and still no row of key figures', $cards( $privacyStart ) === [ 'privacy' ] && portalFind( $privacyStart, '//article[@data-card="privacy"]//a/@href' )[0]->nodeValue === '/portal/datenschutz' && portalFind( $privacyStart, '//ul[contains(@class, "crm-kpis")]' ) === [] );
 \Nino\Features::activate( $appData, 'events' );
 portalSignIn( $appData, $accounts['anna'] );
 Db::exec( $appData, 'UPDATE documents SET released_at = :at, date = :day WHERE id = :id', [ 'at' => gmdate( 'Y-m-d\TH:i:s\Z', time() - 20 * 86400 ), 'day' => date( 'Y-m-d', strtotime( '+1 day' ) ), 'id' => $invoiceA['id'] ] );
@@ -2915,6 +2932,235 @@ check( '...a choice with the keyboard - the arrows, Home, End, PageUp, PageDown,
 	&& preg_match( '/addEventListener\(\s*[\'"]blur[\'"][\s\S]{0,200}?changed\(\)[\s\S]{0,60}?send\(\)/', $versionsScript ) === 1 && str_contains( $versionsScript, 'defaultSelected' ) === true );
 check( '...and the page that the form leads to - the address names the form, #crm-versions - gets the focus back on the select without a jump of the scroll',
 	preg_match( '/target\.id === \'crm-versions\'[\s\S]{0,200}?\.focus\(\s*\{\s*preventScroll:\s*true\s*\}\s*\)/', $portalScript ) === 1 );
+
+// --- The gate of the client: the Datenschutz first, then the data of the invoice ----------------------------------------------------------------
+
+echo "\nThe gate of the client\n";
+
+$gateText = "Wir speichern Deine Daten für das Projekt.\nStand 2026";
+\Nino\Features::activate( $appData, 'files' );
+\Nino\Features::activate( $appData, 'review' );
+\Crm\Settings::set( $appData, 'privacy_text', $gateText );
+
+// Studio Nord has taken note of this text, whatever the sections before left it at
+if( \Crm\Records::privacy( $appData, $a['id'] )['agreed'] === false )
+	\Crm\Records::add( $appData, [ 'kind' => 'privacy', 'client_id' => $a['id'], 'member' => [ 'id' => $accounts['anna']['id'], 'email' => 'anna@example.org', 'name' => 'Anna Nord' ], 'shown' => $gateText ] );
+
+$locationOf = static fn( array $response ): string => (string) ( $response['header']['Location'] ?? '' );
+$wanted = static fn( string $step, string $uri ): string => '/portal/'. $step. '?weiter='. rawurlencode( $uri );
+$gClient = static fn( array $client ): array => (array) \Crm\Clients::get( $appData, $client['id'] );
+
+/**
+ *	A client made with an address alone, as the invitation of the owner makes it: its account has no name, its group a folder with a file, its client a project
+ */
+$newBare = static function( string $address ) use ( &$appData, $reset, $store, $put, $made, $owner, $ago ): array {
+
+	$reset();
+	$client = \Crm\Clients::add( $appData, [], [ 'email' => $address, 'name' => '', 'notify' => false ] );
+	$account = (array) ( $client['first']['account'] ?? [] );
+	$folder = $store::addFolder( $appData, $client['group'], 'Tor' );
+
+	return [
+		'client'  => $client,
+		'account' => $account,
+		'token'   => preg_match( '~t=([A-Za-z0-9_-]+)$~', (string) ( $client['first']['link'] ?? '' ), $found ) === 1 ? $found[1] : '',
+		'file'    => $put( $folder, 'Tor.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 3600 ) ),
+		'project' => $made( '<b>Tor</b> & Co [members-name]', $client['number'], [ 'folder' => $folder['id'] ] ),
+	];
+};
+
+$g = $newBare( 'tor@example.org' );
+$gPages = [ '/portal', '/portal/projekte', '/portal/projekte?projekt='. $g['project']. '&tab=angebot', '/portal/upload', '/portal/belege', '/portal/termine' ];
+check( 'a client made with an address alone is called by it, is not ready for an invoice and has an invitation that leads to /portal', is_array( $g['client'] ) && $g['client']['title'] === 'tor@example.org' && $g['client']['ready'] === false && $g['account']['id'] !== '' && $g['token'] !== '' && $g['account']['name'] === '' && $g['project'] !== '' );
+
+// pending(): the Datenschutz first, then the data, then nothing
+$anna = (array) \Crm\Clients::get( $appData, $a['id'] );
+\Crm\Settings::set( $appData, 'privacy_text', '' );
+check( 'pending() asks for nothing of the Datenschutz where the owner keeps no text - the data is the step then, and a client that has it has nothing to do', \Crm\Portal::pending( $appData, $gClient( $g['client'] ) ) === 'data' && \Crm\Portal::pending( $appData, $anna ) === '' );
+\Crm\Settings::set( $appData, 'privacy_text', $gateText );
+check( '...with a text it is privacy for a client that has not taken note of it, whatever else is missing - the Datenschutz comes first -, and nothing for one that has and has its data', \Crm\Portal::pending( $appData, $gClient( $g['client'] ) ) === 'privacy' && \Crm\Portal::pending( $appData, $anna ) === '' );
+\Crm\Settings::set( $appData, 'privacy_text', $gateText. ' Noch ein Satz.' );
+check( '...a text that was changed is asked again, even of a client that has everything else', \Crm\Portal::pending( $appData, $anna ) === 'privacy' );
+\Crm\Settings::set( $appData, 'privacy_text', $gateText );
+check( '...and the text that is back is the text that was confirmed', \Crm\Portal::pending( $appData, $anna ) === '' );
+
+// a visitor, a member of no client and a client with nothing pending: the pages answer as they did
+$asVisitor();
+$visitor = portalServe( $appData, '/portal/projekte' );
+check( 'a visitor is not touched by the gate: the page answers 401 with the login in place, as the gate of Members has it - and no redirect', $visitor['statusCode'] === 401 && $locationOf( $visitor ) === '' );
+portalSignIn( $appData, $stray );
+check( '...nor is a member of no client', array_unique( array_map( static fn( string $uri ): int => portalServe( $appData, $uri )['statusCode'], $gPages ) ) === [ 200 ] );
+portalSignIn( $appData, $accounts['anna'] );
+check( '...nor a client with nothing pending: Studio Nord has taken note and has its address', array_unique( array_map( static fn( string $uri ): int => portalServe( $appData, $uri )['statusCode'], $gPages ) ) === [ 200 ] );
+
+// the Datenschutz first
+portalSignIn( $appData, $g['account'] );
+$answers = array_map( static fn( string $uri ): array => [ $uri, portalServe( $appData, $uri ) ], $gPages );
+check( 'a member whose client has not taken note of the Datenschutz is answered 303 on every page of the portal, to the page of the Datenschutz, with the page it wanted - path and query - in weiter, URL-encoded', array_filter( $answers, static fn( array $one ): bool => $one[1]['statusCode'] !== 303 || $locationOf( $one[1] ) !== $wanted( 'datenschutz', $one[0] ) ) === []
+	&& $wanted( 'datenschutz', '/portal/projekte?projekt=X&tab=angebot' ) === '/portal/datenschutz?weiter=%2Fportal%2Fprojekte%3Fprojekt%3DX%26tab%3Dangebot' );
+check( '...the redirect is not cached and has no body: nothing of the page it replaces is in it', array_filter( $answers, static fn( array $one ): bool => ( $one[1]['header']['Cache-Control'] ?? '' ) !== 'no-store' || ( $one[1]['body'] ?? '' ) !== '' ) === [] );
+$onDatenschutz = portalServe( $appData, '/portal/datenschutz' );
+$onData = portalServe( $appData, '/portal/meine-daten?weiter=%2Fportal%2Fbelege' );
+check( '...the page of the Datenschutz answers itself; Meine Daten comes to the Datenschutz first, with itself in weiter - and where it was going on to with it', $onDatenschutz['statusCode'] === 200 && $onData['statusCode'] === 303 && $locationOf( $onData ) === $wanted( 'datenschutz', '/portal/meine-daten?weiter=%2Fportal%2Fbelege' )
+	&& $locationOf( portalServe( $appData, '/portal/meine-daten' ) ) === $wanted( 'datenschutz', '/portal/meine-daten' ) );
+check( '...a query that is no flat text is left out of weiter - the page it was is what it gets -, and a weiter of its own is kept on the way to the same place', $locationOf( portalServe( $appData, '/portal/belege?a[]=1&b=2&weiter=%2Fportal' ) ) === $wanted( 'datenschutz', '/portal/belege?b=2&weiter=%2Fportal' ) );
+$logout = portalServe( $appData, '/.members/logout' );
+check( '...the sign-out is no page of the portal: it signs the member out and goes where it goes, not to the Datenschutz', $logout['statusCode'] === 303 && str_contains( $locationOf( $logout ), 'datenschutz' ) === false && \Nino\Modules\Members::current( $appData ) === null );
+portalSignIn( $appData, $g['account'] );
+
+// the file route is closed before the gate, for the view and the download alike, and the owner is not asked
+$closed = [ portalServe( $appData, '/.files/'. $g['file']['id'] ), portalServe( $appData, '/.files/'. $g['file']['id']. '?download=1' ) ];
+check( 'the file route is 404 for a member whose gate is pending - inline and as a download, no file named, the plain 404 of a stranger - and allowed() says no', array_filter( $closed, static fn( array $one ): bool => $one['statusCode'] !== 404 || ( $one['body'] ?? '' ) !== 'Not Found' || isset( $one['file'] ) === true ) === []
+	&& \Nino\Modules\Files::allowed( $appData, $g['file'] ) === false && \Nino\Modules\Files::allowed( $appData, $g['file'], true ) === false );
+$asAdmin();
+$ownerFile = portalServe( $appData, '/.files/'. $g['file']['id'] );
+check( '...the owner of the workbench opens it all the same, by the permission of the panel', $ownerFile['statusCode'] === 200 && ( $ownerFile['file'] ?? '' ) === \Nino\Modules\Files::path( $appData, $g['file']['id'] ) );
+portalSignIn( $appData, $accounts['anna'] );
+check( '...and the file of another group is 404 for a member whose gate is open, as it was', portalServe( $appData, '/.files/'. $g['file']['id'] )['statusCode'] === 404 );
+portalSignIn( $appData, $g['account'] );
+
+// the note over the Datenschutz and what the page carries on
+$onward = '/portal/projekte?projekt='. $g['project'];
+$page = portalPage( $appData, '/portal/datenschutz?weiter='. rawurlencode( $onward ) )[1];
+$note = portalFind( $page, '//p[contains(@class, "crm-gate--privacy")]' );
+check( 'the page of the Datenschutz says over its text what is asked first: a note in the info tone with the shield, a status - and, when the member wanted a page, where it goes on to after it: the title of the project as text, never the path', count( $note ) === 1 && str_contains( $note[0]->getAttribute( 'class' ), 'crm-note--info' ) === true && $note[0]->getAttribute( 'role' ) === 'status'
+	&& portalFind( $page, '//p[contains(@class, "crm-gate--privacy")]/svg[contains(@class, "crm-icon--shield-check")]' ) !== [] && strpos( $page, 'crm-gate--privacy' ) < strpos( $page, 'crm-privacy__text' ) && portalText( $page, '//p[contains(@class, "crm-gate--privacy")]//span[contains(@class, "crm-gate__next")]/strong' ) === '<b>Tor</b> & Co [members-name]'
+	&& str_contains( $page, '&lt;b&gt;Tor&lt;/b&gt; &amp; Co &#91;members-name]' ) === true && portalFind( $page, '//p[contains(@class, "crm-gate--privacy")]//a' ) === [] && portalLeft( $page ) === false && str_contains( portalText( $page, '//p[contains(@class, "crm-gate--privacy")]' ), $g['project'] ) === false );
+check( '...the form carries it in a hidden field weiter - the path and the query as they were asked, escaped - and has none where the address names none, nor a second sentence', portalFind( $page, '//form[contains(@class, "crm-privacy__form")]//input[@type="hidden"][@name="weiter"]/@value' )[0]->nodeValue === $onward
+	&& portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//input[@name="weiter"]' ) === [] && portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//span[contains(@class, "crm-gate__next")]' ) === [] && count( portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//p[contains(@class, "crm-gate--privacy")]' ) ) === 1 );
+$areas = [ '/portal', '/portal/projekte', '/portal/belege', '/portal/upload', '/portal/termine', '/portal/meine-daten' ];
+$named = array_map( static fn( string $weiter ): string => portalText( portalPage( $appData, '/portal/datenschutz?weiter='. rawurlencode( $weiter ) )[1], '//span[contains(@class, "crm-gate__next")]/strong' ), $areas );
+check( '...the next page is named by the words of the pages - the start page, Projekte, Belege, Upload, Termine and Meine Daten - and a page the portal does not have, or a project that is none of this client\'s, is not named', $named === array_map( static fn( string $uri ): string => $unitDe['[[/_nino/webpage'. $uri. '/name]]'], $areas )
+	&& portalFind( portalPage( $appData, '/portal/datenschutz?weiter='. rawurlencode( '/portal/gibt-es-nicht' ) )[1], '//span[contains(@class, "crm-gate__next")]' ) === []
+	&& portalText( portalPage( $appData, '/portal/datenschutz?weiter='. rawurlencode( '/portal/projekte?projekt='. $p1 ) )[1], '//span[contains(@class, "crm-gate__next")]/strong' ) === $unitDe['[[/_nino/webpage/portal/projekte/name]]'] );
+
+// a weiter that is no path of the portal is nobody's: not a field, not a name, not a target - on the page and in the post
+$probes = [ '//evil.example/x', 'https://evil.example/', 'http://evil.example', 'javascript:alert(1)', '/crm', '/crm#kunden', '\\evil.example', '/\\evil.example', "/portal\0/evil.example", '%2F%2Fevil.example', '/portal/../crm', '/portal/..%2Fcrm', '/portal/%2e%2e/crm', '/portalx', 'portal/projekte', ' /portal', '/portal/projekte?x=<b>',
+	'/portal/projekte?x=1&y[]=2', '/.members/logout', '/portal//evil.example', "/portal/projekte\r\nSet-Cookie: x=1", str_repeat( '/portal/a', 60 ), '' ];
+$reflected = [];
+$kept = [];
+
+foreach( $probes as $probe ) {
+	$view = portalPage( $appData, '/portal/datenschutz?weiter='. str_replace( '%00', "\0", rawurlencode( $probe ) ) )[1];
+	$answer = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'weiter' => $probe ] );
+
+	if( portalFind( $view, '//input[@name="weiter"]' ) !== [] || portalFind( $view, '//span[contains(@class, "crm-gate__next")]' ) !== [] || str_contains( $view, 'evil.example' ) === true || str_contains( $view, 'Set-Cookie' ) === true || str_contains( $view, '/crm' ) === true )
+		$reflected[] = $probe;
+
+	if( $locationOf( $answer ) !== '/portal/datenschutz?state=unchecked' )
+		$kept[$probe] = $locationOf( $answer );
+}
+
+check( 'a weiter that is no path under /portal - a host, a scheme, a second slash, a backslash, /crm, a dot segment (plain or encoded), a null byte, a line break, an endpoint, a query that is none, one too long - is never put in the page as a field, a name or an address', $reflected === [] );
+check( '...and a post that carries one answers as a post with none does: the state of the page, the Location holds nothing of it', $kept === [] );
+$goodWeiter = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'weiter' => $onward ] );
+check( '...while a good one is kept through a refusal of the post: the state, then weiter, encoded', $locationOf( $goodWeiter ) === '/portal/datenschutz?state=unchecked&weiter='. rawurlencode( $onward ) );
+
+// the data does not go through before the Datenschutz: nothing is saved, nobody is mailed, no account is named
+$pre = $newBare( 'vera@example.org' );
+portalSignIn( $appData, $pre['account'] );
+$preMails = count( $mails );
+$preSaved = portalServe( $appData, '/.crm/daten', 'POST', [ 'name' => 'Vera Vor', 'street' => 'Weg 9', 'zip' => '20095', 'city' => 'Hamburg', 'country' => 'DE', 'weiter' => '/portal/belege' ] );
+$preBare = portalServe( $appData, '/.crm/daten', 'POST', [ 'name' => 'Vera Vor', 'street' => 'Weg 9', 'zip' => '20095', 'city' => 'Hamburg', 'country' => 'DE' ] );
+check( 'a post of the data while the Datenschutz is pending saves nothing, mails nobody and names no account: 303 to the Datenschutz, whose weiter is Meine Daten with the page it was going on to', $locationOf( $preSaved ) === $wanted( 'datenschutz', '/portal/meine-daten?weiter=%2Fportal%2Fbelege' ) && $locationOf( $preBare ) === $wanted( 'datenschutz', '/portal/meine-daten' )
+	&& $gClient( $pre['client'] )['street'] === '' && $gClient( $pre['client'] )['name'] === '' && (string) \Nino\Modules\Members::account( $appData, $pre['account']['id'] )['name'] === '' && count( $mails ) === $preMails && $gClient( $pre['client'] )['ready'] === false );
+
+// the Datenschutz confirmed with a weiter that is nobody's: the next step, nothing else
+$h = $newBare( 'hanne@example.org' );
+portalSignIn( $appData, $h['account'] );
+$confirmed = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1', 'weiter' => '//evil.example' ] );
+$records = $recordsOf( $h['client']['id'] );
+check( 'the Datenschutz confirmed goes on to the next step - the data -, and a weiter that is no path is not carried there: ?weiter= is not in the Location', $locationOf( $confirmed ) === '/portal/meine-daten' && count( $records ) === 1 && $records[0]['kind'] === 'privacy' && \Crm\Portal::pending( $appData, $gClient( $h['client'] ) ) === 'data' );
+
+// the data is the step now: the pages go to it, it does not go back
+$toData = array_map( static fn( string $uri ): array => [ $uri, portalServe( $appData, $uri ) ], [ '/portal', '/portal/belege?x=1' ] );
+check( 'with the Datenschutz done and the data missing the pages go to Meine Daten with weiter; Meine Daten and the Datenschutz answer themselves - the data does not send a client back to the Datenschutz', array_filter( $toData, static fn( array $one ): bool => $one[1]['statusCode'] !== 303 || $locationOf( $one[1] ) !== $wanted( 'meine-daten', $one[0] ) ) === [] && portalServe( $appData, '/portal/meine-daten' )['statusCode'] === 200 && portalServe( $appData, '/portal/datenschutz' )['statusCode'] === 200 );
+$dataPage = portalPage( $appData, '/portal/meine-daten?weiter='. rawurlencode( '/portal/belege' ) )[1];
+$dataNote = portalFind( $dataPage, '//p[contains(@class, "crm-gate--data")]' );
+check( 'Meine Daten says over its form what is asked: a note in the info tone with the id card, a status - and where it goes on to after it; no sentence of the Datenschutz', count( $dataNote ) === 1 && str_contains( $dataNote[0]->getAttribute( 'class' ), 'crm-note--info' ) === true && $dataNote[0]->getAttribute( 'role' ) === 'status' && portalFind( $dataPage, '//p[contains(@class, "crm-gate--data")]/svg[contains(@class, "crm-icon--id-card")]' ) !== []
+	&& portalText( $dataPage, '//span[contains(@class, "crm-gate__next")]/strong' ) === $unitDe['[[/_nino/webpage/portal/belege/name]]'] && portalFind( $dataPage, '//p[contains(@class, "crm-gate--privacy")]' ) === [] && strpos( $dataPage, 'crm-gate--data' ) < strpos( $dataPage, 'crm-data__form' )
+	&& portalFind( $dataPage, '//form[contains(@class, "crm-data__form")]//input[@type="hidden"][@name="weiter"]/@value' )[0]->nodeValue === '/portal/belege' && portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//input[@name="weiter"]' ) === [] );
+$required = portalFind( $dataPage, '//form[contains(@class, "crm-data__form")]//*[@required]' );
+check( 'street, postal code, city and country are required - the attribute, aria-required and a star on the label that a reader does not read - and company, name, phone and VAT id are not', array_map( static fn( \DOMElement $control ): string => $control->getAttribute( 'name' ), $required ) === [ 'street', 'zip', 'city', 'country' ]
+	&& array_filter( $required, static fn( \DOMElement $control ): bool => $control->getAttribute( 'aria-required' ) !== 'true' ) === [] && array_map( static fn( \DOMElement $label ): string => $label->getAttribute( 'for' ), portalFind( $dataPage, '//label[span[contains(@class, "crm-field__star")][@aria-hidden="true"]]' ) ) === [ 'crm-data-street', 'crm-data-zip', 'crm-data-city', 'crm-data-country' ]
+	&& portalFind( $dataPage, '//label[@for="crm-data-company" or @for="crm-data-name" or @for="crm-data-phone" or @for="crm-data-vat_id"]//span[contains(@class, "crm-field__star")]' ) === [] && portalFind( $dataPage, '//input[@name="name"]/@value' )[0]->nodeValue === '' );
+
+// the data refused: the first field that is empty, and the sentence beside it
+$hFields = [ 'company' => '', 'name' => 'Hanne Haas', 'street' => 'Ring 3', 'zip' => '50667', 'city' => 'Köln', 'country' => 'DE', 'phone' => '', 'vat_id' => '' ];
+$refusedData = [];
+
+foreach( [ 'street' => [ 'street' => '  ' ], 'zip' => [ 'zip' => '' ], 'city' => [ 'city' => " \t" ], 'country' => [ 'country' => '' ], 'name' => [ 'name' => '  ', 'company' => ' ' ] ] as $field => $over ) {
+	$answer = portalServe( $appData, '/.crm/daten', 'POST', $over + $hFields + [ 'weiter' => '/portal/belege' ] );
+	$refusedData[$field] = [ $answer['statusCode'], $locationOf( $answer ) ];
+}
+
+check( 'the server asks for the four fields and for a name or a company, whatever the form sent: an empty one is ?state=invalid&field=<name> - the first that is empty -, the weiter kept in the Location, nothing saved', array_filter( $refusedData, static fn( array $one, string $field ): bool => $one !== [ 303, '/portal/meine-daten?state=invalid&field='. $field. '&why='. ( $field === 'name' ? 'name' : 'required' ). '&weiter='. rawurlencode( '/portal/belege' ) ], ARRAY_FILTER_USE_BOTH ) === [] && $gClient( $h['client'] )['street'] === ''
+	&& $locationOf( portalServe( $appData, '/.crm/daten', 'POST', [ 'street' => '', 'zip' => '', 'city' => '', 'country' => '', 'name' => '' ] ) ) === '/portal/meine-daten?state=invalid&field=name&why=name' && $locationOf( portalServe( $appData, '/.crm/daten', 'POST', [ 'name' => 'X', 'zip' => '1', 'city' => 'Y', 'country' => 'DE' ] ) ) === '/portal/meine-daten?state=invalid&field=street&why=required'
+	&& $locationOf( portalServe( $appData, '/.crm/daten', 'POST', [ 'zip' => 'a!b' ] + $hFields ) ) === '/portal/meine-daten?state=invalid&field=zip&why=format' && $locationOf( portalServe( $appData, '/.crm/daten', 'POST', [ 'weiter' => '//evil.example', 'street' => '' ] + $hFields ) ) === '/portal/meine-daten?state=invalid&field=street&why=required' );
+$refusedPage = portalPage( $appData, '/portal/meine-daten?state=invalid&field=street&why=required&weiter='. rawurlencode( '/portal/belege' ) )[1];
+$refusedName = portalPage( $appData, '/portal/meine-daten?state=invalid&field=name&why=name' )[1];
+$refusedZip = portalPage( $appData, '/portal/meine-daten?state=invalid&field=zip&why=required' )[1];
+check( '...the page marks the field and says beside it what is wrong - that it is empty, for an empty required field; that name or company is wanted, for the pair; to check the entry, for a field that has its value - and keeps the page it goes on to', portalFind( $refusedPage, '//input[@name="street"]/@aria-invalid' )[0]->nodeValue === 'true' && portalText( $refusedPage, '//span[@id="crm-data-street-error"]' ) === $wordsDe['[[/project/crm-portal/data/field-required]]']
+	&& portalText( $refusedName, '//span[@id="crm-data-name-error"]' ) === $wordsDe['[[/project/crm-portal/data/field-name]]'] && portalText( $refusedZip, '//span[@id="crm-data-zip-error"]' ) === $wordsDe['[[/project/crm-portal/data/field-required]]'] && portalFind( $refusedPage, '//input[@name="weiter"]/@value' )[0]->nodeValue === '/portal/belege'
+	&& $wordsDe['[[/project/crm-portal/data/field-required]]'] !== $wordsDe['[[/project/crm-portal/data/field-error]]'] && $wordsEn['[[/project/crm-portal/data/field-required]]'] !== '' && $wordsEn['[[/project/crm-portal/data/field-name]]'] !== '' );
+
+$whyText = static fn( string $why ): string => portalText( portalPage( $appData, '/portal/meine-daten?state=invalid&field=zip&why='. rawurlencode( $why ) )[1], '//span[@id="crm-data-zip-error"]' );
+check( '...the sentence is chosen by the reason in the address - required, name, long, format - each its own words in both languages, and a reason that is none, empty or markup says the generic sentence and is never put on the page', $whyText( 'required' ) === $wordsDe['[[/project/crm-portal/data/field-required]]'] && $whyText( 'name' ) === $wordsDe['[[/project/crm-portal/data/field-name]]'] && $whyText( 'long' ) === $wordsDe['[[/project/crm-portal/data/field-long]]'] && $whyText( 'format' ) === $wordsDe['[[/project/crm-portal/data/field-error]]']
+	&& array_unique( [ $whyText( '<b>' ), $whyText( '' ), $whyText( 'x' ), $whyText( 'REQUIRED' ) ] ) === [ $wordsDe['[[/project/crm-portal/data/field-error]]'] ] && str_contains( portalPage( $appData, '/portal/meine-daten?state=invalid&field=zip&why=%3Cb%3E' )[1], '<b>' ) === false
+	&& count( array_unique( [ $wordsDe['[[/project/crm-portal/data/field-required]]'], $wordsDe['[[/project/crm-portal/data/field-name]]'], $wordsDe['[[/project/crm-portal/data/field-long]]'], $wordsDe['[[/project/crm-portal/data/field-error]]'] ] ) ) === 4 && $wordsEn['[[/project/crm-portal/data/field-long]]'] !== '' );
+
+// the data saved: the name of the client becomes the name of the account that has none - and goes on to the page
+$beforeName = (string) \Nino\Modules\Members::account( $appData, $h['account']['id'] )['name'];
+$savedData = portalServe( $appData, '/.crm/daten', 'POST', $hFields + [ 'weiter' => '/portal/belege' ] );
+$afterName = (string) \Nino\Modules\Members::account( $appData, $h['account']['id'] )['name'];
+check( 'the data saved with nothing pending after it goes on to the page the member wanted, and not to a state; the name of the client is the name of the account that had none, and the chip of the bar reads it', $beforeName === '' && $locationOf( $savedData ) === '/portal/belege' && $afterName === 'Hanne Haas' && \Crm\Portal::pending( $appData, $gClient( $h['client'] ) ) === ''
+	&& \Crm\Portal::nameOf( (array) \Nino\Modules\Members::current( $appData ) ) === 'Hanne Haas' && portalServe( $appData, '/portal/belege' )['statusCode'] === 200 );
+check( '...the files of the group are served now, inline and as a download - the 404 was the gate\'s', portalServe( $appData, '/.files/'. $h['file']['id'] )['statusCode'] === 200 && portalServe( $appData, '/.files/'. $h['file']['id']. '?download=1' )['statusCode'] === 200 && \Nino\Modules\Files::allowed( $appData, $h['file'] ) === true );
+$sameAgain = portalServe( $appData, '/.crm/daten', 'POST', [ 'name' => 'Hanne Neu' ] + $hFields );
+check( '...a name the account has is never overwritten: a different name of the client later leaves the account as it is - and without a weiter the form answers its own page with its state', (string) \Nino\Modules\Members::account( $appData, $h['account']['id'] )['name'] === 'Hanne Haas' && $locationOf( $sameAgain ) === '/portal/meine-daten?state=saved' && $gClient( $h['client'] )['name'] === 'Hanne Neu' );
+
+// a client with a company and no name: the account keeps no name
+$k = $newBare( 'kai@example.org' );
+portalSignIn( $appData, $k['account'] );
+portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1' ] );
+$companyOnly = portalServe( $appData, '/.crm/daten', 'POST', [ 'company' => 'Kai GmbH', 'name' => '', 'street' => 'Allee 4', 'zip' => '70173', 'city' => 'Stuttgart', 'country' => 'DE' ] );
+check( 'a company without a name leaves the name of the account empty - the bar reads the address then - and the save goes on to its page with its state', $locationOf( $companyOnly ) === '/portal/meine-daten?state=saved' && (string) \Nino\Modules\Members::account( $appData, $k['account']['id'] )['name'] === '' && \Crm\Portal::nameOf( (array) \Nino\Modules\Members::current( $appData ) ) === 'kai@example.org' && $gClient( $k['client'] )['title'] === 'Kai GmbH' );
+$longName = str_repeat( 'ä', 120 );
+$l = $newBare( 'lena@example.org' );
+portalSignIn( $appData, $l['account'] );
+portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1' ] );
+portalServe( $appData, '/.crm/daten', 'POST', [ 'name' => $longName, 'street' => 'Allee 4', 'zip' => '70173', 'city' => 'Stuttgart', 'country' => 'DE' ] );
+check( 'a name of the longest length the client takes is the name of the account as it is', (string) \Nino\Modules\Members::account( $appData, $l['account']['id'] )['name'] === $longName );
+
+// the whole way as the first client walks it: the invitation, the Datenschutz, the data, the page
+$i = $newBare( 'ines@example.org' );
+$_SESSION = [];
+unset( $appData['./nino/auth/current'] );
+$opened = portalServe( $appData, '/.members/login?t='. $i['token'] );
+$signed = portalServe( $appData, '/.members/confirm', 'POST', [ 'token' => $i['token'] ] );
+$step1 = portalServe( $appData, $locationOf( $signed ) );
+$step2 = portalServe( $appData, $locationOf( $step1 ) );
+$step3 = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1', 'weiter' => '/portal' ] );
+$step4 = portalServe( $appData, $locationOf( $step3 ) );
+$step5 = portalServe( $appData, '/.crm/daten', 'POST', [ 'name' => 'Ines Ide', 'street' => 'Platz 1', 'zip' => '01067', 'city' => 'Dresden', 'country' => 'DE', 'weiter' => '/portal' ] );
+$step6 = portalServe( $appData, $locationOf( $step5 ) );
+check( 'the invitation, the Datenschutz, the data, the page - in one session: the link signs in and leads to /portal, which goes to the Datenschutz with weiter=/portal; the confirmation goes to Meine Daten with the same weiter; the data goes to /portal, which answers', $opened['statusCode'] === 200 && $signed['statusCode'] === 303 && $locationOf( $signed ) === '/portal' && $step1['statusCode'] === 303 && $locationOf( $step1 ) === $wanted( 'datenschutz', '/portal' ) && $step2['statusCode'] === 200
+	&& $locationOf( $step3 ) === $wanted( 'meine-daten', '/portal' ) && $step4['statusCode'] === 200 && $locationOf( $step5 ) === '/portal' && $step6['statusCode'] === 200 && \Crm\Portal::pending( $appData, $gClient( $i['client'] ) ) === '' && \Crm\Portal::nameOf( (array) \Nino\Modules\Members::current( $appData ) ) === 'Ines Ide' );
+check( '...the client is called by its name and has what an invoice needs: ready for an offer and an invoice', $gClient( $i['client'] )['title'] === 'Ines Ide' && $gClient( $i['client'] )['ready'] === true );
+
+check( '...after the gate the notes are gone: neither page of a step says what is asked first, the Datenschutz says when it was confirmed and Meine Daten has no weiter', portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//*[contains(@class, "crm-gate")]' ) === [] && portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//*[contains(@class, "crm-gate")] | //input[@name="weiter"]' ) === []
+	&& portalFind( portalPage( $appData, '/portal/datenschutz' )[1], '//p[contains(@class, "crm-privacy__standing--agreed")]' ) !== [] );
+
+// a text that was changed asks again, of a client that has everything else: the gate is at the Datenschutz, and Meine Daten goes there
+\Crm\Settings::set( $appData, 'privacy_text', $gateText. ' Und noch etwas.' );
+portalSignIn( $appData, $accounts['anna'] );
+check( 'a client with its data whose Datenschutz changed is sent to the Datenschutz from every page, Meine Daten included - and the pages answer again once it is confirmed', $locationOf( portalServe( $appData, '/portal/belege' ) ) === $wanted( 'datenschutz', '/portal/belege' ) && $locationOf( portalServe( $appData, '/portal/meine-daten' ) ) === $wanted( 'datenschutz', '/portal/meine-daten' )
+	&& $locationOf( portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1', 'weiter' => '/portal/belege' ] ) ) === '/portal/belege' && portalServe( $appData, '/portal/belege' )['statusCode'] === 200 );
+
+// what the gate leaves out of the log: no address
+check( 'the warnings of the whole way hold no address of a client', array_filter( ninoWarnings(), static fn( string $line ): bool => preg_match( '/@example\.org/', $line ) === 1 ) === [] );
+
+check( '...and it puts the focus on the field of Meine Daten that the server marked invalid, once the page is drawn - the script asks for aria-invalid in the form of the data and focuses it, before the address loses its state', preg_match( '/function focusRefused\(\)\s*\{[^}]*querySelector\(\s*\'\.crm-data__form \[aria-invalid="true"\]\'\s*\)[^}]*\.focus\(\)/s', $script ) === 1 && strpos( $script, 'focusRefused();' ) !== false && strpos( $script, 'focusRefused();' ) < strpos( $script, 'forgetState();', (int) strpos( $script, 'function init()' ) ) );
 
 // The rest of the suite runs as it did before: Review and Events off
 foreach( [ 'events', 'review' ] as $key )

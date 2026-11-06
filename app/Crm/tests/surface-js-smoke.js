@@ -1288,6 +1288,28 @@ function press( w, key, target, mods ) {
 	await settle();
 	check( 'a document without lines is finalised with its own question: the PDF is made', textOf( all( contractNew.dialogs[0], 'p' )[0] ) === 'Die PDF wird erzeugt. Danach ist das Dokument unveränderlich.' );
 
+	const bareClients = clients.map( function( one ) { return Object.assign( {}, one, { bare : one.id === 1 } ) } );
+	const bareDraft = await editing( {}, { 'crm-documents/get' : function() { return [ 200, view( draftDoc, { clients : bareClients } ) ] } } );
+	check( 'the box of the client in the draft names what it shows: the address of a client with neither company nor name is labelled E-Mail, the title of any other Name', textOf( field( bareDraft, 'client-box' ) ).indexOf( texts['client.email']+ clients[0].title ) !== -1 && textOf( field( edit, 'client-box' ) ).indexOf( texts['client.name']+ clients[0].title ) !== -1 );
+	// a client that has not given its address yet: the draft is written and seen, not finalised
+	const unreadyClients = clients.map( function( one ) { return Object.assign( {}, one, { ready : false } ) } );
+	const unready = await editing( {}, {
+		'crm-documents/list' : function( data ) { return [ 200, { documents : [], years : [ 2026 ], clients : unreadyClients, settings : settings, items : items, offers : offers } ] },
+		'crm-clients/get' : function( data ) { return [ 200, { client : Object.assign( {}, client, { id : Number( data.id ), ready : false } ), accounts : [] } ] },
+	} );
+	check( 'while the client of an invoice is not ready for it the button Festschreiben is off and the sentence stands over the draft - the draft is saved and seen all the same: Speichern and the preview are on', field( unready, 'finalise' ).disabled === true && field( unready, 'finalise-unready' ).hidden === false && textOf( field( unready, 'finalise-unready' ) ) === texts['finalise.unready'] && texts['finalise.unready'] !== ''
+		&& field( unready, 'save' ).disabled !== true && all( all( unready.main, '.menu' )[0], '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'PDF-Vorschau|Entwurf löschen' );
+	check( 'a client that is ready leaves the button on and the sentence hidden', field( edit, 'finalise' ).disabled !== true && field( edit, 'finalise-unready' ).hidden === true );
+	const readyAfter = await editing( {}, {
+		'crm-documents/list' : function( data ) { return [ 200, { documents : [], years : [ 2026 ], clients : unreadyClients, settings : settings, items : items, offers : offers } ] },
+	} );
+	check( '...and so does one whose list said no and whose card says yes: the card is the later word', field( readyAfter, 'finalise' ).disabled === false && field( readyAfter, 'finalise-unready' ).hidden === true );
+	const unreadyContract = await editing( {}, {
+		'crm-documents/list' : function( data ) { return [ 200, { documents : [], years : [ 2026 ], clients : unreadyClients, settings : settings, items : items, offers : offers } ] },
+		'crm-clients/get' : function( data ) { return [ 200, { client : Object.assign( {}, client, { id : Number( data.id ), ready : false } ), accounts : [] } ] },
+	}, '#neu-contract-13' );
+	check( 'a contract, the Datenschutz and an information do not wait for the address: the button is on and the sentence hidden', field( unreadyContract, 'finalise' ).disabled === false && field( unreadyContract, 'finalise-unready' ).hidden === true );
+
 	// small business: no rate, no reverse charge
 	const plainVat = await editing( {}, { 'crm-documents/get' : function() { return [ 200, view( Object.assign( {}, draftDoc, { vat_mode : 'small_business' } ), { settings : smallBusiness } ) ] } } );
 	check( 'a draft without VAT has no rate select and no reverse charge, and the totals say why', all( plainVat.main, 'select.rate' ).length === 0 && field( plainVat, 'f-reverse_charge' ) === undefined && textOf( field( plainVat, 'totals' ) ).indexOf( 'Kleinunternehmer (§ 19 UStG)' ) !== -1 && textOf( field( plainVat, 'totals' ) ).indexOf( 'USt. auf' ) === -1 );
@@ -1777,6 +1799,22 @@ function press( w, key, target, mods ) {
 	type( all( kl.main, '#q' )[0], 'zzz', false );
 	check( '...a search that finds nothing says that, and not that there are no clients', textOf( all( kl.main, 'tbody' )[0] ) === 'Kein Kunde passt zur Suche.' );
 	type( all( kl.main, '#q' )[0], '', false );
+
+	// a client that was made with an address alone: known by it, grey, and with the words that it has no data yet
+	const kbare = Object.assign( {}, kclients[2], { id : 9, number : 'K-0009', company : '', name : '', street : '', zip : '', city : '', email : 'mika@example.org', title : 'mika@example.org', ready : false, accounts : 1, active_accounts : 1, group : 'k-0009' } );
+	const kbareList = await kopen( '#kunden', { 'crm-clients/list' : function() { return [ 200, { clients : [ kbare, kclients[0] ] } ] } } );
+	const kbareRow = Array.from( krowsOf( kbareList ) ).find( function( tr ) { return tr.dataset.id === '9' } );
+	const kbareCell = kbareRow.children[1];
+	check( 'a client with neither company nor name is told by its address in the second tone of the text (AA, not the grey of what is missing), with the words that it has no data yet - and a client with data has neither', textOf( kbareCell ) === 'mika@example.org · '+ texts['clients.bare'] && all( kbareCell, '.bare' ).length === 2 && texts['clients.bare'] !== ''
+		&& all( krowsOf( kbareList )[0].children[1], '.bare' ).length === 0 && textOf( krowsOf( kbareList )[0].children[1] ) === 'Nordlicht Records GmbH' );
+	check( '...and its address is found by the search, which reads the e-mail of the client', ( type( all( kbareList.main, '#q' )[0], 'mika@', false ), krowsOf( kbareList ).length === 1 ) );
+	const kbareCard = await kopen( '#kunde-9', { 'crm-clients/get' : function() { return [ 200, { client : kbare, accounts : kaccounts } ] } } );
+	check( 'the card of such a client is headed by the address and says in a sentence under the head that the client enters company and address in the portal - and the card of a client that is ready, or says nothing of it, does not', textOf( all( kbareCard.main, 'h1' )[0] ) === 'mika@example.org' && all( kbareCard.main, '#client-unready' ).length === 1 && textOf( all( kbareCard.main, '#client-unready' )[0] ) === texts['card.unready-note']
+		&& Array.from( kbareCard.main.children ).indexOf( all( kbareCard.main, '#client-unready' )[0] ) === Array.from( kbareCard.main.children ).indexOf( all( kbareCard.main, '.head' )[0] ) + 1 );
+	const kreadyCard = await kopen( '#kunde-1', { 'crm-clients/get' : function() { return [ 200, { client : Object.assign( {}, kclients[0], { ready : true } ), accounts : kaccounts } ] } } );
+	check( '...a client that is ready, and one whose card says nothing of it, has no such sentence', all( kreadyCard.main, '#client-unready' ).length === 0 && all( (await kopen( '#kunde-1' )).main, '#client-unready' ).length === 0 );
+	check( 'the title of a client is the company, else the name, else the address - what the server calls it first - and a client frozen into a document, which has no title, is called by the same rule', kl.app.model.clientTitle( { company : 'A', name : 'B', email : 'c@example.org' } ) === 'A' && kl.app.model.clientTitle( { company : '', name : 'B', email : 'c@example.org' } ) === 'B'
+		&& kl.app.model.clientTitle( { company : '', name : '', email : 'c@example.org' } ) === 'c@example.org' && kl.app.model.clientTitle( { company : 'A', name : '', email : '', title : 'Server' } ) === 'Server' && kl.app.model.clientTitle( { company : '', name : '', email : '' } ) === '' );
 
 	const klot = Array.from( { length : 120 }, function( unused, index ) { return Object.assign( {}, kclients[2], { id : 100 + index, number : 'K-'+ String( 100 + index ).padStart( 4, '0' ), company : 'Kunde '+ index } ) } );
 	const kpaged = await kopen( '#kunden', { 'crm-clients/list' : function() { return [ 200, { clients : klot } ] } } );
@@ -2309,7 +2347,7 @@ function press( w, key, target, mods ) {
 	let created = null;
 	const knewc = await kopen( '#kunde-neu', { 'crm-clients/save' : function( data ) {
 		created = data;
-		if( data.company === '' && data.name === '' )
+		if( data.company === '' && data.name === '' && data.account_email.trim() === '' )
 			return [ 400, { error : 'x', code : 'crm_clients_empty', field : 'company' } ];
 		const made = Object.assign( {}, kclient, { id : 6, number : 'K-0006', company : data.company, name : data.name } );
 		if( data.account_email === '' )
@@ -2325,6 +2363,7 @@ function press( w, key, target, mods ) {
 	check( 'Neuer Kunde draws the form without asking for anything: the Stammdaten with their words and the first account, the country DE and a list of countries to choose from, the rail marks Kunden', nform !== undefined && knewc.all( 'crm-clients/save' ).length === 0
 		&& all( nform, 'input' ).map( function( i ) { return i.id.slice( 2 ) } ).join() === 'company,name,street,zip,city,country,email,phone,vat_id,buyer_reference,business,account_email,account_name,account_notify' && nfield( 'account_notify' ).type === 'checkbox' && nfield( 'account_notify' ).checked === true && nfield( 'country' ).value === 'DE' && all( nform, 'option' ).map( function( o ) { return o.value } ).join() === 'DE,AT,CH'
 		&& nfield( 'account_email' ).type === 'email' && all( nform, 'h3' ).map( textOf ).join( '|' ) === 'Stammdaten|Erstes Portal-Konto' && all( knewc.nav, '[data-r]' ).find( function( a ) { return a.getAttribute( 'data-r' ) === 'kunden' } ).classList.contains( 'on' ) === true );
+	check( '...the Stammdaten say in a sentence that the client may enter company and name in the portal itself and that an address for the first account is enough - the sentence of the surface, under the heading of the block and before the fields', all( nform, '#newclient-master-text' ).length === 1 && textOf( all( nform, '#newclient-master-text' )[0] ) === texts['newclient.master-text'] && all( nform, '#newclient-master-text' )[0].parentNode === all( nform, 'h3' )[0].parentNode && texts['newclient.master-text'] !== '' );
 	check( '...the fields that may stay empty say so, and the button says Anlegen until an address for the first account is typed, then Anlegen und einladen - and Anlegen again when it is cleared', all( nform, '.state-note' ).map( textOf ).filter( function( t ) { return t === 'optional' } ).length === 4 && textOf( all( nform, '#client-create' )[0] ) === 'Anlegen'
 		&& ( type( nfield( 'account_email' ), 'nina@example.org', false ), textOf( all( nform, '#client-create' )[0] ) === 'Anlegen und einladen' ) && ( type( nfield( 'account_email' ), '  ', false ), textOf( all( nform, '#client-create' )[0] ) === 'Anlegen' ) );
 	check( '...what is typed is unsaved input, and a link away asks first', knewc.app.state.draft.dirty === true && click( knewc, all( knewc.main, '#client-abort' )[0] ) === true && knewc.dialogs.length === 1 );
@@ -2333,7 +2372,7 @@ function press( w, key, target, mods ) {
 	type( nfield( 'account_email' ), '', false );
 	submit( knewc, nform );
 	await settle();
-	check( 'a client without a company and a name is refused beside the field the answer names - the company - with its sentence, the cursor in it; the form stays, nothing opens', nfield( 'company' ).classList.contains( 'err' ) === true && nfield( 'company' ).focused === true && textOf( all( nform, '.state-note' ).find( function( n ) { return textOf( n ) !== '' && textOf( n ) !== 'optional' } ) ) === 'Ein Kunde braucht eine Firma oder einen Namen.'
+	check( 'a client without a company and a name is refused beside the field the answer names - the company - with its sentence, the cursor in it; the form stays, nothing opens', nfield( 'company' ).classList.contains( 'err' ) === true && nfield( 'company' ).focused === true && textOf( all( nform, '.state-note' ).find( function( n ) { return textOf( n ) !== '' && textOf( n ) !== 'optional' && n.id !== 'newclient-master-text' } ) ) === texts['error.crm_clients_empty']
 		&& knewc.location.hash === '#kunde-neu' && knewc.toast.classList.contains( 'bad' ) === true );
 	type( nfield( 'company' ), 'Neu GmbH', false );
 	type( nfield( 'name' ), 'Nina Neu', false );
@@ -2354,6 +2393,8 @@ function press( w, key, target, mods ) {
 	};
 	const nWith = await nsubmit( { company : 'Konto GmbH', account_email : ' neu@example.org ', account_name : 'Neu Person' } );
 	check( 'with an address the account is posted with the client, as typed, and the sentence says that the invitation is on its way', created.account_email === ' neu@example.org ' && created.account_name === 'Neu Person' && nWith.toast.textContent === 'Kunde K-0006 angelegt, die Einladung ist unterwegs.' && nWith.toast.classList.contains( 'bad' ) === false && nWith.location.hash === '#kunde-6' );
+	const nBare = await nsubmit( { account_email : 'nur@example.org' } );
+	check( 'with nothing but the address of the first account the client is made: crm-clients/save posts the account with company and name empty, the card of the new client opens, and the sentence says that the invitation is on its way', created.company === '' && created.name === '' && created.account_email === 'nur@example.org' && nBare.toast.textContent === 'Kunde K-0006 angelegt, die Einladung ist unterwegs.' && nBare.location.hash === '#kunde-6' );
 	const nQuiet = await kopen( '#kunde-neu', { 'crm-clients/save' : knewc.answers['crm-clients/save'] } );
 	const quietForm = all( nQuiet.main, '#new-client-form' )[0];
 	type( all( quietForm, '#f-company' )[0], 'Still GmbH', false );
@@ -2509,14 +2550,14 @@ function press( w, key, target, mods ) {
 	// --- Einrichtung: the screen of the first run, from a status fixture
 	const pdfKeys = [ 'angebot', 'rechnung', 'stornorechnung', 'vertrag', 'datenschutz', 'information' ];
 	const ifresh = [ { key : 'module', state : 'ok' }, { key : 'data', state : 'ok' }, { key : 'members', state : 'off' }, { key : 'files', state : 'off' }, { key : 'review', state : 'off' }, { key : 'sign', state : 'off' }, { key : 'pdf', state : 'off' }, { key : 'events', state : 'missing' },
-		{ key : 'portal', state : 'partial', lacks : [ 'paths', 'start' ] }, { key : 'pdf-templates', state : 'partial', lacks : [ 'Rechnung', 'Vertrag' ] }, { key : 'home', state : 'other' }, { key : 'mail-cap', state : 'default', value : 5 } ];
+		{ key : 'portal', state : 'partial', lacks : [ 'paths', 'start' ] }, { key : 'pdf-templates', state : 'partial', lacks : [ 'Rechnung', 'Vertrag' ] }, { key : 'home', state : 'other' }, { key : 'mail-cap', state : 'default', value : 5 }, { key : 'notify', state : 'default', value : false } ];
 	const idone = ifresh.map( function( item ) { return { key : item.key, state : 'ok' } } );
 	let iran = 0;
 	let iwhole = false;
 	const ianswers = function( over ) {
 		return Object.assign( {
 			'crm/status' : function() { return [ 200, { items : iwhole === true ? idone : ifresh, whole : iwhole, first_run : iwhole === false } ] },
-			'crm/setup' : function() { iran++; iwhole = true; return [ 200, { added : { features : [ 'members', 'files' ], routes : [], templates : [], types : [], texts : 3, paths : true, start : true, pdf : { templates : pdfKeys, blocks : [], layout : [] }, home : 'starter', cap : 100 }, existed : { features : [], routes : [ 'a' ], templates : [ 'b' ], types : [], pdf : { templates : [] }, home : false, cap : false } } ] },
+			'crm/setup' : function() { iran++; iwhole = true; return [ 200, { added : { features : [ 'members', 'files' ], routes : [], templates : [], types : [], texts : 3, paths : true, start : true, pdf : { templates : pdfKeys, blocks : [], layout : [] }, home : 'starter', cap : 100, notify : true }, existed : { features : [], routes : [ 'a' ], templates : [ 'b' ], types : [], pdf : { templates : [] }, home : false, cap : false } } ] },
 			'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
 		}, over || {} );
 	};
@@ -2531,25 +2572,31 @@ function press( w, key, target, mods ) {
 	const first = await iopen( '' );
 	check( 'the first showing of the page asks for the status before it draws the Übersicht, and a module that is not whole sends it to the Einrichtung: the overview is not asked for', first.sent().join() === 'crm/status' && first.location.hash === '#einrichtung' && first.all( 'crm-documents/overview' ).length === 0 && all( first.main, '#einrichtung-rows' ).length === 1 );
 	check( '...the rail has its eight entries (PDF-Vorlagen hidden for an account without the Pdf permission) and none is marked: the Einrichtung is no entry of it', all( first.nav, '[data-r]' ).length === 8 && all( first.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).length === 0 );
-	check( '...a row for each item of the status, its word and its state: done for the module and the data directory, to do for the rest', irows( first ).length === ifresh.length && Array.from( irows( first ) ).map( function( li ) { return li.getAttribute( 'data-key' )+ ':'+ li.getAttribute( 'data-state' ) } ).join() === 'module:ok,data:ok,members:todo,files:todo,review:todo,sign:todo,pdf:todo,events:todo,portal:todo,pdf-templates:todo,home:todo,mail-cap:todo'
+	check( '...a row for each item of the status, its word and its state: done for the module and the data directory, to do for the rest', irows( first ).length === ifresh.length && Array.from( irows( first ) ).map( function( li ) { return li.getAttribute( 'data-key' )+ ':'+ li.getAttribute( 'data-state' ) } ).join() === 'module:ok,data:ok,members:todo,files:todo,review:todo,sign:todo,pdf:todo,events:todo,portal:todo,pdf-templates:todo,home:todo,mail-cap:todo,notify:todo'
 		&& textOf( irows( first )[2] ).indexOf( texts['einrichtung.row-members'] ) === 0 && textOf( irows( first )[2] ).indexOf( texts['status.members-off'] ) !== -1 && textOf( irows( first )[2] ).indexOf( texts['einrichtung.state-todo'] ) !== -1 && textOf( irows( first )[0] ).indexOf( texts['status.allok'] ) === -1 );
 	check( '...what is missing is said in one sentence of the status: the portal names what it lacks, the PDF templates their keys, the start page that it is not the door yet', textOf( irows( first )[8] ).indexOf( texts['status.portal-partial'].replace( '%s', texts['status.lacks-paths']+ ', '+ texts['status.lacks-start'] ) ) !== -1
 		&& textOf( irows( first )[9] ).indexOf( texts['status.pdf-templates-partial'].replace( '%s', 'Rechnung, Vertrag' ) ) !== -1 && textOf( irows( first )[10] ).indexOf( texts['status.home-other'] ) !== -1 );
 	check( '...the cap of mails is the last row: its word, the kernel\'s default said with its number (5), and to do - and a cap that config.php carries is done, with no sentence', textOf( irows( first )[11] ).indexOf( texts['einrichtung.row-mail-cap'] ) === 0 && textOf( irows( first )[11] ).indexOf( texts['status.mail-cap-default'].replace( '%s', '5' ) ) !== -1 && texts['status.mail-cap-default'].split( '%s' ).length === 2
 		&& textOf( irows( first )[11] ).indexOf( texts['einrichtung.state-todo'] ) !== -1 && texts['einrichtung.row-mail-cap'] !== '' );
 	check( '...the word of the row stands once in it, not again at the start of the sentence', textOf( irows( first )[11] ).split( texts['einrichtung.row-mail-cap'] ).length === 2 );
+	check( '...the notification of the owner is a row of its own after the cap: its word, the sentence of the status for a setting without a value, to do - and a setting that has a value (the owner\'s, off among them) is done with no sentence', textOf( irows( first )[12] ).indexOf( texts['einrichtung.row-notify'] ) === 0 && textOf( irows( first )[12] ).indexOf( texts['status.notify-default'] ) !== -1 && irows( first )[12].getAttribute( 'data-state' ) === 'todo'
+		&& textOf( irows( first )[12] ).split( texts['einrichtung.row-notify'] ).length === 2 && texts['einrichtung.row-notify'] !== '' && texts['status.notify-default'] !== '' && texts['status.notify-ok'] !== '' );
+	const notifyOk = await iopen( '', { 'crm/status' : function() { return [ 200, { items : ifresh.map( function( item ) { return item.key === 'notify' ? { key : 'notify', state : 'ok', value : false } : item } ), whole : false, first_run : true } ] } } );
+	check( '...done with the value off: the row is ok and says no sentence', irows( notifyOk )[12].getAttribute( 'data-state' ) === 'ok' && textOf( irows( notifyOk )[12] ).indexOf( texts['status.notify-ok'] ) === -1 && textOf( irows( notifyOk )[12] ).indexOf( texts['status.notify-default'] ) === -1 );
 	const capOk = await iopen( '', { 'crm/status' : function() { return [ 200, { items : ifresh.map( function( item ) { return item.key === 'mail-cap' ? { key : 'mail-cap', state : 'ok', value : 100 } : item } ), whole : false, first_run : true } ] } } );
 	check( '...a cap that config.php carries is done and its row says it with the number in force (the sentence of an ok line is drawn for this row, the others are not)', irows( capOk )[11].getAttribute( 'data-state' ) === 'ok' && textOf( irows( capOk )[11] ).indexOf( texts['status.mail-cap-ok'].replace( '%s', '100' ) ) !== -1 && textOf( irows( capOk )[11] ).split( texts['einrichtung.row-mail-cap'] ).length === 2
 		&& textOf( irows( capOk )[0] ).indexOf( texts['status.allok'] ) === -1 && textOf( irows( capOk )[0] ).length < 40 );
 	const capCard = await eopen( {}, eok.concat( [ { key : 'mail-cap', state : 'default', value : 5 } ] ) );
 	check( '...and in the card of the portal, where the line stands among the others, it is named by the word of the row and then says its sentence', textOf( all( all( capCard.main, '#status-missing' )[0], 'li' )[0] ) === texts['einrichtung.row-mail-cap']+ ': '+ texts['status.mail-cap-default'].replace( '%s', '5' ) );
+	const notifyCard = await eopen( {}, eok.concat( [ { key : 'notify', state : 'default', value : false } ] ) );
+	check( '...and in the card of the portal the notification is named by the word of its row and then says its sentence', textOf( all( all( notifyCard.main, '#status-missing' )[0], 'li' )[0] ) === texts['einrichtung.row-notify']+ ': '+ texts['status.notify-default'] );
 	check( '...one button Einrichten, there, and no Fertig. while it is not whole', all( first.main, '#einrichtung-run' ).length === 1 && all( first.main, '#einrichtung-run' )[0].hidden === false && textOf( all( first.main, '#einrichtung-run' )[0] ) === 'Einrichten' && all( first.main, '#einrichtung-done' ).length === 0 && all( first.main, '#einrichtung-after' ).length === 0 );
 	click( first, all( first.main, '#einrichtung-run' )[0] );
 	check( 'the button posts crm/setup with nothing, and is off while the request is out', first.last( 'crm/setup' ) !== undefined && JSON.stringify( first.last( 'crm/setup' ).data ) === '{}' && all( first.main, '#einrichtung-run' )[0].disabled === true );
 	await settle();
 	check( '...the status is asked for again and drawn: every row done, the button gone, Fertig. with the way on to the Übersicht, and what the run did in a sentence - and the start page said once', iran === 1 && first.all( 'crm/status' ).length === 2 && Array.from( irows( first ) ).every( function( li ) { return li.getAttribute( 'data-state' ) === 'ok' } )
 		&& all( first.main, '#einrichtung-run' )[0].hidden === true && textOf( all( first.main, '#einrichtung-done' )[0] ).indexOf( 'Fertig.' ) === 0 && all( all( first.main, '#einrichtung-done' )[0], 'a' )[0].getAttribute( 'href' ) === '#uebersicht' && textOf( all( first.main, '#einrichtung-after' )[0] ) === texts['einrichtung.after']
-		&& textOf( all( first.main, '#einrichtung-said' )[0] ) === 'Eingerichtet. Neu: Features 2, Routen 0, Vorlagen 0, Elementtypen 0, Worte 3, PDF-Vorlagen 6. Schon da: 2. '+ texts['setup.cap'].replace( '%s', '100' )+ ' '+ texts['setup.home-starter'] && texts['setup.cap'].split( '%s' ).length === 2 );
+		&& textOf( all( first.main, '#einrichtung-said' )[0] ) === 'Eingerichtet. Neu: Features 2, Routen 0, Vorlagen 0, Elementtypen 0, Worte 3, PDF-Vorlagen 6. Schon da: 2. '+ texts['setup.cap'].replace( '%s', '100' )+ ' '+ texts['setup.notify']+ ' '+ texts['setup.home-starter'] && texts['setup.cap'].split( '%s' ).length === 2 && texts['setup.notify'] !== '' );
 
 	// The start page of the owner's own: no lack, kept - the row says what it is, the answer says that it stays
 	let ownRun = false;
@@ -2572,7 +2619,7 @@ function press( w, key, target, mods ) {
 	const unfinished = await iopen( '', { 'crm/status' : function() { return [ 200, { items : ifresh, whole : false, first_run : false } ] } } );
 	check( 'a product that is not whole but was set up once (first_run false) is not sent to the Einrichtung: a template that was deleted does not bring the screen back on every load', unfinished.all( 'crm-documents/overview' ).length === 1 && unfinished.location.hash === '' && all( unfinished.main, '#einrichtung-rows' ).length === 0 );
 	const reached = await iopen( '#einrichtung', { 'crm/status' : function() { return [ 200, { items : ifresh, whole : false, first_run : false } ] } } );
-	check( '...and the screen is there for the one who opens it by its address: it lists what is missing', all( reached.main, '#einrichtung-rows' ).length === 1 && Array.from( irows( reached ) ).filter( function( li ) { return li.getAttribute( 'data-state' ) === 'todo' } ).length === 10 );
+	check( '...and the screen is there for the one who opens it by its address: it lists what is missing', all( reached.main, '#einrichtung-rows' ).length === 1 && Array.from( irows( reached ) ).filter( function( li ) { return li.getAttribute( 'data-state' ) === 'todo' } ).length === 11 );
 	check( 'no sentence of the status names the button by a label of its own - the screen\'s button is Einrichten, the card\'s Portal einrichten -: the sentences speak of das Einrichten', Object.keys( texts ).filter( function( key ) { return /^status\./.test( key ) && /Drück|Portal einrichten/.test( texts[key] ) } ).length === 0 && /^status\.portal-/.test( 'status.portal-none' ) );
 	iwhole = true;
 	const whole = await iopen( '' );
