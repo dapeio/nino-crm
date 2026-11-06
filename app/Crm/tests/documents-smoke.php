@@ -73,8 +73,8 @@ echo "Migration 0002\n";
 
 $pdo = Db::pdo( $appData );
 $tables = array_column( Db::rows( $appData, 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' ORDER BY name' ), 'name' );
-check( 'the tables of C01 and of C02 are there - and the table of the items is not: migration 0005 dropped it', $tables === [ 'client_accounts', 'clients', 'document_lines', 'documents', 'records', 'sequences', 'settings' ] );
-check( 'user_version is 10 and the first boot ran the ten migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 10 && Db::migrated() === 10 );
+check( 'the tables of C01 and of C02 are there - and the table of the items is not: migration 0005 dropped it', $tables === [ 'client_accounts', 'clients', 'document_lines', 'documents', 'project_states', 'records', 'sequences', 'settings' ] );
+check( 'user_version is 11 and the first boot ran the eleven migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 11 && Db::migrated() === 11 );
 
 Db::close();
 Db::pdo( $appData );
@@ -1601,7 +1601,7 @@ foreach( (array) include \Crm\Db::migrations()[1] as $statement )
 $file->exec( 'PRAGMA user_version = 1' );
 $file->exec( 'UPDATE settings SET value = \'regular\' WHERE key = \'vat_mode\'' );
 $file = null;
-check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 9 );
+check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 10 );
 Db::close();
 \Nino\Filesystem::removeDir( ninoSandboxDir( $old ) );
 
@@ -1661,7 +1661,7 @@ $file->exec( 'INSERT INTO document_lines ( document_id, sort, title, qty, price_
 check( 'the database before has the table of the items with its rows', (int) $file->query( 'SELECT COUNT(*) FROM items' )->fetchColumn() === 2 );
 $file = null;
 $kept = Documents::get( $dropped, 1 );
-check( 'migrations 0005 to 0010 on a database of the fourth schema run once: version 10, the table of the items is gone', (int) Db::pdo( $dropped )->query( 'PRAGMA user_version' )->fetchColumn() === 10 && Db::migrated() === 6
+check( 'migrations 0005 to 0011 on a database of the fourth schema run once: version 11, the table of the items is gone', (int) Db::pdo( $dropped )->query( 'PRAGMA user_version' )->fetchColumn() === 11 && Db::migrated() === 7
 	&& Db::rows( $dropped, 'SELECT name FROM sqlite_master WHERE name = \'items\'' ) === [] && Db::rows( $dropped, 'SELECT name FROM sqlite_sequence WHERE name = \'items\'' ) === [] );
 check( '...the document and its line are as they were: the line has the words it copied', is_array( $kept ) && $kept['number'] === 'R-2025-0001' && count( $kept['lines'] ) === 1 && $kept['lines'][0]['title'] === 'Alt' && $kept['lines'][0]['price_net'] === 100 );
 check( '...it is one statement and nothing else, and document_lines is not in it', ( include $root. '/app/Crm/Db/migrations/0005-positionen.php' ) === [ 'DROP TABLE IF EXISTS items' ] && str_contains( implode( ' ', (array) include $root. '/app/Crm/Db/migrations/0005-positionen.php' ), 'document_lines' ) === false );
@@ -1688,7 +1688,7 @@ $file->exec( 'INSERT INTO clients ( id, number, company, created, updated ) VALU
 $file->exec( 'INSERT INTO documents ( category, client_id, number, state, date, vat_mode, template_key, created, updated ) VALUES ( \'invoice\', 1, \'R-2025-0001\', \'paid\', \'2025-05-05\', \'small_business\', \'rechnung\', \'x\', \'x\' )' );
 $file = null;
 $old = Documents::get( $upgraded, 1 );
-check( 'a database of the second schema with a document is migrated once: version 10, the eight migrations that were missing', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 10 && Db::migrated() === 8 );
+check( 'a database of the second schema with a document is migrated once: version 11, the nine migrations that were missing', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 11 && Db::migrated() === 9 );
 check( '...the document is as it was, with the new columns at their defaults: no title, not released, no request, no signing day', is_array( $old ) === false ? false : $old['number'] === 'R-2025-0001' && $old['state'] === 'paid' && $old['title'] === '' && $old['released'] === false && $old['released_at'] === null
 	&& $old['sign_id'] === '' && $old['sign_state'] === '' && $old['signed_at'] === null );
 Db::close();
@@ -1994,8 +1994,8 @@ $websiteId = $made( 'Webseite', $first['number'], [ 'done' => true ] );
 $podcastId = $made( 'Podcast', $second['number'], [ 'folder' => 'abcdef012345' ] );
 
 check( 'a project is numbered by the type: 00001, 00002, 00003', [ $albumId, $websiteId, $podcastId ] === [ '00001', '00002', '00003' ] && \Crm\Projekte::missing( $appData ) === false );
-check( 'get() answers the fields and the id and nothing else; a project nobody has, an id that is no id and the id of a path are none', array_keys( (array) \Crm\Projekte::get( $appData, $albumId ) ) === [ 'id', 'title', 'client', 'description', 'started', 'done', 'folder' ]
-	&& \Crm\Projekte::get( $appData, $albumId ) === [ 'id' => '00001', 'title' => 'Album 2027', 'client' => 'K-0001', 'description' => "Aufnahme\nund Mix", 'started' => '2026-10-01', 'done' => false, 'folder' => '' ]
+check( 'get() answers the fields and the id and nothing else; a project nobody has, an id that is no id and the id of a path are none', array_keys( (array) \Crm\Projekte::get( $appData, $albumId ) ) === [ 'id', 'title', 'client', 'description', 'started', 'done', 'folder', 'download' ]
+	&& \Crm\Projekte::get( $appData, $albumId ) === [ 'id' => '00001', 'title' => 'Album 2027', 'client' => 'K-0001', 'description' => "Aufnahme\nund Mix", 'started' => '2026-10-01', 'done' => false, 'folder' => '', 'download' => false ]
 	&& \Crm\Projekte::get( $appData, $websiteId )['done'] === true && \Crm\Projekte::get( $appData, $podcastId )['folder'] === 'abcdef012345'
 	&& \Crm\Projekte::get( $appData, '00099' ) === null && \Crm\Projekte::get( $appData, '../x' ) === null && \Crm\Projekte::get( $appData, '' ) === null );
 $odd = \Nino\Elements::insertElement( $appData, '/projekte/mit leerzeichen', [ 'title' => 'Seltsam', 'client' => $first['number'] ], '*' );
@@ -2005,7 +2005,7 @@ check( 'get() takes the id of an element a screen could not name: an element who
 check( 'list() has the newest first, each with its documents and the offers that wait; ofClient() the client\'s, the done ones among them; openOnly leaves the done ones out; a search finds by the title', array_column( \Crm\Projekte::list( $appData ), 'id' ) === [ '00003', '00002', '00001' ]
 	&& array_column( \Crm\Projekte::ofClient( $appData, $first['number'] ), 'id' ) === [ '00002', '00001' ] && array_column( \Crm\Projekte::list( $appData, $first['number'], true ), 'id' ) === [ '00001' ]
 	&& array_column( \Crm\Projekte::list( $appData, null, false, 'POD' ), 'id' ) === [ '00003' ] && array_column( \Crm\Projekte::list( $appData, null, false, 'nothing like it' ), 'id' ) === []
-	&& array_keys( \Crm\Projekte::list( $appData )[0] ) === [ 'id', 'title', 'client', 'description', 'started', 'done', 'folder', 'documents', 'open' ] && array_sum( array_column( \Crm\Projekte::list( $appData ), 'documents' ) ) === 0 );
+	&& array_keys( \Crm\Projekte::list( $appData )[0] ) === [ 'id', 'title', 'client', 'description', 'started', 'done', 'folder', 'documents', 'open', 'download' ] && array_sum( array_column( \Crm\Projekte::list( $appData ), 'documents' ) ) === 0 );
 
 $withProject = Documents::add( $appData, 'offer', $first['id'], [ 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ], 'project' => $albumId ] );
 check( 'a draft names a project of its client: get() has the id and the title; the list too; a draft without one has none', is_array( $withProject ) && $withProject['project'] === $albumId && $withProject['project_title'] === 'Album 2027' && Documents::get( $appData, $bare['id'] )['project'] === '' && Documents::get( $appData, $bare['id'] )['project_title'] === ''

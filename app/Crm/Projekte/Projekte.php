@@ -10,6 +10,11 @@ declare(strict_types=1);
  *								brought by the install unit of the module (install/projekte.php, applied by Einrichten and Portal einrichten): missing() says
  *								whether it is there, and while it is not, list() has nothing. Reading a type that is not there is an error of the kernel, which is
  *								why the type is asked for first.
+ *
+ *								Whether the client of a project may download its files is the owner's decision, made for each project and kept in the table
+ *								project_states (state(), setDownload()) - not in a field of the type, which an installed site never gets anew. A project without
+ *								a row has no download: its client listens to the files and does not save them. While an offer of the project waits for the
+ *								client's order (waiting()) the files are not open at all. The portal reads both (Portal::callbackFileAllowed(), Portal\Files, Portal\Projects).
  */
 namespace Crm;
 
@@ -21,6 +26,10 @@ class Projekte {
 
 	// What an id looks like: the number the type gives (00001), or any name an element of the type has - the same pattern the screens take
 	public const string ID = '/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/D';
+
+	// The time of the day a state is written with
+	private const string TIME = 'Y-m-d\TH:i:s\Z';
+	private const string LOOKUPS = './crm/projekte/lookups';
 
 	/**
 	 *	Whether the type is not there
@@ -42,12 +51,13 @@ class Projekte {
 	 *	@param		bool			$openOnly			Leave out the projects that are done
 	 *	@param		string		$search				Part of the title (case does not matter, no wildcards)
 	 *
-	 *	@return 	array											id, title, client (the number), description, started, done, folder of each - and documents (how many documents name it) and open (how many of them are offers that are open or sent)
+	 *	@return 	array											id, title, client (the number), description, started, done, folder of each - and documents (how many documents name it), open (how many of them are offers that are open or sent) and download (whether its client may download the files); one query for all the states
 	 */
 	public static function list( array &$appData, ?string $clientNumber = null, bool $openOnly = false, string $search = '' ): array {
 
 		$search = trim( $search );
 		$counts = self::counts( $appData );
+		$downloads = self::downloads( $appData );
 		$projects = [];
 
 		foreach( self::read( $appData ) as $project ) {
@@ -61,7 +71,7 @@ class Projekte {
 			if( $search !== '' && mb_stripos( $project['title'], $search, 0, 'UTF-8' ) === false )
 				continue;
 
-			$projects[] = $project + [ 'documents' => $counts[$project['id']]['documents'] ?? 0, 'open' => $counts[$project['id']]['open'] ?? 0 ];
+			$projects[] = $project + [ 'documents' => $counts[$project['id']]['documents'] ?? 0, 'open' => $counts[$project['id']]['open'] ?? 0, 'download' => $downloads[$project['id']] ?? false ];
 		}
 
 		return $projects;
@@ -73,7 +83,7 @@ class Projekte {
 	 *	@param		array 		&$appData
 	 *	@param		string		$id						The name of the element, the last part of its uri
 	 *
-	 *	@return 	array|null								id, title, client, description, started, done, folder; null for none
+	 *	@return 	array|null								id, title, client, description, started, done, folder, download; null for none
 	 */
 	public static function get( array &$appData, string $id ): ?array {
 
@@ -82,7 +92,160 @@ class Projekte {
 
 		$element = \Nino\Elements::getElement( $appData, self::TYPE. '/'. $id, '*' );
 
-		return is_array( $element ) === true && $element !== [] ? self::shape( $element + [ '.uri' => self::TYPE. '/'. $id ] ) : null;
+		if( is_array( $element ) === false || $element === [] )
+			return null;
+
+		return self::shape( $element + [ '.uri' => self::TYPE. '/'. $id ] ) + [ 'download' => self::state( $appData, $id )['download'] ];
+	}
+
+	/**
+	 *	What the owner decided about a project for the portal
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$id						The id of a project; a project without a row, and an id that is none, has no download
+	 *
+	 *	@return 	array											download (bool), download_at (the time it was switched on, '' for none), download_by (the account of the workbench that did it, '')
+	 */
+	public static function state( array &$appData, string $id ): array {
+
+		$row = preg_match( self::ID, $id ) === 1 ? Db::row( $appData, 'SELECT download, download_at, download_by FROM project_states WHERE project = :project', [ 'project' => $id ] ) : null;
+
+		return [ 'download' => $row !== null && (int) $row['download'] === 1, 'download_at' => (string) ( $row['download_at'] ?? '' ), 'download_by' => (string) ( $row['download_by'] ?? '' ) ];
+	}
+
+	/**
+	 *	Switch the download of the files of a project on or off for its client. The time and the account are those of the first switching on - a second one leaves them - and off leaves them empty
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$id						The id of a project
+	 *	@param		bool			$on
+	 *	@param		string		$by						The account of the workbench that asks
+	 *
+	 *	@return 	array|string							The state as state() has it, with the id of the project; 'unknown' for a project that is not there
+	 */
+	public static function setDownload( array &$appData, string $id, bool $on, string $by = '' ): array|string {
+
+		if( self::get( $appData, $id ) === null )
+			return 'unknown';
+
+		// The day and the account are those of the first switching on: a project that is free stays free since that day
+		Db::exec( $appData, 'INSERT INTO project_states ( project, download, download_at, download_by ) VALUES ( :project, :download, :at, :by )
+			ON CONFLICT ( project ) DO UPDATE SET download = excluded.download,
+				download_at = CASE WHEN excluded.download = 0 THEN \'\' WHEN project_states.download = 1 THEN project_states.download_at ELSE excluded.download_at END,
+				download_by = CASE WHEN excluded.download = 0 THEN \'\' WHEN project_states.download = 1 THEN project_states.download_by ELSE excluded.download_by END', [
+			'project' => $id, 'download' => $on === true ? 1 : 0, 'at' => $on === true ? gmdate( self::TIME ) : '', 'by' => $on === true ? mb_substr( $by, 0, 200, 'UTF-8' ) : '',
+		] );
+
+		self::forget( $appData );
+
+		return [ 'id' => $id ] + self::state( $appData, $id );
+	}
+
+	/**
+	 *	The project of a client whose folder in the feature Files is the one given
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$clientNumber	K-0001
+	 *	@param		string		$folder				The id of a folder
+	 *
+	 *	@return 	array|null								As get() has it; null for a folder no project of the client has
+	 */
+	public static function ofFolder( array &$appData, string $clientNumber, string $folder ): ?array {
+
+		if( $folder === '' )
+			return null;
+
+		return self::remember( $appData, 'folder|'. $clientNumber. '|'. $folder, static function() use ( &$appData, $clientNumber, $folder ): ?array {
+
+			foreach( self::read( $appData ) as $project )
+				if( $project['client'] === $clientNumber && $project['folder'] === $folder )
+					return $project + [ 'download' => self::state( $appData, $project['id'] )['download'] ];
+
+			return null;
+		} );
+	}
+
+	/**
+	 *	Forget what ofFolder() and waiting() kept for this request
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	void
+	 */
+	public static function forget( array &$appData ): void {
+
+		unset( $appData[self::LOOKUPS] );
+	}
+
+	/**
+	 *	The offer that holds the files of a project back: a released offer of the client's project that can be ordered (Documents::orderable()) - the newest of them.
+	 *	While one waits the client has the order to give first; it is given, declined or taken back, or it runs out, and the files are open again
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$project			The id of a project
+	 *	@param		int				$clientId			The client the project is of
+	 *
+	 *	@return 	array|null								The offer as Documents::released() has it; null where none waits
+	 */
+	public static function waiting( array &$appData, string $project, int $clientId ): ?array {
+
+		if( $project === '' )
+			return null;
+
+		return self::remember( $appData, 'waiting|'. $project. '|'. $clientId, static function() use ( &$appData, $project, $clientId ): ?array {
+
+			foreach( Documents::released( $appData, $clientId, $project ) as $document )
+				if( Documents::orderable( $document ) === true )
+					return $document;
+
+			return null;
+		} );
+	}
+
+	/**
+	 *	The answer to a question about a folder or a project, kept for the request: a page asks it for each file of a folder, and it takes a handful of queries. The answer is kept with
+	 *	the question it was read for, so that a second request in the same process (a test, a worker) never gets the answer of the first; a write that moves it - the switch of the download,
+	 *	a release or a state of a document, a project written or deleted - drops what was kept (forget())
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$key
+	 *	@param		callable	$read
+	 *
+	 *	@return 	array|null
+	 */
+	private static function remember( array &$appData, string $key, callable $read ): ?array {
+
+		if( array_key_exists( $key, $appData[self::LOOKUPS] ?? [] ) === false )
+			$appData[self::LOOKUPS][$key] = $read();
+
+		return $appData[self::LOOKUPS][$key];
+	}
+
+	/**
+	 *	The notification of the kernel that an element was written or deleted ('/nino/elements/committed'): the row of a project that is gone goes with it
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		mixed			&$change			operation, type and uri
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackCommitted( array &$appData, mixed &$change ): void {
+
+		if( is_array( $change ) === true && ( $change['type'] ?? '' ) === self::TYPE )
+			self::forget( $appData );
+
+		if( is_array( $change ) === false || ( $change['operation'] ?? '' ) !== 'delete' || ( $change['type'] ?? '' ) !== self::TYPE )
+			return;
+
+		$id = \Nino\Elements::getElementUriFromUri( (string) ( $change['uri'] ?? '' ) );
+
+		try {
+			if( preg_match( self::ID, $id ) === 1 && self::get( $appData, $id ) === null )
+				Db::exec( $appData, 'DELETE FROM project_states WHERE project = :project', [ 'project' => $id ] );
+		}
+		catch( \PDOException $e ) {
+			trigger_error( 'Crm: the state of the project '. $id. ' could not be removed', E_USER_WARNING );
+		}
 	}
 
 	/**
@@ -269,6 +432,23 @@ class Projekte {
 			$counts[(string) $row['project']] = [ 'documents' => (int) $row['documents'], 'open' => (int) $row['open'] ];
 
 		return $counts;
+	}
+
+	/**
+	 *	Which projects have their download on: one query
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											id => true
+	 */
+	private static function downloads( array &$appData ): array {
+
+		$on = [];
+
+		foreach( Db::rows( $appData, 'SELECT project FROM project_states WHERE download = 1' ) as $row )
+			$on[(string) $row['project']] = true;
+
+		return $on;
 	}
 
 	/**

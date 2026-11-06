@@ -1,0 +1,1 @@
+<a class="crm-files__download crm-btn crm-btn--secondary crm-btn--small" href="[[url]]?download=1" title="[[/project/crm-portal/files/download]]">[[icon:download]]<span>[[/project/crm-portal/files/download]]</span><span class="nino-sr-only"> [[label]]</span></a>

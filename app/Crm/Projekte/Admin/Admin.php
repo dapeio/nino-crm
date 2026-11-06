@@ -12,6 +12,9 @@ declare(strict_types=1);
  *												crm-projekte/get		one project with its client, its folder and the files in it - each audio or video file with the number of its comments and of the open ones,
  *																						where the feature Review is on (review says whether it is)
  *
+ *												crm-projekte/download	switch the download of the files of a project for its client on or off (id, on): the state the portal reads (Projekte::state()); the
+ *																						activity log names the project by its id and the account that did it is kept with the switch
+ *
  *												The files are read from the feature (Files::folders(), Files::files(), Files::url()) by the CRM's own read: the permission of the
  *												CRM is the owner's, and the list is for looking. The feature may be off; then there are no files to count and the answer says so.
  *												It validates what it is posted and answers the failures a person can cause with codes (their sentences are in text/); the rules of
@@ -25,11 +28,33 @@ class Admin {
 
 	public const string MANAGE_PERM = \Crm\Crm::MANAGE_PERM;
 
+	// The id of the project a switch was made for, for the line of the activity log
+	private static array $_made = [];
+
 	public static function actions(): array {
 		return [
 			'crm-projekte/list' => [ self::class, 'apiList' ],
 			'crm-projekte/get'  => [ self::class, 'apiGet' ],
+			'crm-projekte/download' => [ self::class, 'apiDownload' ],
 		];
+	}
+
+	/**
+	 *	The activity-log line of a completed action: the id of the project, never a client, a name or an address
+	 *
+	 *	@param		string		$action
+	 *	@param		array 		$data
+	 *
+	 *	@return 	string
+	 */
+	public static function log( string $action, array $data ): string {
+
+		$id = self::$_made[$action] ?? '';
+
+		return match( $action ) {
+			'crm-projekte/download' => $id === '' ? '' : ( ( $data['on'] ?? false ) === true ? 'Switched on the download of project ' : 'Switched off the download of project ' ). $id,
+			default                 => '',
+		};
 	}
 
 	/**
@@ -134,7 +159,7 @@ class Admin {
 				if( $one['id'] === $id )
 					$row = $one;
 
-			$shown = self::_shown( $appData, [ $row ], true )[0];
+			$shown = self::_shown( $appData, [ $row ], true )[0] + [ 'download_at' => Projekte::state( $appData, $id )['download_at'] ];
 			$list = $shown['file_list'];
 			$folder = $shown['folder_name'] === null ? null : [ 'id' => $shown['folder'], 'name' => $shown['folder_name'] ];
 			unset( $shown['file_list'], $shown['folder_name'] );
@@ -151,6 +176,44 @@ class Admin {
 				// The setting of the feature Files that mails the members of a file made visible: what the box of the tab starts at
 				'notify'  => self::filesOn( $appData ) === true && \Nino\Features::setting( $appData, 'files', 'notifyMembers', false ) === true,
 			] );
+		} );
+	}
+
+	/**
+	 *	Switch the download of the files of a project on or off: id and on (true or false). Answers the project's id and its state - download, download_at -; the
+	 *	switching on keeps the time and the account that did it
+	 */
+	public static function apiDownload( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
+
+			$data = \Nino\Admin\Admin::postData();
+			$id = \Nino\Admin\Admin::postString( $data, 'id' );
+
+			if( is_bool( $data['on'] ?? null ) === false ) {
+				\Nino\Http::fail( $request, 400, 'on is true or false', 'crm_projekte_format', [], 'on' );
+				return;
+			}
+
+			if( Projekte::missing( $appData ) === true ) {
+				\Nino\Http::fail( $request, 404, 'the element type of the projects is not there', 'crm_projekte_missing', [], 'id' );
+				return;
+			}
+
+			$user = \Nino\Auth::getCurrentUser( $appData );
+			$state = Projekte::setDownload( $appData, $id, $data['on'], $user === false ? '' : (string) $user['mail'] );
+
+			if( is_string( $state ) === true ) {
+				\Nino\Http::fail( $request, 404, 'there is no such project', 'crm_projekte_unknown', [], 'id' );
+				return;
+			}
+
+			self::$_made['crm-projekte/download'] = $id;
+
+			\Nino\Http::ok( $request, [ 'id' => $id, 'download' => $state['download'], 'download_at' => $state['download_at'] ] );
 		} );
 	}
 

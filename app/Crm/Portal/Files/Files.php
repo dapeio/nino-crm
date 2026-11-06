@@ -10,6 +10,10 @@ declare(strict_types=1);
  *											it, Title.03.ext, see \Nino\Modules\Files::version() - are one row with the newest version, how many versions there are
  *											and how many comments of Review are open over all of them, and the versions() of the title that is played are a select
  *											above its player. The page of the uploads lists files (rows()), each one a row.
+ *
+ *											A row has the download only where the project of the folder has it switched on (Projekte::state()) - the files a member put there
+ *											are the member's and are always saved. Without it the row of an audio or video file is for listening and the row of any other file
+ *											has its name without a link and the sentence that the studio releases it; the route says the same (Portal::callbackFileAllowed()).
  */
 namespace Crm\Portal;
 
@@ -49,7 +53,7 @@ class Files {
 		if( $folder === null )
 			return self::message( $appData, 'none', $classes );
 
-		$rows = self::rows( $appData, self::visible( $appData, $folder['id'] ), '' );
+		$rows = self::rows( $appData, self::visible( $appData, $folder['id'] ), '', '', true );
 
 		return Portal::render( 'uploads', [
 			'[[classes]]' => $classes,
@@ -89,7 +93,16 @@ class Files {
 	 */
 	public static function visible( array &$appData, string $folder ): array {
 
-		return array_values( array_filter( \Nino\Modules\Files::files( $appData, $folder ), static fn( array $file ): bool => \Nino\Modules\Files::allowed( $appData, $file ) === true ) );
+		$appData[Portal::LISTING] = true;
+
+		try {
+			return array_values( array_filter( \Nino\Modules\Files::files( $appData, $folder ), static function( array $file ) use ( &$appData ): bool {
+				return \Nino\Modules\Files::allowed( $appData, $file ) === true;
+			} ) );
+		}
+		finally {
+			unset( $appData[Portal::LISTING] );
+		}
 	}
 
 	/**
@@ -102,16 +115,17 @@ class Files {
 	 *	@param		array 		$files				As Files::files() has them
 	 *	@param		string		$listen				The address of the page the player stands on, up to and with 'review=' ('' for no link that plays)
 	 *	@param		string		$playing			The id of the file the player plays ('' for none)
+	 *	@param		bool			$download			Whether the files may be saved: the project of the folder has its download switched on, or the folder is the member's own to upload into
 	 *
 	 *	@return 	string										'' for no file
 	 */
-	public static function rows( array &$appData, array $files, string $listen, string $playing = '' ): string {
+	public static function rows( array &$appData, array $files, string $listen, string $playing, bool $download ): string {
 
 		$words = self::units( $appData );
 		$rows = '';
 
 		foreach( $files as $file )
-			$rows .= self::row( $appData, $file, $words, $listen, $playing !== '' && $file['id'] === $playing, [], 0 );
+			$rows .= self::row( $appData, $file, $words, $listen, $playing !== '' && $file['id'] === $playing, [], 0, $download );
 
 		return $rows;
 	}
@@ -126,10 +140,11 @@ class Files {
 	 *	@param		array 		$files				The files of one folder as Files::files() has them
 	 *	@param		string		$listen				See rows()
 	 *	@param		string		$playing			The id of the file the player plays ('' for none)
+	 *	@param		bool			$download			See rows()
 	 *
 	 *	@return 	string										'' for no file
 	 */
-	public static function titles( array &$appData, array $files, string $listen, string $playing = '' ): string {
+	public static function titles( array &$appData, array $files, string $listen, string $playing, bool $download ): string {
 
 		$words = self::units( $appData );
 		$counts = self::counts( $appData, $files );
@@ -144,7 +159,7 @@ class Files {
 			// A file that says no version and has no other to go with is drawn as a file of its own, with its name
 			$alone = count( $title['versions'] ) === 1 && $head['number'] === null;
 
-			$rows .= self::row( $appData, $head, $words, $listen, $current, $alone === true ? [] : $title, $open );
+			$rows .= self::row( $appData, $head, $words, $listen, $current, $alone === true ? [] : $title, $open, $download );
 		}
 
 		return $rows;
@@ -249,10 +264,11 @@ class Files {
 	 *	@param		bool			$current			Whether the player plays this file - or, for a title, one of its versions
 	 *	@param		array 		$title				[] for a file of its own; else the title of Files::grouped()
 	 *	@param		int				$open					The open comments on the file - on all the versions of the title
+	 *	@param		bool			$download			Whether the file may be saved; a file the member signed in put there may always
 	 *
 	 *	@return 	string
 	 */
-	private static function row( array &$appData, array $file, array $words, string $listen, bool $current, array $title, int $open ): string {
+	private static function row( array &$appData, array $file, array $words, string $listen, bool $current, array $title, int $open, bool $download ): string {
 
 		if( \Nino\Modules\Files::url( $appData, $file['id'] ) === '' )
 			return '';
@@ -278,14 +294,17 @@ class Files {
 		$label = ( $title === [] || $file['version'] === '' ? $name : $name. ' '. \Nino\Modules\Components::escape( $file['version'] ) ). ( $ext === '' ? '' : ' '. $ext );
 		$href = \Nino\Modules\Components::escape( $listen. $file['id'] );
 		$many = $title === [] ? 0 : count( $title['versions'] );
+		$member = \Nino\Modules\Members::current( $appData );
+		$saves = $download === true || ( $member !== null && ( $file['by']['kind'] ?? '' ) === 'member' && ( $file['by']['id'] ?? '' ) === $member['id'] );
+
+		// The name is a link to the player or, where the file may be saved, to the download; a file that can be neither played nor saved has its name alone
+		$link = $plays === true ? $href. '#projekt-files' : ( $saves === true ? \Nino\Modules\Components::escape( $url ). '?download=1' : '' );
 
 		return Portal::render( 'file', [
 			'[[id]]'       => \Nino\Modules\Components::escape( $file['id'] ),
 			'[[mime]]'     => \Nino\Modules\Components::escape( $file['mime'] ),
 			'[[icon]]'     => Icons::ofFile( $file['mime'] ),
-			'[[name]]'     => $name,
-			'[[label]]'    => $label,
-			'[[primary]]'  => $plays === true ? $href. '#projekt-files' : \Nino\Modules\Components::escape( $url ). '?download=1',
+			'[[title]]'    => $link === '' ? Portal::render( 'file-name-plain', [ '[[name]]' => $name ] ) : Portal::render( 'file-name-link', [ '[[href]]' => $link, '[[name]]' => $name ] ),
 			'[[version]]'  => $title === [] || $file['version'] === '' ? '' : Portal::render( 'file-version', [ '[[number]]' => \Nino\Modules\Components::escape( $file['version'] ) ] ),
 			'[[ext]]'      => $ext === '' ? '' : Portal::render( 'file-ext', [ '[[ext]]' => $ext ] ),
 			'[[versions]]' => $many > 1 ? Portal::render( 'file-count', [ '[[number]]' => (string) $many ] ) : '',
@@ -298,7 +317,7 @@ class Files {
 			'[[created]]'  => \Nino\Modules\Components::escape( $file['created'] ),
 			'[[date]]'     => \Nino\Modules\Components::escape( Documents\Render::day( substr( $file['created'], 0, 10 ) ) ),
 			'[[listen]]'   => $plays === true ? Portal::render( 'file-listen', [ '[[href]]' => $href, '[[label]]' => $label ] ) : '',
-			'[[url]]'      => \Nino\Modules\Components::escape( $url ),
+			'[[download]]' => $saves === true ? Portal::render( 'file-download', [ '[[url]]' => \Nino\Modules\Components::escape( $url ), '[[label]]' => $label ] ) : ( $plays === true ? '' : Portal::template( 'file-locked' ) ),
 		] );
 	}
 

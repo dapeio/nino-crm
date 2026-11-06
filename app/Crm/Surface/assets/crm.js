@@ -1657,14 +1657,48 @@
 		} );
 	};
 
+	/**
+	 *	Whether the download of the files of the project of an invoice is still off: the box that opens it with the release is for this case alone
+	 *
+	 *	@param		{Object}	view						The answer of get, which the screen was drawn from
+	 *
+	 *	@return		{boolean}
+	 */
+	const downloadOff = function( view ) {
+
+		const doc = view.document;
+		const project = doc.category === 'invoice' && doc.project !== '' ? ( view.projects || [] ).find( function( one ) { return one.id === doc.project } ) : undefined;
+
+		return project !== undefined && project.download === false;
+	};
+
+	/**
+	 *	Release a document and mail the accounts of its client; where the invoice's project has its download off, a dialog asks whether the release switches it on
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Promise}
+	 */
 	const send = function( view ) {
 
-		return move( view, 'crm-documents/release', { mail : true }, 'error.release', function( body ) {
+		const post = function( download ) {
 
-			if( body.mailed > 0 )
-				return t( 'send.done', body.mailed );
+			return move( view, 'crm-documents/release', download === true ? { mail : true, download : true } : { mail : true }, 'error.release', function( body ) {
 
-			return reachable( view.accounts ) === true ? t( 'release.mailed-none' ) : t( 'send.no-account' );
+				const opened = body.download === true ? ' '+ t( 'release.download-on' ) : '';
+
+				if( body.mailed > 0 )
+					return t( 'send.done', body.mailed )+ opened;
+
+				return ( reachable( view.accounts ) === true ? t( 'release.mailed-none' ) : t( 'send.no-account' ) )+ opened;
+			} );
+		};
+
+		if( downloadOff( view ) === false )
+			return post( false );
+
+		return dialog( { title : t( 'primary.send' ), text : t( 'send.text' ), yes : t( 'primary.send' ), fields : [ { name : 'download', label : t( 'release.download' ), type : 'checkbox', value : true } ] } ).then( function( values ) {
+			return values === null ? null : post( values.download === true );
 		} );
 	};
 
@@ -2037,6 +2071,7 @@
 
 		const doc = view.document;
 		let mail = null;
+		let download = null;
 
 		const portal = doc.released === true
 			? [
@@ -2048,9 +2083,10 @@
 			: [
 				el( 'p', { class: 'state-note', text: t( 'release.not' ) } ),
 				el( 'label', { class: 'check' }, mail = el( 'input', { type: 'checkbox', id: 'release-mail', checked: true } ), ' '+ t( 'release.mail' ) ),
+				downloadOff( view ) === false ? null : el( 'label', { class: 'check' }, download = el( 'input', { type: 'checkbox', id: 'release-download', checked: true } ), ' '+ t( 'release.download' ) ),
 				el( 'div', { class: 'actions' }, el( 'button', { type: 'button', class: 'btn sm primary', id: 'release', text: t( 'release.do' ), on: { click: function() {
-					move( view, 'crm-documents/release', { mail : mail.checked }, 'error.release', function( body ) {
-						return body.mail === true ? ( body.mailed > 0 ? t( 'release.mailed', body.mailed ) : t( 'release.mailed-none' ) ) : t( 'release.silent' );
+					move( view, 'crm-documents/release', Object.assign( { mail : mail.checked }, download !== null && download.checked === true ? { download : true } : {} ), 'error.release', function( body ) {
+						return ( body.mail === true ? ( body.mailed > 0 ? t( 'release.mailed', body.mailed ) : t( 'release.mailed-none' ) ) : t( 'release.silent' ) )+ ( body.download === true ? ' '+ t( 'release.download-on' ) : '' );
 					} );
 				} } } ) ),
 			];
@@ -4878,6 +4914,62 @@
 		return project.done === true ? badge( 'draft', t( 'projects.done' ) ) : badge( 'open', t( 'projects.running' ) );
 	};
 
+	/**
+	 *	The mark of a project whose client may download the files: an arrow, with its words as the title and for a reader
+	 *
+	 *	@return		{Object}
+	 */
+	const downloadMark = function() {
+		return el( 'span', { class: 'dl-mark', role: 'img', 'aria-label': t( 'projects.download-on-title' ), title: t( 'projects.download-on-title' ), text: '↓' } );
+	};
+
+	/**
+	 *	The state of the download in the head of a project's card, with the button that switches it: on at once, off after a question
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const downloadState = function( view ) {
+
+		const project = view.project;
+		const on = project.download === true;
+
+		const button = el( 'button', { type: 'button', class: 'btn sm', id: 'project-download-switch', text: t( on === true ? 'projects.download-off' : 'projects.download-on' ), on: { click: function() {
+
+			const post = function() {
+
+				button.disabled = true;
+
+				call( 'crm-projekte/download', { id : project.id, on : on === false }, 'projects.error-download' ).then( function( answer ) {
+
+					button.disabled = false;
+
+					if( answer.ok !== true )
+						return;
+
+					toast( t( on === true ? 'projects.download-off-done' : 'projects.download-on-done' ) );
+
+					if( state.view === view.mine )
+						reloadProjekt( view );
+				} );
+			};
+
+			if( on === false ) {
+				post();
+				return;
+			}
+
+			ask( { title : t( 'projects.download-off' ), text : t( 'projects.download-off-text', projectName( project ) ), yes : t( 'projects.download-off' ), danger : true } ).then( function( yes ) {
+				if( yes === true && state.view === view.mine )
+					post();
+			} );
+		} } } );
+
+		return el( 'span', { class: 'dl', id: 'project-download', dataset: { download: on === true ? 'on' : 'off' } },
+			badge( on === true ? 'paid' : 'draft', on === true ? t( 'projects.download-since', dmy( project.download_at ) ) : t( 'projects.download-locked' ) ), button );
+	};
+
 	const projectName = function( project ) {
 		return project.title !== '' ? project.title : project.id;
 	};
@@ -4963,7 +5055,7 @@
 						el( 'td', { text: dmy( project.started ) } ),
 						el( 'td', { class: 'r num' }, project.documents === 0 ? el( 'span', { class: 'muted', text: '–' } ) : project.documents+ '', project.open > 0 ? el( 'span', { class: 'muted', text: ' · '+ t( 'projects.open-offers', project.open ) } ) : null ),
 						el( 'td', { class: 'r num' }, project.files === null ? el( 'span', { class: 'muted', text: '–' } ) : String( project.files ) ),
-						el( 'td', {}, projectBadge( project ) ) );
+						el( 'td', {}, projectBadge( project ), project.download === true ? downloadMark() : null ) );
 				} ) ) ) ) );
 		append( state.main, [ pagerOf( filter, pages, again ), el( 'p', { class: 'state-note top', text: t( edits === true ? 'projects.note-edit' : 'projects.note' ) } ) ] );
 	};
@@ -5641,6 +5733,10 @@
 		if( editable === false )
 			holder.appendChild( note( '', t( 'projects.files-forbidden' ) ) );
 
+		// While the download is off the customer listens and does not save: the owner is told over the files
+		if( project.download !== true )
+			holder.appendChild( el( 'p', { class: 'state-note', id: 'project-download-note', text: t( 'projects.download-note' ) } ) );
+
 		const tableBox = el( 'div', { id: 'project-file-box' } );
 
 		// One box for the tab: it says whether the customer is mailed for each upload and each switch of "Sichtbar" while it stands. It starts at the setting of Dateien
@@ -6099,6 +6195,7 @@
 		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#projekte', t( 'projects.title' ) ), ' › '+ projectName( project ) ) );
 		state.main.appendChild( head( el( 'h1', { text: projectName( project ) } ), projectBadge( project ),
 			el( 'span', { class: 'sub' }, view.client === null ? project.client : link( '#kunde-'+ view.client.id, view.client.title ), project.started === '' ? null : ' · '+ t( 'projects.since', dmy( project.started ) ) ),
+			downloadState( view ),
 			el( 'span', { class: 'grow' } ),
 			view.client !== null && view.client.active === true ? newMenu( t( 'card.document-new' ), view.client.id, project.id ) : null,
 			projectMenu( view ) ) );

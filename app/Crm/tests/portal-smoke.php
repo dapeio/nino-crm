@@ -142,7 +142,13 @@ function portalSignIn( array &$appData, array $account ): bool {
 
 	portalServe( $appData, '/.members/login?t='. $found[1] );
 
-	return portalServe( $appData, '/.members/confirm', 'POST', [ 'token' => $found[1] ] )['statusCode'] === 303 && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $account['id'];
+	$signedIn = portalServe( $appData, '/.members/confirm', 'POST', [ 'token' => $found[1] ] )['statusCode'] === 303 && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $account['id'];
+
+	// What the sign-in kept for its own request is not for the next one
+	\Crm\Portal::forget( $appData );
+	\Crm\Projekte::forget( $appData );
+
+	return $signedIn;
 }
 
 /**
@@ -831,7 +837,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 187 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 191 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -950,9 +956,15 @@ foreach( [ 'members', 'files', 'review', 'events', 'sign' ] as $key )
 
 $asAdmin();
 $store = '\Nino\Modules\Files\Store';
-$made = static function( string $title, string $client, array $over = [] ) use ( &$appData ): string {
+$made = static function( string $title, string $client, array $over = [], bool $download = true ) use ( &$appData ): string {
 	$element = \Nino\Elements::insertElement( $appData, '/projekte/', [ 'title' => $title, 'client' => $client ] + $over, '*' );
-	return is_array( $element ) === true ? \Nino\Elements::getElementUriFromUri( (string) $element['.uri'] ) : '';
+	$id = is_array( $element ) === true ? \Nino\Elements::getElementUriFromUri( (string) $element['.uri'] ) : '';
+
+	// The files of a project are for download unless a section says otherwise: the owner switches the download on
+	if( $id !== '' && $download === true )
+		\Crm\Projekte::setDownload( $appData, $id, true, 'owner@example.org' );
+
+	return $id;
 };
 $folderA = $store::addFolder( $appData, $a['group'], 'Album' );
 $folderUp = $store::addFolder( $appData, $a['group'], 'Eingang' );
@@ -986,6 +998,23 @@ $p4 = $made( 'Leer', $a['number'] );
 $p3 = $made( 'Podcast B', $b['number'], [ 'folder' => $folderB['id'], 'started' => '2026-09-01' ] );
 $ownProjects = (array) \Nino\Filesystem::getFileContent( $appData, '/elements/projekte.php', [] );
 
+// While an offer of a project waits the files are not open. The sections that read the files of the projects hold their offers back for their length - what the offers are is
+// kept, and put back with $resume()
+$held = [];
+$hold = static function() use ( &$appData, &$held ): void {
+	foreach( Db::rows( $appData, 'SELECT id, state FROM documents WHERE project <> \'\' AND category = \'offer\' AND state IN ( \'open\', \'sent\' )' ) as $row )
+		$held[(int) $row['id']] = (string) $row['state'];
+
+	foreach( array_keys( $held ) as $id )
+		Db::exec( $appData, 'UPDATE documents SET state = \'declined\' WHERE id = :id', [ 'id' => $id ] );
+};
+$resume = static function() use ( &$appData, &$held ): void {
+	foreach( $held as $id => $was )
+		Db::exec( $appData, 'UPDATE documents SET state = :state WHERE id = :id', [ 'state' => $was, 'id' => $id ] );
+
+	$held = [];
+};
+
 $regularLines = [
 	[ 'title' => 'Mix <i>live</i>', 'description' => "Zwei Songs\nmit Master", 'unit' => 'Std.', 'qty' => '3', 'price' => '80', 'vat_rate' => 1900 ],
 	[ 'title' => 'Booklet', 'description' => '', 'unit' => '', 'qty' => '1', 'price' => '100', 'vat_rate' => 700 ],
@@ -1008,6 +1037,9 @@ check( 'the fixtures: four projects (two open, one done, one of another client),
 	&& array_filter( [ $song, $clip, $notes, $secret, $mine, $carls, $upVisible, $upOwn, $upCarl, $bFile ], static fn( array $file ): bool => $file['id'] === '' ) === []
 	&& array_filter( [ $offerRegular, $offerReverse, $offerHidden, $offerOther, $offerB, $offerSmall, $invoiceP1, $invoiceP2 ], static fn( array $document ): bool => isset( $document['error'] ) === true ) === []
 	&& Documents::get( $appData, $offerRegular['id'] )['vat_mode'] === 'regular' && Documents::get( $appData, $offerSmall['id'] )['vat_mode'] === 'small_business' && Documents::get( $appData, $offerReverse['id'] )['reverse_charge'] === true );
+
+// The offers of the first project wait for the order from here on, and the files of the project would not be open: they are held back until a section needs them
+$hold();
 
 // --- The navigation ------------------------------------------------------------------------------------------------------------
 
@@ -1130,6 +1162,7 @@ check( '...short and open show the list whatever the query says: the page of a p
 
 echo "\nThe page of a project\n";
 
+$resume();
 $page = portalPage( $appData, '/portal/projekte?projekt='. $p1 );
 $html = $page[1];
 $head = portalFind( $html, '//article[contains(@class, "crm-project")]' );
@@ -1212,6 +1245,8 @@ check( '...the form of the order stands under the offers that can be ordered and
 	=== count( array_filter( [ $offerRegular, $offerReverse, $offerSmall ], static fn( array $offer ): bool => Documents::orderable( (array) Documents::get( $appData, $offer['id'] ) ) === true ) ) );
 
 // the files
+$hold();
+$html = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
 $rows = portalFind( $html, '//section[contains(@class, "crm-project__section--files")]//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' );
 $names = array_map( static fn( \DOMElement $row ): string => trim( portalText( $row->ownerDocument->saveHTML( $row ), '//a[contains(@class, "crm-files__name")]' ) ), $rows );
 check( 'Dateien: the files the member may see (Files::allowed) - the visible ones and the member\'s own, not the hidden ones of the owner or of another account - the newest first', $names === [ 'Song.mp3', 'Meins.wav', 'Clip.mp4', 'Notizen.pdf' ] && str_contains( $html, 'Geheim.mp3' ) === false && str_contains( $html, 'Carl.mp3' ) === false );
@@ -1961,12 +1996,14 @@ $_SESSION = [];
 
 echo "\nEscaping\n";
 
+$hold();
+
 $odd = 'Q <i>[members-name]</i> & "x"';
 $oddFile = $put( $folderA, $odd. '.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 30 ) );
 $pOdd = $made( $odd, $a['number'], [ 'folder' => $folderA['id'] ] );
 $offerOdd = $final( 'offer', $a['id'], [ 'date' => '2026-10-09', 'project' => $pOdd, 'template_key' => 'angebot', 'lines' => [ $line( 'Nur ein Posten' ) ] ] );
 Documents::release( $appData, $offerOdd['id'], false );
-Db::exec( $appData, 'UPDATE documents SET title = :t WHERE id = :id', [ 't' => $odd, 'id' => $offerOdd['id'] ] );
+Db::exec( $appData, 'UPDATE documents SET title = :t, state = \'accepted\' WHERE id = :id', [ 't' => $odd, 'id' => $offerOdd['id'] ] );
 $oddEmail = '"e<b>[members-name]"@example.org';
 $oddAccount = \Nino\Modules\Members::add( $appData, $oddEmail, 'Eva Extra', $a['group'] );
 
@@ -2765,6 +2802,8 @@ check( 'the script file is there, a strict module of its own that keeps the addr
 
 echo "\nThe versions of a title\n";
 
+$hold();
+
 portalSignIn( $appData, $accounts['anna'] );
 $folderV = $store::addFolder( $appData, $a['group'], 'Versionen' );
 $song1 = $put( $folderV, 'Song.01.mp3', 'mp3', 'audio/mpeg', true, $owner, '2026-10-01T10:00:00Z' );
@@ -2936,6 +2975,8 @@ check( '...and the page that the form leads to - the address names the form, #cr
 // --- The gate of the client: the Datenschutz first, then the data of the invoice ----------------------------------------------------------------
 
 echo "\nThe gate of the client\n";
+
+$hold();
 
 $gateText = "Wir speichern Deine Daten für das Projekt.\nStand 2026";
 \Nino\Features::activate( $appData, 'files' );
@@ -3416,6 +3457,305 @@ check( 'a member who is no client\'s reads no message, to everybody or any, and 
 \Crm\Settings::set( $appData, 'portal_message', '' );
 \Crm\Portal::forget( $appData );
 portalSignIn( $appData, $accounts['anna'] );
+
+// --- The download is the owner's, and a waiting offer closes the files ---------------------------------------------------------------
+
+echo "\nThe download of a project and the offer that comes first\n";
+
+$hold();
+$reset();
+\Crm\Settings::set( $appData, 'privacy_text', $gateText );
+$asAdmin();
+$folderL = $store::addFolder( $appData, $a['group'], 'Gesperrt' );
+$lSong = $put( $folderL, 'Lied.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 7200 ) );
+$lPdf = $put( $folderL, 'Vertrag.pdf', 'pdf', 'application/pdf', true, $owner, $ago( 7300 ) );
+$lMine = $put( $folderL, 'Meins.txt', 'txt', 'text/plain', false, $byAnna, $ago( 60 ) );
+$pL = $made( 'Gesperrt', $a['number'], [ 'folder' => $folderL['id'] ], false );
+$lPage = '/portal/projekte?projekt='. $pL;
+$lRows = static fn( string $html ): array => portalFind( $html, '//section[contains(@class, "crm-project__section--files")]//li[contains(concat(" ", normalize-space(@class), " "), " crm-files__row ")]' );
+$lRow = static fn( string $html, string $id ): string => ( $found = portalFind( $html, '//li[@data-files-id="'. $id. '"]' ) ) === [] ? '' : $found[0]->ownerDocument->saveHTML( $found[0] );
+$lServe = static function( array $file, bool $download ) use ( &$appData ): int {
+	return portalServe( $appData, '/.files/'. $file['id']. ( $download === true ? '?download=1' : '' ) )['statusCode'];
+};
+portalSignIn( $appData, $accounts['anna'] );
+
+// the state: no row is no download; a project that is not there cannot be switched
+$nothing = \Crm\Projekte::state( $appData, $pL );
+check( 'a project without a row has no download, no day and no account; list() and get() say so', $nothing === [ 'download' => false, 'download_at' => '', 'download_by' => '' ] && \Crm\Projekte::get( $appData, $pL )['download'] === false
+	&& array_column( array_filter( \Crm\Projekte::list( $appData ), static fn( array $project ): bool => $project['id'] === $pL ), 'download' ) === [ false ] );
+
+// the page while the download is off
+$off = portalPage( $appData, $lPage.'&tab=dateien' )[1];
+$offSong = $lRow( $off, $lSong['id'] );
+$offPdf = $lRow( $off, $lPdf['id'] );
+$offMine = $lRow( $off, $lMine['id'] );
+check( 'while the download is off the tab Dateien has a note over the list, with the icon of a lock, and says nothing else of it', count( portalFind( $off, '//section[contains(@class, "crm-project__section--files")]/p[contains(@class, "crm-note")][contains(@class, "crm-project__locked")]' ) ) === 1
+	&& portalFind( $off, '//p[contains(@class, "crm-project__locked")]/svg' ) !== [] && portalFind( $off, '//p[contains(@class, "crm-project__waiting")]' ) === [] && count( $lRows( $off ) ) === 3 );
+check( '...the row of an audio file has the way to listen and no download: its name leads to the player, there is no button of the download and no sentence', portalFind( $offSong, '//a[contains(@class, "crm-files__listen")]' ) !== [] && portalFind( $offSong, '//a[contains(@class, "crm-files__download")]' ) === []
+	&& portalFind( $offSong, '//a[contains(@class, "crm-files__name")]/@href' )[0]->nodeValue === $lPage.'&review='. $lSong['id']. '#projekt-files' && portalFind( $offSong, '//*[contains(@class, "crm-files__locked")]' ) === [] && str_contains( $offSong, 'download=1' ) === false );
+check( '...the row of any other file has its name without a link, no download and the sentence in the cell of the actions', portalFind( $offPdf, '//a' ) === [] && portalFind( $offPdf, '//span[contains(@class, "crm-files__name")]' ) !== [] && trim( portalText( $offPdf, '//span[contains(@class, "crm-files__name")]' ) ) === 'Vertrag.pdf'
+	&& portalFind( $offPdf, '//span[contains(@class, "crm-table__actions")]/span[contains(@class, "crm-files__locked")]' ) !== [] && str_contains( $offPdf, 'download=1' ) === false );
+check( '...a file the member put there itself is the member\'s: its name leads to the download and the button is there', portalFind( $offMine, '//a[contains(@class, "crm-files__download")]/@href' )[0]->nodeValue === '/.files/'. $lMine['id']. '?download=1' && portalFind( $offMine, '//*[contains(@class, "crm-files__locked")]' ) === [] );
+$uploadsList = portalPage( $appData, '/portal/upload' )[1];
+check( 'the list of the uploads has the download of every file, whatever a project says - they are the member\'s files', portalFind( $uploadsList, '//a[contains(@class, "crm-files__download")]' ) !== [] && portalFind( $uploadsList, '//*[contains(@class, "crm-files__locked")]' ) === [] );
+
+// the route
+$lMake = static function() use ( $put, $folderL, $owner, $ago ): array {
+	return [ 'zip' => $put( $folderL, 'Satz.zip', 'zip', 'application/zip', true, $owner, $ago( 7400 ) ), 'txt' => $put( $folderL, 'Text.txt', 'txt', 'text/plain', true, $owner, $ago( 7500 ) ), 'wav' => $put( $folderL, 'Ton.wav', 'wav', 'audio/wav', true, $owner, $ago( 7600 ) ) ];
+};
+$lDrop = static function( array $extra ) use ( &$appData, $store ): void {
+	foreach( $extra as $file )
+		$store::deleteFile( $appData, $file['id'] );
+};
+$lExtra = $lMake();
+check( 'the route: the download of a file of a project without the download is 404 for the member - audio and any other file', $lServe( $lSong, true ) === 404 && $lServe( $lPdf, true ) === 404 && $lServe( $lExtra['zip'], true ) === 404 && $lServe( $lExtra['txt'], true ) === 404 && $lServe( $lExtra['wav'], true ) === 404 );
+check( '...and so is the file the player does not play, shown in the browser or not (a PDF, a ZIP, a text): nothing but what is played is given without the download; the audio files are 200', $lServe( $lPdf, false ) === 404 && $lServe( $lExtra['zip'], false ) === 404 && $lServe( $lExtra['txt'], false ) === 404
+	&& $lServe( $lSong, false ) === 200 && $lServe( $lExtra['wav'], false ) === 200 && \Nino\Modules\Files::allowed( $appData, $lPdf ) === false );
+$lDrop( $lExtra );
+check( '...the member\'s own file is saved all the same; allowed() says no only to the download of the others', $lServe( $lMine, true ) === 200 && $lServe( $lMine, false ) === 200
+	&& \Nino\Modules\Files::allowed( $appData, $lSong, true ) === false && \Nino\Modules\Files::allowed( $appData, $lSong ) === true && \Nino\Modules\Files::allowed( $appData, $lMine, true ) === true );
+$wrongBody = portalServe( $appData, '/.files/'. $lSong['id']. '?download=1' );
+check( '...the 404 is the plain one of a stranger: no file is named, no header of an attachment', ( $wrongBody['body'] ?? '' ) === 'Not Found' && isset( $wrongBody['file'] ) === false && str_contains( (string) ( $wrongBody['header']['Content-Disposition'] ?? '' ), 'attachment' ) === false );
+$asAdmin();
+check( '...the owner of the workbench saves it, by the permission of the panel', portalServe( $appData, '/.files/'. $lSong['id']. '?download=1' )['statusCode'] === 200 && portalServe( $appData, '/.files/'. $lPdf['id']. '?download=1' )['statusCode'] === 200 );
+portalSignIn( $appData, $accounts['anna'] );
+
+// the start page does not hold the download back, the files are there to listen to
+$startOff = portalComponentAt( $appData, '/portal', '[crm-portal-start]' );
+check( 'the start page counts the new files of a project whose download is off: they are there to listen to', str_contains( $startOff, 'projekt='. $pL. '&amp;tab=dateien' ) === true );
+
+// the owner switches it on
+$on = \Crm\Projekte::setDownload( $appData, $pL, true, 'owner@example.org' );
+check( 'setDownload() switches it on with the day and the account of the workbench; state(), get() and list() say it; a project that is not there is "unknown", an id that is none as well, and nothing is written for it',
+	is_array( $on ) && $on['download'] === true && preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $on['download_at'] ) === 1 && $on['download_by'] === 'owner@example.org' && \Crm\Projekte::get( $appData, $pL )['download'] === true
+	&& array_column( array_filter( \Crm\Projekte::list( $appData ), static fn( array $project ): bool => $project['id'] === $pL ), 'download' ) === [ true ]
+	&& \Crm\Projekte::setDownload( $appData, '99999', true ) === 'unknown' && \Crm\Projekte::setDownload( $appData, '../x', true ) === 'unknown' && Db::row( $appData, 'SELECT project FROM project_states WHERE project = \'99999\'' ) === null );
+$onPage = portalPage( $appData, $lPage.'&tab=dateien' )[1];
+check( 'with the download on the note is gone, every row has its button and the name of a file that is no medium leads to the download', portalFind( $onPage, '//p[contains(@class, "crm-project__locked")]' ) === [] && count( portalFind( $onPage, '//a[contains(@class, "crm-files__download")]' ) ) === 3
+	&& portalFind( $lRow( $onPage, $lPdf['id'] ), '//a[contains(@class, "crm-files__name")]/@href' )[0]->nodeValue === '/.files/'. $lPdf['id']. '?download=1' && portalFind( $onPage, '//*[contains(@class, "crm-files__locked")]' ) === [] );
+$lExtra = $lMake();
+check( '...and the route serves the download, and the files that are no medium shown in the browser as well', $lServe( $lSong, true ) === 200 && $lServe( $lPdf, true ) === 200 && $lServe( $lPdf, false ) === 200 && $lServe( $lExtra['zip'], true ) === 200 && $lServe( $lExtra['zip'], false ) === 200 && $lServe( $lExtra['txt'], false ) === 200 && $lServe( $lExtra['wav'], true ) === 200 );
+$lDrop( $lExtra );
+$off = \Crm\Projekte::setDownload( $appData, $pL, false, 'owner@example.org' );
+check( 'switched off again the day and the account are empty, and the route is 404 again', is_array( $off ) && $off === [ 'id' => $pL, 'download' => false, 'download_at' => '', 'download_by' => '' ] && $lServe( $lPdf, true ) === 404 );
+
+// what a page asks: the state of the project and its waiting offer are read once for the page, not once for each file
+$lCount = static function( string $uri ) use ( &$appData ): array {
+	$connections = new \ReflectionProperty( Db::class, '_connections' );
+	$was = $connections->getValue();
+	$file = (string) array_key_first( $was );
+	$counting = new class( 'sqlite:'. $file ) extends \PDO {
+		/** @var list<string> */
+		public array $log = [];
+
+		public function prepare( string $query, array $options = [] ): \PDOStatement|false {
+			$this->log[] = $query;
+			return parent::prepare( $query, $options );
+		}
+
+		public function query( string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs ): \PDOStatement|false {
+			$this->log[] = $query;
+			return $fetchMode === null ? parent::query( $query ) : parent::query( $query, $fetchMode, ...$fetchModeArgs );
+		}
+
+		public function exec( string $statement ): int|false {
+			$this->log[] = $statement;
+			return parent::exec( $statement );
+		}
+	};
+	$counting->setAttribute( \PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION );
+	$counting->setAttribute( \PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC );
+	$counting->exec( 'PRAGMA busy_timeout = 5000' );
+	$connections->setValue( null, [ $file => $counting ] );
+	$html = portalPage( $appData, $uri )[1];
+	$connections->setValue( null, $was );
+
+	return [ $html, count( $counting->log ), count( array_filter( $counting->log, static fn( string $sql ): bool => preg_match( '/project_states|FROM documents/', $sql ) === 1 ) ) ];
+};
+[ $fewHtml, $fewAll, $fewOwn ] = $lCount( $lPage. '&tab=dateien' );
+$lMany = [];
+
+for( $n = 0; $n < 27; $n++ )
+	$lMany[] = $put( $folderL, 'Vieles-'. $n. '.pdf', 'pdf', 'application/pdf', true, $owner, $ago( 8000 + $n ) );
+
+[ $manyHtml, $manyAll, $manyOwn ] = $lCount( $lPage. '&tab=dateien' );
+check( 'a page of thirty files reads the state of the project and its offers as often as a page of three: the answers are kept for the request', count( $lRows( $fewHtml ) ) === 3 && count( $lRows( $manyHtml ) ) === 30 && $manyOwn === $fewOwn && $fewOwn > 0 );
+check( '...and the rest of the queries of the page do not grow with the files by more than the files themselves ask', $manyAll - $fewAll <= 27 * 2 );
+foreach( $lMany as $file )
+	$store::deleteFile( $appData, $file['id'] );
+
+// a project that is deleted takes its state with it
+$gone = $made( 'Wird gelöscht', $a['number'] );
+check( 'the state of a project is a row; deleting the project through the kernel takes it with it', Db::row( $appData, 'SELECT download FROM project_states WHERE project = :project', [ 'project' => $gone ] ) !== null
+	&& \Nino\Elements::deleteElement( $appData, '/projekte/'. $gone, '*' ) === true && Db::row( $appData, 'SELECT download FROM project_states WHERE project = :project', [ 'project' => $gone ] ) === null && \Crm\Projekte::state( $appData, $gone )['download'] === false );
+
+// the offer first
+$offerL = $final( 'offer', $a['id'], [ 'date' => '2026-10-05', 'valid_until' => '2099-12-31', 'project' => $pL, 'template_key' => 'angebot', 'lines' => [ $line( 'Lied' ) ] ] );
+Documents::release( $appData, $offerL['id'], false );
+$waiting = \Crm\Projekte::waiting( $appData, $pL, $a['id'] );
+check( 'a released offer of the project that can be ordered waits: waiting() answers it', is_array( $waiting ) && $waiting['id'] === $offerL['id'] && $waiting['number'] === $offerL['number'] );
+check( '...it waits for its client and its project alone: another client and another project have none, asked before and after the one it waits for', \Crm\Projekte::waiting( $appData, $pL, $b['id'] ) === null && \Crm\Projekte::waiting( $appData, $pL, $a['id'] )['id'] === $offerL['id'] && \Crm\Projekte::waiting( $appData, $pL, $b['id'] ) === null
+	&& \Crm\Projekte::waiting( $appData, $p4, $a['id'] ) === null );
+$wPage = portalPage( $appData, $lPage.'&tab=dateien' )[1];
+$wLink = portalFind( $wPage, '//section[contains(@class, "crm-project__section--files")]//p[contains(@class, "crm-project__waiting")]//a' );
+check( 'while it waits the tab Dateien is a note in the place of the list - the icon of a receipt, the number of the offer and a link to its card on the tab Angebot -, with no list, no player and no sentence about the download', count( $wLink ) === 1
+	&& $wLink[0]->getAttribute( 'href' ) === $lPage.'&tab=angebot#angebot-'. $offerL['id'] && str_contains( $wLink[0]->textContent, (string) $offerL['number'] ) === true && portalFind( $wPage, '//section[contains(@class, "crm-project__section--files")]//ul' ) === []
+	&& portalFind( $wPage, '//p[contains(@class, "crm-project__waiting")]/svg' ) !== [] && portalFind( $wPage, '//p[contains(@class, "crm-project__locked")]' ) === [] && str_contains( $wPage, 'Lied.mp3' ) === false );
+check( '...the tab carries no number, the other two do', portalFind( $wPage, '//a[@data-tab="dateien"]//*[contains(@class, "crm-project__count")]' ) === [] && portalFind( $wPage, '//a[@data-tab="angebot"]//*[contains(@class, "crm-project__count")]' ) !== [] );
+$wReview = portalPage( $appData, '/portal/projekte?review='. $lSong['id'] )[1];
+check( '...a file asked to be played gets the same note and no player, no comments', portalFind( $wReview, '//p[contains(@class, "crm-project__waiting")]' ) !== [] && portalFind( $wReview, '//div[contains(@class, "review-player")]' ) === [] && portalFind( $wReview, '//audio' ) === [] && portalFind( $wReview, '//form[contains(@class, "review-form")] | //*[contains(@class, "review-comment")]' ) === [] );
+check( '...the route says no to every file of the folder, shown or saved, the member\'s own among them - with the download on as well', array_unique( [ $lServe( $lSong, false ), $lServe( $lSong, true ), $lServe( $lPdf, false ), $lServe( $lPdf, true ), $lServe( $lMine, false ), $lServe( $lMine, true ) ] ) === [ 404 ]
+	&& \Nino\Modules\Files::allowed( $appData, $lSong ) === false && \Nino\Modules\Files::allowed( $appData, $lMine ) === false );
+\Crm\Projekte::setDownload( $appData, $pL, true, 'owner@example.org' );
+check( '...the switch of the download does not open them', array_unique( [ $lServe( $lSong, false ), $lServe( $lPdf, true ), $lServe( $lMine, true ) ] ) === [ 404 ] && portalFind( portalPage( $appData, $lPage.'&tab=dateien' )[1], '//p[contains(@class, "crm-project__waiting")]' ) !== [] );
+\Crm\Projekte::setDownload( $appData, $pL, false, 'owner@example.org' );
+$asAdmin();
+check( '...the owner of the workbench is not asked', $lServe( $lSong, true ) === 200 && $lServe( $lPdf, false ) === 200 );
+portalSignIn( $appData, $accounts['anna'] );
+$startWaiting = portalComponentAt( $appData, '/portal', '[crm-portal-start]' );
+$listWaiting = portalPage( $appData, '/portal/projekte' )[1];
+$rowWaiting = portalFind( $listWaiting, '//li[@data-project="'. $pL. '"]' );
+check( 'the start page does not count the files of the project as new while the offer waits, and the list of the projects counts none for it', str_contains( $startWaiting, 'projekt='. $pL. '&amp;tab=dateien' ) === false
+	&& count( $rowWaiting ) === 1 && portalFind( $rowWaiting[0]->ownerDocument->saveHTML( $rowWaiting[0] ), '//span[contains(@class, "crm-projects__count--files")]' ) === [] );
+
+// what lifts it: the order, a decline, the owner taking the offer back, the end of its day, and an offer that is not this project's or this client's
+$cases = [
+	'accepted'     => 'state = \'accepted\'',
+	'declined'     => 'state = \'declined\'',
+	'not released' => 'state = \'sent\', released = 0',
+	'run out'      => 'state = \'sent\', released = 1, valid_until = \'2020-01-01\'',
+	'sent'         => 'state = \'sent\', released = 1, valid_until = \'2099-12-31\'',
+];
+$lifted = [];
+
+foreach( $cases as $name => $set ) {
+	Db::exec( $appData, 'UPDATE documents SET '. $set. ' WHERE id = :id', [ 'id' => $offerL['id'] ] );
+	\Crm\Projekte::forget( $appData );
+	$lifted[$name] = \Crm\Projekte::waiting( $appData, $pL, $a['id'] ) === null;
+}
+
+check( 'waiting() is null for an offer that was accepted, declined, taken back from the portal or run out, and the offer again when it is sent and in its days', $lifted === [ 'accepted' => true, 'declined' => true, 'not released' => true, 'run out' => true, 'sent' => false ] );
+Db::exec( $appData, 'UPDATE documents SET state = \'declined\' WHERE id = :id', [ 'id' => $offerL['id'] ] );
+\Crm\Projekte::forget( $appData );
+portalSignIn( $appData, $accounts['anna'] );
+check( '...with the offer declined the files are open again: the list is there, the player plays, the route serves what is for listening and still not the download', count( $lRows( portalPage( $appData, $lPage.'&tab=dateien' )[1] ) ) === 3 && $lServe( $lSong, false ) === 200 && $lServe( $lSong, true ) === 404 );
+check( '...waiting() asks the project and the client: another project, another client and an id that is none have none', \Crm\Projekte::waiting( $appData, $p4, $a['id'] ) === null && \Crm\Projekte::waiting( $appData, $pL, $b['id'] ) === null && \Crm\Projekte::waiting( $appData, '', $a['id'] ) === null );
+$offerLb = $final( 'offer', $a['id'], [ 'date' => '2026-10-06', 'valid_until' => '2099-12-31', 'project' => $pL, 'template_key' => 'angebot', 'lines' => [ $line( 'Zwei' ) ] ] );
+$offerLoose = $final( 'offer', $a['id'], [ 'date' => '2026-10-07', 'valid_until' => '2099-12-31', 'template_key' => 'angebot', 'lines' => [ $line( 'Ohne Projekt' ) ] ] );
+Documents::release( $appData, $offerLb['id'], false );
+Documents::release( $appData, $offerLoose['id'], false );
+check( '...an offer that waits without a project holds no project back, and the second offer of the project is the one that waits now', \Crm\Projekte::waiting( $appData, $pL, $a['id'] )['id'] === $offerLb['id'] && $lServe( $lSong, false ) === 404 && \Crm\Projekte::waiting( $appData, $p4, $a['id'] ) === null );
+Db::exec( $appData, 'UPDATE documents SET state = \'accepted\' WHERE id = :id', [ 'id' => $offerLb['id'] ] );
+\Crm\Projekte::forget( $appData );
+check( '...and an order of it opens the files', \Crm\Projekte::waiting( $appData, $pL, $a['id'] ) === null && $lServe( $lSong, false ) === 200 );
+
+// the note names the offer as text: markup and a bracket in the number or the title are not markup
+Db::exec( $appData, 'UPDATE documents SET state = \'sent\', number = :number WHERE id = :id', [ 'number' => 'A<b>1</b> [[/project/company/general/name]]', 'id' => $offerL['id'] ] );
+$leak = portalPage( $appData, $lPage.'&tab=dateien' )[1];
+check( 'the number of the offer in the note is text: no <b> of it, no fill of the page', portalFind( $leak, '//p[contains(@class, "crm-project__waiting")]//b' ) === [] && str_contains( $leak, 'A&lt;b&gt;1&lt;/b&gt; &#91;&#91;/project/company/general/name]]' ) === true && str_contains( $leak, 'The Club' ) === false );
+Db::exec( $appData, 'UPDATE documents SET number = \'\', title = :title WHERE id = :id', [ 'title' => '<i>T</i> [members-name]', 'id' => $offerL['id'] ] );
+$leakTitle = portalPage( $appData, $lPage.'&tab=dateien' )[1];
+check( '...nor is the title that stands there for a number', portalFind( $leakTitle, '//p[contains(@class, "crm-project__waiting")]//i' ) === [] && str_contains( $leakTitle, '&lt;i&gt;T&lt;/i&gt; &#91;members-name]' ) === true );
+Db::exec( $appData, 'UPDATE documents SET state = \'declined\' WHERE id = :id', [ 'id' => $offerL['id'] ] );
+
+// the release of an invoice that opens the files with it
+$asAdmin();
+$invL = $final( 'invoice', $a['id'], [ 'date' => '2026-10-20', 'project' => $pL, 'template_key' => 'rechnung', 'lines' => [ $line( 'Teil' ) ] ] );
+$invLoose = $final( 'invoice', $a['id'], [ 'date' => '2026-10-21', 'template_key' => 'rechnung', 'lines' => [ $line( 'Lose' ) ] ] );
+$offerP = $final( 'offer', $a['id'], [ 'date' => '2026-10-22', 'valid_until' => '2099-12-31', 'project' => $pL, 'template_key' => 'angebot', 'lines' => [ $line( 'Angebot' ) ] ] );
+\Crm\Projekte::setDownload( $appData, $pL, false );
+$reset();
+$before = count( $mails );
+$plain = Documents::release( $appData, $invLoose['id'], true );
+check( 'a release with no word of the download mails the two sentences it always had: no second sentence, no slot of the template left in the body', is_array( $plain ) && $plain['download'] === false && $plain['mailed'] > 0 && $plain['mailed'] === count( $mails ) - $before && str_contains( portalMail( $before )['body'], 'tab=dateien' ) === false && str_contains( portalMail( $before )['body'], '[[' ) === false );
+$plainAnchors = substr_count( portalMail( $before )['body'], '<a ' );
+check( '...and the project is as it was: download off', \Crm\Projekte::state( $appData, $pL )['download'] === false );
+$invNoWord = $final( 'invoice', $a['id'], [ 'date' => '2026-10-19', 'project' => $pL, 'template_key' => 'rechnung', 'lines' => [ $line( 'Ohne Wort' ) ] ] );
+$reset();
+$before = count( $mails );
+Documents::release( $appData, $invNoWord['id'], true );
+check( '...an invoice of a project released with the mail and without the download does not speak of the files, and the project stays locked', count( $mails ) > $before && str_contains( portalMail( $before )['body'], 'tab=dateien' ) === false && substr_count( portalMail( $before )['body'], '<a ' ) === $plainAnchors && \Crm\Projekte::state( $appData, $pL )['download'] === false );
+$refused = [ Documents::release( $appData, $offerP['id'], false, true ), Documents::release( $appData, $invLoose['id'], false, true ), Documents::release( $appData, 99999, false, true ) ];
+check( 'the download goes with an invoice of a project and nothing else: an offer and an invoice without a project are refused "download", a document nobody has is "unknown" - and nothing was released or switched', $refused === [ 'download', 'download', 'unknown' ] && Documents::get( $appData, $offerP['id'] )['released'] === false
+	&& \Crm\Projekte::state( $appData, $pL )['download'] === false );
+$draftP = Documents::add( $appData, 'invoice', $a['id'], [ 'project' => $pL, 'template_key' => 'rechnung', 'lines' => [ $line( 'Entwurf' ) ] ] );
+check( '...a draft is "state" before anything else, and the project stays locked', Documents::release( $appData, $draftP['id'], true, true ) === 'state' && \Crm\Projekte::state( $appData, $pL )['download'] === false );
+
+// a release that fails leaves the project as it was: the cap of mails, a site without an address
+$reset();
+
+for( $n = 0; $n < 5; $n++ )
+	Documents::release( $appData, $invoiceA['id'], true );
+
+check( 'a release that the cap of mails refuses switches nothing on: "limit", the invoice is not released and the project is locked', Documents::release( $appData, $invL['id'], true, true ) === 'limit' && Documents::get( $appData, $invL['id'] )['released'] === false && \Crm\Projekte::state( $appData, $pL )['download'] === false );
+$reset();
+$noAddress = $appData;
+\Nino\Html::addFills( $noAddress, [ '[[/project/website/general/url]]' => '' ], '*' );
+check( '...so does a site that has no address to link to: "address", nothing released, the project locked', Documents::release( $noAddress, $invL['id'], true, true ) === 'address' && \Crm\Projekte::state( $appData, $pL )['download'] === false && Documents::get( $appData, $invL['id'] )['released'] === false );
+
+// a failure inside the transaction takes the release back with the switch: a deferred reference that is broken by the update of the document fails the commit, after the download was switched on
+Db::exec( $appData, 'CREATE TABLE zz_parent ( id INTEGER PRIMARY KEY )' );
+Db::exec( $appData, 'CREATE TABLE zz_child ( ref INTEGER REFERENCES zz_parent ( id ) DEFERRABLE INITIALLY DEFERRED )' );
+Db::exec( $appData, 'CREATE TRIGGER zz_break AFTER UPDATE OF released ON documents BEGIN INSERT INTO zz_child ( ref ) VALUES ( 1 ); END' );
+$failed = null;
+
+try {
+	Documents::release( $appData, $invL['id'], false, true, 'owner@example.org' );
+}
+catch( \Throwable $e ) {
+	$failed = $e;
+}
+
+check( 'a release that fails inside its transaction is not half done: it throws, the invoice is not released and the project is still locked', $failed instanceof \PDOException && Documents::get( $appData, $invL['id'] )['released'] === false && \Crm\Projekte::state( $appData, $pL ) === [ 'download' => false, 'download_at' => '', 'download_by' => '' ] );
+Db::exec( $appData, 'DROP TRIGGER zz_break' );
+Db::exec( $appData, 'DROP TABLE zz_child' );
+Db::exec( $appData, 'DROP TABLE zz_parent' );
+
+// the release that goes through
+$reset();
+$before = count( $mails );
+$opened = Documents::release( $appData, $invL['id'], true, true, 'owner@example.org' );
+$stateL = \Crm\Projekte::state( $appData, $pL );
+check( 'the release with the download is one step: the invoice is released and sent, the project has its download on with the day and the account, and the answer says it', is_array( $opened ) && $opened['download'] === true && $opened['mailed'] > 0 && $opened['mailed'] === count( $mails ) - $before && $opened['document']['released'] === true && $opened['document']['state'] === 'sent'
+	&& $stateL['download'] === true && $stateL['download_by'] === 'owner@example.org' && preg_match( '/^\d{4}-\d{2}-\d{2}T/D', $stateL['download_at'] ) === 1 );
+$body = portalMail( $before )['body'];
+check( '...the mail has a second sentence about the files of the project with the link to its tab Dateien, the title as text', str_contains( $body, 'href="https://example.org/club/portal/projekte?projekt='. $pL. '&amp;tab=dateien"' ) === true && str_contains( $body, 'Gesperrt' ) === true && str_contains( $body, '[[' ) === false
+	&& substr_count( $body, '<a ' ) === $plainAnchors + 1 && str_contains( portalMail( $before )['subject'], (string) $invL['number'] ) === true && str_contains( portalMail( $before )['subject'], 'Gesperrt' ) === false && str_contains( $body, (string) $invL['number'] ) === true );
+$wasStamp = $stateL['download_at'];
+Db::exec( $appData, 'UPDATE project_states SET download_at = \'2026-01-01T00:00:00Z\', download_by = \'first@example.org\' WHERE project = :project', [ 'project' => $pL ] );
+$again = Documents::release( $appData, $invL['id'], false, true, 'owner@example.org' );
+check( '...a release again with the download on changes nothing of the state: the first day and the first account stay', is_array( $again ) && $again['mailed'] === 0 && \Crm\Projekte::state( $appData, $pL ) === [ 'download' => true, 'download_at' => '2026-01-01T00:00:00Z', 'download_by' => 'first@example.org' ] && $wasStamp !== '' );
+\Crm\Projekte::setDownload( $appData, $pL, false );
+
+// the mail names the title as text, whatever it holds
+$evilTitle = '<b>Titel</b> [members-name] & Co';
+$pEvil = $made( $evilTitle, $a['number'], [], false );
+$invEvil = $final( 'invoice', $a['id'], [ 'date' => '2026-10-23', 'project' => $pEvil, 'template_key' => 'rechnung', 'lines' => [ $line( 'Evil' ) ] ] );
+$reset();
+$before = count( $mails );
+Documents::release( $appData, $invEvil['id'], true, true );
+$evilBody = portalMail( $before )['body'];
+check( 'the title of the project in the mail is text: no <b> of it, no shortcode of it, the ampersand escaped', str_contains( $evilBody, '&lt;b&gt;Titel&lt;/b&gt; &#91;members-name] &amp; Co' ) === true && str_contains( $evilBody, '<b>Titel' ) === false );
+$remindBody = \Crm\Documents\Mail::compose( $appData, (array) Documents::get( $appData, $invEvil['id'] ), 'remind', true );
+check( '...a reminder never says it: the files are not part of a payment reminder', $remindBody !== [] && str_contains( $remindBody[0]['body'], 'tab=dateien' ) === false );
+
+// the panel
+[ $status, $answer ] = $post( 'crm-documents/release', [ 'id' => (string) $offerP['id'], 'download' => true ] );
+check( 'crm-documents/release with the download of an offer is 409 crm_documents_download, and nothing was released', $status === 409 && $answer['code'] === 'crm_documents_download' && Documents::get( $appData, $offerP['id'] )['released'] === false );
+$reset();
+\Crm\Projekte::setDownload( $appData, $pEvil, false );
+[ $status, $answer ] = $post( 'crm-documents/release', [ 'id' => (string) $invEvil['id'], 'mail' => true, 'download' => 'yes' ] );
+check( 'only a true download is one: "yes" releases the invoice and leaves the project locked', $status === 200 && $answer['download'] === false && \Crm\Projekte::state( $appData, $pEvil )['download'] === false );
+[ $status, $answer ] = $post( 'crm-documents/release', [ 'id' => (string) $invEvil['id'], 'mail' => true, 'download' => true ] );
+$seen = $post( 'crm-documents/get', [ 'id' => (string) $invEvil['id'] ] )[1];
+check( '...a true one switches it on in the same action by the account of the workbench; the answer and the document of the screen say it', $status === 200 && $answer['download'] === true && \Crm\Projekte::state( $appData, $pEvil )['download'] === true && \Crm\Projekte::state( $appData, $pEvil )['download_by'] === 'admin@example.com'
+	&& array_column( $seen['projects'], 'download', 'id' )[$pEvil] === true && array_column( $seen['projects'], 'download', 'id' )[$pL] === false );
+check( '...its log line names the document and the project and no address', \Crm\Documents\Admin::log( 'crm-documents/release', [] ) === 'Released document '. \Crm\Documents\Render::name( (array) Documents::get( $appData, $invEvil['id'] ) ). ', with the download of project '. $pEvil );
+
+
+// the words
+$wordsLocked = [ '[[/project/crm-portal/projects/files-locked]]', '[[/project/crm-portal/projects/files-waiting]]', '[[/project/crm-portal/projects/files-waiting-next]]', '[[/project/crm-portal/files/locked]]' ];
+check( 'the new words are in German and English', array_diff( $wordsLocked, array_keys( $wordsDe ), array_keys( $wordsEn ) ) === [] && array_filter( $wordsLocked, static fn( string $key ): bool => trim( $wordsDe[$key] ) === '' || trim( $wordsEn[$key] ) === '' ) === [] );
 
 // The rest of the suite runs as it did before: Review and Events off
 foreach( [ 'events', 'review' ] as $key )

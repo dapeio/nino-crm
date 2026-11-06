@@ -1,0 +1,1 @@
+[[/project/crm-portal/projects/files-waiting]] <a href="[[dir]]/portal/projekte?projekt=[[project]]&amp;tab=angebot#angebot-[[id]]"><strong>[[name]]</strong></a>. [[/project/crm-portal/projects/files-waiting-next]]

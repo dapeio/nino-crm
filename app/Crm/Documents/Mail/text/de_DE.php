@@ -11,6 +11,8 @@ return [
 	'intro' => 'im Kundenportal liegt ein neues Dokument für Dich:',
 	'button' => 'Belege ansehen',
 	'notice' => 'Das Dokument hängt dieser Mail nicht an. Melde Dich im Kundenportal an, dort kannst Du es ansehen und herunterladen.',
+	'files.text' => 'Die Dateien des Projekts %s stehen jetzt zum Download bereit.',
+	'files.button' => 'Zu den Dateien',
 	'closing' => 'Viele Grüße',
 	'kind.offer' => 'Angebot',
 	'kind.invoice' => 'Rechnung',

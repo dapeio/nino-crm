@@ -223,7 +223,8 @@ class Crm {
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://', [ Portal::class, 'callbackDoor' ] );
 
 		// The gate of the client: a member whose client has not taken note of the Datenschutz or given the data of the invoice is sent to that step from every page of
-		// the portal, and is given no file (see Portal::callbackPending(), Portal::callbackFileAllowed())
+		// the portal, and is given no file (see Portal::callbackPending(), Portal::callbackFileAllowed()); nor is a file of a project to be downloaded that the owner has not
+		// switched on, or a file of a project while an offer of it waits for the order
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response', [ Portal::class, 'callbackPending' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/files/allowed', [ Portal::class, 'callbackFileAllowed' ] );
 
@@ -262,6 +263,9 @@ class Crm {
 		\Nino\Callbacks::registerCallback( $appData, '/nino/elements/delete'. Projekte::TYPE, [ Projekte::class, 'callbackDelete' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/nino/elements'. Projekte::TYPE. '/insert', [ Projekte::class, 'callbackWrite' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/nino/elements'. Projekte::TYPE. '/update', [ Projekte::class, 'callbackWrite' ] );
+
+		// ...and a project that is deleted takes the row of its state in the database with it
+		\Nino\Callbacks::registerCallback( $appData, '/nino/elements/committed', [ Projekte::class, 'callbackCommitted' ] );
 
 		// The surface: one page of the project, its endpoint, its assets and the preview of a draft
 		\Crm\Surface::init( $appData );

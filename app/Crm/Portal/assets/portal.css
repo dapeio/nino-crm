@@ -1893,6 +1893,34 @@ a.crm-files__name:hover {
 	color: var(--crm-link);
 }
 
+/*	A file the member may not save yet: the name without a link, and in the place of the button the sentence that the studio releases it	*/
+.crm-files__name--plain {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--crm-touch);
+	color: var(--crm-ink);
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.crm-files__locked {
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	line-height: 1.4;
+}
+
+@media (min-width: 1024px) {
+
+	.crm-files__locked {
+		max-width: 14rem;
+	}
+}
+
+.crm-project__locked,
+.crm-project__waiting {
+	margin: 0 0 var(--crm-4);
+}
+
 .crm-files__row--playing {
 	box-shadow: inset 3px 0 0 var(--crm-link);
 	background-color: color-mix(in srgb, var(--crm-info) 6%, transparent);

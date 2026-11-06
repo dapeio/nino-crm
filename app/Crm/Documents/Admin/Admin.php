@@ -48,6 +48,7 @@ class Admin {
 		'account'  => [ 400, 'crm_documents_account', 'account' ],
 		'sign'     => [ 409, 'crm_documents_sign', '' ],
 		'released' => [ 409, 'crm_documents_released', '' ],
+		'download' => [ 409, 'crm_documents_download', '' ],
 		'mail'     => [ 409, 'crm_documents_sign_mail', '' ],
 		'link_perm' => [ 403, 'crm_documents_link_perm', '' ],
 		'project'  => [ 400, 'crm_project', 'project' ],
@@ -506,7 +507,8 @@ class Admin {
 
 	/**
 	 *	Release a finalised document to the portal; mail true also mails the accounts of its client (and sends an offer, an invoice or a
-	 *	credit note that was open). Answers the document and how many mails were delivered
+	 *	credit note that was open). With download true the release of an invoice of a project also switches the download of the project's files on (Documents::release()).
+	 *	Answers the document and how many mails were delivered
 	 */
 	public static function apiRelease( array &$appData, array &$request ): void {
 
@@ -522,16 +524,17 @@ class Admin {
 				return;
 
 			$mail = ( $data['mail'] ?? false ) === true;
-			$released = Documents::release( $appData, $document['id'], $mail );
+			$user = \Nino\Auth::getCurrentUser( $appData );
+			$released = Documents::release( $appData, $document['id'], $mail, ( $data['download'] ?? false ) === true, $user === false ? '' : (string) $user['mail'] );
 
 			if( is_string( $released ) === true ) {
 				self::_refused( $request, $released );
 				return;
 			}
 
-			self::$_made['crm-documents/release'] = Render::name( $document );
+			self::$_made['crm-documents/release'] = Render::name( $document ). ( $released['download'] === true ? ', with the download of project '. $document['project'] : '' );
 
-			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $released['document'] ), 'mailed' => $released['mailed'], 'mail' => $mail ] );
+			\Nino\Http::ok( $request, [ 'document' => self::_shown( $appData, $released['document'] ), 'mailed' => $released['mailed'], 'mail' => $mail, 'download' => $released['download'] ] );
 		} );
 	}
 
@@ -935,13 +938,13 @@ class Admin {
 	 *	@param		array 		&$appData
 	 *	@param		int				$clientId
 	 *
-	 *	@return 	array											id, title and done of each
+	 *	@return 	array											id, title, done and download (whether the client may download the files) of each
 	 */
 	private static function _projects( array &$appData, int $clientId ): array {
 
 		$client = \Crm\Clients::get( $appData, $clientId );
 
-		return $client === null ? [] : array_map( static fn( array $project ): array => [ 'id' => $project['id'], 'title' => $project['title'], 'done' => $project['done'] ], \Crm\Projekte::ofClient( $appData, $client['number'] ) );
+		return $client === null ? [] : array_map( static fn( array $project ): array => [ 'id' => $project['id'], 'title' => $project['title'], 'done' => $project['done'], 'download' => $project['download'] ], \Crm\Projekte::ofClient( $appData, $client['number'] ) );
 	}
 
 	/**

@@ -62,10 +62,11 @@ class Mail {
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document			As Documents::get() has it
 	 *	@param		string		$kind					release (a document is there for the client) or remind (an invoice that is open or sent, released to the portal)
+	 *	@param		bool			$download			Whether the release also switches the download of the files of the document's project on: a second sentence says so, with the way to the files (release only)
 	 *
 	 *	@return 	array											[ { to, subject, body, replyTo }, ... ]; none for a client without an account that can be written to, or where the site has no address
 	 */
-	public static function compose( array &$appData, array $document, string $kind = 'release' ): array {
+	public static function compose( array &$appData, array $document, string $kind = 'release', bool $download = false ): array {
 
 		$link = \Nino\Html::absoluteUrl( $appData, \Crm\Portal::documentHref( $document, $document['category'] === 'offer' ? 'angebot' : 'belege' ) );
 
@@ -78,11 +79,21 @@ class Mail {
 
 		try {
 			$markup = \Nino\Html::renderHtml( $appData, self::template( 'release' ) );
+			$files = \Nino\Html::renderHtml( $appData, self::template( 'release-files' ) );
 			$replyTo = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ) );
 		}
 		finally {
 			\Nino\Locales::useLocale( $appData, $locale );
 		}
+
+		// The sentence about the files stands in the place of the empty slot of the template, or the slot goes
+		$project = $download === true && $kind === 'release' && (string) $document['project'] !== '' ? \Crm\Projekte::get( $appData, (string) $document['project'] ) : null;
+		$escape = static fn( string $value ): string => \Nino\Modules\Components::escape( $value );
+		$markup = str_replace( '[[files]]', $project === null ? '' : str_replace(
+			[ '[[files-text]]', '[[files-link]]', '[[files-cta]]' ],
+			[ $escape( self::text( 'files.text', $project['title'] !== '' ? $project['title'] : $project['id'] ) ), $escape( \Nino\Html::absoluteUrl( $appData, '/portal/projekte?projekt='. rawurlencode( $project['id'] ). '&tab=dateien' ) ), $escape( self::text( 'files.button' ) ) ],
+			$files
+		), $markup );
 
 		$replyTo = filter_var( $replyTo, FILTER_VALIDATE_EMAIL ) === false ? '' : $replyTo;
 		$name = (string) $document['title'] !== '' ? (string) $document['title'] : (string) $document['number'];
@@ -112,7 +123,7 @@ class Mail {
 			$mails[] = [
 				'to'      => $account['email'],
 				'subject' => self::text( $prefix. 'subject', $about ),
-				'body'    => str_replace( array_keys( $values ), array_map( static fn( string $value ): string => \Nino\Modules\Components::escape( $value ), array_values( $values ) ), $markup ),
+				'body'    => str_replace( array_keys( $values ), array_map( $escape, array_values( $values ) ), $markup ),
 				'replyTo' => $replyTo,
 			];
 		}
@@ -125,12 +136,13 @@ class Mail {
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document			As Documents::get() has it
+	 *	@param		bool			$download			Whether the release switches the download of the project's files on, which the mail says
 	 *
 	 *	@return 	int|string								How many mails were delivered; 'address' where the site has no address to link to, 'limit' where the cap of mails an hour refused them all
 	 */
-	public static function release( array &$appData, array $document ): int|string {
+	public static function release( array &$appData, array $document, bool $download = false ): int|string {
 
-		return self::send( $appData, $document, 'release' );
+		return self::send( $appData, $document, 'release', $download );
 	}
 
 	/**
@@ -328,15 +340,16 @@ class Mail {
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document
 	 *	@param		string		$kind					release or remind, see compose()
+	 *	@param		bool			$download			See compose()
 	 *
 	 *	@return 	int|string
 	 */
-	private static function send( array &$appData, array $document, string $kind ): int|string {
+	private static function send( array &$appData, array $document, string $kind, bool $download = false ): int|string {
 
 		if( \Nino\Html::absoluteUrl( $appData, self::PAGE ) === '' )
 			return 'address';
 
-		$mails = self::compose( $appData, $document, $kind );
+		$mails = self::compose( $appData, $document, $kind, $download );
 
 		if( $mails === [] )
 			return 0;

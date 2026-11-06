@@ -14,6 +14,10 @@ declare(strict_types=1);
  *												them tabs and the portal's own script writes the tab into the address, and without them the links jump to the panels, which
  *												stand open one under the other. The label of a tab carries the count of what is in it.
  *
+ *												The files are the owner's to give: while an offer of the project waits for the order (Projekte::waiting()) the tab Dateien is a note that
+ *												leads to the offer - no list, no player, no count -, and while the download of the project is not switched on the list says it is for
+ *												listening and its rows have no download (Portal\Files).
+ *
  *												Nothing here is stored or sent, and every value enters the markup escaped. A project of another client and an id that is none
  *												are the list with a sentence that the project is unknown. The player of Review returns to the page it stands on without the
  *												query (its form posts the path alone and is redirected to ?review=<file>), so a request with a file and no project is
@@ -194,7 +198,8 @@ class Projects {
 
 		foreach( $projects as $project ) {
 
-			$files[$project['id']] = self::folder( $appData, $project ) === null ? null : Files::visible( $appData, $project['folder'] );
+			// The files of a project whose offer waits are not counted: the page of the project does not list them either
+			$files[$project['id']] = self::folder( $appData, $project ) === null || Projekte::waiting( $appData, $project['id'], (int) $client['id'] ) !== null ? null : Files::visible( $appData, $project['folder'] );
 			$active[$project['id']] = max( $active[$project['id']] ?? '', $project['started'] );
 
 			foreach( $files[$project['id']] ?? [] as $file )
@@ -267,7 +272,7 @@ class Projects {
 
 		$dir = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) );
 		$documents = Documents::released( $appData, $client['id'], $project['id'] );
-		$files = self::files( $appData, $project, $review );
+		$files = self::files( $appData, $client, $project, $review );
 		$sections = [
 			'offer'     => self::offers( $appData, $client, $documents, $dir ),
 			'files'     => $files,
@@ -348,15 +353,18 @@ class Projects {
 	}
 
 	/**
-	 *	The section Dateien: the player where a file is asked for, with the versions of its title over it, then the titles of the files the member may see
+	 *	The section Dateien: the player where a file is asked for, with the versions of its title over it, then the titles of the files the member may see. While an offer
+	 *	of the project waits for the order the section is the note that leads to the offer and nothing else; while the download is off a note over the list says that the
+	 *	files are for listening
 	 *
 	 *	@param		array 		&$appData
+	 *	@param		array 		$client
 	 *	@param		array 		$project
 	 *	@param		string		$review				The file asked to be played
 	 *
-	 *	@return 	array											The markup and the count of files the member may see (null where there is no folder to count)
+	 *	@return 	array											The markup and the count of files the member may see (null where there is no folder to count and where the offer comes first)
 	 */
-	private static function files( array &$appData, array $project, string $review ): array {
+	private static function files( array &$appData, array $client, array $project, string $review ): array {
 
 		if( Crm::featureOn( $appData, 'files' ) === false )
 			return [ self::message( $appData, 'files-off', '', 'project-message' ), null ];
@@ -365,6 +373,11 @@ class Projects {
 
 		if( $folder === null )
 			return [ self::message( $appData, 'files-none', '', 'project-message' ), null ];
+
+		$waiting = Projekte::waiting( $appData, $project['id'], (int) $client['id'] );
+
+		if( $waiting !== null )
+			return [ self::waitingNote( $appData, $project, $waiting ), null ];
 
 		$files = Files::visible( $appData, $folder['id'] );
 
@@ -395,9 +408,37 @@ class Projects {
 				}
 
 		return [ Portal::render( 'project-files', [
+			'[[note]]'   => $project['download'] === true ? '' : Portal::render( 'note', [ '[[classes]]' => 'crm-project__locked', '[[tone]]' => 'info', '[[role]]' => 'note', '[[icon]]' => 'lock', '[[text]]' => '[[/project/crm-portal/projects/files-locked]]' ] ),
 			'[[player]]' => $player,
-			'[[rows]]'   => Files::titles( $appData, $files, $page. '?projekt='. rawurlencode( $project['id'] ). '&review=', $playing ),
+			'[[rows]]'   => Files::titles( $appData, $files, $page. '?projekt='. rawurlencode( $project['id'] ). '&review=', $playing, $project['download'] ),
 		] ), count( $files ) ];
+	}
+
+	/**
+	 *	The note that stands in the place of the files while an offer waits: it names the offer and leads to its card
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$project
+	 *	@param		array 		$offer				As Documents::released() has it
+	 *
+	 *	@return 	string										Markup
+	 */
+	private static function waitingNote( array &$appData, array $project, array $offer ): string {
+
+		$name = $offer['number'] !== '' ? \Nino\Modules\Components::escape( $offer['number'] ) : Portal::documentTitle( $offer );
+
+		return Portal::render( 'note', [
+			'[[classes]]' => 'crm-project__waiting',
+			'[[tone]]'    => 'warning',
+			'[[role]]'    => 'note',
+			'[[icon]]'    => 'receipt',
+			'[[text]]'    => Portal::render( 'project-files-waiting', [
+				'[[dir]]'     => \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) ),
+				'[[project]]' => rawurlencode( $project['id'] ),
+				'[[id]]'      => (string) $offer['id'],
+				'[[name]]'    => $name,
+			] ),
+		] );
 	}
 
 	/**

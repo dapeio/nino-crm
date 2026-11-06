@@ -1036,6 +1036,65 @@ function press( w, key, target, mods ) {
 	await settle();
 	check( '...Freigeben without the tick posts mail: false and says it was released without a mail', JSON.stringify( portal.last( 'crm-documents/release' ).data ) === '{"id":"11","mail":false}' && portal.toast.textContent === 'Freigegeben, ohne E-Mail.' );
 
+	// The release of an invoice of a project whose download is off: a dialog with the box that switches it on, ticked
+	const lockedProject = [ { id : '00001', title : 'Album 2027', done : false, download : false } ];
+	const openProject = [ { id : '00001', title : 'Album 2027', done : false, download : true } ];
+	const releaseT = function( key, value ) { return texts[key].replace( '%s', String( value ) ) };
+	const stepperWith = async function( over, projects, answers ) {
+		const calls = [];
+		const w = await opened( over, { projects : projects }, Object.assign( {
+			'crm-documents/release' : function( data ) { calls.push( [ 'release', data ] ); return [ 200, { document : full( over ), mailed : 2, mail : true, download : data.download === true } ] },
+		}, answers || {} ) );
+		w.steps = calls;
+		return w;
+	};
+	let lockedStep = await stepperWith( { state : 'open', project : '00001', project_title : 'Album 2027' }, lockedProject );
+	click( lockedStep, all( lockedStep.main, '#primary' )[0] );
+	await settle();
+	check( 'Versenden of an invoice whose project has the download off asks first: a dialog with the box "Download der Projektdateien freischalten", ticked - and nothing is posted before the answer', lockedStep.dialogs.length === 1 && lockedStep.steps.length === 0
+		&& all( lockedStep.dialogs[0], '#dlg-download' ).length === 1 && all( lockedStep.dialogs[0], '#dlg-download' )[0].type === 'checkbox' && all( lockedStep.dialogs[0], '#dlg-download' )[0].checked === true && textOf( all( lockedStep.dialogs[0], 'label' )[0] ).trim() === texts['release.download'] );
+	click( lockedStep, all( lockedStep.dialogs[0], 'button' ).pop() );
+	await settle();
+	check( '...the yes posts the release with the mail and download true, in one action, and the toast says that the download is on', lockedStep.steps.length === 1 && JSON.stringify( lockedStep.steps[0][1] ) === '{"id":"11","mail":true,"download":true}' && lockedStep.toast.textContent === releaseT( 'send.done', 2 ) + ' ' + texts['release.download-on'] );
+	lockedStep = await stepperWith( { state : 'open', project : '00001', project_title : 'Album 2027' }, lockedProject );
+	click( lockedStep, all( lockedStep.main, '#primary' )[0] );
+	all( lockedStep.dialogs[0], '#dlg-download' )[0].checked = false;
+	click( lockedStep, all( lockedStep.dialogs[0], 'button' ).pop() );
+	await settle();
+	check( '...unticked it posts the release without the word download, and the toast does not speak of it', JSON.stringify( lockedStep.steps[0][1] ) === '{"id":"11","mail":true}' && lockedStep.toast.textContent === releaseT( 'send.done', 2 ) );
+	lockedStep = await stepperWith( { state : 'open', project : '00001', project_title : 'Album 2027' }, lockedProject );
+	click( lockedStep, all( lockedStep.main, '#primary' )[0] );
+	click( lockedStep, all( lockedStep.dialogs[0], 'button' )[0] );
+	await settle();
+	check( '...the no posts nothing and releases nothing', lockedStep.steps.length === 0 && lockedStep.all( 'crm-documents/get' ).length === 1 );
+	const noBox = [
+		[ 'a project whose download is on', { state : 'open', project : '00001' }, openProject ],
+		[ 'an invoice without a project', { state : 'open', project : '' }, lockedProject ],
+		[ 'an offer of the locked project', { id : 13, category : 'offer', number : 'A-2026-0011', state : 'open', project : '00001', due_date : null }, lockedProject ],
+	];
+
+	for( const [ why, over, projects ] of noBox ) {
+		const plainStep = await stepperWith( over, projects );
+		click( plainStep, all( plainStep.main, '#primary' )[0] );
+		await settle();
+		check( 'Versenden of '+ why +' asks nothing: the release is posted at once, with the mail and no download', plainStep.dialogs.length === 0 && plainStep.steps.length === 1 && JSON.stringify( plainStep.steps[0][1] ) === JSON.stringify( { id : String( over.id ?? 11 ), mail : true } ) );
+	}
+
+	// ...and the tab Portal & Versand, for a document that is not released yet
+	const lockedPortal = await stepperWith( { state : 'open', project : '00001' }, lockedProject );
+	await tabClick( lockedPortal, 'Portal & Versand' );
+	check( 'the tab Portal & Versand has the same box beside the tick of the mail, ticked, for an invoice of a project whose download is off - and none for a project whose download is on, an offer or an invoice without a project', all( body( lockedPortal ), '#release-download' ).length === 1 && all( body( lockedPortal ), '#release-download' )[0].checked === true && all( body( lockedPortal ), '#release-download' )[0].type === 'checkbox'
+		&& all( body( await stepperWith( { state : 'open', project : '00001' }, openProject ) ), '#release-download' ).length === 0 && all( body( await stepperWith( { state : 'open', project : '' }, lockedProject ) ), '#release-download' ).length === 0 );
+	click( lockedPortal, all( body( lockedPortal ), '#release' )[0] );
+	await settle();
+	check( '...Freigeben posts mail and download true; with the box unticked the word is not posted', JSON.stringify( lockedPortal.steps[0][1] ) === '{"id":"11","mail":true,"download":true}' && lockedPortal.toast.textContent.indexOf( texts['release.download-on'] ) !== -1 );
+	const unticked = await stepperWith( { state : 'open', project : '00001' }, lockedProject );
+	await tabClick( unticked, 'Portal & Versand' );
+	all( body( unticked ), '#release-download' )[0].checked = false;
+	click( unticked, all( body( unticked ), '#release' )[0] );
+	await settle();
+	check( '...unticked', JSON.stringify( unticked.steps[0][1] ) === '{"id":"11","mail":true}' );
+
 	// Dokument and Unterschrift
 	const contract = await opened( { id : 18, category : 'contract', state : 'open', released : true, sign_state : 'viewed', sign_id : 'aaaaaaaaaaaa', lines : [], net : 0, vat : 0, gross : 0, title : 'Dienstleistungsvertrag Album 2027', number : '', due_date : null, period_from : null, period_to : null,
 		template_key : 'vertrag', inputs : { zusatz : 'Laufzeit ein Jahr' }, parent : { id : 13, number : 'A-2026-0011', title : '', category : 'offer', state : 'open' }, pdf_path : '/data/crm/pdf/2026/contract-18.pdf' } );
@@ -4204,7 +4263,7 @@ function press( w, key, target, mods ) {
 	const jperms = { crm : true, pdf : false, elements : true, text : false, files : true };
 	const jclient1 = { id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true };
 	const jrow = function( over ) {
-		return Object.assign( { id : '00001', title : 'Album 2027', client : 'K-0001', description : 'Aufnahme\nund Mix', started : '2026-10-01', done : false, folder : 'f00000000001', documents : 3, open : 1, client_id : 1, client_title : 'Nordlicht Records GmbH', client_active : true, files : 1 }, over || {} );
+		return Object.assign( { id : '00001', title : 'Album 2027', client : 'K-0001', description : 'Aufnahme\nund Mix', started : '2026-10-01', done : false, folder : 'f00000000001', documents : 3, open : 1, client_id : 1, client_title : 'Nordlicht Records GmbH', client_active : true, files : 1, download : false, download_at : '' }, over || {} );
 	};
 	const jprojects = [
 		jrow( { id : '00003', title : 'Podcast', client : 'K-0002', client_id : 2, client_title : 'Jonas Richter', description : '', started : '', folder : '', documents : 0, open : 0, files : 0 } ),
@@ -4387,6 +4446,45 @@ function press( w, key, target, mods ) {
 	check( '...Neuer Beleg opens the editor for the client with the project chosen: the address carries both', jcn.location.hash === '#neu-invoice-k1-p00001' );
 	check( '...a client that is off gets no Neuer Beleg, and a card without the permission of the Elements panel a menu ⋯ with Kunden hierher einladen alone', jmenu( await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { client : Object.assign( {}, jclient1, { active : false } ) } ) ] } } ), texts['card.document-new'] ) === undefined && jmenu( await jopen( '#projekt-00001', {}, { crm : true, pdf : false, elements : false, files : true } ), '⋯' ) !== undefined
 		&& all( jmenu( await jopen( '#projekt-00001', {}, { crm : true, pdf : false, elements : false, files : true } ), '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === texts['here.menu'] );
+	// --- the download of a project: the state in the head, the switch, the sentence over the files, the mark in the list
+	const jdl = function( w ) { return jf( w, 'project-download' ) };
+	const jdlOn = { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { download : true, download_at : '2026-11-01T09:30:00Z' } ) } ) ] } };
+	check( 'the head says the download is locked, as a badge beside a button that switches it on - and the tab Dateien has the sentence for the owner over the files', jdl( jc ) !== undefined && jdl( jc ).dataset.download === 'off' && textOf( all( jdl( jc ), '.badge' )[0] ) === texts['projects.download-locked']
+		&& all( jdl( jc ), '.badge' )[0].classList.contains( 'b-draft' ) === true && textOf( jf( jc, 'project-download-switch' ) ) === texts['projects.download-on'] && jf( jc, 'project-download-switch' ).type === 'button' && jf( jc, 'project-download-switch' ).classList.contains( 'sm' ) === true );
+	const jdlFiles = await jopen( '#projekt-00001-dateien' );
+	check( '...the sentence is text over the table, a note of the card and not of the portal', jf( jdlFiles, 'project-download-note' ) !== undefined && textOf( jf( jdlFiles, 'project-download-note' ) ) === texts['projects.download-note'] && jf( jdlFiles, 'project-download-note' ).tagName === 'P' );
+	const jdlSwitch = await jopen( '#projekt-00001', Object.assign( {}, { 'crm-projekte/download' : function( data ) { jposts.push( [ 'crm-projekte/download', data ] ); return [ 200, { id : data.id, download : data.on, download_at : '2026-11-01T09:30:00Z' } ] } } ) );
+	click( jdlSwitch, jf( jdlSwitch, 'project-download-switch' ) );
+	await settle();
+	check( 'switching it on posts crm-projekte/download with the id as a string and on true - no question -, says so in a toast and reads the card again', JSON.stringify( jposts ) === JSON.stringify( [ [ 'crm-projekte/download', { id : '00001', on : true } ] ] ) && jdlSwitch.dialogs.length === 0 && jdlSwitch.toast.textContent === texts['projects.download-on-done'] && jdlSwitch.all( 'crm-projekte/get' ).length === 2 );
+	const jdlNow = await jopen( '#projekt-00001', Object.assign( {}, jdlOn, { 'crm-projekte/download' : function( data ) { jposts.push( [ 'crm-projekte/download', data ] ); return [ 200, { id : data.id, download : data.on, download_at : '' } ] } } ) );
+	check( 'with the download on the head says since when, in the badge of a good state, and the button switches it off; the sentence over the files is gone', jdl( jdlNow ).dataset.download === 'on' && textOf( all( jdl( jdlNow ), '.badge' )[0] ) === texts['projects.download-since'].replace( '%s', '01.11.2026' ) && all( jdl( jdlNow ), '.badge' )[0].classList.contains( 'b-paid' ) === true
+		&& textOf( jf( jdlNow, 'project-download-switch' ) ) === texts['projects.download-off'] && jf( await jopen( '#projekt-00001-dateien', jdlOn ), 'project-download-note' ) === undefined );
+	click( jdlNow, jf( jdlNow, 'project-download-switch' ) );
+	check( 'switching it off asks first, in a dialog with the title of the project and a red yes: nothing is posted before the answer', jdlNow.dialogs.length === 1 && jposts.length === 0 && textOf( all( jdlNow.dialogs[0], 'p' )[0] ) === texts['projects.download-off-text'].replace( '%s', 'Album 2027' ) && all( jdlNow.dialogs[0], 'button' ).pop().classList.contains( 'danger' ) === true );
+	click( jdlNow, all( jdlNow.dialogs[0], 'button' )[0] );
+	await settle();
+	check( '...the no leaves it on and posts nothing', jposts.length === 0 && jdlNow.all( 'crm-projekte/get' ).length === 1 );
+	click( jdlNow, jf( jdlNow, 'project-download-switch' ) );
+	jyes( jdlNow, 1 );
+	await settle();
+	check( '...the yes posts on false, says so and reads the card again', JSON.stringify( jposts ) === JSON.stringify( [ [ 'crm-projekte/download', { id : '00001', on : false } ] ] ) && jdlNow.toast.textContent === texts['projects.download-off-done'] && jdlNow.all( 'crm-projekte/get' ).length === 2 );
+	const jdlRefused = await jopen( '#projekt-00001', { 'crm-projekte/download' : function() { return [ 404, { error : 'x', code : 'crm_projekte_unknown', params : [], field : 'id' } ] } } );
+	click( jdlRefused, jf( jdlRefused, 'project-download-switch' ) );
+	await settle();
+	check( 'a refusal says its sentence, keeps the card as it is and gives the button back', jdlRefused.toast.textContent === texts['error.crm_projekte_unknown'] && jdlRefused.toast.classList.contains( 'bad' ) === true && jdlRefused.all( 'crm-projekte/get' ).length === 1 && jf( jdlRefused, 'project-download-switch' ).disabled === false );
+	const jdlList = await jopen( '#projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [ jrow( { id : '00005', title: 'Offen', download : true } ), jrow( { id : '00004', title : 'Zu', download : false } ) ] } ) ] } } );
+	const jdlRows = jrows( jdlList );
+	check( 'the list marks a project whose download is on with an arrow beside its state - with its words as the title and for a reader - and a locked one with nothing', all( jdlRows[0], '.dl-mark' ).length === 1 && all( jdlRows[0], '.dl-mark' )[0].title === texts['projects.download-on-title'] && all( jdlRows[0], '.dl-mark' )[0].getAttribute( 'aria-label' ) === texts['projects.download-on-title'] && all( jdlRows[0], '.dl-mark' )[0].getAttribute( 'role' ) === 'img'
+		&& all( jdlRows[1], '.dl-mark' ).length === 0 && textOf( jdlRows[0].children[5] ).indexOf( texts['projects.running'] ) === 0 );
+	const jdlSearch = await jopen( '#projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [ jrow( { id : '00005', title: 'Offen', download : true } ) ] } ) ] } } );
+	const jdlFind = function( text ) {
+		jf( jdlSearch, 'q' ).value = text;
+		fire( jf( jdlSearch, 'q' ), 'input', { target : jf( jdlSearch, 'q' ) } );
+		return jrows( jdlSearch ).filter( function( one ) { return one.dataset.id !== undefined } ).length;
+	};
+	check( '...and the search does not find the mark: neither its arrow nor its words are part of what a project is found by, its title is', jdlFind( '↓' ) === 0 && jdlFind( 'herunterladen' ) === 0 && jdlFind( 'offen' ) === 1 );
+
 	const jinfo = jf( jc, 'project-info' );
 	check( 'the card shows the facts: the client as a link, the day, the note on two lines, the documents with the offers that wait, the folder - and nothing that is empty', all( jinfo, 'dt' ).map( textOf ).join( '|' ) === [ texts['projects.f-client'], texts['projects.f-started'], texts['projects.f-description'], texts['projects.column-documents'], texts['projects.folder'] ].join( '|' ) && all( jinfo, 'dd' ).map( textOf ).join( '|' ).indexOf( 'Nordlicht Records GmbH · K-0001|01.10.2026|Aufnahmeund Mix|3 · '+ texts['projects.open-offers'].replace( '%s', '1' )+ '|Album 2027' ) === 0
 		&& all( jinfo, 'br' ).length === 1 );

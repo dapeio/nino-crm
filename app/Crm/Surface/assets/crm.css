@@ -368,3 +368,7 @@ input[role="switch"]:focus-visible { outline: 2px solid var(--accent); outline-o
 
 /* The card beside the editor of a document (the client) and the cards of the card of a client need room for their words: on a tablet they stack */
 @media (max-width: 1000px) { .cols-3 { grid-template-columns: minmax(0, 1fr) } }
+
+/* The download of a project: its state and the switch in the head of the card, and the arrow beside the state in the list */
+.dl { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px }
+.dl-mark { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: 6px; border-radius: 50%; background: var(--good-soft); color: var(--good); font-size: 12px; font-weight: 600; vertical-align: middle }

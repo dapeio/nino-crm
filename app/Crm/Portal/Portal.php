@@ -40,6 +40,9 @@ class Portal {
 
 	private const string CACHE = './crm/portal/client';
 
+	// Set while the list of a folder is drawn: the files that are listed are those the route would refuse to give, too (see callbackFileAllowed())
+	public const string LISTING = './crm/portal/listing';
+
 	// The style sheet and the script of the portal, as the bundles of the site name them, and where the markup and the words of the portal are
 	public const string STYLE = '/app/Crm/Portal/assets/portal.css';
 	public const string SCRIPT = '/app/Crm/Portal/assets/portal.js';
@@ -373,9 +376,12 @@ class Portal {
 	}
 
 	/**
-	 *	'/files/allowed': a file is not for a member whose client has a step of the gate pending - the bytes of a project are not given to somebody who has not taken note
-	 *	of the Datenschutz or has not given the data of the invoice. The hook only takes away: the member of no client and a client with nothing pending are left as
-	 *	Files has them, and an answer of false is never turned into true
+	 *	'/files/allowed': what Files lets a member of a client have, narrowed by what the owner holds back. A file is not for a member whose client has a step of the gate
+	 *	pending - the bytes of a project are not given to somebody who has not taken note of the Datenschutz or has not given the data of the invoice -, and a file of the
+	 *	folder of a project is not for its client while an offer of the project waits for the order (Projekte::waiting()), inline or as a download. Where no offer waits, the
+	 *	folder is open to be played and its files are not to be saved before the owner switched the download of the project on (Projekte::state()): a file the player does not play
+	 *	(Review::kind()) is not given at all, inline or saved, and listed only as a name; the files the member put there are the member's own and are given whatever the switch says. The hook only takes away: the member of no client and a file of no project of the client are
+	 *	left as Files has them, and an answer of false is never turned into true
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		&$args				file, member, download and allowed
@@ -389,7 +395,33 @@ class Portal {
 
 		$client = self::client( $appData );
 
-		if( $client !== null && self::pending( $appData, $client ) !== '' )
+		if( $client === null )
+			return;
+
+		if( self::pending( $appData, $client ) !== '' ) {
+			$args['allowed'] = false;
+			return;
+		}
+
+		$project = Projekte::ofFolder( $appData, $client['number'], (string) ( $args['file']['folder'] ?? '' ) );
+
+		if( $project === null )
+			return;
+
+		$own = ( $args['file']['by']['kind'] ?? '' ) === 'member' && ( $args['file']['by']['id'] ?? '' ) === ( $args['member']['id'] ?? null );
+
+		if( Projekte::waiting( $appData, $project['id'], (int) $client['id'] ) !== null ) {
+			$args['allowed'] = false;
+			return;
+		}
+
+		if( $project['download'] === true || $own === true )
+			return;
+
+		// Without the download only what the player plays is open, and only to be played: a file it does not play is neither shown nor saved - the list of the portal asks to see them, to say that the studio releases them
+		$plays = Crm::featureOn( $appData, 'review' ) === true && \Nino\Modules\Review::kind( (string) ( $args['file']['mime'] ?? '' ) ) !== '';
+
+		if( ( $args['download'] ?? false ) === true || ( $plays === false && ( $appData[self::LISTING] ?? false ) !== true ) )
 			$args['allowed'] = false;
 	}
 

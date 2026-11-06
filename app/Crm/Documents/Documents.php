@@ -514,6 +514,8 @@ class Documents {
 	 */
 	public static function setState( array &$appData, int $id, string $state, ?string $date = null ): array|string {
 
+		Projekte::forget( $appData );
+
 		$pdo = Db::pdo( $appData );
 		$pdo->exec( 'BEGIN IMMEDIATE' );
 
@@ -552,6 +554,8 @@ class Documents {
 	 *	@return 	array|string							document (as get() has it, accepted) and record (as Records::of() has it); or why not: unknown (no offer of the client), state (the offer cannot be ordered), long, kind, member, shown (see Records)
 	 */
 	public static function order( array &$appData, int $id, int $clientId, array $member, string $sentence, array $source ): array|string {
+
+		Projekte::forget( $appData );
 
 		$document = self::get( $appData, $id );
 
@@ -656,6 +660,8 @@ class Documents {
 	 *	@return 	array|string
 	 */
 	public static function fromOffer( array &$appData, int $id ): array|string {
+
+		Projekte::forget( $appData );
 
 		// The invoice takes the VAT mode of the setting now, and the offer is accepted by making it: in one transaction, which
 		// reads the offer as well, so an offer that was declined a moment ago is not made an invoice of
@@ -959,15 +965,23 @@ class Documents {
 	 *	Release a finalised document to the portal: its client sees it on the page Dokumente. With $mail one mail goes to each active
 	 *	account of the client (Documents\Mail), in one call of the kernel's cap on mails; an offer, an invoice or a credit note that is
 	 *	still open is sent by it, when at least one mail was delivered. A release again keeps the day of the first. Nothing changes
-	 *	where the mail is refused (address, limit)
+	 *	where the mail is refused (address, limit).
+	 *
+	 *	With $download the release of an invoice of a project also switches the download of the project's files on, in the same step: the state of the project is written
+	 *	in the transaction of the release, so that a release that fails leaves the project as it was, and the mail names the files. Any other document, and an invoice
+	 *	without a project, is refused with 'download'
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		int				$id
 	 *	@param		bool			$mail
+	 *	@param		bool			$download			Switch the download of the files of the project on
+	 *	@param		string		$by						The account of the workbench that asks, kept with the switch
 	 *
-	 *	@return 	array|string							document (as get() has it) and mailed (how many mails were delivered); or why not
+	 *	@return 	array|string							document (as get() has it), mailed (how many mails were delivered) and download (whether it was switched on); or why not
 	 */
-	public static function release( array &$appData, int $id, bool $mail ): array|string {
+	public static function release( array &$appData, int $id, bool $mail, bool $download = false, string $by = '' ): array|string {
+
+		Projekte::forget( $appData );
 
 		$document = self::get( $appData, $id );
 
@@ -977,11 +991,14 @@ class Documents {
 		if( $document['state'] === 'draft' || $document['pdf_path'] === '' )
 			return 'state';
 
+		if( $download === true && ( $document['category'] !== 'invoice' || Projekte::get( $appData, $document['project'] ) === null ) )
+			return 'download';
+
 		$mailed = 0;
 
 		if( $mail === true ) {
 
-			$sent = Mail::release( $appData, $document );
+			$sent = Mail::release( $appData, $document, $download );
 
 			if( is_string( $sent ) === true )
 				return $sent;
@@ -1010,6 +1027,12 @@ class Documents {
 			if( $sends === true && $state === 'open' )
 				$pdo->prepare( 'UPDATE documents SET state = \'sent\', sent_at = :now WHERE id = :id AND state = \'open\'' )->execute( [ 'now' => $now, 'id' => $id ] );
 
+			// The files of the project are opened with the invoice, in the same transaction
+			if( $download === true && is_string( Projekte::setDownload( $appData, $document['project'], true, $by ) ) === true ) {
+				$pdo->exec( 'ROLLBACK' );
+				return 'download';
+			}
+
 			$pdo->exec( 'COMMIT' );
 		}
 		catch( \Throwable $e ) {
@@ -1017,7 +1040,7 @@ class Documents {
 			throw $e;
 		}
 
-		return [ 'document' => (array) self::get( $appData, $id ), 'mailed' => $mailed ];
+		return [ 'document' => (array) self::get( $appData, $id ), 'mailed' => $mailed, 'download' => $download ];
 	}
 
 	/**
@@ -1029,6 +1052,8 @@ class Documents {
 	 *	@return 	array|string							The document as get() has it; or why not
 	 */
 	public static function unrelease( array &$appData, int $id ): array|string {
+
+		Projekte::forget( $appData );
 
 		if( Db::exec( $appData, 'UPDATE documents SET released = 0, released_at = NULL, updated = :now WHERE id = :id AND state != \'draft\'', [ 'now' => gmdate( self::TIME ), 'id' => $id ] ) === 0 )
 			return Db::row( $appData, 'SELECT id FROM documents WHERE id = :id', [ 'id' => $id ] ) === null ? 'unknown' : 'state';
@@ -1384,6 +1409,8 @@ class Documents {
 	 *	@return 	void
 	 */
 	private static function apply( array &$appData, string $signId, string $status, string $at ): void {
+
+		Projekte::forget( $appData );
 
 		$now = gmdate( self::TIME );
 
