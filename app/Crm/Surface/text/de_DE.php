@@ -1162,6 +1162,7 @@ return [
 	'einrichtung.row-home' => 'Startseite',
 	'einrichtung.row-mail-cap' => 'Mail-Deckel',
 	'einrichtung.row-notify' => 'Benachrichtigungen',
+	'einrichtung.row-privacy' => 'Datenschutzerklärung',
 	'privacy.title' => 'Datenschutz',
 	'privacy.note' => 'Das Portal zeigt diesen Text und bittet jeden Kunden, ihn zur Kenntnis zu nehmen und zu bestätigen. Ändert sich der Text, fragen wir alle noch einmal; was früher bestätigt wurde, bleibt als Nachweis gespeichert. Bleibt das Feld leer, fragt das Portal nach nichts.',
 	'privacy.label' => 'Text',

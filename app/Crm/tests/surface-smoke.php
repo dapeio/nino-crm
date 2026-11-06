@@ -1087,7 +1087,7 @@ check( 'the actions of the panel CRM are the endpoint\'s too: 401 for a visitor,
 $asCrm();
 $routesBefore = \Nino\AppData::stored( $appData, '/nino/http/routes', [] );
 [ $status, $statusAnswer ] = surfaceApi( $appData, 'crm/status' );
-check( 'status through the endpoint is the answer of the panel: the module, the data directory, the six features, the portal, the PDF templates, the start page, the cap of mails and the notification of the owner - which the surface says as sentences, and not whole yet', $status === 200 && array_column( $statusAnswer['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap', 'notify' ] && array_column( $statusAnswer['items'], 'state', 'key' )['portal'] !== 'ok' && array_column( $statusAnswer['items'], 'state', 'key' )['members'] === 'ok' && $statusAnswer['whole'] === false );
+check( 'status through the endpoint is the answer of the panel: the module, the data directory, the six features, the portal, the PDF templates, the start page, the cap of mails and the notification of the owner - which the surface says as sentences, and not whole yet', $status === 200 && array_column( $statusAnswer['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap', 'notify', 'privacy' ] && array_column( $statusAnswer['items'], 'state', 'key' )['portal'] !== 'ok' && array_column( $statusAnswer['items'], 'state', 'key' )['members'] === 'ok' && $statusAnswer['whole'] === false );
 $settingsView = surfaceApi( $appData, 'crm-documents/settings-get' )[1];
 check( 'the portal as the settings tell it - read, written nowhere: the address of its start page from the address of the site, the pages the unit brings with the ones this site has no route for marked missing, the settings of Members with their German labels and the cap of mails of the kernel where the kernel has one', $settingsView['portal']['address'] === 'https://example.org/club/portal'
 	&& array_column( $settingsView['portal']['pages'], 'uri' ) === [ '/portal', '/portal/meine-daten', '/portal/projekte', '/portal/upload', '/portal/belege', '/portal/termine', '/portal/datenschutz' ] && array_unique( array_column( $settingsView['portal']['pages'], 'present' ) ) === [ false ]
@@ -1173,6 +1173,9 @@ check( '...and it follows a client that is switched off', surfaceApi( $appData, 
 // --- Datenschutz and Auftrag: what /crm shows of the records ------------------------------------------------------------------
 
 echo "\nDatenschutz and Auftrag\n";
+
+// The setup above entered the Datenschutzerklärung; the section starts on a site that has no text
+\Crm\Db::exec( $appData, 'DELETE FROM settings WHERE key IN ( \'privacy_text\', \'privacy_changed\' )' );
 
 check( 'the settings answer the text of the Datenschutz and the day it changed, both empty before the owner wrote one', surfaceApi( $appData, 'crm-documents/settings-get' )[1]['settings']['privacy_text'] === '' && surfaceApi( $appData, 'crm-documents/settings-get' )[1]['settings']['privacy_changed'] === '' );
 $privacy = "Erste Zeile\nZweite Zeile";

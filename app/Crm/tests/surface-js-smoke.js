@@ -2742,7 +2742,7 @@ function press( w, key, target, mods ) {
 	// --- Einrichtung: the screen of the first run, from a status fixture
 	const pdfKeys = [ 'angebot', 'rechnung', 'stornorechnung', 'vertrag', 'datenschutz', 'information' ];
 	const ifresh = [ { key : 'module', state : 'ok' }, { key : 'data', state : 'ok' }, { key : 'members', state : 'off' }, { key : 'files', state : 'off' }, { key : 'review', state : 'off' }, { key : 'sign', state : 'off' }, { key : 'pdf', state : 'off' }, { key : 'events', state : 'missing' },
-		{ key : 'portal', state : 'partial', lacks : [ 'paths', 'start' ] }, { key : 'pdf-templates', state : 'partial', lacks : [ 'Rechnung', 'Vertrag' ] }, { key : 'home', state : 'other' }, { key : 'mail-cap', state : 'default', value : 5 }, { key : 'notify', state : 'default', value : false } ];
+		{ key : 'portal', state : 'partial', lacks : [ 'paths', 'start' ] }, { key : 'pdf-templates', state : 'partial', lacks : [ 'Rechnung', 'Vertrag' ] }, { key : 'home', state : 'other' }, { key : 'mail-cap', state : 'default', value : 5 }, { key : 'notify', state : 'default', value : false }, { key : 'privacy', state : 'default' } ];
 	const idone = ifresh.map( function( item ) { return { key : item.key, state : 'ok' } } );
 	let iran = 0;
 	let iwhole = false;
@@ -2764,7 +2764,7 @@ function press( w, key, target, mods ) {
 	const first = await iopen( '' );
 	check( 'the first showing of the page asks for the status before it draws the Übersicht, and a module that is not whole sends it to the Einrichtung: the overview is not asked for', first.sent().join() === 'crm/status' && first.location.hash === '#einrichtung' && first.all( 'crm-documents/overview' ).length === 0 && all( first.main, '#einrichtung-rows' ).length === 1 );
 	check( '...the rail has its eight entries (PDF-Vorlagen hidden for an account without the Pdf permission) and none is marked: the Einrichtung is no entry of it', all( first.nav, '[data-r]' ).length === 8 && all( first.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).length === 0 );
-	check( '...a row for each item of the status, its word and its state: done for the module and the data directory, to do for the rest', irows( first ).length === ifresh.length && Array.from( irows( first ) ).map( function( li ) { return li.getAttribute( 'data-key' )+ ':'+ li.getAttribute( 'data-state' ) } ).join() === 'module:ok,data:ok,members:todo,files:todo,review:todo,sign:todo,pdf:todo,events:todo,portal:todo,pdf-templates:todo,home:todo,mail-cap:todo,notify:todo'
+	check( '...a row for each item of the status, its word and its state: done for the module and the data directory, to do for the rest', irows( first ).length === ifresh.length && Array.from( irows( first ) ).map( function( li ) { return li.getAttribute( 'data-key' )+ ':'+ li.getAttribute( 'data-state' ) } ).join() === 'module:ok,data:ok,members:todo,files:todo,review:todo,sign:todo,pdf:todo,events:todo,portal:todo,pdf-templates:todo,home:todo,mail-cap:todo,notify:todo,privacy:todo'
 		&& textOf( irows( first )[2] ).indexOf( texts['einrichtung.row-members'] ) === 0 && textOf( irows( first )[2] ).indexOf( texts['status.members-off'] ) !== -1 && textOf( irows( first )[2] ).indexOf( texts['einrichtung.state-todo'] ) !== -1 && textOf( irows( first )[0] ).indexOf( texts['status.allok'] ) === -1 );
 	check( '...what is missing is said in one sentence of the status: the portal names what it lacks, the PDF templates their keys, the start page that it is not the door yet', textOf( irows( first )[8] ).indexOf( texts['status.portal-partial'].replace( '%s', texts['status.lacks-paths']+ ', '+ texts['status.lacks-start'] ) ) !== -1
 		&& textOf( irows( first )[9] ).indexOf( texts['status.pdf-templates-partial'].replace( '%s', 'Rechnung, Vertrag' ) ) !== -1 && textOf( irows( first )[10] ).indexOf( texts['status.home-other'] ) !== -1 );
@@ -2790,6 +2790,22 @@ function press( w, key, target, mods ) {
 		&& all( first.main, '#einrichtung-run' )[0].hidden === true && textOf( all( first.main, '#einrichtung-done' )[0] ).indexOf( 'Fertig.' ) === 0 && all( all( first.main, '#einrichtung-done' )[0], 'a' )[0].getAttribute( 'href' ) === '#uebersicht' && textOf( all( first.main, '#einrichtung-after' )[0] ) === texts['einrichtung.after']
 		&& textOf( all( first.main, '#einrichtung-said' )[0] ) === 'Eingerichtet. Neu: Features 2, Routen 0, Vorlagen 0, Elementtypen 0, Worte 3, PDF-Vorlagen 6. Schon da: 2. '+ texts['setup.cap'].replace( '%s', '100' )+ ' '+ texts['setup.notify']+ ' '+ texts['setup.home-starter'] && texts['setup.cap'].split( '%s' ).length === 2 && texts['setup.notify'] !== '' );
 
+	// The Datenschutzerklärung: a row of its own after the notification, and the sentence of the run says what became of it
+	const privacyFresh = await iopen( '#einrichtung', { 'crm/status' : function() { return [ 200, { items : ifresh, whole : false, first_run : true } ] } } );
+	check( 'the Datenschutzerklärung is the row after the notification: its word, the sentence of the status for an empty setting, to do - and done with no sentence once a text is there', textOf( irows( privacyFresh )[13] ).indexOf( texts['einrichtung.row-privacy'] ) === 0 && textOf( irows( privacyFresh )[13] ).indexOf( texts['status.privacy-default'] ) !== -1 && irows( privacyFresh )[13].getAttribute( 'data-state' ) === 'todo'
+		&& texts['einrichtung.row-privacy'] !== '' && texts['status.privacy-default'] !== '' && texts['status.privacy-ok'] !== '' );
+	const privacyCard = await eopen( {}, eok.concat( [ { key : 'privacy', state : 'default' } ] ) );
+	check( '...and in the card of the portal it is named by the word of its row and then says its sentence', textOf( all( all( privacyCard.main, '#status-missing' )[0], 'li' )[0] ) === texts['einrichtung.row-privacy']+ ': '+ texts['status.privacy-default'] );
+	for( const [ kind, word ] of [ [ 'added', 'setup.privacy' ], [ 'existed', 'setup.privacy-there' ] ] ) {
+		const said = { added : { features : [], routes : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false, privacy : kind === 'added' }, existed : { features : [], routes : [], templates : [], types : [], pdf : { templates : [] }, home : false, privacy : kind === 'existed' } };
+		let ran = false;
+		const sayScreen = await iopen( '#einrichtung', { 'crm/status' : function() { return [ 200, { items : ran === true ? idone : ifresh, whole : ran, first_run : ran === false } ] }, 'crm/setup' : function() { ran = true; return [ 200, said ] } } );
+		click( sayScreen, all( sayScreen.main, '#einrichtung-run' )[0] );
+		await settle();
+		const sentence = textOf( all( sayScreen.main, '#einrichtung-said' )[0] );
+		check( 'the run that answers privacy in '+ kind+ ' ends its sentence with the words of '+ word+ ', and the other one is not said', texts[word] !== '' && sentence.slice( -texts[word].length ) === texts[word] && sentence.indexOf( texts[word === 'setup.privacy' ? 'setup.privacy-there' : 'setup.privacy'] ) === -1 );
+	}
+
 	// The start page of the owner's own: no lack, kept - the row says what it is, the answer says that it stays
 	let ownRun = false;
 	const ownItems = function( items ) { return items.map( function( item ) { return item.key === 'home' ? { key : 'home', state : 'own' } : item } ) };
@@ -2811,7 +2827,7 @@ function press( w, key, target, mods ) {
 	const unfinished = await iopen( '', { 'crm/status' : function() { return [ 200, { items : ifresh, whole : false, first_run : false } ] } } );
 	check( 'a product that is not whole but was set up once (first_run false) is not sent to the Einrichtung: a template that was deleted does not bring the screen back on every load', unfinished.all( 'crm-documents/overview' ).length === 1 && unfinished.location.hash === '' && all( unfinished.main, '#einrichtung-rows' ).length === 0 );
 	const reached = await iopen( '#einrichtung', { 'crm/status' : function() { return [ 200, { items : ifresh, whole : false, first_run : false } ] } } );
-	check( '...and the screen is there for the one who opens it by its address: it lists what is missing', all( reached.main, '#einrichtung-rows' ).length === 1 && Array.from( irows( reached ) ).filter( function( li ) { return li.getAttribute( 'data-state' ) === 'todo' } ).length === 11 );
+	check( '...and the screen is there for the one who opens it by its address: it lists what is missing', all( reached.main, '#einrichtung-rows' ).length === 1 && Array.from( irows( reached ) ).filter( function( li ) { return li.getAttribute( 'data-state' ) === 'todo' } ).length === 12 );
 	check( 'no sentence of the status names the button by a label of its own - the screen\'s button is Einrichten, the card\'s Portal einrichten -: the sentences speak of das Einrichten', Object.keys( texts ).filter( function( key ) { return /^status\./.test( key ) && /Drück|Portal einrichten/.test( texts[key] ) } ).length === 0 && /^status\.portal-/.test( 'status.portal-none' ) );
 	iwhole = true;
 	const whole = await iopen( '' );

@@ -470,7 +470,7 @@ $stateOf = static function( array $body, string $key ): string {
 };
 
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/status' );
-check( 'status names the module, the data directory, the six features, the portal, the PDF templates, the start page, the cap of mails and the notification of the owner', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap', 'notify' ] );
+check( 'status names the module, the data directory, the six features, the portal, the PDF templates, the start page, the cap of mails and the notification of the owner', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap', 'notify', 'privacy' ] );
 check( 'the module and the features are ok, the portal is not set up yet', $stateOf( $body, 'module' ) === 'ok' && $stateOf( $body, 'data' ) === 'ok' && $stateOf( $body, 'members' ) === 'ok' && $stateOf( $body, 'sign' ) === 'ok' && $stateOf( $body, 'portal' ) === 'none' );
 
 $modulesNow = $appData['/nino/modules'];
@@ -612,6 +612,9 @@ check( '...and status says the portal is only partly there', $stateOf( ninoCall(
 \Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [], 'start' => '/' ] );
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/setup' );
 check( 'with no protected path and the default start page left, setup sets /portal again', $status === 200 && $body['added']['paths'] === true && $body['added']['start'] === true && \Nino\Features::setting( $appData, 'members', 'paths', [] ) === [ '/portal' ] );
+
+// The setup enters the Datenschutzerklärung and the portal then asks every member for it; the pages below are tested on a site that has no text
+\Crm\Db::exec( $appData, 'DELETE FROM settings WHERE key IN ( \'privacy_text\', \'privacy_changed\' )' );
 
 // --- The portal ------------------------------------------------------------------------------------------------------
 
@@ -1438,7 +1441,7 @@ check( '...the footer of a new install carries the particulars of the owner as o
 
 [ $status, $body ] = $run( 'crm/status' );
 check( 'after the run the product is whole, and the run is written down: first_run false, the day in the setting setup_done - which is no setting of the screen Einstellungen', $status === 200 && $body['whole'] === true && $body['first_run'] === false && preg_match( '/^\d{4}-\d{2}-\d{2}$/D', \Crm\Settings::setupDone( $fresh ) ) === 1 && isset( \Crm\Settings::all( $fresh )[\Crm\Settings::SETUP_KEY] ) === false );
-check( 'after the run the product is whole: every item ok, whole true', $status === 200 && $body['whole'] === true && array_unique( array_values( $itemsOf( $body ) ) ) === [ 'ok' ] && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap', 'notify' ] );
+check( 'after the run the product is whole: every item ok, whole true', $status === 200 && $body['whole'] === true && array_unique( array_values( $itemsOf( $body ) ) ) === [ 'ok' ] && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap', 'notify', 'privacy' ] );
 check( '...and the cap line is ok, with the cap that is in force: 100', $capItem( $body )['state'] === 'ok' && $capItem( $body )['value'] === 100 );
 
 // A second press adds nothing; what the owner changed stays
@@ -1448,7 +1451,7 @@ $own['name'] = 'Meine Rechnung';
 \Nino\Filesystem::putFileContent( $fresh, '/data/pdf/layout.php', array_merge( \Nino\Modules\Pdf::layout( $fresh ), [ 'header' => '<p>Mein Kopf</p>' ] ) );
 $routesBeforeTwice = \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'];
 [ $status, $body ] = $run( 'crm/setup' );
-check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false ]
+check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ]
 	&& $body['existed']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['pdf']['templates'] === $keys && $body['existed']['home'] === 'door' && count( $body['existed']['routes'] ) === 7 );
 check( '...the template the owner changed is the owner\'s still, so is the header; the routes are as they were', ( \Nino\Modules\Pdf::template( $fresh, 'rechnung' )['name'] ?? '' ) === 'Meine Rechnung' && \Nino\Modules\Pdf::layout( $fresh )['header'] === '<p>Mein Kopf</p>' && \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'] === $routesBeforeTwice );
 check( '...and the status is still whole', $run( 'crm/status' )[1]['whole'] === true );
@@ -1647,6 +1650,10 @@ check( '...a press that can write it marks it', \Crm\Settings::setupDone( $fresh
 $nodb = ninoSandbox( 'crm-nodb' );
 $nodbFile = \Nino\Filesystem::path( $nodb, \Crm\Db::FILE );
 check( 'setupDone() on a project without /data/crm.sqlite answers nothing and leaves no file', \Crm\Settings::setupDone( $nodb ) === '' && is_file( $nodbFile ) === false && is_dir( dirname( $nodbFile ) ) === false );
+
+echo "\nThe Datenschutzerklärung of the setup\n";
+
+privacyChecks( $fresh, $run, $root );
 
 // The permission: a visitor and an account without it get nothing from the run
 unset( $fresh['./nino/auth/current'] );
@@ -1960,5 +1967,93 @@ function crmConsentChecks( string $root ): void {
 }
 
 crmConsentChecks( $root );
+
+
+/**
+ *	The Datenschutzerklärung the setup enters: the function of install/privacy.php on its own, and the press on a site whose texts hold the particulars
+ *
+ *	@param		array 		$fresh					The site of the setup, set up already
+ *	@param		callable	$run						Runs an action of the panel CRM on it
+ *	@param		string		$root
+ *
+ *	@return 	void
+ */
+function privacyChecks( array &$fresh, callable $run, string $root ): void {
+
+	$make = include $root. '/app/Crm/Crm/install/privacy.php';
+	$four = [ 'name' => 'Studio <b>Nord</b> & Söhne', 'address' => 'Hafenstr. 1, 20095 Hamburg', 'email' => 'post@example.org', 'phone' => '+49 40 123456' ];
+	$text = $make( $four );
+	$empties = static fn( string $text ): int => substr_count( $text, '…' );
+
+	check( 'install/privacy.php returns a function that takes the four particulars and answers text', $make instanceof \Closure && is_string( $text ) && $text !== '' && mb_strlen( $text, 'UTF-8' ) <= \Crm\Settings::MAX_PRIVACY );
+	check( '...each particular stands in it as it was given - the markup of the name is text, the tokens of the text are not fills - and the line Stand carries the month and the year', array_filter( $four, static fn( string $one ): bool => str_contains( $text, $one ) === false ) === []
+		&& str_contains( $text, 'Stand: '. date( 'm.Y' ) ) === true && str_contains( $make( [ 'name' => '[[/project/company/contact/email]]' ] + $four ), '[[/project/company/contact/email]]' ) === true && preg_match( '/<(?:Monat|name|address|email|phone)/', $text ) === 0 );
+	$swapped = $make( [ 'name' => '<email>' ] + $four );
+	check( '...the values are put in at once: a name that looks like the place of the email stays as it is, and the email stands once', substr_count( $swapped, '<email>' ) === 1 && substr_count( $swapped, $four['email'] ) === 1 && str_contains( $swapped, "<email>, ". $four['address'] ) === true );
+	check( '...a particular that is empty, lacks or is blank is the sign for it - and one more of them in the text each, and none without', $empties( $text ) === 0
+		&& array_filter( array_keys( $four ), static fn( string $field ): bool => $empties( $make( [ $field => '' ] + $four ) ) !== 1 || $empties( $make( array_diff_key( $four, [ $field => 1 ] ) ) ) !== 1 || $empties( $make( [ $field => " \t " ] + $four ) ) !== 1 ) === []
+		&& $empties( $make( [] ) ) === 4 );
+	check( '...the text is plain text with line breaks: no tag of the template, no carriage return, a text the setting accepts', preg_match( '/<\/?(?:p|br|h\d|ul|li|div)\b/i', $make( [] ) ) === 0 && str_contains( $text, "\r" ) === false && substr_count( $text, "\n" ) > 40
+		&& \Crm\Settings::clean( 'privacy_text', $text ) === $text );
+
+	// The press on the site: its texts are the particulars, as the text of a project holds them
+	$clear = static function() use ( &$fresh ): void {
+		\Crm\Db::exec( $fresh, 'DELETE FROM settings WHERE key IN ( \'privacy_text\', \'privacy_changed\' )' );
+	};
+	$status = static fn( array $body ): array => array_column( $body['items'], null, 'key' )['privacy'] ?? [];
+
+	$clear();
+	[ , $body ] = $run( 'crm/status' );
+	check( 'the status has a line for the Datenschutzerklärung that is lacking while the setting is empty - and the product is not whole', $status( $body ) === [ 'key' => 'privacy', 'state' => 'default' ] && $body['whole'] === false );
+
+	\Nino\Html::addFills( $fresh, [ '[[/project/company/general/name]]' => 'Studio &lt;Nord&gt; &amp; Söhne', '[[/project/company/contact/address]]' => "Hafenstr. 1<br>20095 Hamburg\x07", '[[/project/company/contact/email]]' => '<a href="x">post@example.org</a>' ], '*' );
+	[ $code, $body ] = $run( 'crm/setup' );
+	$written = \Crm\Settings::get( $fresh, 'privacy_text' );
+	check( 'the press writes the text from the texts of the site: name and address and email as text on one line each (the markup of the address is no markup, a control character is gone), the phone that the site lacks as the sign', $code === 200 && $body['added']['privacy'] === true
+		&& str_contains( $written, "Studio <Nord> & Söhne, Hafenstr. 1, 20095 Hamburg\nE-Mail: post@example.org, Telefon: …\n" ) === true && str_contains( $written, "\x07" ) === false && $empties( $written ) === 1 );
+	check( '...through Settings::set(): the day it changed is today, the status is ok and the product whole', \Crm\Settings::get( $fresh, 'privacy_changed' ) === date( 'Y-m-d' ) && $status( $run( 'crm/status' )[1] ) === [ 'key' => 'privacy', 'state' => 'ok' ] && $run( 'crm/status' )[1]['whole'] === true );
+
+	[ $code, $body ] = $run( 'crm/setup' );
+	check( 'a second press leaves it: existed.privacy, not added, the text as it was', $code === 200 && $body['added']['privacy'] === false && $body['existed']['privacy'] === true && \Crm\Settings::get( $fresh, 'privacy_text' ) === $written );
+
+	$own = "Mein eigener Text\nin zwei Zeilen";
+	\Crm\Settings::set( $fresh, 'privacy_text', $own );
+	$changed = \Crm\Settings::get( $fresh, 'privacy_changed' );
+	\Crm\Db::exec( $fresh, 'UPDATE settings SET value = \'2020-02-02\' WHERE key = \'privacy_changed\'' );
+	[ $code, $body ] = $run( 'crm/setup' );
+	check( 'the text of the owner stays: existed.privacy, nothing added, text and day as they were', $code === 200 && $body['added']['privacy'] === false && $body['existed']['privacy'] === true && \Crm\Settings::get( $fresh, 'privacy_text' ) === $own && \Crm\Settings::get( $fresh, 'privacy_changed' ) === '2020-02-02' && $changed !== '' );
+
+	// What the step makes of a text of the site: a block of the texts is resolved, invisible and separating characters go, a cut UTF-8 does not empty the particular, a long one is cut
+	$clear();
+	\Nino\Html::addFills( $fresh, [ '[[/project/company/general/name]]' => "Mül\u{00AD}ler\u{200B}\u{FEFF} GmbH", '[[/project/company/contact/address]]' => "Weg 1\u{2028}[[/project/company/contact/phone]]\u{2029}20095 Hamburg\xE2\x82", '[[/project/company/contact/email]]' => str_repeat( 'ä', 1000 ), '[[/project/company/contact/phone]]' => '040 1' ], '*' );
+	[ $code, $body ] = $run( 'crm/setup' );
+	$written = \Crm\Settings::get( $fresh, 'privacy_text' );
+	check( 'a block of the texts in a particular is resolved the way a page resolves it: the phone stands in the address', $code === 200 && str_contains( $written, 'Weg 1 040 1 20095 Hamburg' ) === true && str_contains( $written, '[[' ) === false );
+	check( '...a format character is gone without a space and a separator of lines is a space: Müller GmbH, no character of the class C in the whole text but the line breaks and tabs - and a cut UTF-8 at the end does not make the address the sign', str_contains( $written, 'Müller GmbH, ' ) === true && preg_match( '/[^\P{C}\n\t]/u', $written ) === 0 && preg_match( '/\x{2028}|\x{2029}/u', $written ) === 0 && $empties( $written ) === 0 );
+	check( '...a particular of 1000 characters is cut to the first 200 and the step writes', str_contains( $written, 'E-Mail: '. str_repeat( 'ä', 200 ). ', Telefon' ) === true && str_contains( $written, str_repeat( 'ä', 201 ) ) === false );
+
+	// A write that fails stops the run before the start page and before the record
+	$clear();
+	\Nino\Filesystem::mutate( $fresh, '/config.php', static function( array $content ): array {
+		unset( $content['/nino/http/routes']['GET://'] );
+		return $content;
+	} );
+	unset( $fresh['/nino/http/routes']['GET://'] );
+	\Crm\Db::exec( $fresh, 'DELETE FROM settings WHERE key = :k', [ 'k' => \Crm\Settings::SETUP_KEY ] );
+	\Crm\Db::exec( $fresh, 'ALTER TABLE settings RENAME TO settings_away' );
+	[ $code, $body ] = $run( 'crm/setup' );
+	\Crm\Db::exec( $fresh, 'ALTER TABLE settings_away RENAME TO settings' );
+	check( 'a text that cannot be written is 500, the start page is not written after it and the run is not recorded', $code === 500 && ( \Nino\AppData::stored( $fresh, '/nino/http/routes', [] )['GET://'] ?? null ) === null && \Crm\Settings::setupDone( $fresh ) === '' && \Crm\Settings::get( $fresh, 'privacy_text' ) === '' );
+	$run( 'crm/setup' );
+
+	$clear();
+	\Nino\Html::addFills( $fresh, [ '[[/project/company/general/name]]' => '', '[[/project/company/contact/address]]' => '', '[[/project/company/contact/email]]' => '', '[[/project/company/contact/phone]]' => '' ], '*' );
+	[ $code, $body ] = $run( 'crm/setup' );
+	check( 'a site with no particular at all gets the text all the same, with the sign for each of the four', $code === 200 && $body['added']['privacy'] === true && $empties( \Crm\Settings::get( $fresh, 'privacy_text' ) ) === 4 );
+
+	$panel = [ 'de_DE' => (array) require $root. '/app/Crm/Crm/Admin/text/de_DE.php', 'en_US' => (array) require $root. '/app/Crm/Crm/Admin/text/en_US.php' ];
+	check( 'the words of the line are in both languages of the panel, and the surface says its row', array_filter( $panel, static fn( array $words ): bool => array_filter( [ 'status/privacy-ok', 'status/privacy-default', 'setup/privacy', 'setup/privacy-there' ], static fn( string $key ): bool => trim( (string) ( $words['[[/_admin/crm/'. $key. ']]'] ?? '' ) ) === '' ) !== [] ) === []
+		&& trim( (string) ( \Crm\Surface::texts()['einrichtung.row-privacy'] ?? '' ) ) !== '' );
+}
 
 ninoDone( $appData );

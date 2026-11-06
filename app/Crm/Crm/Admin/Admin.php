@@ -91,6 +91,8 @@ class Admin {
 	 *	  2. Members' settings: /portal among the protected paths and as the start page, each where the project has none of its own,
 	 *	  3. the install unit: the portal pages (routes, templates, words), the element type, the blacklist - what the project has stays,
 	 *	  4. the PDF: the templates, the text blocks and the header and footer of the layout, through Pdf::install() - what the owner has stays,
+	 *	  4a. the Datenschutzerklärung: the setting privacy_text of the CRM is written from install/privacy.php (the particulars of the company filled in) where it is empty - through Settings::set(),
+	 *	     so that privacy_changed has its day - and a text that is there stays,
 	 *	  5. the start page: the route GET:// becomes the door of the portal where there is none or the wizard's page /home; the door that is there and
 	 *	     a start page of the owner's stay,
 	 *	  6. the cap of mails: '/nino/mail/cap' of config.php is set to CAP where config.php carries no value of its own, the way the Config panel writes a key
@@ -104,8 +106,8 @@ class Admin {
 		if( \Nino\Admin\Admin::guardPerm( $appData, $request, \Crm\Crm::MANAGE_PERM ) === false )
 			return;
 
-		$added = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false ];
-		$existed = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false ];
+		$added = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ];
+		$existed = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ];
 
 		// 1. The features. One is on when it is active at its version and nothing is wrong with it; what is on before the first step is "there
 		// already", even where a feature that was switched on before it - Sign takes PDF with it - did the work
@@ -241,6 +243,23 @@ class Admin {
 		$added['pdf'] = $pdf['added'];
 		$existed['pdf'] = $pdf['existing'];
 
+		// 4a. The Datenschutzerklärung: written where the owner has no text; a text that is there stays, whatever it says
+		try {
+			$empty = \Crm\Settings::get( $appData, 'privacy_text' ) === '';
+			$written = $empty === true ? \Crm\Settings::set( $appData, 'privacy_text', self::privacy( $appData ) ) : true;
+		}
+		catch( \PDOException $e ) {
+			$written = false;
+		}
+
+		if( $written !== true ) {
+			\Nino\Http::fail( $request, 500, 'the Datenschutzerklärung could not be written' );
+			return;
+		}
+
+		$added['privacy'] = $empty;
+		$existed['privacy'] = $empty === false;
+
 		// 5. The start page: the door of the portal. Written where there is none and where the wizard's own page is (/home, which keeps its template
 		// file and no route); a start page the owner made is kept, and a door that is there stays
 		$stored = \Nino\AppData::stored( $appData, '/nino/http/routes', \Nino\AppData::DEFAULTS['/nino/http/routes'] );
@@ -321,6 +340,7 @@ class Admin {
 	 *	  home     ok (the start page of the site is the door of the portal), own (a page the owner made: left as it is, and no lack), other (none, or the wizard's own)
 	 *	  mail-cap   ok (config.php carries a cap of its own, the owner's or the one the setup wrote), default (it carries none: the kernel's default stands) - and value, the cap that is in force
 	 *	  notify   ok (the setting notifyOwner of Review has a value of its own, the owner's or the one the setup wrote), default (it has none) - and value, whether Review mails the owner
+	 *	  privacy  ok (the setting privacy_text of the CRM holds a text, the owner's or the one the setup wrote), default (it is empty)
 	 *	The answer is whole when every item is ok or - the start page - own; it is first_run while it is not whole and no run of the setup went through (the day of
 	 *	the last one is the CRM's setting setup_done): a template deleted afterwards makes it not whole, and not a first run - the screen Einrichtung is shown while it is not
 	 */
@@ -391,9 +411,32 @@ class Admin {
 
 		$items[] = [ 'key' => 'notify', 'state' => self::notifySet( $appData ) === true ? 'ok' : 'default', 'value' => \Nino\Features::setting( $appData, 'review', self::NOTIFY_SETTING, false ) === true ];
 
+		$items[] = [ 'key' => 'privacy', 'state' => \Crm\Settings::get( $appData, 'privacy_text' ) === '' ? 'default' : 'ok' ];
+
 		$whole = array_filter( $items, static fn( array $item ): bool => in_array( $item['state'], [ 'ok', 'own' ], true ) === false ) === [];
 
 		\Nino\Http::ok( $request, [ 'items' => $items, 'whole' => $whole, 'first_run' => $whole === false && \Crm\Settings::setupDone( $appData ) === '' ] );
+	}
+
+	/**
+	 *	The Datenschutzerklärung of install/privacy.php, made with the particulars of the company: the texts of the project (name, address, email, phone), as plain text on one line, at most 200 characters each
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	string
+	 */
+	private static function privacy( array &$appData ): string {
+
+		$company = [];
+
+		foreach( [ 'name' => 'general/name', 'address' => 'contact/address', 'email' => 'contact/email', 'phone' => 'contact/phone' ] as $field => $key ) {
+
+			$value = strip_tags( (string) preg_replace( '/<br\s*\/?>/i', ', ', mb_scrub( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/'. $key ), 'UTF-8' ) ) );
+			$value = (string) preg_replace( '/\p{Cf}+/u', '', html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+			$company[$field] = mb_substr( trim( (string) preg_replace( '/[\s\p{C}\p{Z}]+/u', ' ', $value ) ), 0, 200, 'UTF-8' );
+		}
+
+		return (string) ( include self::unitDir(). '/privacy.php' )( $company );
 	}
 
 	/**

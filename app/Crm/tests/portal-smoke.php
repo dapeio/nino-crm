@@ -323,6 +323,9 @@ check( 'the portal pages are set up, the page Belege among them', $status === 20
 check( '...and the cap of mails is 100 then, in config.php and in the live data; the suite goes on at the kernel\'s default of 5, where the cap is tested', $body['added']['cap'] === 100 && \Nino\AppData::stored( $appData, '/nino/mail/cap', null ) === 100 && $appData['/nino/mail/cap'] === 100 );
 $appData['/nino/mail/cap'] = \Nino\AppData::DEFAULTS['/nino/mail/cap'];
 
+// The setup enters the Datenschutzerklärung; this suite sets its own text where it needs one
+\Crm\Db::exec( $appData, 'DELETE FROM settings WHERE key IN ( \'privacy_text\', \'privacy_changed\' )' );
+
 // The setup switches on every feature of the product and seeds the templates of Pdf; this suite starts with Review and Events off and makes its own templates
 foreach( [ 'review', 'events' ] as $key )
 	\Nino\Features::deactivate( $appData, $key );

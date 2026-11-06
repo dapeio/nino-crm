@@ -6741,7 +6741,8 @@
 		const there = existed.features.length+ existed.routes.length+ existed.templates.length+ existed.types.length+ existed.pdf.templates.length;
 		const done = t( 'setup.done', added.features.length, added.routes.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
 		const capped = typeof added.cap === 'number' ? done+ ' '+ t( 'setup.cap', added.cap ) : done;
-		const sentence = added.notify === true ? capped+ ' '+ t( 'setup.notify' ) : capped;
+		const notified = added.notify === true ? capped+ ' '+ t( 'setup.notify' ) : capped;
+		const sentence = added.privacy === true ? notified+ ' '+ t( 'setup.privacy' ) : ( existed.privacy === true ? notified+ ' '+ t( 'setup.privacy-there' ) : notified );
 
 		// What became of the start page, said in the answer: made the door where there was none or the wizard's page, or kept where it is the owner's
 		return typeof added.home === 'string' ? sentence+ ' '+ t( 'setup.home-'+ added.home ) : ( existed.home === 'own' ? sentence+ ' '+ t( 'setup.home-own' ) : sentence );
@@ -6791,7 +6792,7 @@
 		el( 'p', { class: 'state-note', text: t( 'settings.portal-members-note' ) } ),
 		portal.mail_cap === null ? null : el( 'p', { class: 'state-note', id: 'portal-cap-note', text: t( 'settings.portal-cap-note' ) } ),
 		el( 'h4', { text: t( 'settings.portal-status' ) } ),
-		missing.length === 0 ? el( 'p', { class: 'state-note', id: 'status-ok', text: t( 'status.allok' ) } ) : el( 'ul', { class: 'list-mini', id: 'status-missing' }, missing.map( function( item ) { return el( 'li', { text: ( [ 'mail-cap', 'notify' ].includes( item.key ) ? t( 'einrichtung.row-'+ item.key )+ ': ' : '' )+ statusLine( item ) } ) } ) ),
+		missing.length === 0 ? el( 'p', { class: 'state-note', id: 'status-ok', text: t( 'status.allok' ) } ) : el( 'ul', { class: 'list-mini', id: 'status-missing' }, missing.map( function( item ) { return el( 'li', { text: ( [ 'mail-cap', 'notify', 'privacy' ].includes( item.key ) ? t( 'einrichtung.row-'+ item.key )+ ': ' : '' )+ statusLine( item ) } ) } ) ),
 		el( 'div', { class: 'actions' }, setup ), el( 'p', { class: 'state-note', id: 'setup-said', role: 'status', text: said } ) );
 
 		return card;

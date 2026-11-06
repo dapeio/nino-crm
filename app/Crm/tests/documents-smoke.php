@@ -49,6 +49,33 @@ function docBoot( string $sandbox ): array {
 	return $appData;
 }
 
+/**
+ *	The step of the Einrichtung that enters the Datenschutzerklärung: it writes where the setting privacy_text is empty and nowhere else
+ *
+ *	@param		array 		&$appData				The site, the setup pressed once
+ *	@param		callable	$post						Posts an action of the panel
+ *	@param		array 		$first					The answer of that first press
+ *
+ *	@return 	void
+ */
+function privacySetup( array &$appData, callable $post, array $first ): void {
+
+	$text = Settings::get( $appData, 'privacy_text' );
+
+	check( 'the first press on a site with no text enters the Datenschutzerklärung: the setting is not empty, privacy_changed has the day, and the answer says added.privacy', $first['added']['privacy'] === true && $first['existed']['privacy'] === false && $text !== '' && Settings::get( $appData, 'privacy_changed' ) === date( 'Y-m-d' ) );
+
+	[ $status, $body ] = $post( 'crm/setup' );
+	check( '...a second press says existed.privacy and leaves the text as it was', $status === 200 && $body['added']['privacy'] === false && $body['existed']['privacy'] === true && Settings::get( $appData, 'privacy_text' ) === $text );
+
+	Db::exec( $appData, 'DELETE FROM settings WHERE key IN ( \'privacy_text\', \'privacy_changed\' )' );
+	Settings::set( $appData, 'privacy_text', 'Der Text des Betreibers' );
+	Db::exec( $appData, 'UPDATE settings SET value = \'2020-02-02\' WHERE key = \'privacy_changed\'' );
+	[ $status, $body ] = $post( 'crm/setup' );
+	check( '...a text the owner entered before stays - the text and its day - and the answer says existed.privacy', $status === 200 && $body['added']['privacy'] === false && $body['existed']['privacy'] === true && Settings::get( $appData, 'privacy_text' ) === 'Der Text des Betreibers' && Settings::get( $appData, 'privacy_changed' ) === '2020-02-02' );
+
+	Db::exec( $appData, 'DELETE FROM settings WHERE key IN ( \'privacy_text\', \'privacy_changed\' )' );
+}
+
 // A worker of the concurrency section below: its own process, its own request, finalising the draft it is given. The exit
 // status is 0 for a document that was finalised and 1 for any other way
 if( ( $argv[1] ?? '' ) === 'worker' ) {
@@ -352,6 +379,8 @@ $restore = static function() use ( &$appData ): void {
 [ $status, $body ] = $post( 'crm/setup' );
 check( 'the setup of Kunden brings the type: it is among what was added, and the file is the unit\'s own', $status === 200 && $body['added']['types'] === [ 'positionen.php', 'projekte.php' ] && $body['existed']['types'] === [] && Positionen::missing( $appData ) === false && \Crm\Projekte::missing( $appData ) === false
 	&& \Nino\Filesystem::getFileContent( $appData, '/elements/positionen.php', [] ) === include $root. '/app/Crm/Crm/install/positionen.php' );
+
+privacySetup( $appData, $post, $body );
 
 $model = \Nino\Elements::getElementModel( $appData, '/positionen' );
 check( 'the model has the eight fields of the plan: the words per language, the unit code and the numbers for all', array_keys( $model ) === [ 'title', 'description', 'unit', 'unit_code', 'price', 'vat', 'hidden', 'sort' ]
@@ -1472,6 +1501,8 @@ $post( 'crm-documents/settings-save', [ 'tax_id' => '', 'bank_name' => '', 'iban
 check( '...the sentence of that code names the rule, in both languages', str_contains( $words['documents']['de_DE']['[[/_admin/error/crm_documents_setting]]'], 'Semikolon' ) === true && str_contains( $words['documents']['en_US']['[[/_admin/error/crm_documents_setting]]'], 'semicolon' ) === true );
 $post( 'crm-documents/settings-save', [ 'vat_rates_percent' => '19; 7; 0' ] );
 $post( 'crm-documents/settings-save', [ 'payment_days' => '14', 'vat_mode' => 'small_business', 'currency' => '€', 'number_invoice' => 'R-{YYYY}-{NNNN}', 'vat_rates' => '1900,700,0' ] );
+// The setup of Kunden above entered the Datenschutzerklärung
+Db::exec( $appData, 'DELETE FROM settings WHERE key IN ( \'privacy_text\', \'privacy_changed\' )' );
 check( '...and the settings are the defaults again', Settings::all( $appData ) === Settings::DEFAULTS );
 
 [ $status, $body ] = $post( 'crm-documents/templates', [ 'category' => 'credit' ] );
