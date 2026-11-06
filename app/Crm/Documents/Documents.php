@@ -553,10 +553,12 @@ class Documents {
 	 *	@param		array 		$member				id, email and name of that account
 	 *	@param		string		$sentence			The words beside the box, as the customer read them
 	 *	@param		array 		$source				ip and agent of the request, see Records::source()
+	 *	@param		array 		$offered			purpose => the sentence beside the box of a consent the page showed with the order; the JSON that is kept holds them
+	 *	@param		array 		$given				The purposes of the offered boxes that were ticked: each is a record of kind consent in the same transaction as the order, so that there is no order without the consents it was given with and no consent without its order. A purpose that was not offered, or for which the client holds a consent for the project already, makes none
 	 *
-	 *	@return 	array|string							document (as get() has it, accepted) and record (as Records::of() has it); or why not: unknown (no offer of the client), state (the offer cannot be ordered), long, kind, member, shown (see Records)
+	 *	@return 	array|string							document (as get() has it, accepted), record (as Records::of() has it) and consents (the records of kind consent that were made); or why not: unknown (no offer of the client), state (the offer cannot be ordered), long, kind, member, shown, purpose (see Records)
 	 */
-	public static function order( array &$appData, int $id, int $clientId, array $member, string $sentence, array $source ): array|string {
+	public static function order( array &$appData, int $id, int $clientId, array $member, string $sentence, array $source, array $offered = [], array $given = [] ): array|string {
 
 		Projekte::forget( $appData );
 
@@ -568,9 +570,10 @@ class Documents {
 		if( self::orderable( $document ) === false || $document['released'] !== true || $document['pdf_path'] === '' )
 			return 'state';
 
-		$shown = Records::orderShown( $appData, $document, $sentence );
+		$shown = Records::orderShown( $appData, $document, $sentence, $offered );
 		$pdo = Db::pdo( $appData );
 		$pdo->exec( 'BEGIN IMMEDIATE' );
+		$consents = [];
 
 		try {
 			// Looked at again inside the transaction: an offer that another request ordered, took back or let run out meanwhile is not ordered twice
@@ -589,6 +592,25 @@ class Documents {
 			] );
 			$refused = is_string( $record ) === true ? $record : self::moveIn( $pdo, $id, 'accepted', date( 'Y-m-d' ) );
 
+			// The consents ticked beside the order, each looked at again inside the transaction: a client that holds one for the project has no second
+			foreach( $refused === '' ? array_values( array_intersect( Records::PURPOSES, $given, array_keys( $offered ) ) ) : [] as $purpose ) {
+
+				if( Records::consent( $appData, $clientId, $purpose, (string) $document['project'] ) !== null )
+					continue;
+
+				$consent = Records::insert( $appData, $pdo, [
+					'kind' => 'consent', 'client_id' => $clientId, 'member' => $member, 'document_id' => $id, 'project' => $document['project'], 'purpose' => $purpose, 'shown' => (string) $offered[$purpose],
+					'ip' => (string) ( $source['ip'] ?? '' ), 'agent' => (string) ( $source['agent'] ?? '' ),
+				] );
+
+				if( is_string( $consent ) === true ) {
+					$refused = $consent;
+					break;
+				}
+
+				$consents[] = $consent;
+			}
+
 			if( $refused !== '' ) {
 				$pdo->exec( 'ROLLBACK' );
 				return $refused;
@@ -601,7 +623,7 @@ class Documents {
 			throw $e;
 		}
 
-		return [ 'document' => (array) self::get( $appData, $id ), 'record' => (array) $record ];
+		return [ 'document' => (array) self::get( $appData, $id ), 'record' => (array) $record, 'consents' => $consents ];
 	}
 
 	/**

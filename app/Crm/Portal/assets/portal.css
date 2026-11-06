@@ -1952,6 +1952,36 @@ body:has(.crm-bar) .crm-offer {
 	overflow-wrap: anywhere;
 }
 
+.crm-order__field--consent .crm-check {
+	align-items: flex-start;
+}
+
+.crm-order__field--consent .crm-check input {
+	margin-top: .25rem;
+}
+
+.crm-order__group {
+	margin: var(--crm-3) 0 var(--crm-2);
+}
+
+/*	The sentence of the owner is a text of its own for the direction of its letters: a mark that turns a line round does not turn the page	*/
+.crm-order__text,
+.crm-consent__sentence {
+	unicode-bidi: isolate;
+}
+
+.crm-order__optional {
+	margin-right: var(--crm-1);
+}
+
+.crm-order--consent .crm-order__purpose {
+	font-weight: 600;
+}
+
+.crm-offer__body > .crm-order--consent {
+	margin-top: var(--crm-2);
+}
+
 .crm-order__actions {
 	margin: 0;
 }
@@ -2434,6 +2464,94 @@ a.crm-files__name:hover {
 
 .crm-data__privacy-action {
 	margin: 0;
+}
+
+/*	11 Parts - the data: the consents, a card of its own under the Datenschutz (a row for each: purpose and project, who gave it and when, the sentence it was given
+	with folded, and the button that takes it back)	*/
+
+.crm-data__consents {
+	max-width: 48rem;
+	margin: var(--crm-5) 0 0;
+	padding: var(--crm-5);
+}
+
+.crm-data__consents-title {
+	margin: 0 0 var(--crm-2);
+}
+
+.crm-data__consents-title .crm-icon {
+	color: var(--crm-link);
+}
+
+.crm-data__consents-hint {
+	margin: 0 0 var(--crm-4);
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+	line-height: 1.5;
+}
+
+.crm-consents {
+	display: grid;
+	gap: var(--crm-4);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.crm-consent {
+	padding: var(--crm-4) 0 0;
+	border-top: 1px solid var(--crm-line);
+}
+
+.crm-consent:first-child {
+	padding-top: 0;
+	border-top: 0;
+}
+
+.crm-consent__head,
+.crm-consent__given,
+.crm-consent__revoked {
+	margin: 0 0 var(--crm-2);
+	font-size: var(--crm-text-s);
+	line-height: 1.5;
+}
+
+.crm-consent__where::before {
+	content: " · ";
+}
+
+.crm-consent__given {
+	color: var(--crm-ink-2);
+}
+
+.crm-consent__text {
+	margin: 0 0 var(--crm-3);
+	font-size: var(--crm-text-s);
+}
+
+.crm-consent__text > summary {
+	display: flex;
+	align-items: center;
+	min-height: var(--crm-touch);
+	cursor: pointer;
+	color: var(--crm-link);
+	font-weight: 600;
+}
+
+.crm-consent__sentence {
+	margin: 0;
+	padding: var(--crm-3) var(--crm-4);
+	border-left: 3px solid var(--crm-line);
+	color: var(--crm-ink-2);
+	overflow-wrap: anywhere;
+}
+
+.crm-consent__form {
+	margin: 0;
+}
+
+.crm-consent__state {
+	margin: 0 0 var(--crm-4);
 }
 
 /*	11 Parts - the data: the sign-in address, a card of its own under the form (the address as text, a fold that opens the form for a new one, the
@@ -3613,6 +3731,7 @@ a.crm-nav__link[aria-current="page"] .crm-icon {
 	.crm-order--form,
 	.crm-order--privacy,
 	.crm-approval__form,
+	.crm-consent__form,
 	.files-upload.crm-upload,
 	.crm-project__nav,
 	.crm-kpis {

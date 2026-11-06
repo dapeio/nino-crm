@@ -7,9 +7,9 @@ declare(strict_types=1);
  *												panel's own actions (see Surface\Elements) and their folder through the Files panel's (see Surface\Files); these two actions only read:
  *
  *												crm-projekte/list		the projects (a client's, the open ones, a search in the title) with their client, the number of their documents
- *																						and of the offers among them that wait, and the number of their files, and approval (who approved the project in the portal and when; null for a project nobody approved); and native, the language the screens save in, and allowed -
+ *																						and of the offers among them that wait, and the number of their files, and approval (who approved the project in the portal and when; null for a project nobody approved), and consent_social (the client holds a consent to the social use of the work for the project); and native, the language the screens save in, and allowed -
  *																						whether the account holds the permission of the Files panel while the feature is on, as it is now (a setup changes it under the page)
- *												crm-projekte/get		one project with its client, its approval (the record with the JSON the customer was shown), its folder and the files in it - each audio or video file with the number of its comments and of the open ones,
+ *												crm-projekte/get		one project with its client, its approval (the record with the JSON the customer was shown), the consents of the client for it (consents: a line for each purpose with a sentence or a consent, the newest consent with the record that took it back), its folder and the files in it - each audio or video file with the number of its comments and of the open ones,
  *																						where the feature Review is on (review says whether it is)
  *
  *												crm-projekte/download	switch the download of the files of a project for its client on or off (id, on): the state the portal reads (Projekte::state()); the
@@ -284,6 +284,22 @@ class Admin {
 		$shown = [];
 		$approvals = \Crm\Records::approvals( $appData );
 
+		$consents = [];
+
+		// What the clients consented to, read in one query: the newest first, by project - '' is the consent that holds for every project of its client
+		foreach( \Crm\Records::consentsOfProject( $appData ) as $consent )
+			$consents[(string) $consent['project']][] = $consent;
+
+		// The consents that hold for a project: those given for it and those given for all, the newest first
+		$held = static function( string $id ) use ( &$consents ): array {
+
+			$rows = array_merge( $consents[$id] ?? [], $consents[''] ?? [] );
+
+			usort( $rows, static fn( array $x, array $y ): int => $y['id'] <=> $x['id'] );
+
+			return $rows;
+		};
+
 		foreach( $projects as $project ) {
 
 			$client = $clients[$project['client']] ?? null;
@@ -310,13 +326,40 @@ class Admin {
 				'client_active' => $client !== null && $client['active'] === true,
 				'files'         => $files === null ? ( $on === true ? 0 : null ) : count( $files ),
 				'approval'      => isset( $approvals[$project['id']] ) === true && $client !== null && $approvals[$project['id']]['client_id'] === $client['id'] ? $approvals[$project['id']] : null,
+				'consent_social' => $client !== null && array_filter( $held( $project['id'] ), static fn( array $consent ): bool => $consent['client_id'] === $client['id'] && $consent['purpose'] === 'social' && $consent['revoked'] === null ) !== [],
+				'consents'      => $client === null ? [] : self::_consents( $appData, array_values( array_filter( $held( $project['id'] ), static fn( array $consent ): bool => $consent['client_id'] === $client['id'] ) ) ),
 				'folder_name'   => $folder === null ? null : (string) $folder['name'],
 				'file_list'     => $withFiles === true && $on === true ? self::_files( $appData, $files ?? [] ) : null,
 			];
 		}
 
 		// The list of the projects carries the counts; the lists of files and the name of the folder are the card's
-		return $withFiles === true ? $shown : array_map( static fn( array $one ): array => array_diff_key( $one, [ 'file_list' => 0, 'folder_name' => 0 ] ), $shown );
+		return $withFiles === true ? $shown : array_map( static fn( array $one ): array => array_diff_key( $one, [ 'file_list' => 0, 'folder_name' => 0, 'consents' => 0 ] ), $shown );
+	}
+
+	/**
+	 *	The consents of a project's client as the card of the project shows them: a line for each purpose that has a sentence in the settings or a consent for the project
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$consents			The consents of the project's client, the newest first, each with revoked (see Records::consents())
+	 *
+	 *	@return 	array											purpose and consent (the newest of that purpose with its revoked; null for none), in the order of Records::PURPOSES
+	 */
+	private static function _consents( array &$appData, array $consents ): array {
+
+		$lines = [];
+
+		foreach( \Crm\Records::PURPOSES as $purpose ) {
+
+			// The newest consent that holds, else the newest there is (a revoked one): a revoked newer consent does not hide one that still holds
+			$ofPurpose = array_values( array_filter( $consents, static fn( array $consent ): bool => $consent['purpose'] === $purpose ) );
+			$found = array_values( array_filter( $ofPurpose, static fn( array $consent ): bool => $consent['revoked'] === null ) )[0] ?? $ofPurpose[0] ?? null;
+
+			if( $found !== null || \Crm\Records::sentence( $appData, $purpose ) !== '' )
+				$lines[] = [ 'purpose' => $purpose, 'consent' => $found ];
+		}
+
+		return $lines;
 	}
 
 	/**

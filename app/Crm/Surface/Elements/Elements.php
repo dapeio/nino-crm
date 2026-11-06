@@ -7,7 +7,7 @@ declare(strict_types=1);
  *													of them is for the element types /positionen and /projekte and for no other. A post that names another type (or none) is refused before
  *													the panel is asked - 404 crm_positionen_type -, so that the endpoint never becomes an editor for the elements of the site.
  *													For the type projekte two things more are the surface's, because the panel does not know the documents: a project that a
- *													document names is not deleted (409 crm_project_documents, with the count), nor one the customer approved (409 crm_project_approved), and the client of a project is the number of a
+ *													document names is not deleted (409 crm_project_documents, with the count), nor one the customer approved (409 crm_project_approved) or one that a consent or its revocation names (409 crm_project_records), and the client of a project is the number of a
  *													client that is there (400 crm_project_client_unknown) and does not change while a document names the project (409
  *													crm_project_client_locked) - the documents of a project are the client's.
  *
@@ -211,11 +211,13 @@ class Elements {
 
 		$count = null;
 		$approved = false;
+		$named = false;
 
-		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, $data, &$count, &$approved ): void {
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, $data, &$count, &$approved, &$named ): void {
 			$uri = \Nino\Admin\Admin::postString( $data, 'uri' );
 			$count = \Crm\Projekte::documentsOf( $appData, $uri );
 			$approved = \Crm\Records::approval( $appData, $uri ) !== null;
+			$named = \Crm\Records::names( $appData, $uri );
 		} );
 
 		// The database failed, and the answer says so
@@ -230,6 +232,12 @@ class Elements {
 		// The customer approved the project: the record names it, and the kernel's veto would refuse the panel - the surface says it with its own sentence
 		if( $approved === true ) {
 			\Nino\Http::fail( $request, 409, 'the customer approved this project', 'crm_project_approved' );
+			return false;
+		}
+
+		// A consent or its revocation names the project (a project with an approval was answered above): the same, with a sentence of its own
+		if( $named === true ) {
+			\Nino\Http::fail( $request, 409, 'a record of the evidence names this project', 'crm_project_records' );
 			return false;
 		}
 

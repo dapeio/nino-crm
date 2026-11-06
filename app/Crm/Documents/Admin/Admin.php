@@ -63,6 +63,7 @@ class Admin {
 		'seller_country' => 'crm_documents_particular_seller_country', 'seller_contact' => 'crm_documents_particular_seller_contact', 'seller_phone' => 'crm_documents_particular_seller_phone', 'seller_email' => 'crm_documents_particular_seller_email',
 		'vat_id' => 'crm_documents_particular_vat_id', 'vat_exempt_text' => 'crm_documents_particular_vat_exempt_text',
 		'portal_message' => 'crm_documents_portal_message',
+		'consent_social' => 'crm_documents_consent_social', 'consent_archive' => 'crm_documents_consent_archive',
 	];
 
 	private const array SIGN_REFUSALS = [

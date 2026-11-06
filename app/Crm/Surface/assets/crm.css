@@ -216,6 +216,11 @@ a.btn { text-decoration: none }
 .message-text { margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere }
 .msg-icon { position: relative; display: inline-block; width: 13px; height: 10px; margin: 0 0 0 8px; border: 2px solid var(--accent); border-radius: 3px; vertical-align: -1px }
 .msg-icon::after { content: ""; position: absolute; left: 1px; bottom: -7px; border: 3px solid transparent; border-top-color: var(--accent); border-left-color: var(--accent) }
+.mega-icon { display: inline-block; width: 14px; height: 12px; margin: 0 0 0 8px; vertical-align: -1px; background: var(--accent); clip-path: polygon(0 32%, 52% 32%, 100% 0, 100% 100%, 52% 68%, 0 68%) }
+.consent-lines { margin: 0 0 12px }
+#consents .kv { grid-template-columns: 170px minmax(0, 1fr) }
+@media (max-width: 760px) { #consents .kv { grid-template-columns: minmax(0, 1fr) } #consents .kv dt.top { padding-top: 0 } }
+.consent-lines .state-note { margin: 0 0 4px }
 .area { width: 100%; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: inherit; font: inherit; resize: vertical }
 .check { display: flex; gap: 8px; align-items: center; margin: 10px 0 }
 .kv dd.pair, .kv .pair { display: flex; gap: 6px }

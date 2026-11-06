@@ -40,6 +40,8 @@ class Settings {
 		'privacy_changed' => '',
 		'portal_message' => '',
 		'portal_message_at' => '',
+		'consent_social' => '',
+		'consent_archive' => '',
 	];
 
 	// The keys the module keeps itself: a post of the surface never writes them. privacy_changed is the day privacy_text last changed, portal_message_at the time portal_message last changed
@@ -218,8 +220,10 @@ class Settings {
 
 				return mb_strlen( $value, 'UTF-8' ) <= self::MAX_PRIVACY && preg_match( '/[^\P{C}\n\t]/u', $value ) === 0 ? $value : [ 'value:'. $key ];
 
-			// The message every client reads in the portal: text with line breaks, as long as a client's own
+			// The message every client reads in the portal: text with line breaks, as long as a client's own - and the sentence beside the box of a consent, of the same kind: the box does not exist while it is empty
 			case 'portal_message':
+			case 'consent_social':
+			case 'consent_archive':
 				$value = trim( str_replace( [ "\r\n", "\r" ], "\n", $value ) );
 
 				return mb_strlen( $value, 'UTF-8' ) <= self::MAX_MESSAGE && preg_match( '/[^\P{Cc}\n\t]/u', $value ) === 0 ? $value : [ 'value:'. $key ];

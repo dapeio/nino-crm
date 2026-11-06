@@ -13,6 +13,11 @@ declare(strict_types=1);
  *											not ticked), privacy (the Datenschutz comes first) or expired (the token of the form was not the session's). The order is Documents::order(): the
  *											record of what the customer was shown and the step of the offer to accepted are one transaction. Then the owner is mailed that the order
  *											was placed and the account gets the confirmation; a mail that does not go out does not undo the order.
+ *
+ *											Under the box that must be ticked stands one voluntary box for each consent the owner wrote a sentence for and the client does not hold yet for the
+ *											project of the offer (Consent): never required, and the order does not need them. The JSON the form's hash is made of holds the sentences of the boxes the
+ *											page showed, so that a sentence that was changed meanwhile answers the post with the state changed; a ticked box is a record of kind consent in the
+ *											transaction of the order, and a key of consent that names no box that was shown is ignored. The mails say which consents were given.
  */
 namespace Crm\Portal;
 
@@ -60,7 +65,7 @@ class Order {
 		$record = Records::forDocument( $appData, (int) $offer['id'] );
 
 		if( $record !== null )
-			return self::done( $record, $dir );
+			return self::done( $record, $dir ). Consent::done( $appData, (int) $offer['id'], $dir );
 
 		if( Documents::orderable( $offer ) === false || Portal::pending( $appData, $client ) === 'privacy' )
 			return '';
@@ -71,13 +76,15 @@ class Order {
 			return '';
 
 		$sentence = self::sentence( $appData, $offer );
+		$offered = Consent::offered( $appData, $client, (string) $full['project'] );
 
 		return Portal::render( 'order-form', [
 			'[[id]]'       => (string) $offer['id'],
 			'[[dir]]'      => $dir,
 			'[[from]]'     => $from,
 			'[[sentence]]' => \Nino\Modules\Components::escape( $sentence ),
-			'[[hash]]'     => Records::hash( Records::orderShown( $appData, $full, $sentence ) ),
+			'[[consents]]' => Consent::boxes( $offered, $from, (int) $offer['id'] ),
+			'[[hash]]'     => Records::hash( Records::orderShown( $appData, $full, $sentence, $offered ) ),
 		] );
 	}
 
@@ -206,8 +213,9 @@ class Order {
 
 		// What the customer read is what is kept: the form carries the hash of the offer as it showed it (and the sentence), and an offer that was changed meanwhile is not ordered by a click on the old one
 		$sentence = self::sentence( $appData, $document );
+		$offered = Consent::offered( $appData, $client, (string) $document['project'] );
 
-		if( ( $_POST['shown'] ?? null ) !== Records::hash( Records::orderShown( $appData, $document, $sentence ) ) ) {
+		if( ( $_POST['shown'] ?? null ) !== Records::hash( Records::orderShown( $appData, $document, $sentence, $offered ) ) ) {
 			self::redirect( $appData, $request, 'changed', $from, $document );
 
 			return;
@@ -219,7 +227,7 @@ class Order {
 			return;
 		}
 
-		$ordered = Documents::order( $appData, $id, $client['id'], [ 'id' => $member['id'], 'email' => $member['email'], 'name' => $member['name'] ], $sentence, Records::source( $appData, $request ) );
+		$ordered = Documents::order( $appData, $id, $client['id'], [ 'id' => $member['id'], 'email' => $member['email'], 'name' => $member['name'] ], $sentence, Records::source( $appData, $request ), $offered, Consent::ticked( $offered ) );
 
 		if( is_string( $ordered ) === true ) {
 			self::redirect( $appData, $request, 'invalid', $from, $document );
@@ -228,7 +236,7 @@ class Order {
 		}
 
 		// The page promises the confirmation only where a mail went out; the order is kept either way
-		$mailed = Documents\Mail::ordered( $appData, $ordered['document'], $ordered['record'], $client );
+		$mailed = Documents\Mail::ordered( $appData, $ordered['document'], $ordered['record'], $client, $ordered['consents'] );
 		self::redirect( $appData, $request, is_int( $mailed ) === true && $mailed > 0 ? 'ordered' : 'nomail', $from, $ordered['document'] );
 	}
 

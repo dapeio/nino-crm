@@ -680,9 +680,9 @@ $schema = \Nino\Modules\Components::components( $appData )['crm-documents'] ?? [
 check( 'the component is registered once: global, no source, a block, drawn as a div of the class crm-documents, in a section or a card, with an icon', ( $schema['group'] ?? '' ) === 'global' && ( $schema['source'] ?? '' ) === 'none' && ( $schema['preview'] ?? '' ) === 'block' && ( $schema['draws'] ?? '' ) === 'div .crm-documents'
 	&& ( $schema['in'] ?? [] ) === [ 'section', 'card' ] && count( $schema['icon'] ?? [] ) === 5 && count( \Nino\Callbacks::registered( $appData, '/nino/html/shortcode/crm-documents' ) ) === 1 );
 check( 'the style sheet of the portal is in the bundle of the site, once, and declares the type scale, the spacing and the surfaces in :where(:root)', count( array_keys( $appData['/nino/html/assets']['/.cache/style.css'] ?? [], '/app/Crm/Portal/assets/portal.css', true ) ) === 1
-	&& preg_match( '/:where\(:root\)\s*\{[^}]*--crm-text-xs[^}]*--crm-text-xxl[^}]*--crm-1:[^}]*--crm-7:[^}]*--crm-surface:/s', (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' ) ) === 1 );
+	&& preg_match( '/:where\(:root\)\s*\{[^}]*--crm-text-xs[^}]*--crm-text-xxl[^}]*--crm-1:[^}]*--crm-7:[^}]*--crm-surface:/s', (string) file_get_contents( dirname( __DIR__, 3 ). '/app/Crm/Portal/assets/portal.css' ) ) === 1 );
 check( 'the script of the portal is in the bundle of the site, once, and the file is there', count( array_keys( $appData['/nino/html/assets']['/.cache/script.js'] ?? [], \Crm\Portal::SCRIPT, true ) ) === 1 && is_file( $root. \Crm\Portal::SCRIPT ) === true );
-check( '...the list stands at the left of its column as the other lists of the page do: no auto margin on the sides', preg_match( '/\n\.crm-documents \{[^}]*margin: 0 0 var\(--crm-7\);/s', (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' ) ) === 1 );
+check( '...the list stands at the left of its column as the other lists of the page do: no auto margin on the sides', preg_match( '/\n\.crm-documents \{[^}]*margin: 0 0 var\(--crm-7\);/s', (string) file_get_contents( dirname( __DIR__, 3 ). '/app/Crm/Portal/assets/portal.css' ) ) === 1 );
 
 $asVisitor();
 $wordsDe = (array) require $root. '/app/Crm/Portal/text/de_DE.php';
@@ -852,7 +852,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 240 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 260 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -1332,7 +1332,7 @@ check( 'the cards are .crm-card: the offers (details), the lists of files and of
 check( '...and the states are .crm-pill, with the tone of the state in the class: the state of a project, of an offer and of a document, and the mark "neu" of a file - and no .crm-chip is left anywhere', $cardsOf( $html, '//span['. $token( 'crm-head__state' ). ']['. $token( 'crm-pill' ). ']' ) === 1 && $cardsOf( $html, '//span['. $token( 'crm-offer__state' ). '][not('. $token( 'crm-pill' ). ')]' ) === 0 && $cardsOf( $html, '//span['. $token( 'crm-offer__state' ). ']['. $token( 'crm-pill' ). ']' ) === 3
 	&& $cardsOf( $html, '//span['. $token( 'crm-documents__state' ). ']/span[not('. $token( 'crm-pill' ). ')]' ) === 0 && $cardsOf( $html, '//span['. $token( 'crm-files__new' ). '][not('. $token( 'crm-pill' ). ')]' ) === 0
 	&& $cardsOf( $html, '//span[contains(@class, "crm-pill")][not(contains(@class, "crm-pill--"))]' ) === 0 && str_contains( $html, 'crm-chip' ) === false );
-$sheet = (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' );
+$sheet = (string) file_get_contents( dirname( __DIR__, 3 ). '/app/Crm/Portal/assets/portal.css' );
 check( 'portal.css holds no colour of its own - no hex, no rgb(), hsl() or the like, no named colour on a property - and builds its tokens from the roles of the kernel: --color-ink, -ground, -border, -accent, -success, -warning, -error, -primary, -focus and --radius-surface-alt', preg_match( '/#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/', $sheet ) === 0
 	&& preg_match( '/^\s*(?:color|background(?:-color)?|border(?:-[a-z]+)*|outline(?:-color)?|box-shadow|fill|stroke):[^;]*\b(?:white|black|red|green|blue|gray|grey|orange|yellow|purple|silver)\b/m', $sheet ) === 0
 	&& array_diff( [ '--color-ink', '--color-ground', '--color-border', '--color-accent', '--color-success', '--color-warning', '--color-error', '--color-primary', '--color-focus', '--radius-surface-alt', '--radius' ], array_map( static fn( string $name ): string => $name, array_unique( (array) ( preg_match_all( '/var\(\s*(--(?:color|radius)[a-z-]*)/', $sheet, $roles ) > 0 ? $roles[1] : [] ) ) ) ) === [] );
@@ -1490,7 +1490,7 @@ check( 'with Files off the block says so', portalFind( \Nino\Html::renderHtml( $
 
 echo "\n[removed files]\n";
 
-$portalSheet = (string) file_get_contents( $root. '/app/Crm/Portal/assets/portal.css' );
+$portalSheet = (string) file_get_contents( dirname( __DIR__, 3 ). '/app/Crm/Portal/assets/portal.css' );
 check( 'the button Antworten of a comment, drawn hidden, stays hidden for as long as it is: the display the portal gives the buttons of Review does not override the attribute', preg_match( '/\.crm-project \.review-comment__reply\[hidden\]\s*\{\s*display:\s*none;/', $portalSheet ) === 1 );
 $newOnStart = static function() use ( &$appData, $p1 ): int {
 	foreach( portalFind( portalPage( $appData, '/portal' )[1], '//article[@data-card="files"]//li[contains(@class, "crm-start__row")]' ) as $row ) {
@@ -4503,6 +4503,427 @@ function portalScriptSuite( string $root ): void {
 }
 
 portalScriptSuite( $root );
+// --- Einwilligungen: the voluntary boxes beside an order, the block in Meine Daten, POST /.crm/einwilligung/widerruf ------------------
+
+/**
+ *	The checks of the consents
+ */
+function portalConsentChecks( array &$appData, array $a, array $b, array $accounts, array $stray, string $p1, string $today, array $wordsDe, array $wordsEn, \Closure $reset, \Closure $asAdmin, \Closure $asVisitor, \Closure $made, \Closure $location, \Closure $mkOffer ): void {
+
+	global $mails;
+
+	echo "\nEinwilligungen and POST /.crm/einwilligung/widerruf\n";
+
+	$reset();
+	$asAdmin();
+	$privacyWas = \Crm\Settings::get( $appData, 'privacy_text' );
+	\Crm\Settings::set( $appData, 'privacy_text', '' );
+	\Nino\Html::addFills( $appData, [ '[[/project/company/general/name]]' => 'Studio &lt;Eins&gt; &amp; Co [members-name]' ], '*' );
+	$pConsent = $made( 'Einwilligung <b>Projekt</b> [members-name]', $a['number'], [], false );
+	$social = "Ich willige <b>freiwillig</b> ein.\n[crm-client] [[/project/company/general/name]] & mehr";
+	$archive = 'Archiv "und" <i>mehr</i>';
+	$recordsOf = static function( int $clientId, ?string $kind = null ) use ( &$appData ): array {
+		return \Crm\Records::of( $appData, $clientId, $kind );
+	};
+	$consentMails = static fn( int $from ): array => array_values( array_filter( portalMailsFrom( $from ), static fn( array $mail ): bool => str_starts_with( (string) ( $mail['subject'] ?? '' ), (string) strstr( \Crm\Documents\Mail::text( 'revocation.owner.subject' ), '%s', true ) ) ) );
+	$word = static fn( string $purpose ): string => \Crm\Documents\Mail::text( 'consent.purpose.'. $purpose );
+	$sentenceOf = static fn( string $key, string $purpose ): string => \Nino\Modules\Components::escape( \Crm\Documents\Mail::text( $key, $word( $purpose ) ) );
+	$boxes = static fn( string $html, int $id ): array => portalFind( $html, '(//form[@data-document="'. $id. '"])[1]//input[starts-with(@name, "consent[")]' );
+	$postOrder = static function( array $offer, array $over = [], ?array $offered = null ) use ( &$appData, $a ): array {
+
+		$document = (array) Documents::get( $appData, $offer['id'] );
+		$shown = $offered ?? \Crm\Portal\Consent::offered( $appData, (array) \Crm\Clients::get( $appData, $a['id'] ), (string) $document['project'] );
+		$post = $over + [ 'document' => (string) $offer['id'], 'from' => 'projekt', 'agree' => '1', 'shown' => hash( 'sha256', \Crm\Records::orderShown( $appData, $document, \Crm\Portal\Order::sentence( $appData, $document ), $shown ) ) ];
+
+		return portalServe( $appData, '/.crm/auftrag', 'POST', $post );
+	};
+	$formPage = static function( string $project ) use ( &$appData ): string {
+		return portalPage( $appData, '/portal/projekte?projekt='. $project )[1];
+	};
+
+	// no sentence, no box
+	$offer0 = $mkOffer( 'Ohne Satz', [ 'project' => $pConsent ] );
+	portalSignIn( $appData, $accounts['anna'] );
+	$page = $formPage( $pConsent );
+	check( 'while the owner wrote no sentence there is no box of a consent under the order, and the form is the one of the order alone: the box that must be ticked and the button', $boxes( $page, $offer0['id'] ) === [] && count( portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//input[@type="checkbox"]' ) ) === 1
+		&& \Crm\Portal\Consent::offered( $appData, (array) \Crm\Clients::get( $appData, $a['id'] ), $pConsent ) === [] && portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//*[@role="group"]' ) === [] );
+
+	// the boxes
+	$asAdmin();
+	\Crm\Settings::set( $appData, 'consent_social', $social );
+	portalSignIn( $appData, $accounts['anna'] );
+	$page = $formPage( $pConsent );
+	$box = portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//input[@name="consent[social]"]' );
+	check( 'a sentence for the social use makes one box under the box of the order: a checkbox consent[social] with the value 1, not required, apart from the box that agrees - and no box for the purpose without a sentence', count( $box ) === 1 && $box[0]->getAttribute( 'type' ) === 'checkbox' && $box[0]->getAttribute( 'value' ) === '1'
+		&& $box[0]->hasAttribute( 'required' ) === false && $box[0]->hasAttribute( 'aria-required' ) === false && count( $boxes( $page, $offer0['id'] ) ) === 1 && portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//input[@name="consent[archive]"]' ) === []
+		&& portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//input[@name="agree"][@required]' ) !== [] );
+	check( '...the boxes stand in a group that names them as voluntary - a role and a name, once - and none of them is ticked from the start', count( portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//div[contains(@class, "crm-order__group")][@role="group"][string-length(@aria-label) > 0]' ) ) === 1
+		&& portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//div[@role="group"]//input[@name="consent[social]"]' ) !== [] && portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//input[starts-with(@name, "consent[")][@checked]' ) === [] && trim( $wordsDe['[[/project/crm-portal/order/optional-group]]'] ) !== '' );
+	$label = portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//label[@for="'. $box[0]->getAttribute( 'id' ). '"]' );
+	check( '...it has a label of its own, which names the box, and the word freiwillig stands in the label before the sentence - a pill for the eye, a word for the reader', count( $label ) === 1 && portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//label[@for="'. $box[0]->getAttribute( 'id' ). '"]/input[@name="consent[social]"]' ) !== []
+		&& portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//label[@for="'. $box[0]->getAttribute( 'id' ). '"]//span[contains(concat(" ", normalize-space(@class), " "), " crm-pill ")]' ) !== [] && trim( portalText( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//label[@for="'. $box[0]->getAttribute( 'id' ). '"]//span[contains(@class, "crm-pill")]' ) ) !== ''
+		&& portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//label[@for="'. $box[0]->getAttribute( 'id' ). '"]//span[contains(@class, "crm-pill")]/following-sibling::text()' ) !== [] );
+	$sentenceText = portalText( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//label[@for="'. $box[0]->getAttribute( 'id' ). '"]//span[contains(@class, "crm-order__sentence")]' );
+	check( '...the sentence is text: <b> is no element, the line break is <br>, the brackets of a shortcode and a fill are written as typed and nothing of it is read', portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//label[@for="'. $box[0]->getAttribute( 'id' ). '"]//b' ) === []
+		&& portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//label[@for="'. $box[0]->getAttribute( 'id' ). '"]//br' ) !== [] && str_contains( $sentenceText, 'Ich willige <b>freiwillig</b> ein.' ) === true && str_contains( $sentenceText, '[crm-client] [[/project/company/general/name]] & mehr' ) === true
+		&& str_contains( $page, '&lt;b&gt;freiwillig&lt;/b&gt;' ) === true && str_contains( $page, '[crm-client]' ) === false );
+	check( '...the form carries the hash of the offer with the sentence of the box, which is not the hash of the offer without it', portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//input[@name="shown"]/@value' )[0]->nodeValue === hash( 'sha256', \Crm\Records::orderShown( $appData, (array) Documents::get( $appData, $offer0['id'] ), \Crm\Portal\Order::sentence( $appData, (array) Documents::get( $appData, $offer0['id'] ) ), [ 'social' => $social ] ) )
+		&& portalFind( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//input[@name="shown"]/@value' )[0]->nodeValue !== hash( 'sha256', \Crm\Records::orderShown( $appData, (array) Documents::get( $appData, $offer0['id'] ), \Crm\Portal\Order::sentence( $appData, (array) Documents::get( $appData, $offer0['id'] ) ) ) ) );
+	check( '...an order that offered no consent has the JSON it always had: no key of consents', array_key_exists( 'consents', (array) json_decode( \Crm\Records::orderShown( $appData, (array) Documents::get( $appData, $offer0['id'] ), 'x' ), true ) ) === false && array_keys( (array) json_decode( \Crm\Records::orderShown( $appData, (array) Documents::get( $appData, $offer0['id'] ), 'x', [ 'social' => 'y' ] ), true ) ) === array_merge( array_keys( (array) json_decode( \Crm\Records::orderShown( $appData, (array) Documents::get( $appData, $offer0['id'] ), 'x' ), true ) ), [ 'consents' ] ) );
+
+	// both, and a null byte
+	$asAdmin();
+	\Crm\Settings::set( $appData, 'consent_archive', $archive );
+	Db::exec( $appData, 'UPDATE settings SET value = :v WHERE key = \'consent_archive\'', [ 'v' => "Archiv\0Ende" ] );
+	portalSignIn( $appData, $accounts['anna'] );
+	$page = $formPage( $pConsent );
+	$names = array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'name' ), $boxes( $page, $offer0['id'] ) );
+	$ids = array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'id' ), portalFind( $page, '//input[starts-with(@name, "consent[")]' ) );
+	check( 'a sentence for each purpose makes two boxes, the social use first; the ids are unique on the page, which holds a form for each offer', $names === [ 'consent[social]', 'consent[archive]' ] && count( $ids ) === count( array_unique( $ids ) ) && count( $ids ) >= 2
+		&& array_filter( $boxes( $page, $offer0['id'] ), static fn( \DOMElement $input ): bool => $input->hasAttribute( 'required' ) === true ) === [] );
+	$overviewForm = '//form[@data-document="'. $offer0['id']. '"][.//input[@name="from"][@value="uebersicht"]]';
+	check( 'the form in the tab Übersicht (from=uebersicht) has the boxes too, in their group, with ids of their own: the same two purposes as the form of the tab Angebot', count( portalFind( $page, $overviewForm ) ) === 1 && array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'name' ), portalFind( $page, $overviewForm. '//div[@role="group"]//input[starts-with(@name, "consent[")]' ) ) === [ 'consent[social]', 'consent[archive]' ]
+		&& count( portalFind( $page, '//form[@data-document="'. $offer0['id']. '"][.//input[@name="from"][@value="projekt"]]//input[starts-with(@name, "consent[")]' ) ) === 2 );
+	check( '...a null byte in the sentence is not on the page', str_contains( $page, "\0" ) === false && str_contains( portalText( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//input[@name="consent[archive]"]/ancestor::label' ), 'ArchivEnde' ) === true );
+	\Crm\Settings::set( $appData, 'consent_archive', $archive );
+	check( '...the list of documents draws the same boxes under an offer without a project, from=belege', array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'name' ), portalFind( portalPage( $appData, '/portal/belege' )[1], '//li[@data-category="offer"]//form//input[starts-with(@name, "consent[")]' ) ) !== [] );
+
+	// the post: a box ticked, one that was not offered, a key that is none
+	$reset();
+	$mailFrom = count( $mails );
+	$both = $postOrder( $offer0, [ 'consent' => [ 'social' => '1', 'archive' => '1', 'bogus' => '1' ] ], [ 'social' => $social, 'archive' => $archive ] );
+	$order0 = \Crm\Records::forDocument( $appData, $offer0['id'] );
+	$given = $recordsOf( $a['id'], 'consent' );
+	check( 'the order with both boxes ticked is the order and a record of kind consent for each purpose, the order first: ?state=ordered', $both['statusCode'] === 303 && str_contains( $location( $both ), 'state=ordered' ) === true && $order0 !== null && Documents::get( $appData, $offer0['id'] )['state'] === 'accepted'
+		&& array_column( $given, 'purpose' ) === [ 'archive', 'social' ] && $given[1]['id'] > $order0['id'] );
+	$socialRow = array_values( array_filter( $given, static fn( array $row ): bool => $row['purpose'] === 'social' ) )[0] ?? [];
+	check( '...a consent is a record like the order: the purpose, the client, the account as it was, the offer and its project, the sentence as it stood, its hash, the time, the address and the browser - and no parent', ( $socialRow['kind'] ?? '' ) === 'consent' && $socialRow['client_id'] === $a['id'] && $socialRow['member_id'] === $accounts['anna']['id'] && $socialRow['member_email'] === 'anna@example.org'
+		&& $socialRow['document_id'] === $offer0['id'] && $socialRow['project'] === $pConsent && $socialRow['shown'] === $social && $socialRow['sha256'] === hash( 'sha256', $social ) && substr( $socialRow['at'], 0, 10 ) === gmdate( 'Y-m-d' ) && $socialRow['ip'] === '127.0.0.1' && $socialRow['parent'] === null );
+	check( '...the key that is none is ignored: no record for it and no error', count( $given ) === 2 && array_diff( array_column( $given, 'purpose' ), \Crm\Records::PURPOSES ) === [] );
+	$shownJson = (array) json_decode( (string) $order0['shown'], true );
+	check( '...the record of the order holds the sentences of the boxes the page showed, as JSON: consents, purpose by purpose', ( $shownJson['consents'] ?? null ) === [ 'social' => $social, 'archive' => $archive ] );
+	$ordered0 = portalMailsFrom( $mailFrom );
+	check( '...the mail to the owner and the confirmation to the account say what was consented to, one sentence for each', count( $ordered0 ) === 2 && substr_count( $ordered0[0]['body'], $sentenceOf( 'order.owner.consent', 'social' ) ) === 1 && substr_count( $ordered0[0]['body'], $sentenceOf( 'order.owner.consent', 'archive' ) ) === 1
+		&& substr_count( $ordered0[1]['body'], $sentenceOf( 'order.confirm.consent', 'social' ) ) === 1 && substr_count( $ordered0[1]['body'], $sentenceOf( 'order.confirm.consent', 'archive' ) ) === 1 && str_contains( $ordered0[0]['body'], '[[' ) === false && str_contains( $ordered0[1]['body'], '[[' ) === false );
+
+	// without a ticked box, and the box that is not offered
+	$offerOne = $mkOffer( 'Ohne Haken', [ 'project' => $p1 ] );
+	$reset();
+	$mailFrom = count( $mails );
+	$none = $postOrder( $offerOne, [ 'consent' => [ 'social' => '' ] ] );
+	$plainMails = portalMailsFrom( $mailFrom );
+	check( 'an order with the boxes not ticked is an order and nothing else: no record of a consent, no sentence about one in the mails - the order does not need them', str_contains( $location( $none ), 'state=ordered' ) === true && \Crm\Records::forDocument( $appData, $offerOne['id'] ) !== null && count( $recordsOf( $a['id'], 'consent' ) ) === 2
+		&& count( $plainMails ) === 2 && str_contains( $plainMails[0]['body'], $word( 'social' ) ) === false && str_contains( $plainMails[1]['body'], $word( 'social' ) ) === false
+		&& str_contains( $plainMails[0]['body'], (string) strstr( \Crm\Documents\Mail::text( 'order.owner.consent' ), '%s', true ) ) === false && str_contains( $plainMails[1]['body'], (string) strstr( \Crm\Documents\Mail::text( 'order.confirm.consent' ), '%s', true ) ) === false );
+	$asAdmin();
+	\Crm\Settings::set( $appData, 'consent_archive', '' );
+	portalSignIn( $appData, $accounts['anna'] );
+	$offerTwo = $mkOffer( 'Fremder Zweck', [ 'project' => $p1 ] );
+	$reset();
+	$foreign = $postOrder( $offerTwo, [ 'consent' => [ 'archive' => '1', 'bogus' => '1', 'social' => '1' ] ] );
+	check( 'a key of consent for a purpose that has no sentence, one that is none and a ticked box all in one post: the purpose with a sentence is given, the others are ignored without an error', str_contains( $location( $foreign ), 'state=ordered' ) === true && array_column( $recordsOf( $a['id'], 'consent' ), 'purpose' ) === [ 'social', 'archive', 'social' ] && $recordsOf( $a['id'], 'consent' )[0]['document_id'] === $offerTwo['id'] );
+	$offerThree = $mkOffer( 'Kein Feld', [ 'project' => $p1 ] );
+	$reset();
+	$asString = $postOrder( $offerThree, [ 'consent' => 'social' ] );
+	check( '...a consent that is no list is nothing either', str_contains( $location( $asString ), 'state=ordered' ) === true && count( $recordsOf( $a['id'], 'consent' ) ) === 3 );
+
+	$pUe = $made( 'Aus der Übersicht', $a['number'], [], false );
+	$offerUe = $mkOffer( 'Übersicht bestellt', [ 'project' => $pUe ] );
+	$reset();
+	$fromOverview = $postOrder( $offerUe, [ 'from' => 'uebersicht', 'consent' => [ 'social' => '1' ] ] );
+	check( 'an order from the tab Übersicht with a box ticked is the order and the consent, and the answer goes back to that tab', str_contains( $location( $fromOverview ), 'tab=uebersicht' ) === true && str_contains( $location( $fromOverview ), 'state=ordered' ) === true && \Crm\Records::forDocument( $appData, $offerUe['id'] ) !== null && ( \Crm\Records::consent( $appData, $a['id'], 'social', $pUe )['document_id'] ?? 0 ) === $offerUe['id'] );
+	// a sentence that changed between the form and the post
+	$asAdmin();
+	\Crm\Settings::set( $appData, 'consent_social', 'Neuer Satz.' );
+	portalSignIn( $appData, $accounts['anna'] );
+	$offerFour = $mkOffer( 'Satz geändert', [] );
+	$stalePage = portalPage( $appData, '/portal/belege' )[1];
+	$staleHash = portalFind( $stalePage, '(//form[@data-document="'. $offerFour['id']. '"])[1]//input[@name="shown"]/@value' )[0]->nodeValue;
+	$asAdmin();
+	\Crm\Settings::set( $appData, 'consent_social', 'Noch ein Satz.' );
+	portalSignIn( $appData, $accounts['anna'] );
+	$reset();
+	$consentsBeforeChange = count( $recordsOf( $a['id'], 'consent' ) );
+	$changed = portalServe( $appData, '/.crm/auftrag', 'POST', [ 'document' => (string) $offerFour['id'], 'from' => 'projekt', 'agree' => '1', 'shown' => $staleHash, 'consent' => [ 'social' => '1' ] ] );
+	check( 'a sentence the owner changed between the form and the post answers ?state=changed: no order, no consent, the offer as it was - and the sentence that was given earlier keeps its words', str_contains( $location( $changed ), 'state=changed' ) === true && \Crm\Records::forDocument( $appData, $offerFour['id'] ) === null && count( $recordsOf( $a['id'], 'consent' ) ) === $consentsBeforeChange
+		&& Documents::get( $appData, $offerFour['id'] )['state'] !== 'accepted' && array_values( array_filter( $recordsOf( $a['id'], 'consent' ), static fn( array $row ): bool => $row['document_id'] === $offer0['id'] && $row['purpose'] === 'social' ) )[0]['shown'] === $social );
+	$asAdmin();
+	\Crm\Settings::set( $appData, 'consent_social', $social );
+	\Crm\Settings::set( $appData, 'consent_archive', $archive );
+	portalSignIn( $appData, $accounts['anna'] );
+
+	// one transaction
+	$pAtomic = $made( 'Atomar', $a['number'], [], false );
+	$offerAtomic = $mkOffer( 'Atomar', [ 'project' => $pAtomic ] );
+	$clientNow = (array) \Crm\Clients::get( $appData, $a['id'] );
+	$ordersBefore = count( $recordsOf( $a['id'], 'order' ) );
+	$consentsBefore = count( $recordsOf( $a['id'], 'consent' ) );
+	$memberOf = [ 'id' => $accounts['anna']['id'], 'email' => 'anna@example.org', 'name' => 'Anna Nord' ];
+	Db::pdo( $appData )->exec( 'CREATE TRIGGER refuse_archive BEFORE INSERT ON records WHEN NEW.kind = \'consent\' AND NEW.purpose = \'archive\' BEGIN SELECT RAISE( ABORT, \'refused\' ); END' );
+	$thrown = false;
+
+	try {
+		Documents::order( $appData, $offerAtomic['id'], $a['id'], $memberOf, 'Satz', [ 'ip' => '', 'agent' => '' ], [ 'social' => $social, 'archive' => $archive ], [ 'social', 'archive' ] );
+	}
+	catch( \PDOException $e ) {
+		$thrown = true;
+	}
+
+	Db::pdo( $appData )->exec( 'DROP TRIGGER refuse_archive' );
+	check( 'the order and its consents are one transaction: when the second consent cannot be written there is no order, no first consent and the offer is as it was', $thrown === true && count( $recordsOf( $a['id'], 'order' ) ) === $ordersBefore && count( $recordsOf( $a['id'], 'consent' ) ) === $consentsBefore
+		&& Documents::get( $appData, $offerAtomic['id'] )['state'] === $offerAtomic['state'] && \Crm\Records::forDocument( $appData, $offerAtomic['id'] ) === null );
+	$clean = Documents::order( $appData, $offerAtomic['id'], $a['id'], $memberOf, 'Satz', [ 'ip' => '', 'agent' => '' ], [ 'social' => $social, 'archive' => $archive ], [ 'social' ] );
+	check( '...and the same call without the failure makes both: the order, the one consent that was ticked', is_array( $clean ) && count( $clean['consents'] ) === 1 && $clean['consents'][0]['purpose'] === 'social' && count( $recordsOf( $a['id'], 'consent' ) ) === $consentsBefore + 1 && count( $recordsOf( $a['id'], 'order' ) ) === $ordersBefore + 1 );
+
+	$offerRace = $mkOffer( 'Zweite Einwilligung', [ 'project' => $pAtomic ] );
+	$consentsHeld = count( $recordsOf( $a['id'], 'consent' ) );
+	$race = Documents::order( $appData, $offerRace['id'], $a['id'], $memberOf, 'Satz', [ 'ip' => '', 'agent' => '' ], [ 'social' => $social ], [ 'social' ] );
+	check( '...a consent that the client holds for the project already is not made again inside the transaction, whatever the form offered: the order is made, the consent is not', is_array( $race ) && $race['consents'] === [] && count( $recordsOf( $a['id'], 'consent' ) ) === $consentsHeld && \Crm\Records::forDocument( $appData, $offerRace['id'] ) !== null );
+	$pEmpty = $made( 'Leerer Satz', $a['number'], [], false );
+	$offerEmpty = $mkOffer( 'Box ohne Satz', [ 'project' => $pEmpty ] );
+	$emptySentence = Documents::order( $appData, $offerEmpty['id'], $a['id'], $memberOf, 'Satz', [ 'ip' => '', 'agent' => '' ], [ 'social' => '' ], [ 'social' ] );
+	check( 'a box that was offered with no sentence is no consent: the whole order is refused as shown, nothing is kept and the offer is as it was', $emptySentence === 'shown' && \Crm\Records::forDocument( $appData, $offerEmpty['id'] ) === null && Documents::get( $appData, $offerEmpty['id'] )['state'] !== 'accepted' && \Crm\Records::consent( $appData, $a['id'], 'social', $pEmpty ) === null );
+	$offerNotOffered = $mkOffer( 'Zweck nicht angeboten', [ 'project' => $pEmpty ] );
+	$consentsHeld = count( $recordsOf( $a['id'], 'consent' ) );
+	$notOffered = Documents::order( $appData, $offerNotOffered['id'], $a['id'], $memberOf, 'Satz', [ 'ip' => '', 'agent' => '' ], [], [ 'social', 'archive' ] );
+	check( '...and a purpose that was ticked but never offered makes no consent, whatever is handed over: the order is made, no record of a consent is kept', is_array( $notOffered ) && $notOffered['consents'] === [] && count( $recordsOf( $a['id'], 'consent' ) ) === $consentsHeld && \Crm\Records::forDocument( $appData, $offerNotOffered['id'] ) !== null );
+
+	// who holds a consent has no box for it again
+	$offerP1 = $mkOffer( 'Zweiter im Projekt', [ 'project' => $p1 ] );
+	$offerNoProject = $mkOffer( 'Ohne Projekt', [] );
+	$page = $formPage( $p1 );
+	check( 'a client that holds a consent for the project has no box for that purpose under another offer of the project - the other purpose still has its box', array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'name' ), $boxes( $page, $offerP1['id'] ) ) === [ 'consent[archive]' ]
+		&& \Crm\Records::consent( $appData, $a['id'], 'social', $p1 ) !== null && \Crm\Records::consent( $appData, $a['id'], 'archive', $p1 ) === null );
+	$listPage = portalPage( $appData, '/portal/belege' )[1];
+	check( '...an offer without a project has its boxes: the consent for a project is not the consent for all of them', array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'name' ), portalFind( $listPage, '//li[@data-document="'. $offerNoProject['id']. '"]//input[starts-with(@name, "consent[")]' ) ) === [ 'consent[social]', 'consent[archive]' ] );
+	$reset();
+	$noProject = $postOrder( $offerNoProject, [ 'from' => 'belege', 'consent' => [ 'social' => '1' ] ] );
+	$wide = array_values( array_filter( $recordsOf( $a['id'], 'consent' ), static fn( array $row ): bool => $row['document_id'] === $offerNoProject['id'] ) );
+	$offerNoProject2 = $mkOffer( 'Ohne Projekt, zweiter', [] );
+	check( '...ordered, the consent holds for the client and has no project; a second offer without one has no box for the purpose any more', str_contains( $location( $noProject ), 'state=ordered' ) === true && count( $wide ) === 1 && $wide[0]['project'] === ''
+		&& \Crm\Records::consent( $appData, $a['id'], 'social', '' ) !== null && array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'name' ), portalFind( portalPage( $appData, '/portal/belege' )[1], '//li[@data-document="'. $offerNoProject2['id']. '"]//input[starts-with(@name, "consent[")]' ) ) === [ 'consent[archive]' ] );
+
+	$pWide = $made( 'Ohne Einwilligung', $a['number'], [], false );
+	$offerWide = $mkOffer( 'Im dritten Projekt', [ 'project' => $pWide ] );
+	check( 'a consent for all projects holds for every project of its client: the offer of a project the client never consented to has no box for that purpose, and still has the box of the other', array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'name' ), $boxes( $formPage( $pWide ), $offerWide['id'] ) ) === [ 'consent[archive]' ] && ( \Crm\Records::consent( $appData, $a['id'], 'social', $pWide )['id'] ?? 0 ) === $wide[0]['id'] && \Crm\Records::consent( $appData, $a['id'], 'archive', $pWide ) === null );
+
+	// the card after the order
+	$cardPage = $formPage( $pConsent );
+	$lines = portalFind( $cardPage, '//details[@data-document="'. $offer0['id']. '"]//p[contains(@class, "crm-order--consent")]' );
+	check( 'the card of an offer that was ordered with consents says which: a line for each purpose, with the day and the account, and where they are taken back', count( $lines ) === 2 && array_map( static fn( \DOMElement $line ): string => $line->getAttribute( 'data-purpose' ), $lines ) === [ 'social', 'archive' ]
+		&& portalFind( $cardPage, '//details[@data-document="'. $offer0['id']. '"]//p[contains(@class, "crm-order--consent")]//time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' ) && portalText( $cardPage, '//details[@data-document="'. $offer0['id']. '"]//p[contains(@class, "crm-order--consent")][1]//span[@class="crm-order__who"]' ) === 'Anna Nord'
+		&& portalFind( $cardPage, '//details[@data-document="'. $offer0['id']. '"]//p[contains(@class, "crm-order--hint")]//a[@href="/portal/meine-daten#crm-consents"]' ) !== [] );
+	check( '...a consent that holds is said in the tone of success with the icon of a check', count( portalFind( $cardPage, '//details[@data-document="'. $offer0['id']. '"]//p[contains(@class, "crm-order--consent")][contains(@class, "crm-note--success")][@data-state="given"]//svg[contains(@class, "crm-icon--check")]' ) ) === 2 );
+	check( '...an offer ordered without a consent has no such line and no hint', portalFind( $formPage( $p1 ), '//details[@data-document="'. $offerOne['id']. '"]//p[contains(@class, "crm-order--consent") or contains(@class, "crm-order--hint")]' ) === [] && portalFind( $formPage( $p1 ), '//details[@data-document="'. $offerOne['id']. '"]//p[contains(@class, "crm-order--done")]' ) !== [] );
+
+	// Meine Daten
+	$data = portalPage( $appData, '/portal/meine-daten' )[1];
+	$rows = portalFind( $data, '//section[@id="crm-consents"]//li[contains(@class, "crm-consent")]' );
+	$firstIds = array_map( static fn( \DOMElement $row ): string => $row->getAttribute( 'data-id' ), $rows );
+	$expected = array_map( 'strval', array_column( \Crm\Records::consents( $appData, $a['id'] ), 'id' ) );
+	check( 'Meine Daten has the block Einwilligungen under the Datenschutz when the client holds a consent: a row for each, the newest first', count( $rows ) === count( $expected ) && $firstIds === $expected && portalFind( $data, '//section[@id="crm-consents"]/preceding-sibling::section[contains(@class, "crm-data__privacy")] | //section[@id="crm-consents"]/preceding-sibling::*' ) !== []
+		&& trim( portalText( $data, '//section[@id="crm-consents"]//p[contains(@class, "crm-data__consents-hint")]' ) ) !== '' );
+	\Crm\Settings::set( $appData, 'privacy_text', 'Der Text der Datenschutzerklärung.' );
+	\Crm\Records::add( $appData, [ 'kind' => 'privacy', 'client_id' => $a['id'], 'member' => [ 'id' => $accounts['anna']['id'], 'email' => 'anna@example.org', 'name' => 'Anna Nord' ], 'shown' => 'Der Text der Datenschutzerklärung.' ] );
+	$withPrivacy = portalPage( $appData, '/portal/meine-daten' )[1];
+	\Crm\Settings::set( $appData, 'privacy_text', '' );
+	check( '...the block stands after the block Datenschutzerklärung and before nothing of the page', portalFind( $withPrivacy, '//section[contains(@class, "crm-data__privacy")]/following-sibling::section[@id="crm-consents"]' ) !== [] && portalFind( $withPrivacy, '//section[@id="crm-consents"]/following-sibling::*' ) === [] );
+	$rowSocial = portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]' );
+	check( '...a row has the purpose, the project as a link to its page (the title is text), when and by whom, the sentence in a fold as text, and the button', count( $rowSocial ) === 1 && $rowSocial[0]->getAttribute( 'data-purpose' ) === 'social' && $rowSocial[0]->getAttribute( 'data-state' ) === 'given'
+		&& portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//a[@href="/portal/projekte?projekt='. $pConsent. '"]' ) !== [] && str_contains( portalText( $data, '//li[@data-id="'. $socialRow['id']. '"]//a' ), 'Einwilligung <b>Projekt</b> [members-name]' ) === true
+		&& portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' ) && portalText( $data, '//li[@data-id="'. $socialRow['id']. '"]//span[@class="crm-consent__who"]' ) === 'Anna Nord'
+		&& portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//details//p' ) !== [] && portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//details//b' ) === [] && str_contains( portalText( $data, '//li[@data-id="'. $socialRow['id']. '"]//details//p' ), '[crm-client] [[/project/company/general/name]] & mehr' ) === true && str_contains( $data, '[crm-client]' ) === false );
+	$button = portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//form' );
+	check( '...the button is a form that posts the id of the consent with the token to /.crm/einwilligung/widerruf, a plain button with no box to tick and no question', count( $button ) === 1 && $button[0]->getAttribute( 'method' ) === 'post' && $button[0]->getAttribute( 'action' ) === '/.crm/einwilligung/widerruf'
+		&& portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//form//input[@name="id"]/@value' )[0]->nodeValue === (string) $socialRow['id'] && portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//form//input[@name="_csrf"]/@value' )[0]->nodeValue === \Nino\Csrf::getToken( $appData )
+		&& portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//form//button[@type="submit"]/svg[contains(@class, "crm-icon")][@aria-hidden="true"]' ) !== [] && portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//form//input[@type="checkbox"]' ) === [] && portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//form//button[@onclick]' ) === [] );
+	check( '...the button is neutral, a secondary button and no primary one: taking a consent back is no call to act', portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//form//button[contains(@class, "crm-btn--secondary")]' ) !== [] && portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//form//button[contains(@class, "crm-btn--primary")]' ) === [] );
+	$css = (string) file_get_contents( dirname( __DIR__, 3 ). '/app/Crm/Portal/assets/portal.css' );
+	check( '...the sentence of the owner is an isolate for the direction of its letters, in the box and in the fold, so that a mark that turns a line round does not turn the page - and the page carries the sentence in the element the rule names', preg_match( '/\.crm-order__text,\s*\.crm-consent__sentence\s*\{[^}]*unicode-bidi:\s*isolate/', $css ) === 1
+		&& portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//details//p[contains(@class, "crm-consent__sentence")]' ) !== [] && portalFind( $formPage( $p1 ), '//span[contains(@class, "crm-order__text")]' ) !== [] );
+	$wideRow = portalFind( $data, '//li[@data-id="'. $wide[0]['id']. '"]' );
+	check( '...a consent without a project says so and links nowhere', count( $wideRow ) === 1 && portalFind( $data, '//li[@data-id="'. $wide[0]['id']. '"]//p[contains(@class, "crm-consent__head")]//a' ) === [] );
+	portalSignIn( $appData, $accounts['ben'] );
+	check( '...a client with no consent has no block', portalFind( portalPage( $appData, '/portal/meine-daten' )[1], '//section[@id="crm-consents"]' ) === [] && str_contains( portalPage( $appData, '/portal/meine-daten' )[1], 'crm-consent' ) === false );
+	portalSignIn( $appData, $accounts['anna'] );
+	$start = portalPage( $appData, '/portal' )[1];
+	check( '...the start page does not change by it: it names no consent and has no box and no button of one', str_contains( $start, 'crm-consent' ) === false && portalFind( $start, '//*[@data-purpose]') === [] && portalFind( $start, '//form[contains(@action, "einwilligung")]' ) === [] );
+
+	// the route
+	$asVisitor();
+	$revokeFrom = count( $mails );
+	$send = static function( array $post, array $server = [] ) use ( &$appData ): array {
+		return portalServe( $appData, '/.crm/einwilligung/widerruf', 'POST', $post, $server );
+	};
+	$revocations = static function() use ( &$appData ): int {
+		return count( \Crm\Db::rows( $appData, 'SELECT id FROM records WHERE kind = \'revocation\'' ) );
+	};
+	check( 'a visitor posting the button is answered 404, and nothing is kept', $send( [ 'id' => (string) $socialRow['id'] ] )['statusCode'] === 404 && $revocations() === 0 );
+	portalSignIn( $appData, $stray );
+	check( '...so is a member of no client', $send( [ 'id' => (string) $socialRow['id'] ] )['statusCode'] === 404 && $revocations() === 0 );
+	portalSignIn( $appData, $accounts['anna'] );
+	$page = '/portal/meine-daten?state=%s&consent=1#crm-consents';
+	check( '...a token that is not the session\'s is ?state=expired, back to the block, and nothing is kept', $location( $send( [ 'id' => (string) $socialRow['id'], '_csrf' => 'wrong' ] ) ) === sprintf( $page, 'expired' ) && $revocations() === 0 );
+	$benConsent = \Crm\Records::add( $appData, [ 'kind' => 'consent', 'client_id' => $b['id'], 'member' => [ 'id' => $accounts['ben']['id'], 'email' => 'ben@example.org', 'name' => 'Ben Süd' ], 'purpose' => 'social', 'shown' => 'Bens Satz', 'project' => '' ] );
+	$orderRecordId = (int) \Crm\Records::forDocument( $appData, $offer0['id'] )['id'];
+	$invalid = [ 'a consent of another client' => (string) $benConsent['id'], 'the id of a record that is no consent' => (string) $orderRecordId, 'an id that is not there' => '99999', 'an id that is no number' => '1; DROP TABLE records', 'no id' => '', 'an id with zeros' => '0'. $socialRow['id'] ];
+	$answers = [];
+
+	foreach( $invalid as $why => $id )
+		$answers[$why] = $location( $send( [ 'id' => $id ] ) ) === sprintf( $page, 'invalid' ) && $revocations() === 0;
+
+	$answers['a list as the id'] = $location( $send( [ 'id' => [ (string) $socialRow['id'] ] ] ) ) === sprintf( $page, 'invalid' ) && $revocations() === 0;
+	check( '...an id that is not a consent of this client is ?state=invalid, whatever it is: another client\'s consent, an order, an id that is not there, text, nothing, a list - and nothing is kept', array_keys( array_filter( $answers, static fn( bool $same ): bool => $same === false ) ) === [] );
+	$reset();
+	$beforeGone = count( $mails );
+	$gone = $send( [ 'id' => (string) $socialRow['id'] ], [ 'HTTP_USER_AGENT' => 'Browser/2.0 (Widerruf)' ] );
+	$revocation = \Crm\Db::row( $appData, 'SELECT * FROM records WHERE kind = \'revocation\'' ) ?? [];
+	$ownerMails = $consentMails( $beforeGone );
+	$clientTitle = (string) \Crm\Clients::get( $appData, $a['id'] )['number']. ' '. (string) \Crm\Clients::get( $appData, $a['id'] )['title'];
+	check( 'the revocation is ?state=revoked, back to the block, and one record of kind revocation: the consent as its parent, its purpose, its project and its sentence, the account that revoked, the time, the address and the browser', $location( $gone ) === sprintf( $page, 'revoked' ) && $revocations() === 1 && (int) $revocation['parent'] === $socialRow['id'] && $revocation['purpose'] === 'social' && $revocation['project'] === $pConsent
+		&& $revocation['shown'] === $social && $revocation['sha256'] === hash( 'sha256', $social ) && (int) $revocation['client_id'] === $a['id'] && $revocation['member_id'] === $accounts['anna']['id'] && $revocation['agent'] === 'Browser/2.0 (Widerruf)' && $revocation['ip'] === '127.0.0.1' && $revocation['document_id'] === null );
+	check( '...it revokes for the future and deletes nothing: the consent is as it was, with the record beside it - and holds no more', \Crm\Db::row( $appData, 'SELECT * FROM records WHERE id = :id', [ 'id' => $socialRow['id'] ] )['shown'] === $social && ( \Crm\Records::consent( $appData, $a['id'], 'social', $pConsent )['id'] ?? 0 ) === $wide[0]['id'] && count( $recordsOf( $a['id'], 'consent' ) ) === $consentsBefore + 2
+		&& array_values( array_filter( \Crm\Records::consents( $appData, $a['id'] ), static fn( array $row ): bool => $row['id'] === $socialRow['id'] ) )[0]['revoked']['id'] === (int) $revocation['id'] );
+	$mail = $ownerMails[0] ?? [];
+	check( '...the owner is mailed, once: "Einwilligung widerrufen: <purpose>, Projekt <id and title>, Kunde <number and title> durch <account>", the reply to the account, a link to the card of the project - and the account gets none', count( $ownerMails ) === 1 && count( portalMailsFrom( $beforeGone ) ) === 1 && ( $mail['to'] ?? '' ) === 'owner@example.org' && ( $mail['replyTo'] ?? '' ) === 'anna@example.org'
+		&& ( $mail['subject'] ?? '' ) === \Crm\Documents\Mail::text( 'revocation.owner.subject', $word( 'social' ), $pConsent. ' Einwilligung <b>Projekt</b> [members-name]', $clientTitle, 'Anna Nord' )
+		&& str_contains( $mail['body'], 'href="https://example.org/club/crm#projekt-'. $pConsent. '"' ) === true && str_contains( $mail['body'], '&lt;b&gt;Projekt&lt;/b&gt;' ) === true && str_contains( $mail['body'], '<b>Projekt' ) === false && str_contains( $mail['body'], '[[' ) === false && str_contains( $mail['body'], 'anna@example.org' ) === true );
+	$reset();
+	$beforeName = count( $mails );
+	\Crm\Documents\Mail::revoked( $appData, [ 'purpose' => 'social', 'project' => '', 'member_name' => "Anna\nBcc: x\u{202E}Rev", 'member_email' => 'anna@example.org' ], (array) \Crm\Clients::get( $appData, $a['id'] ) );
+	$nameMail = $consentMails( $beforeName )[0] ?? [];
+	check( '...the name of the account is one line in the subject: a line break and a mark that turns the text round are blanks - there is no second header in it', $nameMail !== [] && preg_match( '/[\r\n\x{202E}]/u', (string) $nameMail['subject'] ) === 0 && str_contains( $nameMail['subject'], 'Anna Bcc: x Rev' ) === true );
+	$reset();
+	$beforeBogus = count( $mails );
+	$bogusThrown = false;
+
+	try {
+		\Crm\Documents\Mail::ordered( $appData, (array) Documents::get( $appData, $offer0['id'] ), (array) \Crm\Records::forDocument( $appData, $offer0['id'] ), (array) \Crm\Clients::get( $appData, $a['id'] ), [ [ 'purpose' => 'bogus' ], [ 'purpose' => 'social' ] ] );
+	}
+	catch( \Throwable $e ) {
+		$bogusThrown = true;
+	}
+
+	$bogusMails = portalMailsFrom( $beforeBogus );
+	check( '...the mails about an order say a sentence for the purposes there are and skip a record that names none - they do not stop', $bogusThrown === false && count( $bogusMails ) === 2 && substr_count( $bogusMails[0]['body'], $sentenceOf( 'order.owner.consent', 'social' ) ) === 1 );
+	$beforeAgain = count( $mails );
+	$again = $send( [ 'id' => (string) $socialRow['id'] ] );
+	check( 'a second revocation of the same consent is ?state=invalid: no second record, no mail', $location( $again ) === sprintf( $page, 'invalid' ) && $revocations() === 1 && count( portalMailsFrom( $beforeAgain ) ) === 0 );
+	check( '...the table refuses a second record that names the consent, whatever the code says', ( static function() use ( &$appData, $socialRow, $a ): bool {
+		try {
+			Db::exec( $appData, 'INSERT INTO records ( kind, client_id, member_id, sha256, shown, at, purpose, parent ) VALUES ( \'revocation\', :c, \'x\', \'x\', \'x\', \'x\', \'social\', :p )', [ 'c' => $a['id'], 'p' => $socialRow['id'] ] );
+			return false;
+		}
+		catch( \PDOException $e ) {
+			return true;
+		}
+	} )() === true && $revocations() === 1 );
+	check( '...and the consent that a revocation names is not deleted', ( static function() use ( &$appData, $socialRow ): bool {
+		try {
+			Db::exec( $appData, 'DELETE FROM records WHERE id = :id', [ 'id' => $socialRow['id'] ] );
+			return false;
+		}
+		catch( \PDOException $e ) {
+			return true;
+		}
+	} )() === true );
+
+	// the page after it
+	$data = portalPage( $appData, '/portal/meine-daten' )[1];
+	$rowGone = portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]' );
+	check( 'Meine Daten says the consent was revoked, when and by whom, in a pill, and has no button for it any more - the button stays at the others', $rowGone[0]->getAttribute( 'data-state' ) === 'revoked' && portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//form' ) === [] && portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//p[contains(@class, "crm-consent__revoked")]//span[contains(@class, "crm-pill--muted")]' ) !== []
+		&& portalFind( $data, '//li[@data-id="'. $socialRow['id']. '"]//p[contains(@class, "crm-consent__revoked")]//time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' ) && portalFind( $data, '//li[@data-id="'. $wide[0]['id']. '"]//form' ) !== [] );
+	check( '...a state of the query with consent=1 is said in the block - revoked as a status, invalid and expired as an alert - and not above the form; a state of the form is not said in the block', portalFind( portalPage( $appData, '/portal/meine-daten?state=revoked&consent=1' )[1], '//section[@id="crm-consents"]//p[@role="status"][contains(@class, "crm-consent__state--revoked")]' ) !== []
+		&& portalFind( portalPage( $appData, '/portal/meine-daten?state=invalid&consent=1' )[1], '//section[@id="crm-consents"]//p[@role="alert"][contains(@class, "crm-consent__state--invalid")]' ) !== [] && portalFind( portalPage( $appData, '/portal/meine-daten?state=expired&consent=1' )[1], '//section[@id="crm-consents"]//p[@role="alert"]' ) !== []
+		&& portalFind( portalPage( $appData, '/portal/meine-daten?state=expired&consent=1' )[1], '//form[contains(@class, "crm-data__form")]//p[contains(@class, "crm-data__state")]' ) === [] && portalFind( portalPage( $appData, '/portal/meine-daten?state=expired' )[1], '//form[contains(@class, "crm-data__form")]//p[contains(@class, "crm-data__state")]' ) !== []
+		&& portalFind( portalPage( $appData, '/portal/meine-daten?state=expired' )[1], '//section[@id="crm-consents"]//p[contains(@class, "crm-consent__state")]' ) === [] && portalFind( portalPage( $appData, '/portal/meine-daten?state=bogus&consent=1' )[1], '//p[contains(@class, "crm-consent__state")]' ) === [] );
+	$offerAfter = $mkOffer( 'Nach dem Widerruf', [ 'project' => $pConsent ] );
+	check( 'a consent for all projects holds for the project the consent for it was taken back from: the next offer of the project has no box for the purpose', $boxes( $formPage( $pConsent ), $offerAfter['id'] ) === [] );
+	$lineGone = portalFind( $formPage( $pConsent ), '//details[@data-document="'. $offer0['id']. '"]//p[contains(@class, "crm-order--consent")][@data-purpose="social"]' );
+	check( '...and the card of the offer the consent was given with says it was revoked', count( $lineGone ) === 1 && $lineGone[0]->getAttribute( 'data-state' ) === 'revoked' );
+	check( '...in the tone of an info note, not of a success, with the icon of a cross', $lineGone[0]->getAttribute( 'class' ) !== '' && str_contains( $lineGone[0]->getAttribute( 'class' ), 'crm-note--info' ) === true && str_contains( $lineGone[0]->getAttribute( 'class' ), 'crm-note--success' ) === false && portalFind( $formPage( $pConsent ), '//details[@data-document="'. $offer0['id']. '"]//p[contains(@class, "crm-order--consent")][@data-state="revoked"]//svg[contains(@class, "crm-icon--x")]' ) !== [] );
+
+	// the revocation of the consent without a project; the mail, the caps and the missing address
+	$reset();
+	$mailsAt = count( $mails );
+	$wideGone = $send( [ 'id' => (string) $wide[0]['id'] ] );
+	$wideMail = $consentMails( $mailsAt )[0] ?? [];
+	check( 'a consent that is not for a project: the mail says all projects and links to the card of the client', $location( $wideGone ) === sprintf( $page, 'revoked' ) && ( $wideMail['subject'] ?? '' ) === \Crm\Documents\Mail::text( 'revocation.owner.subject', $word( 'social' ), \Crm\Documents\Mail::text( 'revocation.owner.all' ), $clientTitle, 'Anna Nord' ) && str_contains( $wideMail['body'] ?? '', 'href="https://example.org/club/crm#kunde-'. $a['id']. '"' ) === true );
+	check( 'once the consent for all projects is taken back too, the next offer of the project asks again: the box of the purpose is back', in_array( 'consent[social]', array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'name' ), $boxes( $formPage( $pConsent ), $offerAfter['id'] ) ), true ) === true );
+	$archiveRow = array_values( array_filter( $recordsOf( $a['id'], 'consent' ), static fn( array $row ): bool => $row['purpose'] === 'archive' ) )[0];
+	$reset();
+	$GLOBALS['delivery'] = false;
+	$ignored = ninoWarnings();
+	$failed = $send( [ 'id' => (string) $archiveRow['id'] ] );
+	$GLOBALS['delivery'] = true;
+	check( 'a mail the transport refuses does not undo the revocation: ?state=nomail, the record is kept and the log has a line', $location( $failed ) === sprintf( $page, 'nomail' ) && \Crm\Records::consent( $appData, $a['id'], 'archive', (string) $archiveRow['project'] ) === null && $revocations() === 3 && implode( ' ', ninoWarnings() ) !== '' );
+	check( '...and the page says it as a status, once', count( portalFind( portalPage( $appData, '/portal/meine-daten?state=nomail&consent=1' )[1], '//p[@role="status"][contains(@class, "crm-consent__state--nomail")]' ) ) === 1 );
+	$cardAfter = $formPage( $pConsent );
+	check( '...the card of the offer the consents were given with says both were revoked and, with none that holds, has no hint that the revocation stands under Meine Daten', count( portalFind( $cardAfter, '//details[@data-document="'. $offer0['id']. '"]//p[contains(@class, "crm-order--consent")][@data-state="revoked"]' ) ) === 2
+		&& portalFind( $cardAfter, '//details[@data-document="'. $offer0['id']. '"]//p[contains(@class, "crm-order--consent")][@data-state="given"]' ) === [] && portalFind( $cardAfter, '//details[@data-document="'. $offer0['id']. '"]//p[contains(@class, "crm-order--hint")]' ) === [] );
+	$left = array_values( array_filter( \Crm\Records::consents( $appData, $a['id'] ), static fn( array $row ): bool => $row['revoked'] === null ) );
+	\Nino\Html::addFills( $appData, [ '[[/project/website/general/url]]' => '' ], '*' );
+	$ignored = ninoWarnings();
+	$reset();
+	$quiet = $send( [ 'id' => (string) $left[0]['id'] ] );
+	\Nino\Html::addFills( $appData, [ '[[/project/website/general/url]]' => 'example.org/club' ], '*' );
+	check( 'a site with no address has no link for the mail: the revocation is kept all the same and the page promises nothing but that', $location( $quiet ) === sprintf( $page, 'nomail' ) && $revocations() === 4 && str_contains( implode( ' ', ninoWarnings() ), 'revocation' ) === true );
+
+	// the gate
+	$left = array_values( array_filter( \Crm\Records::consents( $appData, $a['id'] ), static fn( array $row ): bool => $row['revoked'] === null ) );
+	check( 'Anna holds a consent that no revocation names, for the gate to hold back', count( $left ) >= 1 );
+	$asAdmin();
+	\Crm\Settings::set( $appData, 'privacy_text', 'Ein neuer Text der Datenschutzerklärung.' );
+	portalSignIn( $appData, $accounts['anna'] );
+	$reset();
+	$gated = $send( [ 'id' => (string) $left[0]['id'] ] );
+	check( 'while the Datenschutz is the step that is pending the revocation is not made: the member is sent to the step, nothing is kept and nobody is mailed', str_starts_with( $location( $gated ), '/portal/datenschutz' ) === true && $revocations() === 4 && \Crm\Records::consent( $appData, $a['id'], $left[0]['purpose'], (string) $left[0]['project'] ) !== null );
+	$asAdmin();
+	\Crm\Settings::set( $appData, 'privacy_text', '' );
+	portalSignIn( $appData, $accounts['anna'] );
+
+	// the step of the data is Meine Daten, where the button stands: it does not hold the revocation back
+	$dora = \Crm\Clients::add( $appData, [ 'name' => 'Dora Daten' ] );
+	$doraAccount = \Nino\Modules\Members::add( $appData, 'dora-konsens@example.org', 'Dora Daten', $dora['group'] );
+	\Crm\Clients::link( $appData, $dora['id'], $doraAccount['id'] );
+	$doraConsent = \Crm\Records::add( $appData, [ 'kind' => 'consent', 'client_id' => $dora['id'], 'member' => [ 'id' => $doraAccount['id'], 'email' => 'dora-konsens@example.org', 'name' => 'Dora Daten' ], 'purpose' => 'social', 'shown' => 'Doras Satz', 'project' => '' ] );
+	portalSignIn( $appData, $doraAccount );
+	$reset();
+	$beforeDora = count( $mails );
+	$doraPage = portalPage( $appData, '/portal/meine-daten' )[1];
+	$doraBefore = $revocations();
+	$doraPost = $send( [ 'id' => (string) $doraConsent['id'] ] );
+	check( 'a client whose step of the data is pending - the step is Meine Daten, where the block and the button stand - takes the consent back all the same: ?state=revoked, one record of kind revocation, the owner mailed', \Crm\Portal::pending( $appData, (array) \Crm\Clients::get( $appData, $dora['id'] ) ) === 'data'
+		&& portalFind( $doraPage, '//li[@data-id="'. $doraConsent['id']. '"]//form' ) !== [] && $location( $doraPost ) === sprintf( $page, 'revoked' ) && $revocations() === $doraBefore + 1 && \Crm\Records::consent( $appData, $dora['id'], 'social', '' ) === null && count( $consentMails( $beforeDora ) ) === 1 );
+	portalSignIn( $appData, $accounts['anna'] );
+
+	// a consent revoked by the class twice: the table and the check say the same
+	$left = array_values( array_filter( \Crm\Records::consents( $appData, $a['id'] ), static fn( array $row ): bool => $row['revoked'] === null ) );
+	$memberRow = [ 'id' => $accounts['anna']['id'], 'email' => 'anna@example.org', 'name' => 'Anna Nord' ];
+	check( 'Records::revoke is the one step: a consent that is revoked, is another client\'s or is none answers parent and keeps nothing', \Crm\Records::revoke( $appData, $a['id'], $socialRow['id'], $memberRow, [] ) === 'parent' && \Crm\Records::revoke( $appData, $b['id'], $left[0]['id'], $memberRow, [] ) === 'parent' && \Crm\Records::revoke( $appData, $a['id'], $orderRecordId, $memberRow, [] ) === 'parent' && $revocations() === $doraBefore + 1 );
+
+	// the page in English
+	$appData['./nino/locales/current'] = 'en_US';
+	$english = \Nino\Html::renderHtml( $appData, '[crm-client-data]' );
+	$appData['./nino/locales/current'] = 'de_DE';
+	check( 'Meine Daten in English has the block with the English words: the title, the purpose, the button and the pill of a revoked consent', portalText( $english, '//section[@id="crm-consents"]//h3' ) === $wordsEn['[[/project/crm-portal/consent/title]]'] && portalText( $english, '//section[@id="crm-consents"]//li[@data-purpose="social"]//strong' ) === $wordsEn['[[/project/crm-portal/consent/purpose-social]]']
+		&& portalText( $english, '//section[@id="crm-consents"]//li[@data-state="revoked"]//span[contains(@class, "crm-pill")]' ) === $wordsEn['[[/project/crm-portal/consent/revoked]]'] && $wordsEn['[[/project/crm-portal/consent/title]]'] !== $wordsDe['[[/project/crm-portal/consent/title]]'] && str_contains( $english, '[[' ) === false );
+
+	// the words and the route
+	$words = array_values( array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => str_starts_with( $key, '[[/project/crm-portal/consent/' ) ) );
+	check( 'the words of the consents are in German and English, none empty; the German is Du; each state of the route has its sentence', $words !== [] && array_diff( $words, array_keys( $wordsEn ) ) === [] && array_filter( $words, static fn( string $key ): bool => trim( $wordsDe[$key] ) === '' || trim( $wordsEn[$key] ) === '' ) === []
+		&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', array_map( static fn( string $key ): string => $wordsDe[$key], $words ) ) ) !== 1 && array_diff( array_map( static fn( string $state ): string => '[[/project/crm-portal/consent/state-'. $state. ']]', array_keys( \Crm\Portal\Consent::STATES ) ), $words ) === []
+		&& array_diff( array_map( static fn( string $purpose ): string => '[[/project/crm-portal/consent/purpose-'. $purpose. ']]', \Crm\Records::PURPOSES ), $words ) === [] && isset( $wordsDe['[[/project/crm-portal/order/optional]]'], $wordsEn['[[/project/crm-portal/order/optional]]'] ) === true );
+	check( '...the words of the mails are German with Du, one for each purpose', array_filter( [ 'order.owner.consent', 'order.confirm.consent', 'consent.purpose.social', 'consent.purpose.archive', 'revocation.owner.subject', 'revocation.owner.title', 'revocation.owner.intro', 'revocation.owner.purpose', 'revocation.owner.project', 'revocation.owner.all', 'revocation.owner.client', 'revocation.owner.account', 'revocation.owner.button.project', 'revocation.owner.button.client', 'revocation.owner.notice' ],
+		static fn( string $key ): bool => trim( \Crm\Documents\Mail::text( $key, 'x', 'x', 'x', 'x' ) ) === '' || preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', \Crm\Documents\Mail::text( $key, 'x', 'x', 'x', 'x' ) ) === 1 ) === [] );
+	check( '...the route is registered once and only for the POST', ( $appData['/nino/http/routes']['POST://.crm/einwilligung/widerruf']['uri'] ?? '' ) === \Crm\Portal\Consent::ROUTE && isset( $appData['/nino/http/routes']['GET://.crm/einwilligung/widerruf'] ) === false );
+
+	\Crm\Settings::set( $appData, 'privacy_text', $privacyWas );
+	\Crm\Settings::set( $appData, 'consent_social', '' );
+	\Crm\Settings::set( $appData, 'consent_archive', '' );
+}
+
+portalConsentChecks( $appData, $a, $b, $accounts, $stray, $p1, $today, $wordsDe, $wordsEn, $reset, $asAdmin, $asVisitor, $made, $location, $mkOffer );
 
 // The rest of the suite runs as it did before: Review and Events off
 foreach( [ 'events', 'review' ] as $key )

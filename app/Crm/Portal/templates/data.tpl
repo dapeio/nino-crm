@@ -15,4 +15,5 @@
 	</form>
 	[[login]]
 	[[privacy]]
+	[[consents]]
 </div>

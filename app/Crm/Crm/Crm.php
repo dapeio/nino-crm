@@ -5,7 +5,7 @@ declare(strict_types=1);
  *						init() registers behaviour and writes nothing: the panel CRM (adminPanels()), the
  *						components [crm-portal-head], [crm-portal-door], [crm-client], [crm-documents], [crm-portal-nav], [crm-portal-start], [crm-portal-dates], [crm-projects], [crm-uploads], [crm-client-data] and [crm-privacy], the callbacks that keep the portal's lookup true when a member signs in or
  *						out, the one that takes the portal's pages out of the menus of a visitor, the gate of the client (every page of the portal sends a member whose client has not taken note of the Datenschutz or given the data of the invoice to that step, and a file is withheld from such a member) and the ones that let a document follow its request in Sign, the style sheet and the script of the portal, the route
- *						/.crm/pdf/<id> that answers the PDF of a finalised document, /.crm/xml/<id> that answers its electronic invoice and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/anmeldeadresse and POST /.crm/anmeldeadresse/code of the block Anmeldeadresse on that page, POST /.crm/datenschutz of the page Datenschutz, POST /.crm/auftrag of the order under an offer and POST /.crm/abnahme of the approval under the files of a project, GET /.crm/player that answers the player of a file of a project to the script of the portal, and the callback that mails the owner when a member has changed the address the account signs in with; and the surface at /crm, one page of the project with its
+ *						/.crm/pdf/<id> that answers the PDF of a finalised document, /.crm/xml/<id> that answers its electronic invoice and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/anmeldeadresse and POST /.crm/anmeldeadresse/code of the block Anmeldeadresse on that page, POST /.crm/datenschutz of the page Datenschutz, POST /.crm/auftrag of the order under an offer and POST /.crm/abnahme of the approval under the files of a project and POST /.crm/einwilligung/widerruf of the revocation of a consent, GET /.crm/player that answers the player of a file of a project to the script of the portal, and the callback that mails the owner when a member has changed the address the account signs in with; and the surface at /crm, one page of the project with its
  *						endpoint and assets (Surface::init()). The database is opened on first use, the portal pages come with the install unit
  *						the wizard applies, and the screen Einrichtung of the surface completes the product (see Admin::apiSetup()).
  */
@@ -265,6 +265,9 @@ class Crm {
 		// The card of a message of the owner posts here: a member of a client puts the message away for itself (see Portal\Message::callbackDismiss())
 		$appData['/nino/http/routes']['POST://.crm/nachricht/weg'] = [ 'uri' => Portal\Message::ROUTE ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/nachricht/weg', [ Portal\Message::class, 'callbackDismiss' ] );
+		// The consents of a client: the button of the block Einwilligungen of the page Meine Daten posts here, a member of a client takes a consent back (see Portal\Consent::callbackRevoke())
+		$appData['/nino/http/routes']['POST://.crm/einwilligung/widerruf'] = [ 'uri' => Portal\Consent::ROUTE ];
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/einwilligung/widerruf', [ Portal\Consent::class, 'callbackRevoke' ] );
 
 		// The player of a file of a project, as the page of the project puts it beside the list: the script of the portal asks for it to open a file or another version without leaving the page (see Portal\Projects::callbackPlayer())
 		$appData['/nino/http/routes']['GET://.crm/player'] = [ 'uri' => Portal\Projects::ROUTE ];

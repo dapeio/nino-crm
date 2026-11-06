@@ -1,0 +1,1 @@
+<p class="crm-consent__state crm-consent__state--[[state]] crm-note crm-note--[[tone]]" role="[[role]]">[[icon:[[icon]]]]<span class="crm-note__text">[[/project/crm-portal/consent/state-[[state]]]]</span></p>

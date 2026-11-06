@@ -2354,6 +2354,104 @@ sort( $handed );
 check( 'the placeholders of the menu - Beleg, Rechnung, Angebot, Kunde, Portal - are exactly the tokens Render::data() hands a template for an invoice and an offer', $menu === $handed && count( $menu ) === 32 );
 
 
+// --- Einwilligungen: the lines on the card of a project, the mark in the list, the records of the client, the veto --------------------------------
+
+/**
+ *	The checks of the consents in the surface
+ */
+function surfaceConsentChecks( array &$appData, array $a, array $b, array $project, \Closure $asCrm, \Closure $asItems ): void {
+
+	echo "\nEinwilligungen in the surface\n";
+
+	$asItems();
+	$made = static function( string $title, string $client ) use ( &$appData, $project ): string {
+
+		$answer = surfaceApi( $appData, 'elements/save', [ 'fields' => [ 'title' => $title, 'client' => $client ] ] + $project );
+		$ids = array_column( \Crm\Projekte::list( $appData ), 'id', 'title' );
+
+		return $answer[0] === 200 ? (string) ( $ids[$title] ?? '' ) : '';
+	};
+	$p = $made( 'Einwilligung Eins', $a['number'] );
+	$q = $made( 'Einwilligung Zwei', $a['number'] );
+	$r = $made( 'Einwilligung Drei', $b['number'] );
+	$asCrm();
+	$anna = [ 'id' => 'aaaaaaaaaaaa', 'email' => 'anna@example.org', 'name' => 'Anna Nord' ];
+	$get = static fn( string $id ): array => surfaceApi( $appData, 'crm-projekte/get', [ 'id' => $id ] )[1];
+	$mark = static function( string $id ) use ( &$appData ): ?bool {
+
+		foreach( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'] as $row )
+			if( $row['id'] === $id )
+				return $row['consent_social'];
+
+		return null;
+	};
+	check( 'the fixtures: three projects of two clients', $p !== '' && $q !== '' && $r !== '' && count( array_unique( [ $p, $q, $r ] ) ) === 3 );
+	check( 'a project nobody consented to, with no sentence in the settings, has no line on its card and no mark in the list', $get( $p )['project']['consents'] === [] && $mark( $p ) === false && array_key_exists( 'consents', surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'][0] ) === false );
+	\Crm\Settings::set( $appData, 'consent_social', 'Satz eins' );
+	check( '...with a sentence for a purpose the card has a line for it: the purpose and no consent', $get( $p )['project']['consents'] === [ [ 'purpose' => 'social', 'consent' => null ] ] && $mark( $p ) === false );
+	$consent = \Crm\Records::add( $appData, [ 'kind' => 'consent', 'client_id' => $a['id'], 'member' => $anna, 'purpose' => 'social', 'shown' => 'Satz eins', 'project' => $p, 'ip' => '203.0.113.5', 'agent' => 'Browser X' ] );
+	$line = $get( $p )['project']['consents'][0] ?? [];
+	check( '...once the client consented the line carries the record with what the dialog shows - the sentence, the hash, the time, the address and the browser - and revoked: null; the list shows the mark', ( $line['purpose'] ?? '' ) === 'social' && ( $line['consent']['id'] ?? 0 ) === $consent['id'] && $line['consent']['shown'] === 'Satz eins' && $line['consent']['sha256'] === hash( 'sha256', 'Satz eins' )
+		&& $line['consent']['ip'] === '203.0.113.5' && $line['consent']['agent'] === 'Browser X' && $line['consent']['at'] === $consent['at'] && $line['consent']['revoked'] === null && $mark( $p ) === true && $mark( $q ) === false );
+	\Crm\Records::add( $appData, [ 'kind' => 'consent', 'client_id' => $a['id'], 'member' => $anna, 'purpose' => 'archive', 'shown' => 'Archivsatz', 'project' => $q ] );
+	check( '...a consent that has no sentence now is a line all the same, the lines in the order of the purposes; a consent for archive is no mark in the list', array_column( $get( $q )['project']['consents'], 'purpose' ) === [ 'social', 'archive' ] && $get( $q )['project']['consents'][0]['consent'] === null && $get( $q )['project']['consents'][1]['consent']['shown'] === 'Archivsatz' && $mark( $q ) === false && array_column( $get( $p )['project']['consents'], 'purpose' ) === [ 'social' ] );
+	\Crm\Settings::set( $appData, 'consent_archive', 'Archivsatz' );
+	check( '...with both sentences the card has both lines, the social one first', array_column( $get( $p )['project']['consents'], 'purpose' ) === [ 'social', 'archive' ] && $get( $p )['project']['consents'][1]['consent'] === null );
+	\Crm\Records::add( $appData, [ 'kind' => 'consent', 'client_id' => $b['id'], 'member' => $anna, 'purpose' => 'social', 'shown' => 'Fremd', 'project' => $p ] );
+	check( '...a consent of another client that names the project is not the project\'s client\'s: not on the card, not a mark', count( array_filter( $get( $p )['project']['consents'], static fn( array $one ): bool => $one['consent'] !== null && $one['consent']['client_id'] !== $a['id'] ) ) === 0 && $mark( $r ) === false && array_column( $get( $r )['project']['consents'], 'purpose' ) === [ 'social', 'archive' ] && $get( $r )['project']['consents'][0]['consent'] === null );
+	$revoked = \Crm\Records::revoke( $appData, $a['id'], $consent['id'], $anna, [ 'ip' => '203.0.113.6', 'agent' => 'Browser Y' ] );
+	$line = $get( $p )['project']['consents'][0];
+	check( '...a revoked consent is a line with the record that took it back, and no mark in the list any more', is_array( $revoked ) && $line['consent']['id'] === $consent['id'] && $line['consent']['revoked']['id'] === $revoked['id'] && $line['consent']['revoked']['ip'] === '203.0.113.6' && $line['consent']['shown'] === 'Satz eins' && $mark( $p ) === false );
+	$newer = \Crm\Records::add( $appData, [ 'kind' => 'consent', 'client_id' => $a['id'], 'member' => $anna, 'purpose' => 'social', 'shown' => 'Satz zwei', 'project' => $p ] );
+	check( '...a consent given again after it is the line, and the mark is back', $get( $p )['project']['consents'][0]['consent']['id'] === $newer['id'] && $get( $p )['project']['consents'][0]['consent']['revoked'] === null && $mark( $p ) === true );
+	[ , $portal ] = surfaceApi( $appData, 'crm-clients/portal', [ 'id' => (string) $a['id'] ] );
+	$byKind = [];
+
+	foreach( $portal['records'] as $record )
+		$byKind[$record['kind']][] = $record;
+
+	check( 'the portal of a client lists the consents and the revocations among its records: with the purpose, the project, the sentence, the hash, the time, the address and the browser, the newest first', array_column( $byKind['consent'] ?? [], 'purpose' ) === [ 'social', 'archive', 'social' ] && array_column( $byKind['revocation'] ?? [], 'purpose' ) === [ 'social' ] && $byKind['revocation'][0]['parent'] === $consent['id'] && $byKind['revocation'][0]['project'] === $p
+		&& $byKind['consent'][2]['shown'] === 'Satz eins' && $byKind['consent'][2]['sha256'] === hash( 'sha256', 'Satz eins' ) && $byKind['consent'][2]['ip'] === '203.0.113.5' && $byKind['consent'][2]['agent'] === 'Browser X' && $byKind['consent'][2]['project'] === $p
+		&& array_column( $portal['records'], 'id' ) === array_map( static fn( array $row ): int => $row['id'], \Crm\Records::of( $appData, $a['id'] ) ) );
+
+	// the veto
+	$asItems();
+	$lines = static fn( string $needle ): int => count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 600 ), static fn( string $entry ): bool => str_contains( $entry, $needle ) === true ) );
+	[ $status, $answer ] = surfaceApi( $appData, 'elements/delete', [ 'type' => 'projekte', 'uri' => $p ] );
+	check( 'a project that records name - a consent, a revocation - is not deleted through the surface: 409 crm_project_records with its own code and no count, the project is there, the log has no line of a delete', $status === 409 && ( $answer['code'] ?? '' ) === 'crm_project_records' && array_keys( $answer ) === [ 'error', 'code' ] && \Crm\Projekte::get( $appData, $p ) !== null && $lines( 'Delete Element /projekte/'. $p ) === 0 );
+	[ $statusPanel, ] = ninoCall( $appData, [ \Nino\Modules\Elements\Admin::class, 'apiDelete' ], [ 'type' => 'projekte', 'uri' => $p ], 'elements/delete' );
+	check( '...nor through the Elements panel of the workbench: the kernel\'s veto, not the endpoint\'s check', $statusPanel !== 200 && $statusPanel !== 403 && \Crm\Projekte::get( $appData, $p ) !== null );
+	[ $status, $answer ] = surfaceApi( $appData, 'elements/delete', [ 'type' => 'projekte', 'uri' => $q ] );
+	check( '...a project with a consent and nothing else is held as well, the revocation not needed; one with no record at all is deleted', $status === 409 && ( $answer['code'] ?? '' ) === 'crm_project_records' && \Crm\Projekte::get( $appData, $q ) !== null && surfaceApi( $appData, 'elements/delete', [ 'type' => 'projekte', 'uri' => $r ] )[0] === 200 && \Crm\Projekte::get( $appData, $r ) === null );
+	$asCrm();
+
+	// a consent for all projects holds on the card and in the list of every project of its client
+	$wideConsent = \Crm\Records::add( $appData, [ 'kind' => 'consent', 'client_id' => $a['id'], 'member' => $anna, 'purpose' => 'social', 'shown' => 'Für alle', 'project' => '' ] );
+	check( 'a consent for all projects is on the card of every project of its client, the newest of the ones that hold, and marks it in the list - and is on no project of another client', is_array( $wideConsent ) && ( $get( $q )['project']['consents'][0]['consent']['id'] ?? 0 ) === $wideConsent['id'] && $mark( $q ) === true && $get( $q )['project']['consents'][1]['purpose'] === 'archive'
+		&& $mark( $p ) === true && ( $get( $p )['project']['consents'][0]['consent']['id'] ?? 0 ) === $wideConsent['id'] && array_filter( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'], static fn( array $row ): bool => $row['client_id'] !== $a['id'] && $row['consent_social'] === true ) === [] );
+	$wideRevoked = \Crm\Records::revoke( $appData, $a['id'], $wideConsent['id'], $anna, [] );
+	check( '...taken back, it is a line that says so on the card and no mark any more', is_array( $wideRevoked ) && $get( $q )['project']['consents'][0]['consent']['revoked']['id'] === $wideRevoked['id'] && $mark( $q ) === false );
+
+	// a consent for the project that holds, and a newer one for all projects that was taken back: the card says what holds
+	$asItems();
+	$pOrder = $made( 'Einwilligung Vier', $a['number'] );
+	$asCrm();
+	$held = \Crm\Records::add( $appData, [ 'kind' => 'consent', 'client_id' => $a['id'], 'member' => $anna, 'purpose' => 'social', 'shown' => 'Gilt', 'project' => $pOrder ] );
+	$newerWide = \Crm\Records::add( $appData, [ 'kind' => 'consent', 'client_id' => $a['id'], 'member' => $anna, 'purpose' => 'social', 'shown' => 'Neuer, für alle', 'project' => '' ] );
+	\Crm\Records::revoke( $appData, $a['id'], $newerWide['id'], $anna, [] );
+	$line = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => $pOrder ] )[1]['project']['consents'][0] ?? [];
+	check( 'the card says what holds: of a consent for the project and a newer one for all projects that was taken back, the line is the one that holds - not "revoked" - and the list has the mark', is_array( $held ) && is_array( $newerWide ) && ( $line['consent']['id'] ?? 0 ) === $held['id'] && array_key_exists( 'revoked', (array) ( $line['consent'] ?? [] ) ) === true && $line['consent']['revoked'] === null && surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'] !== [] && array_column( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'], 'consent_social', 'id' )[$pOrder] === true );
+
+	// the words
+	$texts = Surface::texts();
+	$keys = [ 'record.kind-consent', 'record.kind-revocation', 'record.title-consent', 'record.title-revocation', 'record.project', 'record.at', 'record.ip', 'record.agent', 'consent.purpose-social', 'consent.purpose-archive', 'consent.badge', 'consent.line-given', 'consent.line-revoked', 'consent.line-none', 'consent.mark-title',
+		'consents.title', 'consents.note', 'consents.label-social', 'consents.hint-social', 'consents.label-archive', 'consents.hint-archive', 'consents.save', 'consents.saved', 'error.crm_project_records', 'error.crm_documents_consent_social', 'error.crm_documents_consent_archive' ];
+	check( 'the words of the consents are there, each a sentence in the Du form', array_filter( $keys, static fn( string $key ): bool => trim( (string) ( $texts[$key] ?? '' ) ) === '' ) === [] && preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', array_map( static fn( string $key ): string => $texts[$key], $keys ) ) ) !== 1
+		&& substr_count( $texts['consent.line-given'], '%s' ) === 3 && substr_count( $texts['consent.line-revoked'], '%s' ) === 3 && substr_count( $texts['consent.line-none'], '%s' ) === 1 );
+}
+
+surfaceConsentChecks( $appData, $a, $b, $project, $asCrm, $asItems );
+
 // --- The script of the surface ---------------------------------------------------------------------------------------
 
 echo "\nThe script of the surface\n";

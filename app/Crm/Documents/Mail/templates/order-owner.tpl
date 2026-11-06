@@ -3,6 +3,7 @@
 	<p style="margin:0 0 [[/project/mail/spacing/medium]];">[[intro]]</p>
 	<p style="margin:0 0 [[/project/mail/spacing/medium]];"><strong>[[offer]]</strong><br>[[client]]<br>[[sum]]</p>
 	<p style="margin:0 0 [[/project/mail/spacing/medium]];">[[account]]</p>
+[[consents]]
 	<p style="margin:0 0 [[/project/mail/spacing/medium]]; text-align:center;">
 		<a href="[[link]]" style="display:inline-block; padding:[[/project/mail/spacing/small]] [[/project/mail/spacing/medium]]; background:[[/project/mail/color/primary]]; color:[[/project/mail/color/background]]; text-decoration:none;">[[cta]]</a>
 	</p>

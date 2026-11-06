@@ -1,0 +1,1 @@
+<p class="crm-consent__revoked"><span class="crm-pill crm-pill--muted">[[/project/crm-portal/consent/revoked]]</span> <span class="crm-consent__revoked-line">[[/project/crm-portal/consent/on]] <time datetime="[[iso]]">[[date]]</time> [[/project/crm-portal/order/by]] <span class="crm-consent__who">[[name]]</span>.</span></p>

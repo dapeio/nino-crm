@@ -38,6 +38,9 @@
 
 	// The longest message to a client, or to every client: the server's own limit
 	const MESSAGE_MAX = 2000;
+
+	// The purposes of a consent, as the server has them
+	const CONSENT_PURPOSES = [ 'social', 'archive' ];
 	const NEW_KINDS = [ 'invoice', 'offer', 'contract', 'privacy', 'information' ];
 	const CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id', 'buyer_reference' ];
 	const CLIENT_TABS = [ 'belege', 'projekte', 'portal', 'notizen' ];
@@ -2054,7 +2057,14 @@
 	 *	@return		{Promise}
 	 */
 	const showRecord = function( record ) {
-		return dialog( { title: t( 'record.title-'+ record.kind ), text: t( 'record.hash', record.sha256 ), facts: [ [ t( 'record.at' ), stamp( record.at ) ], [ t( 'record.ip' ), record.ip ], [ t( 'record.agent' ), record.agent ] ], pre: record.shown, close: true, wide: true } );
+
+		const facts = [ [ t( 'record.at' ), stamp( record.at ) ], [ t( 'record.ip' ), record.ip ], [ t( 'record.agent' ), record.agent ] ];
+
+		// A consent that was taken back says it, too: when, by whom and from where
+		if( record.revoked !== undefined && record.revoked !== null )
+			facts.push( [ t( 'record.revoked-at' ), stamp( record.revoked.at ) ], [ t( 'record.revoked-by' ), recordWho( record.revoked ) ], [ t( 'record.revoked-ip' ), record.revoked.ip ], [ t( 'record.revoked-agent' ), record.revoked.agent ] );
+
+		return dialog( { title: t( 'record.title-'+ record.kind ), text: t( 'record.hash', record.sha256 ), facts: facts, pre: record.shown, close: true, wide: true } );
 	};
 
 	/**
@@ -3941,7 +3951,9 @@
 					el( 'ul', { class: 'list-mini', id: 'client-records' }, portal.records.length === 0 ? el( 'li', { class: 'muted', text: t( 'cportal.records-none' ) } ) : portal.records.map( function( record ) {
 						return el( 'li', { dataset: { kind: record.kind } }, el( 'span', {}, t( 'record.kind-'+ record.kind ), ' · ', stamp( record.at ), ' · ', recordWho( record ),
 							record.document_id === null ? null : [ ' · ', link( '#beleg-'+ record.document_id, record.document_number !== undefined && record.document_number !== '' ? record.document_number : t( 'record.document' ) ) ],
-							record.kind === 'approval' ? [ ' · ', link( '#projekt-'+ record.project, t( 'record.project' )+ ' '+ record.project ) ] : null ),
+							record.kind === 'approval' ? [ ' · ', link( '#projekt-'+ record.project, t( 'record.project' )+ ' '+ record.project ) ] : null,
+							record.purpose === '' || record.purpose === undefined ? null : [ ' · ', el( 'span', { class: 'record-purpose', text: t( 'consent.purpose-'+ record.purpose ) } ) ],
+							record.project !== '' && ( record.kind === 'consent' || record.kind === 'revocation' ) ? [ ' · ', link( '#projekt-'+ record.project, t( 'record.project' )+ ' '+ record.project ) ] : null ),
 							el( 'span', { class: 'r' }, el( 'button', { type: 'button', class: 'btn sm quiet', text: t( 'record.show' ), on: { click: function() { showRecord( record ) } } } ) ) );
 					} ) ),
 				],
@@ -4953,6 +4965,41 @@
 	};
 
 	/**
+	 *	The lines under the head of a project's card that say what the customer consented to for the project: for each purpose that has a sentence or a consent, whether the
+	 *	consent holds, was taken back or was never given, and the way to the sentence the customer was shown
+	 *
+	 *	@param		{Array}		lines						As crm-projekte/get has them (consents): purpose and consent (the newest, with revoked; null for none)
+	 *
+	 *	@return		{Object|null}
+	 */
+	const consentLines = function( lines ) {
+
+		if( Array.isArray( lines ) === false || lines.length === 0 )
+			return null;
+
+		return el( 'div', { class: 'consent-lines', id: 'project-consents' }, lines.map( function( line ) {
+
+			const consent = line.consent;
+			const word = t( 'consent.purpose-'+ line.purpose );
+			const record = consent === null ? null : ( consent.revoked ?? consent );
+			const sentence = consent === null ? t( 'consent.line-none', word ) : t( consent.revoked === null ? 'consent.line-given' : 'consent.line-revoked', word, dmy( record.at ), recordWho( record ) );
+
+			return el( 'p', { class: 'state-note', dataset: { purpose: line.purpose, state: consent === null ? 'none' : ( consent.revoked === null ? 'given' : 'revoked' ) } },
+				consent === null ? null : badge( consent.revoked === null ? 'paid' : 'draft', t( 'consent.badge' ) ), consent === null ? sentence+ ' ' : ' '+ sentence+ ' ',
+				consent === null ? null : el( 'button', { type: 'button', class: 'btn sm quiet', text: t( 'record.show' ), on: { click: function() { showRecord( consent ) } } } ) );
+		} ) );
+	};
+
+	/**
+	 *	The mark of a project whose client consented to the use of the work for the references of the studio: a megaphone, with its words as the title and for a reader
+	 *
+	 *	@return		{Object}
+	 */
+	const consentMark = function() {
+		return el( 'span', { class: 'mega-icon', dataset: { icon: 'megaphone' }, role: 'img', 'aria-label': t( 'consent.mark-title' ), title: t( 'consent.mark-title' ) } );
+	};
+
+	/**
 	 *	The state of the download in the head of a project's card, with the button that switches it: on at once, off after a question
 	 *
 	 *	@param		{Object}	view
@@ -5084,7 +5131,7 @@
 						el( 'td', { text: dmy( project.started ) } ),
 						el( 'td', { class: 'r num' }, project.documents === 0 ? el( 'span', { class: 'muted', text: '–' } ) : project.documents+ '', project.open > 0 ? el( 'span', { class: 'muted', text: ' · '+ t( 'projects.open-offers', project.open ) } ) : null ),
 						el( 'td', { class: 'r num' }, project.files === null ? el( 'span', { class: 'muted', text: '–' } ) : String( project.files ) ),
-						el( 'td', {}, projectBadge( project ), project.download === true ? downloadMark() : null ) );
+						el( 'td', {}, projectBadge( project ), project.download === true ? downloadMark() : null, project.consent_social === true ? consentMark() : null ) );
 				} ) ) ) ) );
 		append( state.main, [ pagerOf( filter, pages, again ), el( 'p', { class: 'state-note top', text: t( edits === true ? 'projects.note-edit' : 'projects.note' ) } ) ] );
 	};
@@ -6232,6 +6279,11 @@
 		if( project.approval !== null && project.approval !== undefined )
 			state.main.appendChild( approvalNote( project.approval ) );
 
+		const consents = consentLines( project.consents );
+
+		if( consents !== null )
+			state.main.appendChild( consents );
+
 		view.info = projectCard( view );
 		state.main.appendChild( view.info );
 
@@ -7180,6 +7232,88 @@
 		return box;
 	};
 
+	/**
+	 *	The block Einwilligungen of the Einstellungen: the sentence beside the box of each purpose a customer can consent to when ordering, a field for each with the one Speichern of the
+	 *	block (and Strg+S). A purpose without a sentence has no box
+	 *
+	 *	@param		{Object}	settings				As settings-get has them
+	 *	@param		{Object}	sibling					The form of the screen next to it, which keeps the page's guard when this one is saved
+	 *
+	 *	@return		{Object}
+	 */
+	const consentSettingCard = function( settings, sibling ) {
+
+		const form = { controls : {}, notes : {}, dirty : false, form : true };
+		const areas = {};
+		const stored = {};
+
+		CONSENT_PURPOSES.forEach( function( purpose ) {
+			areas[purpose] = el( 'textarea', { id: 'f-consent_'+ purpose, rows: 4, maxlength: String( MESSAGE_MAX ), spellcheck: 'true', value: settings['consent_'+ purpose] ?? '' } );
+			stored[purpose] = areas[purpose].value;
+		} );
+
+		const changed = function() { return CONSENT_PURPOSES.some( function( purpose ) { return areas[purpose].value !== stored[purpose] } ) };
+		const save = el( 'button', { type: 'submit', class: 'btn primary', id: 'consents-save', title: t( 'save.shortcut' ), text: t( 'consents.save' ) } );
+		const mine = state.view;
+
+		const list = formList( CONSENT_PURPOSES.map( function( purpose ) {
+			return { name : 'consent_'+ purpose, label : t( 'consents.label-'+ purpose ), control : areas[purpose], hint : t( 'consents.hint-'+ purpose ) };
+		} ), form );
+
+		CONSENT_PURPOSES.forEach( function( purpose ) {
+			[ 'input', 'change' ].forEach( function( name ) {
+				areas[purpose].addEventListener( name, function() {
+					form.dirty = changed();
+
+					if( form.dirty === true && ( state.draft === null || state.draft.dirty !== true ) )
+						state.draft = form;
+				} );
+			} );
+		} );
+
+		const box = el( 'form', { class: 'card pad gap', id: 'consents', novalidate: 'novalidate', on: { submit: function( event ) {
+
+			event.preventDefault();
+			save.disabled = true;
+
+			const posted = {};
+
+			CONSENT_PURPOSES.forEach( function( purpose ) { posted['consent_'+ purpose] = areas[purpose].value } );
+
+			api( 'crm-documents/settings-save', posted ).then( function( answer ) {
+
+				save.disabled = false;
+
+				if( state.view !== mine )
+					return;
+
+				if( answer.ok !== true ) {
+					refuseAt( form, answer, 'error.settings' );
+					return;
+				}
+
+				CONSENT_PURPOSES.forEach( function( purpose ) {
+					stored[purpose] = answer.body.settings['consent_'+ purpose];
+					areas[purpose].value = stored[purpose];
+				} );
+
+				form.dirty = false;
+
+				if( state.draft === form )
+					state.draft = sibling.dirty === true ? sibling : null;
+
+				toast( t( 'consents.saved' ) );
+			} );
+		} } },
+			el( 'h3', { text: t( 'consents.title' ) } ), el( 'p', { class: 'state-note', text: t( 'consents.note' ) } ),
+			list,
+			el( 'div', { class: 'actions top' }, save ) );
+
+		submitter( 'consents', box, save, changed );
+
+		return box;
+	};
+
 	const drawEinstellungen = function( view, items, said ) {
 
 		const settings = view.settings;
@@ -7279,6 +7413,7 @@
 		submitter( 'settings', box, save, function() { return form.dirty === true } );
 
 		state.main.appendChild( privacyCard( settings, form ) );
+		state.main.appendChild( consentSettingCard( settings, form ) );
 		state.main.appendChild( messageSettingCard( settings, form ) );
 
 		const firma = el( 'div', { class: 'gap', id: 'firma-holder' } );

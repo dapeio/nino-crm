@@ -1,0 +1,1 @@
+<p class="crm-order crm-order--hint crm-note crm-note--info">[[icon:info]]<span class="crm-note__text">[[/project/crm-portal/consent/revoke-hint]] <a href="[[dir]][[page]]#[[anchor]]">[[/project/crm-portal/consent/revoke-link]]</a>.</span></p>

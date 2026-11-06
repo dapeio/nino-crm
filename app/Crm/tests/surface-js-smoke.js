@@ -4259,6 +4259,10 @@ function press( w, key, target, mods ) {
 	}
 
 	// === C16: Projekte - the element type, the project of a document, the project's folder of files, and the screens
+	// the records of a consent and of its revocation, as the surface reads them (Einwilligungen)
+	const c14_consent = function( over ) { return Object.assign( { id : 31, kind : 'consent', client_id : 1, member_id : 'aaaaaaaaaaaa', member_email : 'lena@nordlicht.example', member_name : 'Lena <b>Brandt</b>', document_id : 12, project : '00001', sha256 : 'd'.repeat( 64 ), shown : 'Ich willige <b>ein</b>.\n[crm-client]', at : '2026-11-03T10:15:00Z', ip : '203.0.113.7', agent : 'Browser/1.0', purpose : 'social', parent : null, revoked : null }, over || {} ) };
+	const c14_revocation = { id : 32, kind : 'revocation', client_id : 1, member_id : 'aaaaaaaaaaaa', member_email : 'lena@nordlicht.example', member_name : 'Lena <b>Brandt</b>', document_id : null, project : '00001', sha256 : 'd'.repeat( 64 ), shown : 'Ich willige <b>ein</b>.\n[crm-client]', at : '2026-11-05T08:00:00Z', ip : '203.0.113.8', agent : 'Browser/2.0', purpose : 'social', parent : 31 };
+
 	{
 	const jperms = { crm : true, pdf : false, elements : true, text : false, files : true };
 	const jclient1 = { id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true };
@@ -4511,6 +4515,44 @@ function press( w, key, target, mods ) {
 	check( 'the list says abgenommen for a project the customer approved while it is not done - with the day and the name as the title - running for one nobody approved, and done for one that is done', textOf( jappRows[0].children[5] ) === '✓ '+ texts['projects.approved'] && all( jappRows[0].children[5], '.badge' )[0].classList.contains( 'b-paid' ) === true
 		&& all( jappRows[0].children[5], '.badge' )[0].title === texts['approval.head'].replace( '%s', '03.11.2026' ).replace( '%s', 'Lena Brandt' ) && textOf( jappRows[1].children[5] ) === texts['projects.running'] );
 	check( '...and the done project is not among the rows until the switch for the done ones is on', jappRows.length === 2 );
+
+	// --- Einwilligungen: the lines on the card of a project, the mark in the list, the records of the client, the sentences in the settings
+	const c14_open = function( lines, row ) { return jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( Object.assign( { consents : lines }, row || {} ) ) } ) ] } } ) };
+	const c14_given = await c14_open( [ { purpose : 'social', consent : c14_consent() }, { purpose : 'archive', consent : null } ] );
+	const c14_lines = all( jf( c14_given, 'project-consents' ), 'p' );
+	check( 'a project the client consented to says so under the head: a line for each purpose - "Referenznutzung: eingewilligt am … durch …" with the name as text, and "keine Einwilligung" for a purpose with a sentence and no consent', c14_lines.length === 2 && c14_lines[0].dataset.purpose === 'social' && c14_lines[0].dataset.state === 'given' && c14_lines[1].dataset.purpose === 'archive' && c14_lines[1].dataset.state === 'none'
+		&& textOf( c14_lines[0] ).indexOf( texts['consent.line-given'].replace( '%s', texts['consent.purpose-social'] ).replace( '%s', '03.11.2026' ).replace( '%s', 'Lena <b>Brandt</b>' ) ) !== -1 && textOf( c14_lines[1] ).indexOf( texts['consent.line-none'].replace( '%s', texts['consent.purpose-archive'] ) ) !== -1
+		&& findAll( jf( c14_given, 'project-consents' ), function( node ) { return node.tagName === 'B' } ).length === 0 && c14_lines.every( function( one ) { return one.classList.contains( 'state-note' ) } ) );
+	check( '...a line with a consent has Anzeigen, a line without has none; the lines stand after the head and before the facts of the card', all( c14_lines[0], 'button' ).length === 1 && all( c14_lines[1], 'button' ).length === 0 && c14_given.main.children.indexOf( jf( c14_given, 'project-consents' ) ) === c14_given.main.children.indexOf( jf( c14_given, 'project-info' ) ) - 1 );
+	click( c14_given, all( c14_lines[0], 'button' )[0] );
+	check( '...Anzeigen opens the dialog of the consent: the title, the hash, the sentence as text - markup and a shortcode in it are not made anything of - and, before it, the time, the address and the browser', c14_given.dialogs.length === 1 && c14_given.dialogs[0].getAttribute( 'aria-label' ) === texts['record.title-consent'] && textOf( all( c14_given.dialogs[0], 'pre' )[0] ) === 'Ich willige <b>ein</b>.\n[crm-client]'
+		&& findAll( c14_given.dialogs[0], function( node ) { return node.tagName === 'B' } ).length === 0 && textOf( all( c14_given.dialogs[0], 'p' )[0] ) === texts['record.hash'].replace( '%s', 'd'.repeat( 64 ) ) && all( c14_given.dialogs[0], 'dl.kv dt' ).map( textOf ).join( '|' ) === [ texts['record.at'], texts['record.ip'], texts['record.agent'] ].join( '|' )
+		&& textOf( all( c14_given.dialogs[0], 'dl.kv dd' )[1] ) === '203.0.113.7' && textOf( all( c14_given.dialogs[0], 'dl.kv dd' )[2] ) === 'Browser/1.0' );
+	const c14_revoked = await c14_open( [ { purpose : 'social', consent : c14_consent( { revoked : c14_revocation } ) } ] );
+	const c14_rline = all( jf( c14_revoked, 'project-consents' ), 'p' )[0];
+	check( 'a consent that was taken back says so: "widerrufen am … durch …" with the day and the name of the revocation, the state revoked, the badge not of a good state', c14_rline.dataset.state === 'revoked' && textOf( c14_rline ).indexOf( texts['consent.line-revoked'].replace( '%s', texts['consent.purpose-social'] ).replace( '%s', '05.11.2026' ).replace( '%s', 'Lena <b>Brandt</b>' ) ) !== -1 && all( c14_rline, '.badge.b-paid' ).length === 0 && all( c14_rline, '.badge' ).length === 1 );
+	click( c14_revoked, all( c14_rline, 'button' )[0] );
+	check( '...Anzeigen shows the consent that was given, with its sentence and its time - and says that it was taken back: when, by whom (as text), from which address and with which browser', textOf( all( c14_revoked.dialogs[0], 'pre' )[0] ) === 'Ich willige <b>ein</b>.\n[crm-client]' && textOf( all( c14_revoked.dialogs[0], 'dl.kv dd' )[0] ).indexOf( '03.11.2026 ' ) === 0
+		&& all( c14_revoked.dialogs[0], 'dl.kv dt' ).map( textOf ).join( '|' ) === [ texts['record.at'], texts['record.ip'], texts['record.agent'], texts['record.revoked-at'], texts['record.revoked-by'], texts['record.revoked-ip'], texts['record.revoked-agent'] ].join( '|' )
+		&& textOf( all( c14_revoked.dialogs[0], 'dl.kv dd' )[3] ).indexOf( '05.11.2026 ' ) === 0 && textOf( all( c14_revoked.dialogs[0], 'dl.kv dd' )[4] ) === 'Lena <b>Brandt</b>' && textOf( all( c14_revoked.dialogs[0], 'dl.kv dd' )[5] ) === '203.0.113.8' && textOf( all( c14_revoked.dialogs[0], 'dl.kv dd' )[6] ) === 'Browser/2.0'
+		&& all( c14_given.dialogs[0], 'dl.kv dt' ).length === 3 );
+	const c14_none = await c14_open( [] );
+	check( 'a project with no line to say has no block of lines at all', jf( c14_none, 'project-consents' ) === undefined && jf( jc, 'project-consents' ) === undefined );
+	const c14_old = await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow() } ) ] } } );
+	check( '...nor has a project whose answer carries no lines', jf( c14_old, 'project-consents' ) === undefined );
+
+	// the list: the megaphone while the consent holds for the social use
+	const c14_list = await jopen( '#projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [ jrow( { id : '00005', title : 'Mit Einwilligung', consent_social : true } ), jrow( { id : '00006', title : 'Ohne', consent_social : false } ), jrow( { id : '00007', title : 'Alt' } ) ] } ) ] } } );
+	const c14_rows = jrows( c14_list );
+	const c14_marks = c14_rows.map( function( row ) { return all( row, '.mega-icon' ) } );
+	check( 'the list marks a project whose client consented to the social use with a megaphone in the column of the state: an image with the words "Referenznutzung eingewilligt" as its title and its name, and nothing for the others - the word is not the mark', c14_marks.map( function( marks ) { return marks.length } ).join() === '1,0,0' && c14_marks[0][0].title === texts['consent.mark-title'] && c14_marks[0][0].getAttribute( 'aria-label' ) === texts['consent.mark-title']
+		&& c14_marks[0][0].getAttribute( 'role' ) === 'img' && c14_marks[0][0].dataset.icon === 'megaphone' && c14_marks[0][0].parentNode === c14_rows[0].children[5] && textOf( c14_rows[0].children[5] ).indexOf( texts['consent.mark-title'] ) === -1 );
+	const c14_find = function( text ) {
+		jf( c14_list, 'q' ).value = text;
+		fire( jf( c14_list, 'q' ), 'input', { target : jf( c14_list, 'q' ) } );
+		return jrows( c14_list ).filter( function( one ) { return one.dataset.id !== undefined } ).length;
+	};
+	check( '...and the search does not find the mark: its words are no part of what a project is found by', c14_find( 'Referenznutzung' ) === 0 && c14_find( 'Mit' ) === 1 );
 
 	const jinfo = jf( jc, 'project-info' );
 	check( 'the card shows the facts: the client as a link, the day, the note on two lines, the documents with the offers that wait, the folder - and nothing that is empty', all( jinfo, 'dt' ).map( textOf ).join( '|' ) === [ texts['projects.f-client'], texts['projects.f-started'], texts['projects.f-description'], texts['projects.column-documents'], texts['projects.folder'] ].join( '|' ) && all( jinfo, 'dd' ).map( textOf ).join( '|' ).indexOf( 'Nordlicht Records GmbH · K-0001|01.10.2026|Aufnahmeund Mix|3 · '+ texts['projects.open-offers'].replace( '%s', '1' )+ '|Album 2027' ) === 0
@@ -5302,6 +5344,46 @@ function press( w, key, target, mods ) {
 	check( '...an empty text removes the message: the block says there is none and the toast says it is removed', messageAllPosts[2].portal_message === '' && textOf( all( messageAll.main, '#message-all-changed' )[0] ) === texts['message-all.never'] && messageAll.toast.textContent === texts['message-all.removed'] );
 	const messageAll0 = await eopen( {} );
 	check( '...where none is stored the block says so and the field is empty', efield( messageAll0, 'portal_message' ).value === '' && textOf( all( messageAll0.main, '#message-all-changed' )[0] ) === texts['message-all.never'] );
+
+	// the Kundenkarte: the consents and the revocations among the records
+	const c14_records = [ Object.assign( {}, c14_revocation, { document_number : '' } ), Object.assign( {}, c14_consent(), { document_number : 'A-2026-0001' } ) ];
+	const c14_k = await kopen( '#kunde-1-portal', { 'crm-clients/portal' : function() { return [ 200, Object.assign( {}, kportal, { records : c14_records } ) ] } } );
+	const c14_krows = all( all( c14_k.main, '#client-records' )[0], 'li' );
+	check( 'the tab Portal lists a revocation and a consent among the records: the kind, the purpose, the time, the account as text, the project as a link to its card - and for the consent the offer it was given with', c14_krows.length === 2 && c14_krows[0].dataset.kind === 'revocation' && c14_krows[1].dataset.kind === 'consent'
+		&& textOf( c14_krows[0] ).indexOf( texts['record.kind-revocation']+ ' · 05.11.2026 ' ) === 0 && textOf( c14_krows[0] ).indexOf( texts['consent.purpose-social'] ) !== -1 && textOf( c14_krows[1] ).indexOf( texts['record.kind-consent']+ ' · 03.11.2026 ' ) === 0 && textOf( c14_krows[1] ).indexOf( texts['consent.purpose-social'] ) !== -1
+		&& textOf( c14_krows[1] ).indexOf( 'Lena <b>Brandt</b>' ) !== -1 && findAll( all( c14_k.main, '#client-records' )[0], function( node ) { return node.tagName === 'B' } ).length === 0 && all( c14_krows[1], 'a' ).map( function( one ) { return one.getAttribute( 'href' ) } ).join() === '#beleg-12,#projekt-00001' && all( c14_krows[0], 'a' ).map( function( one ) { return one.getAttribute( 'href' ) } ).join() === '#projekt-00001' );
+	click( c14_k, all( c14_krows[0], 'button' )[0] );
+	check( '...Anzeigen opens the dialog of a revocation with its own title and the sentence that was revoked; the one of a consent has the title of a consent', c14_k.dialogs[0].getAttribute( 'aria-label' ) === texts['record.title-revocation'] && textOf( all( c14_k.dialogs[0], 'pre' )[0] ) === 'Ich willige <b>ein</b>.\n[crm-client]' && textOf( all( c14_k.dialogs[0], 'dl.kv dd' )[1] ) === '203.0.113.8' );
+	click( c14_k, all( c14_krows[1], 'button' )[0] );
+	check( '...the dialog of a consent in the list of the records has the title of a consent', c14_k.dialogs[c14_k.dialogs.length - 1].getAttribute( 'aria-label' ) === texts['record.title-consent'] );
+
+	// the Einstellungen: the block Einwilligungen
+	const c14_posts = [];
+	const c14_s = await eopen( { settings : Object.assign( {}, esettings, { consent_social : 'Satz <b>eins</b>\nzwei', consent_archive : '' } ) }, undefined, {
+		'crm-documents/settings-save' : function( data ) { c14_posts.push( data ); return data.consent_social.length > 2000 ? [ 400, { error : 'x', code : 'crm_documents_consent_social', field : 'consent_social' } ] : [ 200, { settings : Object.assign( {}, esettings, data ) } ] },
+	} );
+	const c14_box = all( c14_s.main, '#consents' )[0];
+	check( 'the Einstellungen have the block Einwilligungen: a form of its own with a textarea for each purpose - the sentence as stored, line breaks kept, 2000 characters at most - and a Speichern that carries the shortcut; the settings form does not hold them; the block stands after the Datenschutz', c14_box !== undefined && c14_box.tagName === 'FORM' && efield( c14_s, 'consent_social' ).tagName === 'TEXTAREA' && efield( c14_s, 'consent_archive' ).tagName === 'TEXTAREA'
+		&& efield( c14_s, 'consent_social' ).value === 'Satz <b>eins</b>\nzwei' && efield( c14_s, 'consent_archive' ).value === '' && efield( c14_s, 'consent_social' ).getAttribute( 'maxlength' ) === '2000' && efield( c14_s, 'consent_archive' ).getAttribute( 'maxlength' ) === '2000'
+		&& all( c14_box, 'dt' ).map( textOf ).join( '|' ) === [ texts['consents.label-social'], texts['consents.label-archive'] ].join( '|' ) && textOf( all( c14_box, 'h3' )[0] ) === texts['consents.title'] && all( c14_s.main, '#consents-save' )[0].title === texts['save.shortcut']
+		&& all( all( c14_s.main, '#settings-form' )[0], '#f-consent_social' ).length === 0 && c14_s.main.children.indexOf( c14_box ) > c14_s.main.children.indexOf( all( c14_s.main, '#settings-form' )[0] ) && textOf( c14_box ).indexOf( texts['consents.note'] ) !== -1 );
+	check( '...the hints give an example of each sentence and the box says that a purpose without a sentence has no box', textOf( c14_box ).indexOf( texts['consents.hint-social'] ) !== -1 && textOf( c14_box ).indexOf( texts['consents.hint-archive'] ) !== -1 );
+	check( '...nothing typed, nothing to save', pkey18( c14_s ) === false && c14_posts.length === 0 );
+	type( efield( c14_s, 'consent_archive' ), 'Archiv\nSatz', false );
+	check( 'what is typed is unsaved input, and Strg+S in a field saves both sentences: crm-documents/settings-save with the two keys alone, the toast says it is saved', c14_s.app.state.draft.dirty === true && ( efield( c14_s, 'consent_archive' ).focused = true, pkey18( c14_s ) ) === true && ( await settle(), c14_posts.length === 1 ) && JSON.stringify( c14_posts[0] ) === '{"consent_social":"Satz <b>eins</b>\\nzwei","consent_archive":"Archiv\\nSatz"}'
+		&& c14_s.toast.textContent === texts['consents.saved'] && c14_s.app.state.draft === null );
+	type( efield( c14_s, 'consent_social' ), 'x'.repeat( 2001 ), false );
+	submit( c14_s, c14_box );
+	await settle();
+	check( '...a refusal is said at the field it names, which is marked and focused, and the text stays as typed; the other field is not marked', efield( c14_s, 'consent_social' ).classList.contains( 'err' ) === true && efield( c14_s, 'consent_social' ).focused === true && efield( c14_s, 'consent_social' ).value.length === 2001 && efield( c14_s, 'consent_archive' ).classList.contains( 'err' ) === false && c14_posts.length === 2 );
+	type( efield( c14_s, 'consent_social' ), '', false );
+	submit( c14_s, c14_box );
+	await settle();
+	check( '...an empty sentence is posted as it is: the box goes', c14_posts[2].consent_social === '' && c14_posts[2].consent_archive === 'Archiv\nSatz' && efield( c14_s, 'consent_social' ).value === '' );
+	const c14_s0 = await eopen( {} );
+	check( '...where none is stored both fields are empty', efield( c14_s0, 'consent_social' ).value === '' && efield( c14_s0, 'consent_archive' ).value === '' && all( c14_s0.main, '#consents' ).length === 1 );
+	check( 'the script asks for the words of the consents as texts, and every one is a word of the page', [ 'consent.purpose-', 'consent.line-given', 'consent.line-revoked', 'consent.line-none', 'consent.mark-title', 'consent.badge', 'consents.title', 'consents.note', 'consents.label-', 'consents.hint-', 'consents.save', 'consents.saved', 'record.kind-', 'record.title-', 'record.project', 'record.at', 'record.ip', 'record.agent', 'record.revoked-at', 'record.revoked-by', 'record.revoked-ip', 'record.revoked-agent' ].every( function( key ) { return script.indexOf( "'"+ key ) !== -1 } )
+		&& [ 'record.kind-consent', 'record.kind-revocation', 'record.title-consent', 'record.title-revocation', 'consent.purpose-social', 'consent.purpose-archive', 'consents.label-social', 'consents.label-archive', 'consents.hint-social', 'consents.hint-archive' ].every( function( key ) { return typeof texts[key] === 'string' && texts[key] !== '' } ) );
 
 	// the Kundenkarte: the head and the tab Portal
 	const x18_kagreed = Object.assign( {}, kclient, { privacy : { asked : true, agreed : true, at : '2026-11-03T10:15:00Z', member_name : 'Lena Brandt' } } );

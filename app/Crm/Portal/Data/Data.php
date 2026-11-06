@@ -22,6 +22,9 @@ declare(strict_types=1);
  *										or a company - the server asks for all of it, Clients::change() does not (the owner may keep a client without an address). The form carries
  *										the page to go on to (weiter, see Portal::onward()); saved, it goes on to the next step or to that page. A name the client gives is the name of the
  *										member's account too, where the account has none.
+ *
+ *										Under the block Datenschutzerklärung stands the block Einwilligungen (Portal\Consent) while the client holds a consent: each with a button that takes it back.
+ *										A state in the query that comes with consent=1 is the block's (revoked, invalid, expired), not the form's.
  */
 namespace Crm\Portal;
 
@@ -104,7 +107,7 @@ class Data {
 			return Portal::render( 'data-none', [ '[[classes]]' => $classes, '[[empty]]' => Portal::emptyState( $appData, 'user', '[[/project/crm-portal/data/none]]', 'crm-data__empty' ) ] );
 
 		$query = Portal::query( $appData );
-		$state = is_string( $query['state'] ?? null ) === true && isset( self::STATES[$query['state']] ) === true ? $query['state'] : '';
+		$state = is_string( $query['state'] ?? null ) === true && isset( self::STATES[$query['state']] ) === true && Consent::asked( $appData ) === '' ? $query['state'] : '';
 		$field = is_string( $query['field'] ?? null ) === true && isset( self::FIELDS[$query['field']] ) === true ? $query['field'] : '';
 
 		if( $state === 'invalid' && $field === '' )
@@ -165,6 +168,7 @@ class Data {
 			'[[fields]]'  => $fields,
 			'[[also]]'    => $client['email'] !== '' && mb_strtolower( $client['email'], 'UTF-8' ) !== $member['email'] ? Portal::render( 'data-login-also', [ '[[address]]' => \Nino\Modules\Components::escape( $client['email'] ) ] ) : '',
 			'[[login]]'   => self::loginBlock( $appData, $member, $dir, $query ),
+			'[[consents]]' => Consent::block( $appData, $client, $dir ),
 			'[[privacy]]' => $standing['asked'] === false ? '' : Portal::render( 'data-privacy', [
 				'[[agreed]]'   => $standing['agreed'] === true ? '1' : '0',
 				'[[tone]]'     => $standing['agreed'] === true ? 'success' : 'warning',

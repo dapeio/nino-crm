@@ -5,7 +5,7 @@ declare(strict_types=1);
  *												account of the client, in German (a document is the owner's letter to his client, and an account of
  *												Members has no language of its own), with the absolute link to the document in the portal (Portal::documentHref(): its row in the list of documents, for a document of a project its card on the page of the project) and no attachment.
  *												All mails are one call of the kernel's mail, which counts a call against the cap of mails an hour and not
- *												a mail. The words are in text/de_DE.php, the markup in templates/release.tpl (changed.tpl for the mail to the owner about changed data, order-owner.tpl and order-confirm.tpl for the order of an offer, approval-owner.tpl for the approval of a project); a value enters the
+ *												a mail. The words are in text/de_DE.php, the markup in templates/release.tpl (changed.tpl for the mail to the owner about changed data, order-owner.tpl and order-confirm.tpl for the order of an offer, approval-owner.tpl for the approval of a project, order-consent.tpl for a sentence about a consent that was given with an order, revocation-owner.tpl for the revocation of a consent); a value enters the
  *												template after it was rendered, escaped, so that nothing in it is read as a fill or a shortcode. The same
  *												mail, in the words of a reminder (text/de_DE.php, remind.*), asks for the payment of an invoice that is overdue.
  */
@@ -244,10 +244,11 @@ class Mail {
 	 *	@param		array 		$document			The offer, as Documents::get() has it, accepted
 	 *	@param		array 		$record				The record of the order, as Records::of() has it
 	 *	@param		array 		$client				As Clients::get() has it
+	 *	@param		array 		$consents			The records of kind consent that were given with the order: each is a sentence in both mails (consent.purpose.*), none where none was given
 	 *
 	 *	@return 	int|string								How many mails were delivered; 'address' where the site has no address to link to, 'limit' where the cap of mails an hour refused them
 	 */
-	public static function ordered( array &$appData, array $document, array $record, array $client ): int|string {
+	public static function ordered( array &$appData, array $document, array $record, array $client, array $consents = [] ): int|string {
 
 		$documents = \Nino\Html::absoluteUrl( $appData, self::PAGE );
 
@@ -264,6 +265,7 @@ class Mail {
 		try {
 			$ownerMarkup = \Nino\Html::renderHtml( $appData, self::template( 'order-owner' ) );
 			$confirmMarkup = \Nino\Html::renderHtml( $appData, self::template( 'order-confirm' ) );
+			$consentMarkup = \Nino\Html::renderHtml( $appData, self::template( 'order-consent' ) );
 			$owner = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ) );
 		}
 		finally {
@@ -278,11 +280,23 @@ class Mail {
 		$day = Render::day( substr( (string) $record['at'], 0, 10 ) );
 		$mails = [];
 
+		// A sentence for each consent that was given with the order, in the words of the purpose; nothing where none was
+		$rows = static function( string $key ) use ( $consentMarkup, $escape, $consents ): string {
+
+			$rows = '';
+
+			foreach( $consents as $consent )
+				if( in_array( $consent['purpose'] ?? '', \Crm\Records::PURPOSES, true ) === true )
+					$rows .= str_replace( '[[sentence]]', $escape( self::text( $key, self::text( 'consent.purpose.'. $consent['purpose'] ) ) ), $consentMarkup );
+
+			return $rows;
+		};
+
 		if( filter_var( $owner, FILTER_VALIDATE_EMAIL ) !== false )
 			$mails[] = [
 				'to'      => $owner,
 				'subject' => self::text( 'order.owner.subject', $number, $name, $who ),
-				'body'    => $replace( $ownerMarkup, [
+				'body'    => str_replace( '[[consents]]', $rows( 'order.owner.consent' ), $replace( $ownerMarkup, [
 					'[[heading]]' => self::text( 'order.owner.title' ),
 					'[[intro]]'   => self::text( 'order.owner.intro' ),
 					'[[offer]]'   => self::text( 'order.owner.offer', $number ),
@@ -292,7 +306,7 @@ class Mail {
 					'[[link]]'    => \Nino\Html::absoluteUrl( $appData, \Crm\Surface::ROUTE. '#beleg-'. (int) $document['id'] ),
 					'[[cta]]'     => self::text( 'order.owner.button' ),
 					'[[notice]]'  => self::text( 'order.owner.notice' ),
-				] ),
+				] ) ),
 				'replyTo' => filter_var( $record['member_email'], FILTER_VALIDATE_EMAIL ) === false ? '' : (string) $record['member_email'],
 			];
 
@@ -303,7 +317,7 @@ class Mail {
 			$mails[] = [
 				'to'      => (string) $record['member_email'],
 				'subject' => self::text( 'order.confirm.subject', $number ),
-				'body'    => $replace( $confirmMarkup, [
+				'body'    => str_replace( '[[consents]]', $rows( 'order.confirm.consent' ), $replace( $confirmMarkup, [
 					'[[heading]]'        => self::text( 'order.confirm.title' ),
 					'[[greeting]]'       => self::text( 'greeting', $who ),
 					'[[intro]]'          => self::text( 'order.confirm.intro', $day ),
@@ -314,7 +328,7 @@ class Mail {
 					'[[download-label]]' => self::text( 'order.confirm.download' ),
 					'[[notice]]'         => self::text( 'order.confirm.notice' ),
 					'[[closing]]'        => self::text( 'closing' ),
-				] ),
+				] ) ),
 				'replyTo' => filter_var( $owner, FILTER_VALIDATE_EMAIL ) === false ? '' : $owner,
 			];
 		}
@@ -410,6 +424,86 @@ class Mail {
 
 		if( $delivered === false )
 			trigger_error( 'Crm: the mail about the approval of project '. $project['id']. ' was not delivered', E_USER_WARNING );
+
+		return count( array_filter( (array) ( $appData['./nino/mail/results'] ?? [] ), static fn( mixed $result ): bool => $result === true ) );
+	}
+
+	/**
+	 *	Mail the owner that a client took a consent back in the portal: one mail to the contact address of the company (subject "Einwilligung widerrufen: <purpose>, Projekt <id and
+	 *	title>, Kunde <number and title> durch <account>", the reply to the account, the link to the card of the project in the surface - to the card of the client where the consent was
+	 *	not for a project). The customer gets no mail. Own template (templates/revocation-owner.tpl) and own words (text/de_DE.php, revocation.*, consent.purpose.*); the names enter
+	 *	the subject without control characters
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$revocation		The record of kind revocation, as Records::revoke() has it: it holds the purpose and the project of the consent
+	 *	@param		array 		$client				As Clients::get() has it
+	 *
+	 *	@return 	int|string								How many mails were delivered; 'address' where the site has no address to link to or the company has no contact address, 'limit' where the cap of mails an hour refused it
+	 */
+	public static function revoked( array &$appData, array $revocation, array $client ): int|string {
+
+		$project = (string) $revocation['project'];
+		$link = \Nino\Html::absoluteUrl( $appData, \Crm\Surface::ROUTE. ( $project === '' ? '#kunde-'. (int) $client['id'] : '#projekt-'. rawurlencode( $project ) ) );
+
+		if( $link === '' ) {
+			trigger_error( 'Crm: the mail about the revocation of a consent was not sent: the site has no address to link to', E_USER_WARNING );
+
+			return 'address';
+		}
+
+		$locale = \Nino\Locales::getCurrentLocale( $appData );
+
+		\Nino\Locales::useLocale( $appData, \Nino\Locales::getNativeLocale( $appData ) );
+
+		try {
+			$markup = \Nino\Html::renderHtml( $appData, self::template( 'revocation-owner' ) );
+			$owner = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ) );
+		}
+		finally {
+			\Nino\Locales::useLocale( $appData, $locale );
+		}
+
+		if( filter_var( $owner, FILTER_VALIDATE_EMAIL ) === false ) {
+			trigger_error( 'Crm: the mail about the revocation of a consent was not sent: the company has no contact address', E_USER_WARNING );
+
+			return 'address';
+		}
+
+		$line = static fn( string $text ): string => trim( (string) preg_replace( '/[\s\p{C}]+/u', ' ', $text ) );
+		$escape = static fn( string $value ): string => \Nino\Modules\Components::escape( $value );
+		$found = $project === '' ? null : \Crm\Projekte::get( $appData, $project );
+		$name = $line( $project. ( $found !== null && (string) $found['title'] !== '' ? ' '. $found['title'] : '' ) );
+		$purpose = self::text( 'consent.purpose.'. $revocation['purpose'] );
+		$customer = $line( (string) $client['number']. ' '. (string) $client['title'] );
+		$who = $line( (string) $revocation['member_name'] !== '' ? (string) $revocation['member_name'] : (string) $revocation['member_email'] );
+		$account = $line( (string) $revocation['member_name'] !== '' ? $revocation['member_name']. ' <'. $revocation['member_email']. '>' : (string) $revocation['member_email'] );
+		$values = [
+			'[[heading]]' => self::text( 'revocation.owner.title' ),
+			'[[intro]]'   => self::text( 'revocation.owner.intro' ),
+			'[[purpose]]' => self::text( 'revocation.owner.purpose', $purpose ),
+			'[[project]]' => $project === '' ? self::text( 'revocation.owner.project.all' ) : self::text( 'revocation.owner.project', $name ),
+			'[[client]]'  => self::text( 'revocation.owner.client', $customer ),
+			'[[account]]' => self::text( 'revocation.owner.account', $account ),
+			'[[link]]'    => $link,
+			'[[cta]]'     => self::text( $project === '' ? 'revocation.owner.button.client' : 'revocation.owner.button.project' ),
+			'[[notice]]'  => self::text( 'revocation.owner.notice' ),
+		];
+
+		$delivered = \Nino\Mail::sendAll( $appData, [ [
+			'to'      => $owner,
+			'subject' => self::text( 'revocation.owner.subject', $purpose, $project === '' ? self::text( 'revocation.owner.all' ) : $name, $customer, $who ),
+			'body'    => str_replace( array_keys( $values ), array_map( $escape, array_values( $values ) ), $markup ),
+			'replyTo' => filter_var( $revocation['member_email'], FILTER_VALIDATE_EMAIL ) === false ? '' : (string) $revocation['member_email'],
+		] ] );
+
+		if( \Nino\Mail::rateLimited( $appData ) === true ) {
+			trigger_error( 'Crm: the mail about the revocation of a consent was refused by the cap of mails an hour', E_USER_WARNING );
+
+			return 'limit';
+		}
+
+		if( $delivered === false )
+			trigger_error( 'Crm: the mail about the revocation of a consent was not delivered', E_USER_WARNING );
 
 		return count( array_filter( (array) ( $appData['./nino/mail/results'] ?? [] ), static fn( mixed $result ): bool => $result === true ) );
 	}

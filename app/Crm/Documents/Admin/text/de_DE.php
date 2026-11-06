@@ -36,6 +36,8 @@ return [
 	'[[/_admin/error/crm_documents_render]]' => 'Die Vorlage konnte kein PDF erzeugen. Der Beleg wurde nicht festgeschrieben und keine Nummer vergeben.',
 	'[[/_admin/error/crm_documents_write]]' => 'Die PDF-Datei konnte nicht geschrieben werden. Der Beleg wurde nicht festgeschrieben.',
 	'[[/_admin/error/crm_documents_portal_message]]' => 'Die Nachricht darf höchstens 2000 Zeichen haben und keine Steuerzeichen enthalten, die Zeilenumbrüche ausgenommen.',
+	'[[/_admin/error/crm_documents_consent_social]]' => 'Der Satz darf höchstens 2000 Zeichen haben und keine Steuerzeichen enthalten, die Zeilenumbrüche ausgenommen.',
+	'[[/_admin/error/crm_documents_consent_archive]]' => 'Der Satz darf höchstens 2000 Zeichen haben und keine Steuerzeichen enthalten, die Zeilenumbrüche ausgenommen.',
 	'[[/_admin/error/crm_documents_setting]]' => 'Der Wert der Einstellung ist nicht gültig. Bei den Steuersätzen: Trenne die Sätze mit Semikolon oder Leerzeichen; das Komma ist das Dezimalkomma.',
 	'[[/_admin/error/crm_documents_particular_tax_id]]' => 'Die Steuernummer darf Buchstaben, Ziffern, Leerzeichen, Punkt, Schrägstrich und Bindestrich haben, bis zu 40 Zeichen.',
 	'[[/_admin/error/crm_documents_particular_bank_name]]' => 'Der Name der Bank darf bis zu 80 Zeichen haben, ohne Steuerzeichen.',

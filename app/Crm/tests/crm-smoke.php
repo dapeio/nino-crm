@@ -122,7 +122,7 @@ $thirdFile->exec( 'INSERT INTO client_accounts ( client_id, member_id ) VALUES (
 $thirdFile = null;
 $migrated = \Crm\Db::pdo( $third );
 $rows = \Crm\Db::rows( $third, 'SELECT client_id, member_id FROM client_accounts ORDER BY rowid' );
-check( 'migrations 0004 to 0012 on a database of the third schema run once: version 12, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 9 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 12
+check( 'migrations 0004 to 0013 on a database of the third schema run once: version 13, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 10 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 13
 	&& array_map( 'json_encode', $rows ) === [ '{"client_id":2,"member_id":"aaaaaaaaaaaa"}', '{"client_id":1,"member_id":"bbbbbbbbbbbb"}' ] );
 check( '...migration 0006 gave the documents the column project, empty for every row there is, and the index on it', in_array( 'project', array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( documents )' ), 'name' ), true ) === true
 	&& (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'documents_project\' AND tbl_name = \'documents\'' )['n'] === 1 && \Crm\Db::rows( $third, 'SELECT id FROM documents WHERE project <> \'\'' ) === [] );
@@ -1704,10 +1704,18 @@ $rb = \Crm\Clients::add( $rec, [ 'name' => 'Ben Beleg' ] );
 $member = [ 'id' => 'aaaaaaaaaaaa', 'email' => 'rita@example.org', 'name' => 'Rita Record' ];
 $recordsSource = (string) file_get_contents( $root. '/app/Crm/Records/Records.php' );
 
-check( 'migration 0007 makes the table of the records with the columns of the plan, and the two indexes', array_column( \Crm\Db::rows( $rec, 'PRAGMA table_info( records )' ), 'name' ) === [ 'id', 'kind', 'client_id', 'member_id', 'member_email', 'member_name', 'document_id', 'project', 'sha256', 'shown', 'at', 'ip', 'agent' ]
-	&& array_column( \Crm\Db::rows( $rec, 'SELECT name FROM sqlite_master WHERE type = \'index\' AND tbl_name = \'records\' AND name LIKE \'records_%\' ORDER BY name' ), 'name' ) === [ 'records_client_kind', 'records_document' ]
-	&& array_column( \Crm\Db::rows( $rec, 'PRAGMA index_info( records_client_kind )' ), 'name' ) === [ 'client_id', 'kind' ] && array_column( \Crm\Db::rows( $rec, 'PRAGMA index_info( records_document )' ), 'name' ) === [ 'document_id' ] );
-check( '...the client and the document are references that restrict: a client with a record is not deleted', array_map( static fn( array $key ): string => $key['table']. ':'. $key['on_delete'], \Crm\Db::rows( $rec, 'PRAGMA foreign_key_list( records )' ) ) === [ 'documents:RESTRICT', 'clients:RESTRICT' ] || array_map( static fn( array $key ): string => $key['table']. ':'. $key['on_delete'], \Crm\Db::rows( $rec, 'PRAGMA foreign_key_list( records )' ) ) === [ 'clients:RESTRICT', 'documents:RESTRICT' ] );
+$recordKeys = array_map( static fn( array $key ): string => $key['table']. ':'. $key['on_delete'], \Crm\Db::rows( $rec, 'PRAGMA foreign_key_list( records )' ) );
+
+sort( $recordKeys );
+
+$recordColumns = array_column( \Crm\Db::rows( $rec, 'PRAGMA table_info( records )' ), null, 'name' );
+check( 'migrations 0007 and 0013 make the table of the records with the columns of the plan - the purpose and the revocation\'s parent beside them - and the indexes', array_keys( $recordColumns ) === [ 'id', 'kind', 'client_id', 'member_id', 'member_email', 'member_name', 'document_id', 'project', 'sha256', 'shown', 'at', 'ip', 'agent', 'purpose', 'parent' ]
+	&& $recordColumns['purpose']['dflt_value'] === "''" && (int) $recordColumns['purpose']['notnull'] === 1 && (int) $recordColumns['parent']['notnull'] === 0 && $recordColumns['parent']['dflt_value'] === null
+	&& array_column( \Crm\Db::rows( $rec, 'SELECT name FROM sqlite_master WHERE type = \'index\' AND tbl_name = \'records\' AND name LIKE \'records_%\' ORDER BY name' ), 'name' ) === [ 'records_client_kind', 'records_client_purpose', 'records_document', 'records_parent' ]
+	&& array_column( \Crm\Db::rows( $rec, 'PRAGMA index_info( records_client_kind )' ), 'name' ) === [ 'client_id', 'kind' ] && array_column( \Crm\Db::rows( $rec, 'PRAGMA index_info( records_document )' ), 'name' ) === [ 'document_id' ]
+	&& array_column( \Crm\Db::rows( $rec, 'PRAGMA index_info( records_client_purpose )' ), 'name' ) === [ 'client_id', 'purpose' ] && array_column( \Crm\Db::rows( $rec, 'PRAGMA index_info( records_parent )' ), 'name' ) === [ 'parent' ]
+	&& (int) \Crm\Db::row( $rec, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE name = \'records_parent\' AND sql LIKE \'%UNIQUE%\'' )['n'] === 1 );
+check( '...the client, the document and the consent a revocation names are references that restrict: a client with a record is not deleted', $recordKeys === [ 'clients:RESTRICT', 'documents:RESTRICT', 'records:RESTRICT' ] );
 
 // the standing with the Datenschutz follows the text
 check( 'while the owner keeps no text the portal asks for nothing: nobody has agreed, nobody is asked', \Crm\Records::privacy( $rec, $ra['id'] ) === [ 'asked' => false, 'agreed' => false, 'at' => '', 'member_name' => '' ] && \Crm\Records::privacyText( $rec ) === '' && \Crm\Settings::get( $rec, 'privacy_changed' ) === '' );
@@ -1719,7 +1727,7 @@ check( '...a save that leaves the text as it is does not move the day; a differe
 check( '...the rule of the text: tabs and line breaks pass, a control character, a text longer than '. \Crm\Settings::MAX_PRIVACY. ' characters and anything that is not text are refused; the empty text is a text (the portal asks for nothing again)', \Crm\Settings::set( $rec, 'privacy_text', "a\tb\nc" ) === true && \Crm\Settings::set( $rec, 'privacy_text', "a\x07b" ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', "a\x00b" ) === 'value:privacy_text'
 	&& \Crm\Settings::set( $rec, 'privacy_text', str_repeat( 'x', \Crm\Settings::MAX_PRIVACY + 1 ) ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', str_repeat( 'ä', \Crm\Settings::MAX_PRIVACY ) ) === true && \Crm\Settings::set( $rec, 'privacy_text', [ 'x' ] ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', "\xff\xfe" ) === 'value:privacy_text' );
 \Crm\Settings::set( $rec, 'privacy_text', $first );
-check( '...a text that is stored keeps the keys in order: the particulars, then the text and its day, then the message to the clients and its time', array_slice( array_keys( \Crm\Settings::all( $rec ) ), -4 ) === [ 'privacy_text', 'privacy_changed', 'portal_message', 'portal_message_at' ] );
+check( '...a text that is stored keeps the keys in order: the particulars, then the text and its day, then the message to the clients and its time, then the sentences of the consents', array_slice( array_keys( \Crm\Settings::all( $rec ) ), -6 ) === [ 'privacy_text', 'privacy_changed', 'portal_message', 'portal_message_at', 'consent_social', 'consent_archive' ] );
 $messageChecks = [];
 $messageChecks['none'] = \Crm\Settings::get( $rec, 'portal_message' ) === '' && \Crm\Settings::get( $rec, 'portal_message_at' ) === '';
 $messageChecks['set'] = \Crm\Settings::set( $rec, 'portal_message', "  Zu bis Montag.\r\nDanke!  " ) === true && \Crm\Settings::get( $rec, 'portal_message' ) === "Zu bis Montag.\nDanke!"
@@ -1806,8 +1814,8 @@ foreach( new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $root.
 	if( $file->getExtension() === 'php' && str_contains( $file->getPathname(), '/tests/' ) === false )
 		$sources[$file->getPathname()] = (string) file_get_contents( $file->getPathname() );
 
-check( 'the module never changes or deletes a record: no statement of it on the table records but the insert and the reads - and the class has no method that does', array_filter( $sources, static fn( string $code ): bool => preg_match( '/(UPDATE|DELETE\s+FROM|DROP\s+TABLE|REPLACE\s+INTO|INSERT\s+OR\s+REPLACE\s+INTO|ALTER\s+TABLE)\s+records\b/i', $code ) === 1 ) === []
-	&& preg_match_all( '/INSERT INTO records/', implode( "\n", $sources ) ) === 1 && array_values( array_filter( get_class_methods( \Crm\Records::class ), static fn( string $method ): bool => preg_match( '/^(add|insert|of|forDocument|approval|approvals|latestPrivacy|privacy|privacies|privacyText|hash|source|orderShown|approvalShown)$/', $method ) !== 1 ) ) === [] );
+check( 'the module never changes or deletes a record: no statement of it on the table records but the insert, the reads and the columns a migration adds - and the class has no method that does', array_filter( $sources, static fn( string $code ): bool => preg_match( '/(UPDATE|DELETE\s+FROM|DROP\s+TABLE|REPLACE\s+INTO|INSERT\s+OR\s+REPLACE\s+INTO|ALTER\s+TABLE)\s+records\b(?!\s+ADD\s+COLUMN\b)/i', $code ) === 1 ) === []
+	&& preg_match_all( '/INSERT INTO records/', implode( "\n", $sources ) ) === 1 && array_values( array_filter( get_class_methods( \Crm\Records::class ), static fn( string $method ): bool => preg_match( '/^(add|insert|revoke|of|forDocument|approval|approvals|approvalShown|latestPrivacy|privacy|privacies|privacyText|hash|source|sentence|orderShown|consents|consent|consentsOfProject|consentsOfDocument|names)$/', $method ) !== 1 ) ) === [] );
 
 \Nino\Filesystem::removeDir( ninoSandboxDir( $rec ) );
 
@@ -1832,5 +1840,125 @@ check( 'the README has the section on the mails to customers: every action with 
 	str_contains( $readme, '## Mails an Kunden: mit oder ohne' ) === true && array_filter( [ '`notify`', '`reminded_at`', '`0008-reminders.php`', 'SHA-256 des Tokens', 'so gültig wie einer mit Mail', 'wer ihn hat, unterschreibt oder meldet sich an als dieses Konto', 'Du gibst ihn selbst weiter', 'nur jetzt zu sehen', 'Link erneut senden', 'Nicht betroffen', '/_admin/members/manage', '/_admin/sign/manage', '`crm_clients_link_perm`', '`perms.members`', 'fünf in der Stunde', 'die Obergrenze aus der Konfiguration, Standard fünf', '`crm_clients_link`', 'eine Zeile im Verlauf', 'mailed' ], static fn( string $needle ): bool => str_contains( $readme, $needle ) === false ) === [] );
 check( 'the README names the two tokens of the sentences and says how an existing install changes its blocks: the second date is optional, the blocks of a new install carry the tokens', array_filter( [ '`[[/invoice/due-sentence]]`', '`[[/offer/valid-sentence]]`', 'freibleibend', 'Reiter *Bausteine*', 'Ohne Datum', 'jede offene oder versendete Rechnung, die im Portal freigegeben ist' ], static fn( string $needle ): bool => str_contains( $readme, $needle ) === false ) === [] );
 check( 'the screens say Status and not Zustand, in the words of the surface and of the panel', array_filter( [ 'Clients/Admin', 'Documents/Admin', 'Crm/Admin', 'Surface' ], static fn( string $dir ): bool => str_contains( (string) file_get_contents( $root. '/app/Crm/'. $dir. '/text/de_DE.php' ), 'Zustand' ) === true ) === [] );
+
+// --- Einwilligungen: the records of kind consent and revocation, the sentences ---------------------------------------------------------------
+
+/**
+ *	The checks of the consents in the table of the records
+ */
+function crmConsentChecks( string $root ): void {
+
+	echo "\nConsents\n";
+
+	$rec = ninoSandbox( 'crm-consents' );
+	$ra = \Crm\Clients::add( $rec, [ 'company' => 'Consent AG', 'name' => 'Cora Consent' ] );
+	$rb = \Crm\Clients::add( $rec, [ 'name' => 'Ben Beleg' ] );
+	$anna = [ 'id' => 'aaaaaaaaaaaa', 'email' => 'cora@example.org', 'name' => 'Cora Consent' ];
+	$ben = [ 'id' => 'bbbbbbbbbbbb', 'email' => 'ben@example.org', 'name' => '' ];
+	$count = static fn( string $kind ): int => (int) \Crm\Db::row( $rec, 'SELECT COUNT(*) AS n FROM records WHERE kind = :kind', [ 'kind' => $kind ] )['n'];
+	$add = static fn( array $over = [] ): array|string => \Crm\Records::add( $rec, $over + [ 'kind' => 'consent', 'client_id' => $ra['id'], 'member' => $anna, 'purpose' => 'social', 'shown' => 'Ich willige ein.', 'project' => '00001', 'ip' => '203.0.113.7', 'agent' => 'Agent' ] );
+
+	$constants = static fn( string $class ): array => ( new \ReflectionClass( $class ) )->getConstants();
+	check( 'the purposes of a consent are two and the kinds of a record five', $constants( \Crm\Records::class )['PURPOSES'] === [ 'social', 'archive' ] && $constants( \Crm\Records::class )['KINDS'] === [ 'privacy', 'order', 'approval', 'consent', 'revocation' ] );
+
+	// the consent
+	$one = $add();
+	check( 'Records::add keeps a consent: the purpose, the project, the sentence and its hash, the account as it was, the time, the address and the browser - and no document, no parent', is_array( $one ) && $one['kind'] === 'consent' && $one['purpose'] === 'social' && $one['project'] === '00001' && $one['shown'] === 'Ich willige ein.' && $one['sha256'] === hash( 'sha256', 'Ich willige ein.' )
+		&& $one['client_id'] === $ra['id'] && $one['member_email'] === 'cora@example.org' && $one['document_id'] === null && $one['parent'] === null && $one['ip'] === '203.0.113.7' && preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $one['at'] ) === 1 && \Crm\Records::of( $rec, $ra['id'], 'consent' ) === [ $one ] );
+	check( '...what add() answers is what of() reads: the same columns in the same order', array_keys( $one ) === array_keys( \Crm\Records::of( $rec, $ra['id'] )[0] ) && array_slice( array_keys( $one ), -2 ) === [ 'purpose', 'parent' ] );
+	$refused = array_map( static fn( array $input ): string|array => $add( $input ), [ [ 'purpose' => '' ], [ 'purpose' => 'bogus' ], [ 'purpose' => 'Social' ], [ 'purpose' => [ 'social' ] ], [ 'purpose' => null ], [ 'purpose' => 'social ' ], [ 'shown' => '' ], [ 'member' => [] ], [ 'client_id' => 999 ], [ 'document_id' => 'x' ], [ 'document_id' => 999 ] ] );
+	check( 'a consent that is none is refused with the cause, and nothing is kept: no purpose, a purpose that is none (also in another spelling, as a list, with a blank), nothing shown, no account, no such client, a document that is none or not there', $refused === [ 'purpose', 'purpose', 'purpose', 'purpose', 'purpose', 'purpose', 'shown', 'member', 'client', 'document', 'document' ] && $count( 'consent' ) === 1 );
+	check( '...a purpose is the consent\'s alone: another kind keeps none, whatever is posted', \Crm\Records::add( $rec, [ 'kind' => 'privacy', 'client_id' => $ra['id'], 'member' => $anna, 'shown' => 'Text', 'purpose' => 'social', 'parent' => 1 ] )['purpose'] === '' && \Crm\Records::add( $rec, [ 'kind' => 'privacy', 'client_id' => $ra['id'], 'member' => $anna, 'shown' => 'Text', 'parent' => $one['id'] ] )['parent'] === null );
+	$other = \Crm\Documents::add( $rec, 'offer', $rb['id'], [ 'lines' => [] ] );
+	check( '...a consent may name the offer it was given with, and that offer is the client\'s: another client\'s is refused', $add( [ 'document_id' => is_array( $other ) ? $other['id'] : 0 ] ) === 'document' && $count( 'consent' ) === 1 );
+	$mine = \Crm\Documents::add( $rec, 'offer', $ra['id'], [ 'lines' => [] ] );
+	$withDocument = $add( [ 'purpose' => 'archive', 'document_id' => $mine['id'], 'project' => '' ] );
+	check( '...and then it holds the document', is_array( $withDocument ) && $withDocument['document_id'] === $mine['id'] && $withDocument['project'] === '' );
+	check( '...the offer a consent names is not deleted while the consent is there', ( static function() use ( $rec, $mine ): bool {
+		try {
+			\Crm\Db::exec( $rec, 'DELETE FROM documents WHERE id = :id', [ 'id' => $mine['id'] ] );
+			return false;
+		}
+		catch( \PDOException $e ) {
+			return true;
+		}
+	} )() === true );
+
+	// the revocation
+	$bens = \Crm\Records::add( $rec, [ 'kind' => 'consent', 'client_id' => $rb['id'], 'member' => $ben, 'purpose' => 'social', 'shown' => 'Bens Satz', 'project' => '' ] );
+	$privacy = \Crm\Records::add( $rec, [ 'kind' => 'privacy', 'client_id' => $ra['id'], 'member' => $anna, 'shown' => 'Datenschutz' ] );
+	$revoke = static fn( array $over = [] ): array|string => \Crm\Records::add( $rec, $over + [ 'kind' => 'revocation', 'client_id' => $ra['id'], 'member' => $anna, 'parent' => $one['id'], 'ip' => '203.0.113.8', 'agent' => 'Agent 2' ] );
+	$refused = array_map( static fn( array $input ): string|array => $revoke( $input ), [ [ 'parent' => null ], [ 'parent' => 0 ], [ 'parent' => 999 ], [ 'parent' => (string) $one['id'] ], [ 'parent' => $bens['id'] ], [ 'parent' => $privacy['id'] ], [ 'client_id' => $rb['id'] ], [ 'document_id' => $mine['id'] ] ] );
+	check( 'a revocation needs a consent of the same client that no revocation names: no parent, a parent that is none, one that is not there, as text, another client\'s consent, a record that is no consent, the client of another - all refused as parent -, a document - refused as document -, and nothing is kept', $refused === [ 'parent', 'parent', 'parent', 'parent', 'parent', 'parent', 'parent', 'document' ] && $count( 'revocation' ) === 0 );
+	$gone = $revoke( [ 'purpose' => 'archive', 'project' => '00099', 'shown' => 'Etwas anderes' ] );
+	check( 'the revocation holds what the consent held - its purpose, its project, its sentence and the hash of it - whatever else is posted; it names the consent in parent, has no document, and has the account, the time, the address and the browser of its own', is_array( $gone ) && $gone['kind'] === 'revocation' && $gone['parent'] === $one['id'] && $gone['purpose'] === 'social' && $gone['project'] === '00001' && $gone['shown'] === 'Ich willige ein.'
+		&& $gone['sha256'] === $one['sha256'] && $gone['document_id'] === null && $gone['ip'] === '203.0.113.8' && $gone['agent'] === 'Agent 2' && $gone['id'] > $one['id'] );
+	check( '...a consent that is revoked is revoked once: a second revocation of it is refused as parent', $revoke() === 'parent' && $count( 'revocation' ) === 1 );
+	check( '...it acts for the future and deletes nothing: the consent is as it was', \Crm\Db::row( $rec, 'SELECT * FROM records WHERE id = :id', [ 'id' => $one['id'] ] )['shown'] === 'Ich willige ein.' && \Crm\Records::of( $rec, $ra['id'], 'consent' )[1] === $one );
+	check( '...Records::revoke is the same step in a transaction of its own: it answers the record, or parent for a consent that is revoked, is another client\'s or is none', \Crm\Records::revoke( $rec, $ra['id'], $one['id'], $anna, [] ) === 'parent' && \Crm\Records::revoke( $rec, $ra['id'], $bens['id'], $anna, [] ) === 'parent' && \Crm\Records::revoke( $rec, $ra['id'], 999, $anna, [] ) === 'parent'
+		&& is_array( $second = \Crm\Records::revoke( $rec, $ra['id'], $withDocument['id'], $anna, [ 'ip' => '203.0.113.9', 'agent' => 'Agent 3' ] ) ) && $second['parent'] === $withDocument['id'] && $second['purpose'] === 'archive' && $second['agent'] === 'Agent 3' && \Crm\Db::pdo( $rec )->inTransaction() === false );
+
+	// the reads
+	$three = $add( [ 'project' => '00002' ] );
+	$four = $add( [ 'project' => '00001' ] );
+	$consents = \Crm\Records::consents( $rec, $ra['id'] );
+	check( 'consents() lists the consents of the client, the newest first, each with revoked: the record that took it back, or null', array_column( $consents, 'id' ) === [ $four['id'], $three['id'], $withDocument['id'], $one['id'] ] && array_column( $consents, 'revoked' ) !== [] && $consents[0]['revoked'] === null && $consents[1]['revoked'] === null
+		&& $consents[2]['revoked']['parent'] === $withDocument['id'] && $consents[3]['revoked'] === $gone && array_keys( $consents[0] ) === array_merge( array_keys( $one ), [ 'revoked' ] ) );
+	check( '...another client\'s consents are not among them, and a client with none has none', array_column( \Crm\Records::consents( $rec, $rb['id'] ), 'id' ) === [ $bens['id'] ] && \Crm\Records::consents( $rec, 999 ) === [] && array_filter( \Crm\Records::consents( $rec, $ra['id'] ), static fn( array $row ): bool => $row['kind'] !== 'consent' ) === [] );
+	check( 'consent() is the newest consent of a purpose and a project that no revocation names: the one that holds', \Crm\Records::consent( $rec, $ra['id'], 'social', '00001' ) === $four && \Crm\Records::consent( $rec, $ra['id'], 'social', '00002' ) === $three );
+	check( '...none for a purpose that was revoked, for a project that has none, for the other purpose, for the other client - and a consent for no project holds for every project of its client, and for none of another client\'s', \Crm\Records::consent( $rec, $ra['id'], 'archive', '' ) === null && \Crm\Records::consent( $rec, $ra['id'], 'social', '00003' ) === null && \Crm\Records::consent( $rec, $ra['id'], 'archive', '00001' ) === null
+		&& \Crm\Records::consent( $rec, $rb['id'], 'social', '00001' ) === $bens && \Crm\Records::consent( $rec, $rb['id'], 'social', '' ) === $bens && \Crm\Records::consent( $rec, $ra['id'], 'social', '00002' ) === $three && \Crm\Records::consent( $rec, $ra['id'], 'social', '' ) === null && \Crm\Records::consent( $rec, $ra['id'], 'bogus', '00001' ) === null );
+	$five = $add( [ 'project' => '00005', 'shown' => 'Fünf' ] );
+	$six = $add( [ 'project' => '00005', 'shown' => 'Sechs' ] );
+	check( '...where two consents hold for one purpose and project the newest is the one that is answered - and it is the one a revocation of the newer leaves the older behind', \Crm\Records::consent( $rec, $ra['id'], 'social', '00005' ) === $six && is_array( \Crm\Records::revoke( $rec, $ra['id'], $six['id'], $anna, [] ) ) && \Crm\Records::consent( $rec, $ra['id'], 'social', '00005' ) === $five );
+	$revokedFour = \Crm\Records::revoke( $rec, $ra['id'], $four['id'], $anna, [] );
+	check( '...a consent that is revoked is none, the one before it that was not revoked holds again - there is none then, as the older one was revoked', is_array( $revokedFour ) && \Crm\Records::consent( $rec, $ra['id'], 'social', '00001' ) === null );
+	check( 'consentsOfProject() lists what the clients consented to that holds for a project - for it and for all projects - or every consent there is: with what became of it', array_column( \Crm\Records::consentsOfProject( $rec, '00001' ), 'id' ) === [ $four['id'], $bens['id'], $withDocument['id'], $one['id'] ] && array_column( \Crm\Records::consentsOfProject( $rec, '00002' ), 'id' ) === [ $three['id'], $bens['id'], $withDocument['id'] ] && array_column( \Crm\Records::consentsOfProject( $rec, '00009' ), 'id' ) === [ $bens['id'], $withDocument['id'] ]
+		&& array_column( \Crm\Records::consentsOfProject( $rec ), 'id' ) === [ $six['id'], $five['id'], $four['id'], $three['id'], $bens['id'], $withDocument['id'], $one['id'] ] && array_column( \Crm\Records::consentsOfDocument( $rec, $mine['id'] ), 'id' ) === [ $withDocument['id'] ] && \Crm\Records::consentsOfDocument( $rec, $mine['id'] )[0]['revoked']['parent'] === $withDocument['id'] && \Crm\Records::consentsOfDocument( $rec, 999 ) === [] );
+	check( 'Records::names() says whether a record names a project: of any kind, and the revocation too', \Crm\Records::names( $rec, '00001' ) === true && \Crm\Records::names( $rec, '00002' ) === true && \Crm\Records::names( $rec, '00009' ) === false && \Crm\Records::names( $rec, '' ) === true );
+
+	// one query for each read
+	$source = static function( string $method ): string {
+
+		$reflection = new \ReflectionMethod( \Crm\Records::class, $method );
+		$lines = file( (string) $reflection->getFileName() ) ?: [];
+
+		return implode( '', array_slice( $lines, $reflection->getStartLine() - 1, $reflection->getEndLine() - $reflection->getStartLine() + 1 ) );
+	};
+	check( '...consents(), consent(), consentsOfProject() and consentsOfDocument() read once, whatever the number of consents: one statement each, and no loop of statements', array_filter( [ 'consents', 'consent', 'consentsOfProject', 'consentsOfDocument' ], static fn( string $method ): bool => preg_match_all( '/Db::(rows|row)\(/', $source( $method ) ) !== 1 || preg_match( '/\b(foreach|for|while)\b[^\n]*Db::/', $source( $method ) ) === 1 ) === [] );
+
+	check( '...revoke() takes the write lock before it reads the consent: the check and the record are one step, so that two posts of one button keep one revocation', preg_match( "/->exec\( 'BEGIN IMMEDIATE' \)/", $source( 'revoke' ) ) === 1 && str_contains( $source( 'revoke' ), 'COMMIT' ) === true && str_contains( $source( 'revoke' ), 'ROLLBACK' ) === true );
+
+	// the order carries the sentences
+	$document = (array) \Crm\Documents::get( $rec, $mine['id'] );
+	$plain = (array) json_decode( \Crm\Records::orderShown( $rec, $document, 'Satz' ), true );
+	$with = (array) json_decode( \Crm\Records::orderShown( $rec, $document, 'Satz', [ 'social' => "Zeile 1\nZeile 2", 'archive' => 'Zwei' ] ), true );
+	check( 'the JSON an order keeps has the sentences of the consents that were offered with it, purpose by purpose - and has no key for them where none was offered, so that the JSON of an order like it can be made again', array_diff_key( $with, [ 'consents' => 0 ] ) === $plain && $with['consents'] === [ 'social' => "Zeile 1\nZeile 2", 'archive' => 'Zwei' ] && array_key_exists( 'consents', $plain ) === false );
+
+	// the sentences
+	check( 'the settings consent_social and consent_archive have an empty default; a sentence is a text with line breaks, and the box exists where the sentence does', $constants( \Crm\Settings::class )['DEFAULTS']['consent_social'] === '' && $constants( \Crm\Settings::class )['DEFAULTS']['consent_archive'] === '' && \Crm\Settings::get( $rec, 'consent_social' ) === '' && \Crm\Records::sentence( $rec, 'social' ) === '' );
+	$kept = [];
+
+	foreach( [ 'consent_social', 'consent_archive' ] as $key ) {
+
+		$kept[$key . ' set'] = \Crm\Settings::set( $rec, $key, "  Ich willige ein,\r\nfreiwillig.  " ) === true && \Crm\Settings::get( $rec, $key ) === "Ich willige ein,\nfreiwillig.";
+		$kept[$key . ' tab'] = \Crm\Settings::set( $rec, $key, "a\tb\nc" ) === true;
+		$kept[$key . ' limit'] = \Crm\Settings::set( $rec, $key, str_repeat( 'ä', \Crm\Settings::MAX_MESSAGE ) ) === true && \Crm\Settings::set( $rec, $key, str_repeat( 'x', \Crm\Settings::MAX_MESSAGE + 1 ) ) === 'value:'. $key;
+		$kept[$key . ' control'] = \Crm\Settings::set( $rec, $key, "a\x07b" ) === 'value:'. $key && \Crm\Settings::set( $rec, $key, "a\x00b" ) === 'value:'. $key && \Crm\Settings::set( $rec, $key, "a\x1bb" ) === 'value:'. $key && \Crm\Settings::set( $rec, $key, "\xff\xfe" ) === 'value:'. $key && \Crm\Settings::set( $rec, $key, [ 'x' ] ) === 'value:'. $key && \Crm\Settings::set( $rec, $key, null ) === 'value:'. $key;
+		$kept[$key . ' removed'] = \Crm\Settings::set( $rec, $key, '' ) === true && \Crm\Settings::get( $rec, $key ) === '';
+	}
+
+	check( '...two sentences, each as long as a message to the clients: 2000 characters, no control character but the tab and the line break, no bytes that are no UTF-8, an empty sentence is no box', array_keys( array_filter( $kept, static fn( bool $same ): bool => $same === false ) ) === [] );
+	\Crm\Settings::set( $rec, 'consent_social', 'Social' );
+	check( '...Records::sentence() is the setting of the purpose, and nothing for a purpose that is none', \Crm\Records::sentence( $rec, 'social' ) === 'Social' && \Crm\Records::sentence( $rec, 'archive' ) === '' && \Crm\Records::sentence( $rec, 'privacy_text' ) === '' && \Crm\Records::sentence( $rec, '' ) === '' && \Crm\Settings::set( $rec, 'consent_other', 'x' ) === 'unknown' );
+
+	\Nino\Filesystem::removeDir( ninoSandboxDir( $rec ) );
+
+	$readme = (string) file_get_contents( $root. '/app/Crm/README.md' );
+	check( 'the README has the subsection on the consents: the two purposes, the sentences and the settings that hold them, the boxes that are never required, the transaction of the order, the two kinds of record, the route of the revocation with the mail to the company, the state of the block, the veto and the migration', array_filter( [ '### Einwilligungen', '`social`', '`archive`', '`consent_social`', '`consent_archive`', '`crm_documents_consent_social`', '`consent[social]`', 'nie `required`', '`?state=changed`', 'in einer Transaktion', '`consent`', '`revocation`', '`parent`', '`Records::revoke()`', '`Records::consents( $appData, $clientId )`', '`Records::consent( $appData, $clientId, $purpose, $project )`',
+		'`POST /.crm/einwilligung/widerruf`', '`?state=revoked`', '`consent=1`', '`id="crm-consents"`', '`crm-projekte/list`', '`consent_social`', '`Projekte::callbackDelete()`', '`0013-consents.php`' ], static fn( string $needle ): bool => str_contains( $readme, $needle ) === false ) === [] );
+}
+
+crmConsentChecks( $root );
 
 ninoDone( $appData );
