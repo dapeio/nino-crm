@@ -309,7 +309,7 @@ This is what CI (`.github/workflows/ci.yml`) runs, in its order: PHP 8.4, Node 2
 find . -name "*.php" -not -path "./.git/*" -print0 | xargs -0 -n1 php -l
 find . -name "*.js" -not -path "./.git/*" -print0 | xargs -0 -n1 node --check
 for dir in app features; do [ -f "$dir/.htaccess" ] || { echo "$dir/.htaccess is missing"; exit 1; }; done
-phpstan analyse --no-progress --memory-limit=1G
+phpstan analyse --no-progress --memory-limit=2G
 npx --yes eslint@9.39.0 .
 for test in tests/*-smoke.php; do php "$test" || exit 1; done
 for test in features/*/tests/*-smoke.php; do [ -e "$test" ] || continue; php "$test" || exit 1; done

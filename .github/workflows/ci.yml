@@ -44,9 +44,12 @@ jobs:
 
       # Static analysis - phpstan.neon holds level and paths, the baseline
       # next to it the findings that were open when the check arrived, so
-      # only something new fails here
+      # only something new fails here. The limit is per worker: a worker
+      # keeps what it learned from every file it was handed, and the smoke
+      # tests of app/Crm are scripts of thousands of lines whose file scope
+      # costs a worker most of a gigabyte on its own
       - name: Analyse PHP with PHPStan
-        run: phpstan analyse --no-progress --memory-limit=1G
+        run: phpstan analyse --no-progress --memory-limit=2G
 
       # Undefined names, unused code, == where === was meant: what
       # `node --check` cannot see. The version is pinned here and nowhere
@@ -126,4 +129,4 @@ jobs:
         run: for test in features/*/tests/*-smoke.php; do [ -e "$test" ] || continue; php "$test" || exit 1; done
 
       - name: Analyse the features with PHPStan
-        run: phpstan analyse --no-progress --memory-limit=1G
+        run: phpstan analyse --no-progress --memory-limit=2G
