@@ -74,6 +74,9 @@ class Admin {
 	];
 
 	// The fields of a draft a post may carry
+	// The template Einrichten makes for each kind of document: a new draft starts with it where nothing else says which to take
+	private const array STANDARD = [ 'offer' => 'angebot', 'invoice' => 'rechnung', 'credit' => 'stornorechnung', 'contract' => 'vertrag', 'privacy' => 'datenschutz', 'information' => 'information' ];
+
 	private const array FIELDS = [ 'date', 'due_date', 'valid_until', 'period_from', 'period_to', 'template_key', 'inputs', 'reverse_charge', 'lines', 'title', 'project', 'buyer_reference' ];
 
 	// What an action made or touched, by action: written by the action, read by log() in the same request
@@ -704,7 +707,10 @@ class Admin {
 		}
 
 		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request, $category ): void {
-			\Nino\Http::ok( $request, [ 'templates' => self::_templates( $appData, $category ), 'offers' => self::_offers( $appData ), 'items' => self::_catalogue( $appData ) ] );
+			$templates = self::_templates( $appData, $category );
+			$standard = self::STANDARD[$category];
+
+			\Nino\Http::ok( $request, [ 'templates' => $templates, 'standard' => in_array( $standard, array_column( $templates, 'key' ), true ) === true ? $standard : '', 'offers' => self::_offers( $appData ), 'items' => self::_catalogue( $appData ) ] );
 		} );
 	}
 

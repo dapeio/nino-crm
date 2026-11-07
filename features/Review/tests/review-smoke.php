@@ -317,7 +317,7 @@ check( 'it says all six sections of its manual in both languages, and its sectio
 			if( is_array( $line ) === false || trim( (string) ( $line['en_US'] ?? '' ) ) === '' || trim( (string) ( $line['de_DE'] ?? '' ) ) === '' )
 				return false;
 	return isset( $manifest['manual']['install']['elements/privacy.php'], $manifest['manual']['install']['page'], $manifest['manual']['install']['text/<locale>.php'] ) === true && count( $manifest['manual']['shortcodes'] ) >= 2
-		&& count( $manifest['manual']['routes'] ) === 3 && count( $manifest['manual']['callbacks'] ) === 3 && count( $manifest['manual']['panel'] ) >= 1 && count( $manifest['manual']['markup'] ) >= 2;
+		&& count( $manifest['manual']['routes'] ) === 3 && count( $manifest['manual']['callbacks'] ) === 4 && count( $manifest['manual']['panel'] ) >= 1 && count( $manifest['manual']['markup'] ) >= 2;
 } )() );
 check( '...and the line of its panel names the permission of the Files panel, which the player of the panel needs, in both languages', is_array( $manifest ) && str_contains( (string) ( $manifest['manual']['panel']['Review']['en_US'] ?? '' ), 'permission of the Files panel' ) === true
 	&& str_contains( (string) ( $manifest['manual']['panel']['Review']['de_DE'] ?? '' ), 'Berechtigung des Panels Dateien' ) === true );
@@ -951,6 +951,7 @@ check( '...a shortcode cannot hand it markup - the attribute is no attribute of 
 
 ninoVisit( $appData, '/club/review?review='. $clip['id'] );
 $videoHtml = \Nino\Html::renderHtml( $appData, '[review-player]' );
+reviewPlayerChecks( $appData, $html, $videoHtml );
 $video = reviewFind( $videoHtml, '//video' );
 check( 'a video file is a video element, with the same source rule and the same controls', count( $video ) === 1 && reviewFind( $videoHtml, '//audio' ) === [] && $video[0]->getAttribute( 'src' ) === '/.files/'. $clip['id'] && $video[0]->hasAttribute( 'controls' ) === true
 	&& $video[0]->getAttribute( 'preload' ) === 'metadata' && $boxes !== [] && reviewFind( $videoHtml, '//div[@data-review-kind="video"]' ) !== [] );
@@ -1481,10 +1482,12 @@ foreach( array_merge( glob( $dir. '/templates/*.tpl' ) ?: [], [ $dir. '/Review.p
 		$named = array_merge( $named, $keys[1] );
 $named = array_map( static fn( string $key ): string => '[[/feature/review/'. $key. ']]', array_values( array_unique( $named ) ) );
 $composed = array_map( static fn( string $key ): string => '[[/feature/review/'. $key. ']]', [ 'state/sent', 'state/long', 'state/limit', 'state/expired', 'state/invalid', 'kind/audio', 'kind/video',
-	'mail/comment-subject', 'mail/answer-subject', 'mail/note-subject', 'script/answering', 'script/cancel' ] );
+	'mail/comment-subject', 'mail/comment-about-subject', 'mail/comment-button', 'mail/comment-button-card', 'mail/answer-subject', 'mail/note-subject', 'script/answering', 'script/cancel' ] );
+// The words a unit keeps for the sites that took them before: nothing asks for them any more, and a site that has them keeps them
+$retired = [ '[[/feature/review/mail/answer-notice]]' ];
 check( 'the unit brings the words of the site in both languages with the same keys; every word the class, the templates and the script name in full is among them, and so are the five states, the two kinds, the three subjects of the mails and the two words of the script',
 	$siteEn === $siteDe && count( $named ) > 20 && array_diff( array_merge( $named, $composed ), $siteEn ) === [] );
-check( '...and no word is in the unit that nothing asks for', array_diff( $siteEn, $named, $composed ) === [] );
+check( '...and no word is in the unit that nothing asks for, but the ones it keeps for the sites that have them', array_diff( $siteEn, $named, $composed, $retired ) === [] && array_diff( $retired, $siteEn ) === [] );
 
 reviewVisitor();
 echo "\n";
@@ -1618,6 +1621,7 @@ check( '...the link leads to the page that showed the player when the comment an
 check( '...and the subject is that of an answer, in the native language of the site', ( $forAda['subject'] ?? '' ) === (string) \Nino\Html::getFills( $appData, 'de_DE' )['[[/feature/review/mail/answer-subject]]'] );
 $introAnswer = (string) \Nino\Html::getFills( $appData, 'de_DE' )['[[/feature/review/mail/answer-intro]]'];
 $introNote = (string) \Nino\Html::getFills( $appData, 'de_DE' )['[[/feature/review/mail/note-intro]]'];
+reviewMailWordsChecks( $appData, $track, $m1, $ada, $adaText );
 check( '...it opens with the sentence for an answer and not with the one for a comment of the owner\'s own', $introAnswer !== $introNote && trim( $introAnswer ) !== '' && str_contains( $adaText, $introAnswer ) === true && str_contains( $adaText, $introNote ) === false );
 
 $mails = [];
@@ -2104,6 +2108,94 @@ else {
 	$exit = 1;
 	exec( 'NINO_ROOT='. escapeshellarg( $root ). ' '. escapeshellarg( $node ). ' '. escapeshellarg( __DIR__. '/review-js-smoke.js' ). ' 2>&1', $output, $exit );
 	check( 'review-js-smoke.js passes - '. ( $output === [] ? 'no output' : end( $output ) ), $exit === 0 );
+}
+
+/**
+ *	The player says what the browser's own controls are not to offer - a download of the file: audio and video both carry controlsList="nodownload" -, and the day of a comment is written
+ *	the way the language of the page writes a day (06.11.2026 in German, 2026-11-06 in the others) while the attribute of the element holds the time as the store has it
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$html						The player of an audio file with its comments
+ *	@param		string		$videoHtml			The player of a video file
+ *
+ *	@return 	void
+ */
+function reviewPlayerChecks( array &$appData, string $html, string $videoHtml ): void {
+
+	check( 'the audio and the video element of the player carry controlsList="nodownload": the browser\'s own controls do not offer to save the file', reviewFind( $html, '//audio[@controlslist="nodownload"]' ) !== [] && reviewFind( $videoHtml, '//video[@controlslist="nodownload"]' ) !== [] );
+
+	$dates = reviewFind( $html, '//time[contains(@class, "review-comment__date")]' );
+	$german = array_map( static fn( DOMElement $time ): array => [ $time->getAttribute( 'datetime' ), $time->textContent ], $dates );
+	$locale = \Nino\Locales::getCurrentLocale( $appData );
+
+	\Nino\Locales::useLocale( $appData, 'en_US' );
+	ninoVisit( $appData, '/club/review?review='. $GLOBALS['track']['id'] );
+	$english = array_map( static fn( DOMElement $time ): string => $time->textContent, reviewFind( \Nino\Html::renderHtml( $appData, '[review-player]' ), '//time[contains(@class, "review-comment__date")]' ) );
+	\Nino\Locales::useLocale( $appData, $locale );
+
+	check( '...the day of a comment is d.m.Y in German - the time attribute stays the stamp of the store - and Y-m-d in the language that writes it so', $dates !== [] && array_filter( $german, static fn( array $pair ): bool => preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $pair[0] ) !== 1 || $pair[1] !== substr( $pair[0], 8, 2 ). '.'. substr( $pair[0], 5, 2 ). '.'. substr( $pair[0], 0, 4 ) ) === []
+		&& $english !== [] && array_filter( $english, static fn( string $day ): bool => preg_match( '/^\d{4}-\d{2}-\d{2}$/D', $day ) !== 1 ) === [] );
+}
+
+/**
+ *	The mails of the feature tell the member to sign in - with the code the sign-in sends - and the mail to the owner can be sent by a site that keeps the files in a place of its own:
+ *	the callback /review/owner-mail may set the link and one line about it, and the mail has the line in its subject, the link in its button and the word for that button; a line is a line
+ *	whatever it holds
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$track					The file
+ *	@param		array 		$comment				A comment of a member on it
+ *	@param		array 		$member					The account of that member
+ *	@param		string		$answerText			The text of the mail of an answer to a member
+ *
+ *	@return 	void
+ */
+function reviewMailWordsChecks( array &$appData, array $track, array $comment, array $member, string $answerText ): void {
+
+	global $mails;
+
+	$words = \Nino\Html::getFills( $appData, 'de_DE' );
+
+	check( 'the mail of an answer to a member says to sign in with the code, in the word of the new key - and not with the one that spoke of a link', str_contains( $answerText, (string) $words['[[/feature/review/mail/answer-notice-code]]'] ) === true && str_contains( $answerText, (string) $words['[[/feature/review/mail/answer-notice]]'] ) === false
+		&& trim( (string) $words['[[/feature/review/mail/answer-notice-code]]'] ) !== '' );
+
+	$saved = [ $mails ];
+	\Nino\Features::saveSettings( $appData, 'review', [ 'notifyOwner' => true ] );
+	$mails = [];
+	reviewFresh( $appData );
+	\Nino\Callbacks::registerCallback( $appData, '/review/owner-mail', static function( array &$appData, array &$args ): void {
+		$args['link'] = 'https://example.org/crm#projekt-00007';
+		$args['about'] = "Kunde\r\nBcc: x@example.org <b>Projekt</b> [[company]]";
+	} );
+	$told = \Nino\Modules\Review::notifyOwner( $appData, $track, $comment, $member );
+	$mail = $mails[0] ?? [];
+	\Nino\Callbacks::removeCallbacks( $appData, '/review/owner-mail' );
+
+	check( 'a callback on /review/owner-mail sets the link and the line about it: the button links the address it gave and says the word of the card, the subject has the line - one line, no key left in it, the markup of it text',
+		$told === true && count( $mails ) === 1 && str_contains( (string) $mail['body'], 'href="https://example.org/crm#projekt-00007"' ) === true && str_contains( (string) $mail['body'], '#review' ) === false && str_contains( (string) $mail['body'], (string) $words['[[/feature/review/mail/comment-button-card]]'] ) === true
+		&& str_contains( (string) $mail['body'], (string) $words['[[/feature/review/mail/comment-button]]'] ) === false && preg_match( '/[\r\n]/', (string) $mail['subject'] ) !== 1 && str_contains( (string) $mail['subject'], 'Kunde Bcc: x@example.org <b>Projekt</b> [[company]]' ) === true );
+
+	$mails = [];
+	reviewFresh( $appData );
+	\Nino\Callbacks::registerCallback( $appData, '/review/owner-mail', static function( array &$appData, array &$args ): void {
+		$args['link'] = [ 'no text' ];
+		$args['about'] = 42;
+	} );
+	\Nino\Modules\Review::notifyOwner( $appData, $track, $comment, $member );
+	$stray = $mails[0] ?? [];
+	\Nino\Callbacks::removeCallbacks( $appData, '/review/owner-mail' );
+
+	check( '...a callback that answers a link or a line that is no text leaves no mail with them: no mail is sent without a link, and a line that is none is no line', $stray === [] || ( str_contains( (string) $stray['subject'], '[[about]]' ) === false && str_contains( (string) $stray['body'], 'href=""' ) === false ) );
+
+	$mails = [];
+	reviewFresh( $appData );
+	\Nino\Modules\Review::notifyOwner( $appData, $track, $comment, $member );
+	$plain = $mails[0] ?? [];
+
+	check( '...with no callback the mail is the plain one: the panel is the link, the subject is the one of the unit and the button says the panel', str_contains( (string) ( $plain['body'] ?? '' ), '/_admin#review' ) === true && ( $plain['subject'] ?? '' ) === (string) $words['[[/feature/review/mail/comment-subject]]'] && str_contains( (string) $plain['body'], (string) $words['[[/feature/review/mail/comment-button]]'] ) === true );
+
+	\Nino\Features::saveSettings( $appData, 'review', [ 'notifyOwner' => false ] );
+	$mails = $saved[0];
 }
 
 echo "\n";

@@ -264,6 +264,7 @@ return [
 	'[[/project/crm-portal/start/privacy-link]]' => 'Zur Datenschutzerklärung',
 	'[[/project/crm-portal/start/new-file-one]]' => 'neue Datei',
 	'[[/project/crm-portal/start/new-file-many]]' => 'neue Dateien',
+	'[[/project/crm-portal/start/new-file-waiting]]' => 'Die Dateien sind offen, sobald Du das Angebot bestätigt hast.',
 	'[[/project/crm-portal/start/nothing]]' => 'Im Moment liegt nichts für Dich an. Neue Angebote, Rechnungen, Dateien und Termine erscheinen hier, sobald es sie gibt.',
 	'[[/project/crm-portal/start/kpis]]' => 'Auf einen Blick',
 	'[[/project/crm-portal/start/kpi-offers]]' => 'Angebote zu beauftragen',

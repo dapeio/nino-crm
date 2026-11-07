@@ -28,7 +28,7 @@ class Files {
 	// The actions of the panel that the surface offers, and the method of this class that answers each
 	private const array ACTIONS = [
 		'files/list' => 'apiList', 'files/folder/add' => 'apiFolderAdd', 'files/folder/save' => 'apiFolderSave',
-		'files/upload' => 'apiUpload', 'files/save' => 'apiSave', 'files/delete' => 'apiDelete', 'files/remove' => 'apiRemove',
+		'files/upload' => 'apiUpload', 'files/save' => 'apiSave', 'files/notify' => 'apiNotify', 'files/delete' => 'apiDelete', 'files/remove' => 'apiRemove',
 	];
 
 	/**
@@ -42,7 +42,7 @@ class Files {
 	}
 
 	/**
-	 *	The actions of the tab: the panel's seven, answered by the methods of this class
+	 *	The actions of the tab: the panel's eight, answered by the methods of this class
 	 *
 	 *	@return 	array											action => [ class, method ]
 	 */
@@ -292,6 +292,32 @@ class Files {
 
 		if( self::fileIn( $appData, $request ) === true )
 			\Nino\Modules\Files\Admin::apiSave( $appData, $request );
+	}
+
+	/**
+	 *	The mail about the files of an upload: every file it names lies in a client's folder, or nothing is asked of the panel. An id nobody has is the panel's to answer
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function apiNotify( array &$appData, array &$request ): void {
+
+		if( self::guard( $appData, $request ) === false )
+			return;
+
+		$ids = \Nino\Admin\Admin::postData()['ids'] ?? null;
+
+		foreach( is_array( $ids ) === true ? $ids : [] as $id ) {
+
+			$file = is_string( $id ) === true ? \Nino\Modules\Files::file( $appData, $id ) : null;
+
+			if( $file !== null && self::folderIn( $appData, $request, (string) $file['folder'] ) === false )
+				return;
+		}
+
+		\Nino\Modules\Files\Admin::apiNotify( $appData, $request );
 	}
 
 	/**

@@ -59,5 +59,6 @@ return [
 	'[[/feature/files/mail/new-intro]]'				=> 'These files are there for you in the folder',
 	'[[/feature/files/mail/new-button]]'			=> 'Open the website',
 	'[[/feature/files/mail/new-notice]]'			=> 'To download them, sign in with a link that is sent to your email address.',
+	'[[/feature/files/mail/new-notice-code]]'	=> 'To listen, sign in: the code for the sign-in is sent to your email address.',
 	'[[/feature/files/mail/closing]]'					=> 'Kind regards',
 ];

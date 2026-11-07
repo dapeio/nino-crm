@@ -1851,7 +1851,7 @@ check( '...the client is frozen in it: a change of the client does not reach the
 check( '...it is fixed: nothing but the notes changes, a finalised document is not deleted, and finalising again is refused', Documents::change( $appData, $contract['id'], [ 'title' => 'x' ] ) === 'fixed' && Documents::remove( $appData, $contract['id'] ) === 'fixed' && Documents::finalise( $appData, $contract['id'] ) === 'fixed'
 	&& is_array( Documents::setNotes( $appData, $contract['id'], 'neu' ) ) );
 check( '...and appears in the list under its title, with no amount worth a line', ( array_values( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['id'] === $contract['id'] ) )[0] ?? [] ) === [
-	'id' => $contract['id'], 'category' => 'contract', 'number' => '', 'title' => 'Vertrag neu', 'state' => 'open', 'released' => false, 'sign_state' => '', 'expired' => false, 'overdue' => false, 'date' => $today, 'due_date' => null, 'valid_until' => null, 'gross' => 0, 'client_id' => $first['id'], 'client_title' => 'Studio Nord GmbH', 'parent_id' => $offerFinal['id'], 'project' => '', 'project_title' => '' ] );
+	'id' => $contract['id'], 'category' => 'contract', 'number' => '', 'title' => 'Vertrag neu', 'state' => 'open', 'released' => false, 'sign_state' => '', 'expired' => false, 'overdue' => false, 'date' => $today, 'due_date' => null, 'valid_until' => null, 'gross' => 0, 'client_id' => $first['id'], 'client_title' => 'Studio Nord GmbH', 'parent_id' => $offerFinal['id'], 'project' => '', 'project_title' => '', 'template_key' => 'dienstleistung' ] );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Neu GmbH' ] );
 check( '...the client it shows is the one frozen into it, not the one the client is now', array_column( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['id'] === $contract['id'] ), 'client_title' ) === [ 'Studio Nord GmbH' ] );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Nord GmbH' ] );
@@ -2740,5 +2740,42 @@ function documentsConsentChecks( array &$appData, \Closure $post, string $root )
 
 documentsConsentChecks( $appData, $post, $root );
 documentsFeatureUnitChecks( $appData, $post, $root );
+documentsTemplateKeyChecks( $appData, $post );
 
 ninoDone( $appData );
+
+/**
+ *	The rows of the list carry the key of the PDF template a document was made with - the editor starts a new draft with the one the newest document of its client used - and ''
+ *	for a document that has none
+ *
+ *	@param		array 		&$appData
+ *	@param		\Closure	$post						Runs an action of the panel
+ *
+ *	@return 	void
+ */
+function documentsTemplateKeyChecks( array &$appData, \Closure $post ): void {
+
+	$rows = Documents::list( $appData );
+	$keys = array_column( $rows, 'template_key', 'id' );
+	$stored = array_column( \Crm\Db::rows( $appData, 'SELECT id, template_key FROM documents' ), 'template_key', 'id' );
+	$through = $post( 'crm-documents/list' );
+
+	check( 'the rows of the list carry template_key, the key stored with each document, as text, '. count( $rows ). ' of them - and the action has them too', $rows !== [] && array_filter( $rows, static fn( array $row ): bool => is_string( $row['template_key'] ) === false ) === []
+		&& $keys === array_map( 'strval', array_combine( array_keys( $keys ), array_map( static fn( int $id ): string => (string) $stored[$id], array_keys( $keys ) ) ) )
+		&& $through[0] === 200 && array_diff( [ 'template_key' ], array_keys( $through[1]['documents'][0] ) ) === [] );
+
+	$one = $rows[0]['id'];
+	\Crm\Db::exec( $appData, 'UPDATE documents SET template_key = :key WHERE id = :id', [ 'key' => 'rechnung', 'id' => $one ] );
+
+	$invoice = $post( 'crm-documents/templates', [ 'category' => 'invoice' ] );
+	$credit = $post( 'crm-documents/templates', [ 'category' => 'credit' ] );
+	$have = array_column( $invoice[1]['templates'] ?? [], 'key' );
+
+	$stored = (array) \Nino\Modules\Pdf::templates( $appData, 'invoice' );
+
+	check( '...the templates of a kind come with standard, the template Einrichten makes for the kind where the site has it - rechnung for an invoice, stornorechnung for a credit note - and an empty text where it has not (the credit note once that template is gone)',
+		$invoice[0] === 200 && ( $invoice[1]['standard'] ?? null ) === 'rechnung' && isset( $stored['stornorechnung'] ) === true && ( $credit[1]['standard'] ?? null ) === 'stornorechnung' && in_array( 'stornorechnung', array_column( $credit[1]['templates'] ?? [], 'key' ), true ) === true
+		&& ( $post( 'crm-documents/templates', [ 'category' => 'information' ] )[1]['standard'] ?? null ) === ( isset( \Nino\Modules\Pdf::templates( $appData, 'information' )['information'] ) === true ? 'information' : '' ) );
+
+	check( '...a key the document has is in its row', array_column( Documents::list( $appData ), 'template_key', 'id' )[$one] === 'rechnung' );
+}

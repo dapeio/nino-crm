@@ -46,6 +46,8 @@ return [
 	'[[/feature/review/mail/comment-title]]'	=> 'Ein neuer Kommentar',
 	'[[/feature/review/mail/comment-intro]]'	=> 'Ein Mitglied hat einen Kommentar geschrieben:',
 	'[[/feature/review/mail/comment-button]]'	=> 'Das Panel Review öffnen',
+	'[[/feature/review/mail/comment-about-subject]]'	=> 'Ein Mitglied hat einen Kommentar geschrieben: [[about]]',
+	'[[/feature/review/mail/comment-button-card]]'	=> 'Die Projektkarte öffnen',
 	'[[/feature/review/mail/label-time]]'		=> 'Zeit im Stück:',
 	'[[/feature/review/mail/label-by]]'			=> 'Geschrieben von:',
 	'[[/feature/review/mail/no-time]]'			=> 'keine',
@@ -57,5 +59,6 @@ return [
 	'[[/feature/review/mail/note-intro]]'		=> 'Der Betreiber hat einen Kommentar zur Datei geschrieben',
 	'[[/feature/review/mail/answer-button]]'	=> 'Zur Website',
 	'[[/feature/review/mail/answer-notice]]'	=> 'Um ihn zu lesen, melde Dich mit einem Link an, der an Deine E-Mail-Adresse geschickt wird.',
+	'[[/feature/review/mail/answer-notice-code]]'	=> 'Zum Lesen melde Dich an: Der Code für die Anmeldung kommt an Deine E-Mail-Adresse.',
 	'[[/feature/review/mail/closing]]'			=> 'Viele Grüße',
 ];

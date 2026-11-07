@@ -39,6 +39,9 @@ namespace Nino\Modules\Files {
 
 		public const string MANAGE_PERM = '/_admin/files/manage';
 
+		// The most files one mail of a notify names
+		public const int NOTIFY_MAX = 200;
+
 		// The id of the file an action made or touched, by action: written by the action, read by log() in the same request
 		private static array $_made = [];
 
@@ -55,6 +58,7 @@ namespace Nino\Modules\Files {
 				'files/folder/upload-target'	=> [ self::class, 'apiFolderTarget' ],
 				'files/upload'							=> [ self::class, 'apiUpload' ],
 				'files/save'								=> [ self::class, 'apiSave' ],
+				'files/notify'							=> [ self::class, 'apiNotify' ],
 				'files/delete'							=> [ self::class, 'apiDelete' ],
 				'files/remove'							=> [ self::class, 'apiRemove' ],
 			];
@@ -125,6 +129,7 @@ namespace Nino\Modules\Files {
 				'files/folder/upload-target'	=> ( ( $data['on'] ?? true ) === false ? 'Took the upload mark off folder' : 'Marked as upload folder the folder' ). $of,
 				'files/upload'							=> ( self::$_made[$action] ?? '' ) === '' ? '' : 'Uploaded file '. self::$_made[$action]. ( ( $data['notify'] ?? null ) === false ? ', members not mailed' : '' ),
 				'files/save'								=> 'Changed file'. $of. ( ( $data['notify'] ?? null ) === false && ( $data['visible'] ?? null ) === true ? ', members not mailed' : '' ),
+				'files/notify'							=> self::$_made[$action] ?? '',
 				'files/delete'							=> 'Deleted file'. $of,
 				'files/remove'							=> ( self::$_made[$action] ?? '' ) === '' ? '' : 'Removed file '. self::$_made[$action]. ' from the server',
 				default											=> '',
@@ -423,6 +428,59 @@ namespace Nino\Modules\Files {
 			}
 
 			\Nino\Http::ok( $request, [ 'file' => $saved['file'], 'mailed' => (int) $appData['./nino/files/mailed'] ] );
+		}
+
+		/**
+		 *	Tell the group of a folder of the files an upload brought, in one mail: the files of one upload are sent one by one, each with notify false, and this is the one
+		 *	call that mails them. ids is the list of the ids of the files - all of them visible, kept and in one folder - and page names the page the mail links, as in the upload
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		&$request			(reference) Current server request
+		 *
+		 *	@return 	void
+		 */
+		public static function apiNotify( array &$appData, array &$request ): void {
+
+			if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+				return;
+
+			self::$_made['files/notify'] = '';
+
+			$data = \Nino\Admin\Admin::postData();
+			$ids = $data['ids'] ?? null;
+			$files = [];
+
+			if( is_array( $ids ) === false || $ids === [] || count( $ids ) > self::NOTIFY_MAX ) {
+				self::_failed( $request, 'unknown' );
+				return;
+			}
+
+			foreach( $ids as $id ) {
+
+				$file = is_string( $id ) === true && preg_match( Store::ID, $id ) === 1 ? Store::file( $appData, $id ) : null;
+
+				if( $file === null || $file['visible'] !== true || isset( $file['gone'] ) === true || ( $files !== [] && $file['folder'] !== $files[0]['folder'] ) ) {
+					self::_failed( $request, 'unknown' );
+					return;
+				}
+
+				// A file named twice is told once
+				if( in_array( $file['id'], array_column( $files, 'id' ), true ) === false )
+					$files[] = $file;
+			}
+
+			$folder = Store::folder( $appData, (string) $files[0]['folder'] );
+
+			if( $folder === null ) {
+				self::_failed( $request, 'unknown' );
+				return;
+			}
+
+			self::$_made['files/notify'] = 'Told the group of folder '. $folder['id']. ' of '. count( $files ). ' files'. ( self::_notify( $data ) === false ? ', members not mailed' : '' );
+
+			\Nino\Modules\Files::notifyMembers( $appData, $folder, $files, self::_notify( $data ), self::_page( $data ) );
+
+			\Nino\Http::ok( $request, [ 'mailed' => (int) $appData['./nino/files/mailed'] ] );
 		}
 
 		/**

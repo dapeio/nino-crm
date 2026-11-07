@@ -1070,7 +1070,7 @@ filesWorkbench( 'admin' );
 
 $posts = [ 'files/list' => [], 'files/folder/add' => [ 'group' => 'staff', 'name' => 'x' ], 'files/folder/save' => [ 'id' => 'ffffffffffff', 'name' => 'x' ], 'files/folder/delete' => [ 'id' => 'ffffffffffff' ],
 	'files/folder/upload-target' => [ 'id' => 'ffffffffffff' ], 'files/upload' => [ 'folder' => $room['id'], 'name' => 'a.mp3', 'size' => 1, 'upload' => '', 'index' => 0, 'count' => 1 ], 'files/save' => [ 'id' => 'ffffffffffff', 'visible' => true ],
-	'files/delete' => [ 'id' => 'ffffffffffff' ], 'files/remove' => [ 'id' => 'ffffffffffff' ] ];
+	'files/notify' => [ 'ids' => [ 'ffffffffffff' ] ], 'files/delete' => [ 'id' => 'ffffffffffff' ], 'files/remove' => [ 'id' => 'ffffffffffff' ] ];
 $refused = [ 'signed out' => [], 'without the permission' => [] ];
 $before = filesIndex( $appData );
 
@@ -1083,9 +1083,9 @@ foreach( $posts as $action => $data ) {
 
 filesWorkbench( 'admin' );
 check( 'every action refuses a visitor with 401 and an account without the permission with 403, and writes nothing', array_values( array_unique( $refused['signed out'] ) ) === [ 401 ] && array_values( array_unique( $refused['without the permission'] ) ) === [ 403 ]
-	&& count( $refused['signed out'] ) === 9 && $denied['signed out'][1]['code'] === 'session' && filesIndex( $appData ) === $before && filesParts( $appData ) === [] );
-check( '...and the actions are the nine there are - none of them downloads, that is the route\'s - all under the slug of the panel', array_keys( array_filter( \Nino\Admin\Admin::actions( $appData ), static fn( string $action ): bool => str_starts_with( $action, 'files/' ), ARRAY_FILTER_USE_KEY ) )
-	=== [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/folder/delete', 'files/folder/upload-target', 'files/upload', 'files/save', 'files/delete', 'files/remove' ] );
+	&& count( $refused['signed out'] ) === 10 && $denied['signed out'][1]['code'] === 'session' && filesIndex( $appData ) === $before && filesParts( $appData ) === [] );
+check( '...and the actions are the ten there are - none of them downloads, that is the route\'s - all under the slug of the panel', array_keys( array_filter( \Nino\Admin\Admin::actions( $appData ), static fn( string $action ): bool => str_starts_with( $action, 'files/' ), ARRAY_FILTER_USE_KEY ) )
+	=== [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/folder/delete', 'files/folder/upload-target', 'files/upload', 'files/save', 'files/notify', 'files/delete', 'files/remove' ] );
 
 // Three chunks of a known file give one entry
 $told = [];
@@ -2196,6 +2196,7 @@ $appData['./nino/locales/current'] = 'de_DE';
 check( 'the mail goes out in the native language of the site, and the language of the request is back afterwards', $native !== $other && ( $mails[0]['subject'] ?? '' ) === $native && $currentAfter === 'en_US' );
 
 check( 'a group of seven is mailed in full, though the default cap of the kernel is five mails an hour from one address: one upload is one hit of the cap', count( $mails ) === 7 && \Nino\Mail::rateLimited( $appData ) === false );
+filesNotifyChecks( $appData, $room, $panel );
 
 $mails = [];
 $hiddenOne = filesOwnerUpload( $appData, 'Hidden Mix.mp3', $room['id'], [ 'visible' => false ] );
@@ -2651,4 +2652,98 @@ else {
 }
 
 echo "\n";
+/**
+ *	The files of one upload are one mail: they are put in one after the other with notify false, and files/notify tells the group of all of them - one mail to each active member, every
+ *	file in its list, the names escaped, the sign-in said as the code. It refuses what is not a list of files that are kept, visible and in one folder, before a mail is made
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$room						The folder of the group the uploads go into
+ *	@param		array 		$panel					The callable of the panel's actions
+ *
+ *	@return 	void
+ */
+function filesNotifyChecks( array &$appData, array $room, array $panel ): void {
+
+	global $mails;
+
+	\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => true ] );
+	$mails = [];
+	$names = [ 'Erste <u>&.mp3', 'Zweite [[x]].mp3', 'Dritte.mp3' ];
+	$ids = [];
+
+	foreach( $names as $name )
+		$ids[] = (string) ( filesOwnerUpload( $appData, $name, $room['id'], [ 'notify' => false ] )[1]['id'] ?? '' );
+
+	check( 'the files of an upload sent with notify false mail nobody, whatever the setting says', count( array_filter( $ids ) ) === 3 && $mails === [] );
+
+	filesFresh( $appData );
+	[ $status, $body ] = ninoCall( $appData, $panel, [ 'ids' => $ids ], 'files/notify' );
+	$to = array_column( $mails, 'to' );
+	sort( $to );
+	$one = array_values( array_filter( $mails, static fn( array $mail ): bool => $mail['to'] === 'ada@example.org' ) )[0] ?? [];
+	$text = strip_tags( (string) ( $one['body'] ?? '' ) );
+
+	check( 'files/notify mails the group once for all the files: one mail to each active member - the number it says - and every file named in each, the names escaped as text and no key left in it',
+		$status === 200 && $body['mailed'] === 7 && count( $mails ) === 7 && $to === array_values( array_unique( $to ) ) && array_filter( $names, static fn( string $name ): bool => str_contains( (string) ( $one['body'] ?? '' ), \Nino\Modules\Components::escape( $name ) ) === false ) === []
+		&& filesFind( (string) $one['body'], '//u' ) === [] && str_contains( (string) $one['body'], '[[' ) === false && str_contains( $text, 'Room' ) === true );
+
+	$words = \Nino\Html::getFills( $appData, 'de_DE' );
+
+	check( '...it says to sign in with the code in the word of the new key - and not the one that promised a link - and leaves the old key in the unit for the sites that have it', str_contains( $text, (string) $words['[[/feature/files/mail/new-notice-code]]'] ) === true && str_contains( $text, (string) $words['[[/feature/files/mail/new-notice]]'] ) === false
+		&& trim( (string) $words['[[/feature/files/mail/new-notice-code]]'] ) !== '' && ( include dirname( __DIR__ ). '/install/text/de_DE.php' )['[[/feature/files/mail/new-notice]]'] !== '' );
+
+	$mails = [];
+	filesFresh( $appData );
+	[ $twiceStatus ] = ninoCall( $appData, $panel, [ 'ids' => [ $ids[0], $ids[1], $ids[0], $ids[0] ], 'notify' => true ], 'files/notify' );
+	$twiceBody = (string) ( $mails[0]['body'] ?? '' );
+
+	check( '...a file named twice in the list is told once: its name stands once in the mail, the other once too, and the group gets one mail each', $twiceStatus === 200 && count( $mails ) === 7 && substr_count( $twiceBody, \Nino\Modules\Components::escape( $names[0] ) ) === 1 && substr_count( $twiceBody, \Nino\Modules\Components::escape( $names[1] ) ) === 1 );
+
+	$mails = [];
+	filesFresh( $appData );
+	[ $status, $body ] = ninoCall( $appData, $panel, [ 'ids' => $ids, 'notify' => false ], 'files/notify' );
+	check( '...with notify false nobody is mailed - 200, mailed 0 - and with it absent the setting decides: off, nobody', $status === 200 && $body['mailed'] === 0 && $mails === []
+		&& ( \Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => false ] ) || true ) && ninoCall( $appData, $panel, [ 'ids' => $ids ], 'files/notify' )[1]['mailed'] === 0 && $mails === [] );
+
+	\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => true ] );
+	$other = \Nino\Modules\Files\Store::addFolder( $appData, $room['group'], 'Second' );
+	$elsewhere = (string) ( filesOwnerUpload( $appData, 'Elsewhere.mp3', $other['id'], [ 'notify' => false ] )[1]['id'] ?? '' );
+	$hidden = (string) ( filesOwnerUpload( $appData, 'Hidden.mp3', $room['id'], [ 'notify' => false, 'visible' => false ] )[1]['id'] ?? '' );
+	$refused = [
+		'no list'                   => [ 'ids' => $ids[0] ],
+		'an empty list'             => [ 'ids' => [] ],
+		'no ids at all'             => [],
+		'a thing that is no id'     => [ 'ids' => [ $ids[0], [ 'x' ], 7 ] ],
+		'an id nobody has'          => [ 'ids' => [ $ids[0], 'cccccccccccc' ] ],
+		'a path'                    => [ 'ids' => [ '../'. $ids[0] ] ],
+		'files of two folders'      => [ 'ids' => [ $ids[0], $elsewhere ] ],
+		'a file that is hidden'     => [ 'ids' => [ $ids[0], $hidden ] ],
+		'more than the panel names' => [ 'ids' => array_fill( 0, \Nino\Modules\Files\Admin::NOTIFY_MAX + 1, $ids[0] ) ],
+	];
+	$mails = [];
+	filesFresh( $appData );
+	$answers = array_map( static function( array $data ) use ( &$appData, $panel ): string {
+		$answer = ninoCall( $appData, $panel, $data, 'files/notify' );
+
+		return $answer[0]. ' '. ( $answer[1]['code'] ?? '' );
+	}, $refused );
+
+	check( '...a list that is none, an id that is none, a file nobody has, files of two folders, a file that is hidden and a list that is too long are 404 files_unknown - and nobody is mailed', array_values( array_unique( $answers ) ) === [ '404 files_unknown' ] && $mails === [] );
+
+	// A file taken off the server has no bytes to tell of
+	\Nino\Modules\Files\Store::changeFile( $appData, $ids[2], [ 'visible' => true ] );
+	$removed = ninoCall( $appData, $panel, [ 'id' => $ids[2] ], 'files/remove' );
+	filesFresh( $appData );
+	$gone = ninoCall( $appData, $panel, [ 'ids' => [ $ids[0], $ids[2] ] ], 'files/notify' );
+
+	check( '...so is a file that was taken off the server', $removed[0] === 200 && $gone[0] === 404 && $gone[1]['code'] === 'files_unknown' && $mails === [] );
+	check( '...and the log line of an upload and of the mail holds the ids and the folder, no name and no address', str_contains( \Nino\Modules\Files\Admin::log( 'files/notify', [ 'ids' => $ids ] ), '@' ) === false && str_contains( \Nino\Modules\Files\Admin::log( 'files/notify', [ 'ids' => $ids ] ), 'Erste' ) === false );
+
+	foreach( array_merge( $ids, [ $elsewhere, $hidden ] ) as $id )
+		\Nino\Modules\Files\Store::deleteFile( $appData, $id );
+
+	\Nino\Modules\Files\Store::deleteFolder( $appData, $other['id'] );
+	$mails = [];
+}
+
 ninoDone( $appData );

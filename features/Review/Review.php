@@ -444,16 +444,24 @@ namespace Nino\Modules {
 				return false;
 
 			$to = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ) );
-			$link = \Nino\Html::absoluteUrl( $appData, '/_admin#review' );
+
+			// A site that keeps the files in a place of its own says where the owner finds the comment, and what it is about, before the mail is made: the callback gets the link (an address) and about (one line)
+			$where = [ 'file' => $file, 'comment' => $comment, 'link' => \Nino\Html::absoluteUrl( $appData, '/_admin#review' ), 'about' => '' ];
+
+			\Nino\Callbacks::doCallbacks( $appData, '/review/owner-mail', $where );
+
+			$link = is_string( $where['link'] ?? null ) === true ? $where['link'] : '';
+			$about = is_string( $where['about'] ?? null ) === true ? trim( (string) preg_replace( '/[\s\p{C}]+/u', ' ', $where['about'] ) ) : '';
 
 			if( filter_var( $to, FILTER_VALIDATE_EMAIL ) === false || $link === '' ) {
 				trigger_error( 'Review: no mail was sent to the owner, the site has no contact address or no address of its own', E_USER_WARNING );
 				return false;
 			}
 
-			$mail = self::_render( $appData, 'mail-comment', 'comment', function( array $words ) use ( &$appData, $file, $comment, $member, $link ): array {
+			$mail = self::_render( $appData, 'mail-comment', $about === '' ? 'comment' : 'comment-about', function( array $words ) use ( &$appData, $file, $comment, $member, $link, $about ): array {
 
 				return [
+					'[[opens]]'	=> \Nino\Modules\Components::escape( (string) \Nino\Html::resolveTextfill( $appData, '/feature/review/mail/'. ( $about === '' ? 'comment-button' : 'comment-button-card' ) ) ),
 					'[[file]]'	=> \Nino\Modules\Components::escape( $file['name'] ),
 					'[[time]]'	=> \Nino\Modules\Components::escape( $comment['at'] === null ? $words['none'] : self::clock( $comment['at'] ) ),
 					'[[who]]'		=> \Nino\Modules\Components::escape( $member['name'] !== '' ? $member['name'] : $member['email'] ),
@@ -462,7 +470,7 @@ namespace Nino\Modules {
 				];
 			} );
 
-			if( \Nino\Mail::send( $appData, $to, $mail['subject'], $mail['body'], '' ) === true )
+			if( \Nino\Mail::send( $appData, $to, str_replace( '[[about]]', $about, $mail['subject'] ), $mail['body'], '' ) === true )
 				return true;
 
 			trigger_error( 'Review: the mail to the owner about the comment '. $comment['id']. ' on the file '. $file['id']. ( \Nino\Mail::rateLimited( $appData ) === true ? ' was refused by the cap of mails an hour' : ' was not delivered' ), E_USER_WARNING );
@@ -740,7 +748,7 @@ namespace Nino\Modules {
 					$comment['id'],
 					\Nino\Modules\Components::escape( self::_name( $appData, $comment['by'] ) ),
 					\Nino\Modules\Components::escape( $comment['created'] ),
-					\Nino\Modules\Components::escape( substr( $comment['created'], 0, 10 ) ),
+					\Nino\Modules\Components::escape( self::_day( $appData, $comment['created'] ) ),
 					self::_lines( $appData, $comment['text'] ),
 					$at === '' ? '' : str_replace( '[[at]]', $at, \Nino\Feature::template( $appData, self::TEMPLATES, 'review-at' ) ),
 					$at === '' ? '' : str_replace( [ '[[src]]', '[[at]]', '[[clock]]' ], [ $source, $at, self::clock( (float) $comment['at'] ) ], \Nino\Feature::template( $appData, self::TEMPLATES, $source === '' ? 'review-clock' : 'review-time' ) ),
@@ -750,6 +758,21 @@ namespace Nino\Modules {
 				],
 				\Nino\Feature::template( $appData, self::TEMPLATES, $template )
 			);
+		}
+
+		/**
+		 *	The day a comment was written, as the language of the page writes a day: 06.11.2026 for German, 2026-11-06 for the others
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$created			The time as the store has it
+		 *
+		 *	@return 	string
+		 */
+		private static function _day( array &$appData, string $created ): string {
+
+			$day = substr( $created, 0, 10 );
+
+			return str_starts_with( \Nino\Locales::getCurrentLocale( $appData ), 'de' ) === true && preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/D', $day, $found ) === 1 ? $found[3]. '.'. $found[2]. '.'. $found[1] : $day;
 		}
 
 		/**

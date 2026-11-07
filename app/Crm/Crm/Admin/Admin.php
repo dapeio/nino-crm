@@ -93,8 +93,8 @@ class Admin {
 	 *	     (the portal pages: routes, templates, words, the element type, the blacklist) - all of them add-only through Features::applyUnit(): what the project has stays, so that the
 	 *	     words a feature brought after the project took it in (the login of Members, the mails) arrive and a second press adds nothing,
 	 *	  4. the PDF: the templates, the text blocks and the header and footer of the layout, through Pdf::install() - what the owner has stays,
-	 *	  4a. the Datenschutzerklärung: the setting privacy_text of the CRM is written from install/privacy.php (the particulars of the company filled in) where it is empty - through Settings::set(),
-	 *	     so that privacy_changed has its day - and a text that is there stays,
+	 *	  4a. the Datenschutzerklärung: the setting privacy_text of the CRM is written from install/privacy.php (the particulars of the company filled in) where it is empty and no text was ever set
+	 *	     (privacy_changed has no day) - through Settings::set(), so that privacy_changed has its day - and a text that is there stays, and so does a field the owner emptied,
 	 *	  5. the start page: the route GET:// becomes the door of the portal where there is none or the wizard's page /home; the door that is there and
 	 *	     a start page of the owner's stay,
 	 *	  6. the cap of mails: '/nino/mail/cap' of config.php is set to CAP where config.php carries no value of its own, the way the Config panel writes a key
@@ -284,7 +284,7 @@ class Admin {
 
 		// 4a. The Datenschutzerklärung: written where the owner has no text; a text that is there stays, whatever it says
 		try {
-			$empty = \Crm\Settings::get( $appData, 'privacy_text' ) === '';
+			$empty = \Crm\Settings::get( $appData, 'privacy_text' ) === '' && \Crm\Settings::get( $appData, 'privacy_changed' ) === '';
 			$written = $empty === true ? \Crm\Settings::set( $appData, 'privacy_text', self::privacy( $appData ) ) : true;
 		}
 		catch( \PDOException $e ) {
@@ -380,7 +380,7 @@ class Admin {
 	 *	  home     ok (the start page of the site is the door of the portal), own (a page the owner made: left as it is, and no lack), other (none, or the wizard's own)
 	 *	  mail-cap   ok (config.php carries a cap of its own, the owner's or the one the setup wrote), default (it carries none: the kernel's default stands) - and value, the cap that is in force
 	 *	  notify   ok (the setting notifyOwner of Review has a value of its own, the owner's or the one the setup wrote), default (it has none) - and value, whether Review mails the owner
-	 *	  privacy  ok (the setting privacy_text of the CRM holds a text, the owner's or the one the setup wrote), default (it is empty)
+	 *	  privacy  ok (the setting privacy_text of the CRM holds a text, the owner's or the one the setup wrote - or is empty after a text was set once, which the owner chose: empty is true then), default (it is empty and never held a text)
 	 *	The answer is whole when every item is ok or - the start page - own; it is first_run while it is not whole and no run of the setup went through (the day of
 	 *	the last one is the CRM's setting setup_done): a template deleted afterwards makes it not whole, and not a first run - the screen Einrichtung is shown while it is not
 	 */
@@ -468,7 +468,9 @@ class Admin {
 
 		$items[] = [ 'key' => 'notify', 'state' => self::notifySet( $appData ) === true ? 'ok' : 'default', 'value' => \Nino\Features::setting( $appData, 'review', self::NOTIFY_SETTING, false ) === true ];
 
-		$items[] = [ 'key' => 'privacy', 'state' => \Crm\Settings::get( $appData, 'privacy_text' ) === '' ? 'default' : 'ok' ];
+		// A field emptied on purpose - a day is kept beside the text that was there - is the owner's choice and nothing to do
+		$never = \Crm\Settings::get( $appData, 'privacy_text' ) === '' && \Crm\Settings::get( $appData, 'privacy_changed' ) === '';
+		$items[] = [ 'key' => 'privacy', 'state' => $never === true ? 'default' : 'ok' ] + ( $never === false && \Crm\Settings::get( $appData, 'privacy_text' ) === '' ? [ 'empty' => true ] : [] );
 
 		$whole = array_filter( $items, static fn( array $item ): bool => in_array( $item['state'], [ 'ok', 'own' ], true ) === false ) === [];
 

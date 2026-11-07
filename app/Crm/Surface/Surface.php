@@ -178,7 +178,8 @@ class Surface {
 			'site' => $dir. '/',
 			'workbench' => $dir. '/_admin/',
 		];
-		$brand = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/general/name' ) );
+		// The text fill hands the name over as markup (a quote is &quot;) and fill() escapes what it puts in: the name is read as the text it is, as the portal reads it
+		$brand = trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/general/name' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
 		$brands = [ '[[brand]]' => $brand !== '' ? $brand : self::texts()['brand.tag'], '[[tag]]' => $brand !== '' ? self::texts()['brand.tag'] : '' ];
 
 		$request['/nino/http/response']['header'] = self::headers( $request['/nino/http/response']['header'], 'text/html; charset=utf-8' );

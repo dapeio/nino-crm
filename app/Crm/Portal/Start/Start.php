@@ -197,7 +197,7 @@ class Start {
 	 *	@param		array 		&$appData
 	 *	@param		array 		$client
 	 *
-	 *	@return 	array											A list of id, title and count
+	 *	@return 	array											A list of id, title, count and waiting (whether an offer of the project holds the files back until it is ordered)
 	 */
 	private static function news( array &$appData, array $client ): array {
 
@@ -215,15 +215,19 @@ class Start {
 			if( $project['folder'] === '' || in_array( $project['folder'], $folders, true ) === false )
 				continue;
 
+			// While an offer of the project waits for the order no file is given to the client, and the files that came are counted all the same: the row says when they open
+			$waiting = Projekte::waiting( $appData, $project['id'], (int) $client['id'] ) !== null;
+			$there = $waiting === true ? array_values( array_filter( \Nino\Modules\Files::files( $appData, $project['folder'] ), static fn( array $file ): bool => $file['visible'] === true ) ) : Files::visible( $appData, $project['folder'] );
+
 			// What the member put there is not news to the member, and a file that was removed from the server is none to anybody
-			$new = array_filter( Files::visible( $appData, $project['folder'] ), static function( array $file ) use ( $limit, $member ): bool {
+			$new = array_filter( $there, static function( array $file ) use ( $limit, $member ): bool {
 				$created = strtotime( (string) $file['created'] );
 
 				return isset( $file['gone'] ) === false && $created !== false && $created > $limit && ( ( $file['by']['kind'] ?? '' ) === 'member' && ( $file['by']['id'] ?? '' ) === $member['id'] ) === false;
 			} );
 
 			if( $new !== [] )
-				$news[] = [ 'id' => $project['id'], 'title' => $project['title'], 'count' => count( $new ) ];
+				$news[] = [ 'id' => $project['id'], 'title' => $project['title'], 'count' => count( $new ), 'waiting' => $waiting ];
 		}
 
 		return $news;
@@ -241,7 +245,7 @@ class Start {
 
 		return array_map( static fn( array $project ): string => self::row(
 			$dir. Order::PAGE_PROJECTS. '?projekt='. rawurlencode( $project['id'] ). '&amp;tab=dateien#projekt-files', \Nino\Modules\Components::escape( $project['title'] ),
-			$project['count']. ' [[/project/crm-portal/start/new-file-'. ( $project['count'] === 1 ? 'one' : 'many' ). ']]', ''
+			$project['count']. ' [[/project/crm-portal/start/new-file-'. ( $project['count'] === 1 ? 'one' : 'many' ). ']]', $project['waiting'] === true ? '[[/project/crm-portal/start/new-file-waiting]]' : ''
 		), $news );
 	}
 

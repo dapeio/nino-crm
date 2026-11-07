@@ -96,7 +96,7 @@ class Documents {
 	 *	@param		array 		$filter				category, state (or expired), year, client_id, project (the id of a project)
 	 *	@param		bool			$sync					Whether the state of the requests waiting in Sign is read first; a caller that needs no state leaves it out
 	 *
-	 *	@return 	array											Each with its client's title as the document shows it, and whether it is expired (an offer) or overdue (an invoice)
+	 *	@return 	array											Each with its client's title as the document shows it, and whether it is expired (an offer) or overdue (an invoice), and the key of the PDF template it was made with (template_key, '' for none)
 	 */
 	public static function list( array &$appData, array $filter = [], bool $sync = true ): array {
 
@@ -141,7 +141,7 @@ class Documents {
 
 		$titles = Projekte::titles( $appData );
 
-		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.parent_id, d.project, d.client_json, d.released, d.sign_id, d.sign_state, c.company AS live_company, c.name AS live_name, c.email AS live_email
+		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.parent_id, d.project, d.template_key, d.client_json, d.released, d.sign_id, d.sign_state, c.company AS live_company, c.name AS live_name, c.email AS live_email
 			FROM documents d JOIN clients c ON c.id = d.client_id'. ( $where === [] ? '' : ' WHERE '. implode( ' AND ', $where ) ). ' ORDER BY d.date DESC, d.id DESC', $params );
 
 		return array_map( static function( array $row ) use ( $today, $titles ): array {
@@ -169,6 +169,7 @@ class Documents {
 				'parent_id'    => $row['parent_id'] === null ? null : (int) $row['parent_id'],
 				'project'      => (string) $row['project'],
 				'project_title' => $titles[(string) $row['project']] ?? '',
+				'template_key' => (string) $row['template_key'],
 			];
 		}, $rows );
 	}

@@ -709,6 +709,7 @@ return [
 	'projects.download-on-done' => 'Der Download der Dateien ist freigeschaltet.',
 	'projects.download-off-done' => 'Der Download der Audiodateien ist gesperrt.',
 	'projects.download-note' => 'Der Kunde kann die Audiodateien anhören, aber nicht laden.',
+	'projects.waiting-note' => 'Die Dateien sind gesperrt, bis der Kunde das Angebot %s bestätigt.',
 	'projects.download-on-title' => 'Der Kunde darf die Dateien herunterladen.',
 	'projects.error-download' => 'Der Download konnte nicht umgestellt werden.',
 	'projects.edit' => 'Bearbeiten',

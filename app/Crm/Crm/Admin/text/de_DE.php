@@ -41,6 +41,7 @@ return [
 	'[[/_admin/crm/status/notify-ok]]' => 'Die Benachrichtigung des Betreibers in Review ist eingestellt.',
 	'[[/_admin/crm/status/notify-default]]' => 'Review schreibt Dir noch keine Mail, wenn ein Kunde eine Datei kommentiert. Das Einrichten schaltet die Benachrichtigung ein; ein Wert, den Du gesetzt hast, bleibt.',
 	'[[/_admin/crm/status/privacy-ok]]' => 'Die Datenschutzerklärung ist eingetragen.',
+	'[[/_admin/crm/status/privacy-empty]]' => 'Die Datenschutzerklärung ist bewusst leer; das Einrichten trägt keine Vorlage ein.',
 	'[[/_admin/crm/status/privacy-default]]' => 'Es ist noch keine Datenschutzerklärung eingetragen. Das Einrichten trägt eine Vorlage ein; ein Text, den Du eingetragen hast, bleibt.',
 	'[[/_admin/crm/status/home-other]]' => 'Die Startseite der Website ist noch nicht das Tor des Portals. Das Einrichten macht sie dazu.',
 	'[[/_admin/crm/status/home-own]]' => 'Startseite: eigene Seite, nicht das Tor.',

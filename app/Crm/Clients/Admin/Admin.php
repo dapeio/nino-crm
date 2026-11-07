@@ -185,6 +185,12 @@ class Admin {
 				}
 
 				$client = \Crm\Clients::add( $appData, $input, $first );
+
+				// A client with nothing but the address of an account that is refused is not made: the refusal of the account is the answer
+				if( is_string( $client ) === true && $first !== null && isset( self::REFUSALS[$client] ) === true ) {
+					self::_refuse( $request, $client );
+					return;
+				}
 			}
 			else {
 				$existing = self::_client( $appData, $request, $data );

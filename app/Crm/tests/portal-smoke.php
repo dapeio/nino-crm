@@ -855,7 +855,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 272 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 273 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -1652,6 +1652,11 @@ $refusals = [
 	'a country that is no letters'      => [ [ 'country' => '1!' ], 'country', 'format' ],
 	'a phone number that is none'       => [ [ 'phone' => 'abc' ], 'phone', 'format' ],
 	'a VAT id that is none'             => [ [ 'vat_id' => 'x' ], 'vat_id', 'format' ],
+	'a street with a control character' => [ [ 'street' => "Weg\x07 1" ], 'street', 'format' ],
+	'a name with a null byte'           => [ [ 'name' => "Mi\x00a" ], 'name', 'format' ],
+	'a city that is no UTF-8'           => [ [ 'city' => "Ole\xFF\xFE" ], 'city', 'format' ],
+	'a company with a line break'       => [ [ 'company' => "A\nB" ], 'company', 'format' ],
+	'a country nobody offers'           => [ [ 'country' => 'XX' ], 'country', 'format' ],
 	'a street that is a list'           => [ [ 'street' => [ 'a', 'b' ] ], 'street', 'required' ],
 	'neither a company nor a name'      => [ [ 'company' => ' ', 'name' => '' ], 'name', 'name' ],
 ];
@@ -2638,9 +2643,9 @@ check( '...an invoice past its day says that it is overdue in the pill and nothi
 $cell = static fn( string $html, int $id, string $name ): ?\DOMElement => portalFind( $html, '//li[@data-document="'. $id. '"]//*[contains(concat(" ", normalize-space(@class), " "), " crm-documents__'. $name. ' ")]' )[0] ?? null;
 check( 'the amount cell: the gross amount of a document with lines, right-aligned as a number cell - empty for a contract, a privacy document and an information', portalText( $docs, '//li[@data-document="'. $invFuture['id']. '"]//span[contains(@class, "crm-documents__amount")]' ) === '100,00 €' && str_contains( $cell( $docs, $invFuture['id'], 'amount' )->getAttribute( 'class' ), 'crm-table__num' ) === true
 	&& portalText( $docs, '//li[@data-document="'. $offerA['id']. '"]//span[contains(@class, "crm-documents__amount")]' ) === '100,00 €' && trim( $cell( $docs, $contractA['id'], 'amount' )->textContent ) === '' && trim( $cell( $docs, $infoA['id'], 'amount' )->textContent ) === '' && trim( $cell( $docs, $privacyA['id'], 'amount' )->textContent ) === '' );
-check( 'the due cell: an invoice names its day with the machine day ("fällig am"), one with no day says it is payable at once, a paid one keeps its day, and no other kind has a due cell with anything in it', portalFind( $docs, '//li[@data-document="'. $invFuture['id']. '"]//span[contains(@class, "crm-documents__due")]/time/@datetime' )[0]->nodeValue === date( 'Y-m-d', strtotime( '+14 days' ) )
+check( 'the due cell: an invoice names its day with the machine day ("fällig am"), one with no day says it is payable at once, a paid one has none - it is due no more -, and no other kind has a due cell with anything in it', portalFind( $docs, '//li[@data-document="'. $invFuture['id']. '"]//span[contains(@class, "crm-documents__due")]/time/@datetime' )[0]->nodeValue === date( 'Y-m-d', strtotime( '+14 days' ) )
 	&& portalFind( $docs, '//li[@data-document="'. $invNoDue['id']. '"]//span[contains(@class, "crm-documents__due-none")]' ) !== [] && portalText( $docs, '//li[@data-document="'. $invNoDue['id']. '"]//span[contains(@class, "crm-documents__due-none")]' ) === $wordsDe['[[/project/crm-documents/list/due-none]]']
-	&& portalFind( $docs, '//li[@data-document="'. $invPaid['id']. '"]//span[contains(@class, "crm-documents__due")]/time' ) !== [] && trim( $cell( $docs, $offerA['id'], 'due' )->textContent ) === '' && trim( $cell( $docs, $contractA['id'], 'due' )->textContent ) === '' );
+	&& portalDueCellChecks() === true && portalFocusSheetChecks() === true && portalFind( $docs, '//li[@data-document="'. $invPaid['id']. '"]//span[contains(@class, "crm-documents__due")]/time' ) === [] && trim( $cell( $docs, $invPaid['id'], 'due' )->textContent ) === '' && trim( $cell( $docs, $offerA['id'], 'due' )->textContent ) === '' && trim( $cell( $docs, $contractA['id'], 'due' )->textContent ) === '' );
 
 // how an open invoice is paid
 $payOf = static fn( string $html, int $id ): array => portalFind( $html, '//li[@data-document="'. $id. '"]/details[contains(@class, "crm-documents__fold")]/div[contains(@class, "crm-fold__body")]/dl[contains(@class, "crm-pay")]' );
@@ -3604,6 +3609,8 @@ $waiting = \Crm\Projekte::waiting( $appData, $pL, $a['id'] );
 check( 'a released offer of the project that can be ordered waits: waiting() answers it', is_array( $waiting ) && $waiting['id'] === $offerL['id'] && $waiting['number'] === $offerL['number'] );
 check( '...it waits for its client and its project alone: another client and another project have none, asked before and after the one it waits for', \Crm\Projekte::waiting( $appData, $pL, $b['id'] ) === null && \Crm\Projekte::waiting( $appData, $pL, $a['id'] )['id'] === $offerL['id'] && \Crm\Projekte::waiting( $appData, $pL, $b['id'] ) === null
 	&& \Crm\Projekte::waiting( $appData, $p4, $a['id'] ) === null );
+portalWaitingGetChecks( $post, $asAdmin, $pL, $p4, $offerL );
+portalSignIn( $appData, $accounts['anna'] );
 $wPage = portalPage( $appData, $lPage.'&tab=dateien' )[1];
 $wLink = portalFind( $wPage, '//section[contains(@class, "crm-project__section--files")]//p[contains(@class, "crm-project__waiting")]//a' );
 check( 'while it waits the tab Dateien is a note in the place of the list - the icon of a receipt, the number of the offer and a link to its card on the tab Angebot -, with no list, no player and no sentence about the download', count( $wLink ) === 1
@@ -3623,7 +3630,7 @@ portalSignIn( $appData, $accounts['anna'] );
 $startWaiting = portalComponentAt( $appData, '/portal', '[crm-portal-start]' );
 $listWaiting = portalPage( $appData, '/portal/projekte' )[1];
 $rowWaiting = portalFind( $listWaiting, '//li[@data-project="'. $pL. '"]' );
-check( 'the start page does not count the files of the project as new while the offer waits, and the list of the projects counts none for it', str_contains( $startWaiting, 'projekt='. $pL. '&amp;tab=dateien' ) === false
+check( 'the start page counts the files that came as new while the offer waits, and says they open when the offer is confirmed - the list of the projects counts none for it', str_contains( $startWaiting, 'projekt='. $pL. '&amp;tab=dateien' ) === true && str_contains( $startWaiting, $wordsDe['[[/project/crm-portal/start/new-file-waiting]]'] ) === true
 	&& count( $rowWaiting ) === 1 && portalFind( $rowWaiting[0]->ownerDocument->saveHTML( $rowWaiting[0] ), '//span[contains(@class, "crm-projects__count--files")]' ) === [] );
 
 // what lifts it: the order, a decline, the owner taking the offer back, the end of its day, and an offer that is not this project's or this client's
@@ -4483,6 +4490,7 @@ function portalFinishingTouches( array &$appData, array $accounts, array $stray 
 	check( '...and with the new text put away too the page has the message to the client only', $sumsOf( portalPage( $appData, '/portal' )[1] ) === [ $ownSum ] );
 }
 
+portalNotesChecks( $appData, $a, $fields, $location, $accounts['anna'] );
 portalFinishingTouches( $appData, $accounts, $stray );
 
 /**
@@ -5799,4 +5807,102 @@ function portalFixRoundChecks( array &$appData, array $a, array $accounts, array
 	check( 'a GET of the endpoint is 405 and signs nobody out, a post with a token that is wrong is 403 and signs nobody out', $get['statusCode'] === 405 && ( $get['header']['Allow'] ?? '' ) === 'POST' && $blocked['statusCode'] === 403 && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $accounts['anna']['id'] );
 	$out = portalServe( $appData, '/.members/logout', 'POST' );
 	check( '...and the post with the token signs out and leads to the start page', $out['statusCode'] === 303 && \Nino\Modules\Members::current( $appData ) === null );
+}
+
+/**
+ *	The cell of the day an invoice is due says "fällig" for an invoice that is open or overdue and for none that is paid, cancelled, a draft or run out - with a day and without one -,
+ *	and no other kind of document has one
+ *
+ *	@return 	bool
+ */
+function portalDueCellChecks(): bool {
+
+	$invoice = [ 'category' => 'invoice', 'due_date' => '2026-12-01' ];
+	$says = static fn( array $document, string $state ): bool => \Crm\Portal::dueCell( $document, $state ) !== '';
+	$wrong = [];
+
+	foreach( [ 'open', 'overdue' ] as $state )
+		if( $says( $invoice, $state ) === false || str_contains( \Crm\Portal::dueCell( $invoice, $state ), '2026-12-01' ) === false || $says( [ 'due_date' => '' ] + $invoice, $state ) === false )
+			$wrong[] = $state;
+
+	foreach( [ 'paid', 'cancelled', 'draft', 'expired', 'credited', 'x' ] as $state )
+		if( $says( $invoice, $state ) === true || $says( [ 'due_date' => '' ] + $invoice, $state ) === true )
+			$wrong[] = $state;
+
+	foreach( [ 'offer', 'contract', 'privacy', 'information' ] as $category )
+		if( $says( [ 'category' => $category ] + $invoice, 'open' ) === true )
+			$wrong[] = $category;
+
+	check( '...the due cell by state: a day and "payable at once" for open and overdue, nothing for a paid, cancelled, draft or run-out invoice or any state - and nothing for the other kinds'. ( $wrong === [] ? '' : ' ('. implode( ', ', $wrong ). ')' ), $wrong === [] );
+
+	return true;
+}
+
+/**
+ *	Where the bar of tabs stands at the foot of the window - below 768px - the page keeps the room of the bar (its height and the safe area of the device) and a hand's breadth above it
+ *	as the scroll padding at the foot, so that a control that takes the focus is scrolled above the bar and not under it
+ *
+ *	@return 	bool
+ */
+function portalFocusSheetChecks(): bool {
+
+	$sheet = (string) file_get_contents( dirname( __DIR__ ). '/Portal/assets/portal.css' );
+	preg_match( '/@media screen and \(max-width: 767\.98px\) \{(.*?)\n\}\n/s', $sheet, $block );
+	$phone = $block[1] ?? '';
+
+	check( '...the page below 768px keeps the room of the bar of tabs under a control that has the focus: scroll-padding-bottom is the height of the bar, the safe area and a step of the scale, on the element that has the bar - and the bar is that high',
+		preg_match( '/html:has\(\.crm-nav\) \{[^}]*scroll-padding-bottom: calc\( 56px \+ env\(safe-area-inset-bottom\) \+ var\(--crm-4\) \);/', $phone ) === 1 && preg_match( '/\.crm-nav \{[^}]*height: calc\( 56px \+ env\(safe-area-inset-bottom\) \)/', $phone ) === 1
+		&& preg_match( '/scroll-padding-bottom/', preg_replace( '/@media screen and \(max-width: 767\.98px\) \{.*?\n\}\n/s', '', $sheet, 1 ) ?? '' ) !== 1 );
+
+	return true;
+}
+
+/**
+ *	The card of a project in /crm knows the offer that holds its files back: crm-projekte/get answers waiting with the id and the number of the offer while it waits for the order, and null for a project none waits for
+ *
+ *	@param		\Closure	$post						Runs an action of the panel
+ *	@param		\Closure	$asAdmin				Signs in the owner
+ *	@param		string		$waits					The project the offer waits for
+ *	@param		string		$free						Another project of the client
+ *	@param		array 		$offer					The offer
+ *
+ *	@return 	void
+ */
+function portalWaitingGetChecks( \Closure $post, \Closure $asAdmin, string $waits, string $free, array $offer ): void {
+
+	$asAdmin();
+	[ $status, $body ] = $post( 'crm-projekte/get', [ 'id' => $waits ] );
+	[ $freeStatus, $freeBody ] = $post( 'crm-projekte/get', [ 'id' => $free ] );
+
+	check( 'crm-projekte/get says which offer holds the files of the project back: waiting is its id and its number - and null for a project no offer waits for, the key always there',
+		$status === 200 && ( $body['waiting'] ?? null ) === [ 'id' => $offer['id'], 'number' => $offer['number'] ] && $freeStatus === 200 && array_key_exists( 'waiting', $freeBody ) === true && $freeBody['waiting'] === null );
+}
+
+/**
+ *	A client with notes of many lines - the notes are the owner's, the form of the portal has no field for them - saves its data in the portal: the form sends the fields it has and the
+ *	notes, which it does not send, are not looked at and are kept
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$client					The client
+ *	@param		\Closure	$fields					The fields of a valid post, with the changes given
+ *	@param		\Closure	$location				The Location of an answer
+ *	@param		array 		$member					The account of the client
+ *
+ *	@return 	void
+ */
+function portalNotesChecks( array &$appData, array $client, \Closure $fields, \Closure $location, array $member ): void {
+
+	global $mails;
+
+	$mailsBefore = $mails->getArrayCopy();
+	portalSignIn( $appData, $member );
+	Db::exec( $appData, 'UPDATE clients SET notes = :notes WHERE id = :id', [ 'notes' => "Erste Zeile\nZweite Zeile\r\nDritte", 'id' => $client['id'] ] );
+	$answer = portalServe( $appData, '/.crm/daten', 'POST', $fields( [ 'street' => 'Notizweg 9' ] ) );
+	$now = \Crm\Clients::get( $appData, $client['id'] );
+
+	check( 'a client with notes of many lines saves its data in the portal: 303 ?state=saved, the street changed, the notes as they were - and not the 404 of a field the form does not have', $answer['statusCode'] === 303 && $location( $answer ) === '/portal/meine-daten?state=saved' && $now['street'] === 'Notizweg 9' && $now['notes'] === "Erste Zeile\nZweite Zeile\r\nDritte" );
+
+	Db::exec( $appData, 'UPDATE clients SET notes = \'\' WHERE id = :id', [ 'id' => $client['id'] ] );
+	portalServe( $appData, '/.crm/daten', 'POST', $fields( [ 'street' => (string) $client['street'] ] ) );
+	$mails->exchangeArray( $mailsBefore );
 }

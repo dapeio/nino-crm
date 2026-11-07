@@ -1425,6 +1425,45 @@ function press( w, key, target, mods ) {
 	click( contractNew, field( contractNew, 'finalise' ) );
 	await settle();
 	check( 'a document without lines is finalised with its own question: the PDF is made', textOf( all( contractNew.dialogs[0], 'p' )[0] ) === 'Die PDF wird erzeugt. Danach ist das Dokument unveränderlich.' );
+	// The template a draft starts with
+	const tplOne = [ templates[0] ];
+	const thisYear = String( new Date().getFullYear() );
+	const tplWorld = function( now, before, standard, hash, over, only ) {
+		return editing( over || {}, {
+			'crm-documents/list' : function( data ) { return [ 200, { documents : data.year === thisYear ? now : ( data.year === String( Number( thisYear ) - 1 ) ? before : [] ), years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] },
+			'crm-documents/templates' : function( data ) { return [ 200, { templates : only === true ? tplOne : templates, standard : standard, offers : offers, category : data.category } ] },
+		}, hash );
+	};
+	const tplMade = [
+		row( { id : 20, category : 'invoice', client_id : 2, template_key : 'vertrag' } ), row( { id : 21, category : 'invoice', client_id : 1, template_key : 'rechnung' } ), row( { id : 22, category : 'credit', client_id : 1, template_key : 'vertrag' } ),
+		row( { id : 23, category : 'invoice', client_id : 2, template_key : 'weg' } ), row( { id : 24, category : 'invoice', client_id : 1, template_key : '' } ),
+	];
+	const tplSolo = await tplWorld( tplMade, [], 'vertrag', '#neu-invoice', {}, true );
+	const tplClient1 = await tplWorld( tplMade, [], 'vertrag', '#neu-invoice-k1' );
+	const tplClient2 = await tplWorld( tplMade, [], 'rechnung', '#neu-invoice-k2' );
+	const tplStandard = await tplWorld( tplMade, [], 'vertrag', '#neu-invoice-k3' );
+	const tplNobody = await tplWorld( tplMade, [], 'rechnung', '#neu-invoice' );
+	const tplNothing = await tplWorld( tplMade, [], '', '#neu-invoice-k3' );
+	const tplStale = await tplWorld( tplMade, [], 'weg', '#neu-invoice-k3' );
+	check( 'a new draft starts with the only template of its kind; with several, with the one the newest document of the same kind and client was made with - a credit note is not an invoice, and a key that is gone is none -; else with the template Einrichten made for the kind; else with none',
+		field( tplSolo, 'f-template_key' ).value === 'rechnung' && tplSolo.app.state.draft.template_key === 'rechnung' && field( tplClient1, 'f-template_key' ).value === 'rechnung' && field( tplClient2, 'f-template_key' ).value === 'vertrag'
+		&& field( tplStandard, 'f-template_key' ).value === 'vertrag' && field( tplNobody, 'f-template_key' ).value === 'rechnung' && field( tplNothing, 'f-template_key' ).value === '' && field( tplStale, 'f-template_key' ).value === '' );
+	check( '...the choice is the draft\'s own from the start, and the inputs of the template are drawn', tplClient1.app.state.draft.template_key === 'rechnung' && field( tplClient1, 'f-inputs.intro' ) !== undefined );
+	const tplPair = [ row( { id : 30, category : 'invoice', client_id : 2, template_key : 'vertrag' } ), row( { id : 31, category : 'invoice', client_id : 2, template_key : 'rechnung' } ) ];
+	const tplNewestLast = await tplWorld( tplPair, [], '', '#neu-invoice-k2' );
+	const tplNewestFirst = await tplWorld( tplPair.slice().reverse(), [], '', '#neu-invoice-k2' );
+	check( 'of two documents of one client with other templates the newer one decides, whatever the order of the list', field( tplNewestLast, 'f-template_key' ).value === 'rechnung' && field( tplNewestFirst, 'f-template_key' ).value === 'rechnung' );
+	const tplJanuary = await tplWorld( [ row( { id : 5, category : 'invoice', client_id : 2, template_key : '' } ) ], [ row( { id : 4, category : 'invoice', client_id : 2, template_key : 'vertrag' } ) ], 'rechnung', '#neu-invoice-k2' );
+	const tplYear = await tplWorld( [ row( { id : 6, category : 'invoice', client_id : 2, template_key : 'rechnung' } ) ], [ row( { id : 4, category : 'invoice', client_id : 2, template_key : 'vertrag' } ) ], 'vertrag', '#neu-invoice-k2' );
+	check( 'where no document of the year has a template the year before is looked through, so that January has a history - and where one has, the year before is not asked for', field( tplJanuary, 'f-template_key' ).value === 'vertrag' && tplJanuary.all( 'crm-documents/list' ).filter( function( call ) { return call.data.year !== undefined } ).length === 2
+		&& field( tplYear, 'f-template_key' ).value === 'rechnung' && tplYear.all( 'crm-documents/list' ).filter( function( call ) { return call.data.year !== undefined } ).length === 1 );
+	const tplFrom = await tplWorld( tplMade, [], 'vertrag', '#entwurf-16', { template_key : '', inputs : {}, category : 'invoice', client_id : 1 } );
+	const tplFromCredit = await tplWorld( tplMade, [], 'rechnung', '#entwurf-16', { template_key : '', inputs : {}, category : 'credit', client_id : 1 } );
+	const tplFromNothing = await tplWorld( [], [], 'rechnung', '#entwurf-16', { template_key : '', inputs : {}, category : 'invoice', client_id : 1 } );
+	const tplKept = await tplWorld( tplMade, [], 'vertrag', '#entwurf-16', { template_key : 'vertrag', category : 'invoice', client_id : 1 } );
+	check( 'a draft that came from another document and has none yet starts as a new one of its kind and client does - an invoice with the template of the earlier invoice of its client, a credit note not with that of an invoice, one with no history with the template of the kind - and is marked as changed, so that Festschreiben stores it first',
+		field( tplFrom, 'f-template_key' ).value === 'rechnung' && tplFrom.app.state.draft.dirty === true && field( tplFromCredit, 'f-template_key' ).value === 'vertrag' && field( tplFromNothing, 'f-template_key' ).value === 'rechnung' && tplFromNothing.app.state.draft.dirty === true );
+	check( '...a draft that has a template keeps it, and nothing is asked for it', field( tplKept, 'f-template_key' ).value === 'vertrag' && tplKept.app.state.draft.dirty === false && tplKept.all( 'crm-documents/templates' ).length === 0 );
 
 	const bareClients = clients.map( function( one ) { return Object.assign( {}, one, { bare : one.id === 1 } ) } );
 	const bareDraft = await editing( {}, { 'crm-documents/get' : function() { return [ 200, view( draftDoc, { clients : bareClients } ) ] } } );
@@ -2752,6 +2791,27 @@ function press( w, key, target, mods ) {
 	click( eunits, all( eunits.main, '#portal-setup' )[0] );
 	await settle();
 	check( '...and the sentence of the setup says how many words and templates the units of the features brought, in one place for each number', textOf( all( eunits.main, '#setup-said' )[0] ).indexOf( texts['setup.units'].replace( '%s', '28' ).replace( '%s', '1' ) ) !== -1 );
+	// The run that enters the Datenschutzerklärung shows it in the field above, so that a save does not write the empty text the field had
+	let entered = false;
+	const privacyRun = await eopen( {}, eok.concat( [ { key : 'pdf-templates', state : 'none', lacks : [ 'rechnung' ] } ] ), {
+		'crm/setup' : function() { entered = true; return [ 200, { added : { privacy : true }, existed : {} } ] },
+		'crm-documents/settings-get' : function() { return [ 200, Object.assign( {}, eview, { settings : Object.assign( {}, eview.settings, entered === true ? { privacy_text : 'Datenschutzerklärung nach DSGVO', privacy_changed : '2026-11-05' } : { privacy_text : '', privacy_changed : '' } ) } ) ] },
+	} );
+	const privacyBefore = efield( privacyRun, 'privacy_text' ).value;
+	click( privacyRun, all( privacyRun.main, '#portal-setup' )[0] );
+	await settle();
+	check( 'after Portal einrichten the field of the Datenschutzerklärung holds the text the run entered and the line under it names the day - and the field was empty before', privacyBefore === '' && efield( privacyRun, 'privacy_text' ).value === 'Datenschutzerklärung nach DSGVO' && textOf( all( privacyRun.main, '#privacy-changed' )[0] ) === texts['privacy.changed'].replace( '%s', '05.11.2026' ) );
+	submit( privacyRun, all( privacyRun.main, '#privacy' )[0] );
+	await settle();
+	check( '...and a save posts that text and not the empty one', privacyRun.all( 'crm-documents/settings-save' ).length > 0 && privacyRun.all( 'crm-documents/settings-save' ).every( function( post ) { return post.data.privacy_text !== '' } ) );
+	const typedPrivacy = await eopen( {}, eok.concat( [ { key : 'pdf-templates', state : 'none', lacks : [ 'rechnung' ] } ] ), {
+		'crm/setup' : function() { entered = true; return [ 200, { added : { privacy : true }, existed : {} } ] },
+		'crm-documents/settings-get' : function() { return [ 200, Object.assign( {}, eview, { settings : Object.assign( {}, eview.settings, { privacy_text : 'Der Text des Moduls', privacy_changed : '2026-11-05' } ) } ) ] },
+	} );
+	type( efield( typedPrivacy, 'privacy_text' ), 'Mein eigener Text', false );
+	click( typedPrivacy, all( typedPrivacy.main, '#portal-setup' )[0] );
+	await settle();
+	check( '...a field the person is typing in is left as it is', efield( typedPrivacy, 'privacy_text' ).value === 'Mein eigener Text' );
 	const eown = await eopen( {}, eok.concat( [ { key : 'pdf-templates', state : 'ok' }, { key : 'home', state : 'own' } ] ) );
 	check( 'a start page of the owner\'s is no line of what is missing in the card of the portal: all is well, and the button is hidden', all( eown.main, '#status-ok' ).length === 1 && all( eown.main, '#status-missing' ).length === 0 && all( eown.main, '#portal-setup' )[0].hidden === true );
 	const emembers = await eopen( {}, pitemsStatus, { 'crm/setup' : function() { return [ 409, { error : 'x', code : 'crm_setup_feature', params : [ 'Mitglieder' ] } ] } } );
@@ -2818,6 +2878,12 @@ function press( w, key, target, mods ) {
 		&& texts['einrichtung.row-privacy'] !== '' && texts['status.privacy-default'] !== '' && texts['status.privacy-ok'] !== '' );
 	const privacyCard = await eopen( {}, eok.concat( [ { key : 'privacy', state : 'default' } ] ) );
 	check( '...and in the card of the portal it is named by the word of its row and then says its sentence', textOf( all( all( privacyCard.main, '#status-missing' )[0], 'li' )[0] ) === texts['einrichtung.row-privacy']+ ': '+ texts['status.privacy-default'] );
+	// A Datenschutzerklärung that was emptied on purpose
+	const privacyEmpty = await iopen( '#einrichtung', { 'crm/status' : function() { return [ 200, { items : ifresh.map( function( item ) { return item.key === 'privacy' ? { key : 'privacy', state : 'ok', empty : true } : item } ), whole : false, first_run : true } ] } } );
+	const privacyFull = await iopen( '#einrichtung', { 'crm/status' : function() { return [ 200, { items : ifresh.map( function( item ) { return item.key === 'privacy' ? { key : 'privacy', state : 'ok' } : item } ), whole : false, first_run : true } ] } } );
+	const privacyRowOf = function( w ) { return irows( w ).find( function( one ) { return textOf( one ).indexOf( texts['einrichtung.row-privacy'] ) === 0 } ) };
+	check( 'a Datenschutzerklärung that was emptied on purpose is done and says so in its row, with the word for it - an ok row with a text says nothing',
+		privacyRowOf( privacyEmpty ) !== undefined && privacyRowOf( privacyEmpty ).getAttribute( 'data-state' ) !== 'todo' && texts['status.privacy-empty'] !== '' && textOf( privacyRowOf( privacyEmpty ) ).indexOf( texts['status.privacy-empty'] ) !== -1 && textOf( privacyRowOf( privacyFull ) ).indexOf( texts['status.privacy-empty'] ) === -1 );
 	for( const [ kind, word ] of [ [ 'added', 'setup.privacy' ], [ 'existed', 'setup.privacy-there' ] ] ) {
 		const said = { added : { features : [], routes : [], templates : [], types : [], texts : 0, pdf : { templates : [] }, home : false, privacy : kind === 'added' }, existed : { features : [], routes : [], templates : [], types : [], pdf : { templates : [] }, home : false, privacy : kind === 'existed' } };
 		let ran = false;
@@ -4056,6 +4122,9 @@ function press( w, key, target, mods ) {
 	check( '...it is a form of its own beside the settings\' form, with a Speichern that carries the shortcut', tf( tf1, 'firma' ).tagName === 'FORM' && tf( tf1, 'firma' ).parentNode !== tf( tf1, 'settings-form' ) && findAll( tf( tf1, 'settings-form' ), function( n ) { return n.id === 'firma' } ).length === 0
 		&& textOf( tf( tf1, 'firma-save' ) ) === 'Speichern' && tf( tf1, 'firma-save' ).title === 'Strg+S' );
 
+	const tfEntities = await topen( { 'text/keys' : function() { return [ 200, Object.assign( {}, ecompany, { keys : writable( ecompany.keys.map( function( entry ) { return entry.key === '/project/company/general/name' ? Object.assign( {}, entry, { values : { '*' : 'Atelier &quot;Nord&quot; &#91;x] &amp; Co &amp;quot; &lt;b&gt; &#xZZ; &#1114112;' } } ) : entry } ) ) } ) ] } } );
+	check( 'the field of the company shows a stored text as the person reads it: the entities of a quote, a bracket, an ampersand and the signs of markup are those signs - once, so that &amp;quot; is &quot; - and one that is no sign stays as it is; saving it unchanged posts nothing',
+		tf( tfEntities, 'f-firma-general-name' ).value === 'Atelier "Nord" [x] & Co &quot; <b> &#xZZ; &#1114112;' && ( submit( tfEntities, tf( tfEntities, 'firma' ) ), await settle(), tfEntities.all( 'text/savebatch' ).length === 0 ) );
 	submit( tf1, tf( tf1, 'firma' ) );
 	await settle();
 	check( 'Speichern with nothing changed posts nothing', tf1.all( 'text/savebatch' ).length === 0 );
@@ -4341,6 +4410,7 @@ function press( w, key, target, mods ) {
 			'files/delete' : function( data ) { jposts.push( [ 'files/delete', data ] ); return [ 200, {} ] },
 			'files/remove' : function( data ) { jposts.push( [ 'files/remove', data ] ); return [ 200, { file : {}, changed : true } ] },
 			'files/upload' : function( data ) { return [ 200, data.index + 1 < data.count ? { upload : '0123456789abcdef', index : data.index } : { id : 'b00000000001', name : data.name, size : data.size, mailed : data.notify === true ? 2 : 0 } ] },
+			'files/notify' : function( data ) { jposts.push( [ 'files/notify', data ] ); return [ 200, { mailed : 2 } ] },
 		}, over || {} );
 	};
 	const jopen = async function( hash, over, perms ) {
@@ -4701,7 +4771,7 @@ function press( w, key, target, mods ) {
 	click( jon, jf( jon, 'up-send' ) );
 	await settle();
 	check( '...the upload after the redraw posts notify false', jon.all( 'files/upload' ).length === 1 && jon.all( 'files/upload' )[0].data.notify === false );
-	check( '...every chunk of an upload and the switch sichtbar carry the page the mail to the customer links: the page of the project with the tab Dateien, so that the mail leads there and not to the start page', jon.all( 'files/upload' ).every( function( call ) { return call.data.page === '/portal/projekte?projekt=00001&tab=dateien' } ) && jon.all( 'files/upload' ).length === 1 );
+	check( '...with the box unticked the upload makes no call that mails: the chunk says notify false and files/notify is not called', jon.all( 'files/upload' ).every( function( call ) { return call.data.notify === false } ) && jon.all( 'files/upload' ).length === 1 && jon.all( 'files/notify' ).length === 0 );
 	jon.location.hash = '#projekte';
 	await settle();
 	jon.location.hash = '#projekt-00001-dateien';
@@ -5074,16 +5144,36 @@ function press( w, key, target, mods ) {
 	jf( jinf, 'up-input' ).files = [ { name : 'Mail.txt', size : 300, slice : function( from, to ) { return { size : to - from, from : from, to : to } } } ];
 	click( jinf, jf( jinf, 'up-send' ) );
 	await settle();
-	check( 'with the box ticked an upload posts notify true and the toast says that the accounts of the customer are informed', jinf.all( 'files/upload' ).length === 1 && jinf.all( 'files/upload' )[0].data.notify === true && jinf.toast.textContent === texts['projects.uploaded-one']+ ' '+ texts['projects.informed'] );
-	const jnone = await jopen( '#projekt-00001-dateien', { 'files/upload' : function( data ) { return [ 200, data.index + 1 < data.count ? { upload : '0123456789abcdef', index : data.index } : { id : 'b00000000001', name : data.name, size : data.size, mailed : 0 } ] }, 'files/save' : function( data ) { jposts.push( [ 'files/save', data ] ); return [ 200, { file : {}, mailed : 0 } ] } } );
+	check( 'with the box ticked the chunks post notify false and one files/notify at the end mails the upload - the id of the file and the page of the project with the tab Dateien, so that the mail leads there and not to the start page - and the toast says that the accounts of the customer are informed', jinf.all( 'files/upload' ).length === 1 && jinf.all( 'files/upload' )[0].data.notify === false
+		&& jinf.all( 'files/notify' ).length === 1 && JSON.stringify( jinf.all( 'files/notify' )[0].data ) === JSON.stringify( { ids : [ 'b00000000001' ], notify : true, page : '/portal/projekte?projekt=00001&tab=dateien' } ) && jinf.toast.textContent === texts['projects.uploaded-one']+ ' '+ texts['projects.informed'] );
+	const jmany = await jopen( '#projekt-00001-dateien', { 'files/upload' : function( data ) { return data.name === 'leer.txt' ? [ 400, { error : 'x', code : 'files_quota', params : [ 10 ] } ] : [ 200, { id : 'c'+ data.name.charCodeAt( 0 ).toString().padStart( 11, '0' ), name : data.name, size : data.size } ] } } );
+	jf( jmany, 'project-notify' ).checked = true;
+	jf( jmany, 'up-input' ).files = [ jfile( 'a.txt', 10 ), jfile( 'leer.txt', 10 ), jfile( 'b.txt', 10 ), jfile( 'c.txt', 10 ) ];
+	click( jmany, jf( jmany, 'up-send' ) );
+	await settle();
+	check( 'several files are one mail: after the last one a single files/notify names the ids of the files that went in, in the order they were sent - the one the panel refused is not among them - and the toast counts them', jmany.all( 'files/upload' ).length === 4 && jmany.all( 'files/upload' ).every( function( call ) { return call.data.notify === false } ) && jmany.all( 'files/notify' ).length === 1
+		&& JSON.stringify( jmany.all( 'files/notify' )[0].data.ids ) === JSON.stringify( [ 'c00000000097', 'c00000000098', 'c00000000099' ] ) && jmany.all( 'files/notify' )[0].data.notify === true && jmany.toast.textContent === texts['projects.uploaded'].replace( '%s', '3' )+ ' '+ texts['projects.informed'] );
+	const jlone = await jopen( '#projekt-00001-dateien', { 'files/upload' : function() { return [ 400, { error : 'x', code : 'files_quota', params : [ 10 ] } ] } } );
+	jf( jlone, 'project-notify' ).checked = true;
+	jf( jlone, 'up-input' ).files = [ jfile( 'a.txt', 10 ) ];
+	click( jlone, jf( jlone, 'up-send' ) );
+	await settle();
+	check( '...and where no file went in nobody is mailed: no files/notify', jlone.all( 'files/upload' ).length === 1 && jlone.all( 'files/notify' ).length === 0 );
+	const jnone = await jopen( '#projekt-00001-dateien', { 'files/notify' : function() { return [ 200, { mailed : 0 } ] }, 'files/upload' : function( data ) { return [ 200, data.index + 1 < data.count ? { upload : '0123456789abcdef', index : data.index } : { id : 'b00000000001', name : data.name, size : data.size, mailed : 0 } ] }, 'files/save' : function( data ) { jposts.push( [ 'files/save', data ] ); return [ 200, { file : {}, mailed : 0 } ] } } );
 	jf( jnone, 'project-notify' ).checked = true;
 	jf( jnone, 'up-input' ).files = [ { name : 'Nobody.txt', size : 300, slice : function( from, to ) { return { size : to - from, from : from, to : to } } } ];
 	click( jnone, jf( jnone, 'up-send' ) );
 	await settle();
-	check( 'the toast of an upload says what the server says: with the box ticked and no mail delivered (a client without an account, a refused mail) the members are not said to be informed', jnone.all( 'files/upload' )[0].data.notify === true && jnone.toast.textContent === texts['projects.uploaded-one']+ ' '+ texts['projects.not-informed'] );
+	check( 'the toast of an upload says what the server says: with the box ticked and no mail delivered (a client without an account, a refused mail) the members are not said to be informed', jnone.all( 'files/notify' ).length === 1 && jnone.toast.textContent === texts['projects.uploaded-one']+ ' '+ texts['projects.not-informed'] );
 	jtoggle( all( jfrows( jnone )[1], 'input' )[0], true );
 	await settle();
 	check( '...and so does the toast of a switch to visible', jnone.toast.textContent === texts['projects.shown-not-informed'] );
+	// The sentence over the files while an offer waits for the order
+	const waitNote = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { waiting : { id : 31, number : 'A-2026-0030' } } ) ] } } );
+	const waitNone = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { waiting : null } ) ] } } );
+	check( 'while an offer waits for the order the tab Dateien says the files are shut until the customer confirms it - the number of the offer in the sentence, instead of the one about listening - and says nothing of it where none waits',
+		all( waitNote.main, '#project-waiting-note' ).length === 1 && textOf( all( waitNote.main, '#project-waiting-note' )[0] ) === texts['projects.waiting-note'].replace( '%s', 'A-2026-0030' ) && all( waitNote.main, '#project-download-note' ).length === 0
+		&& all( waitNone.main, '#project-waiting-note' ).length === 0 && all( waitNone.main, '#project-download-note' ).length === 1 && texts['projects.waiting-note'].split( '%s' ).length === 2 );
 	check( 'the words of the release and of the send say E-Mail as the others do: no bare Mail in them', Object.keys( texts ).filter( function( key ) { return /^(release|send)\./.test( key ) } ).every( function( key ) { return /(?<!E-)\bMails?\b/.test( texts[key] ) === false } ) );
 	// --- the upload finds the size of a request the web server takes: a chunk answered 413 is sent again in halves
 	const jbig = function( takes, extra ) {
@@ -5324,7 +5414,7 @@ function press( w, key, target, mods ) {
 		&& jmenu( await jopen( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { client : null } ) ] } }, { crm : true, pdf : false, elements : false, text : false, files : true } ), '⋯' ) === undefined );
 
 	// --- the script
-	check( 'the script posts a file to the Files panel\'s upload only as chunks, with the part named chunk, and keeps no folder of its own: the actions it names of that panel are the seven of the endpoint', [ ...new Set( [ ...script.matchAll( /(?:api|call|upload)\( '(files\/[a-z/]+)'/g ) ].map( function( found ) { return found[1] } ) ) ].sort().join() === 'files/delete,files/folder/add,files/folder/save,files/list,files/remove,files/save,files/upload' && /upload\( 'files\/upload', \{[^}]*\}, file\.slice\([^)]*\), 'chunk' \)/.test( script ) === true );
+	check( 'the script posts a file to the Files panel\'s upload only as chunks, with the part named chunk, and keeps no folder of its own: the actions it names of that panel are the eight of the endpoint', [ ...new Set( [ ...script.matchAll( /(?:api|call|upload)\( '(files\/[a-z/]+)'/g ) ].map( function( found ) { return found[1] } ) ) ].sort().join() === 'files/delete,files/folder/add,files/folder/save,files/list,files/notify,files/remove,files/save,files/upload' && /upload\( 'files\/upload', \{[^}]*\}, file\.slice\([^)]*\), 'chunk' \)/.test( script ) === true );
 	check( '...every word the screens ask for is a word of the page', [ ...script.matchAll( /\bt\( '(projects\.[a-z-]+|project\.[a-z-]+|ptab\.[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return typeof texts[key] !== 'string' || texts[key] === '' } ).length === 0 && typeof texts['nav.projects'] === 'string' );
 
 	// === C20: Link für den Kunden - the button at the project, its files, a document and the client, and the dialog

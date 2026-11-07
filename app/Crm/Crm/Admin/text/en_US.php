@@ -41,6 +41,7 @@ return [
 	'[[/_admin/crm/status/notify-ok]]' => 'The notification of the owner in Review is set.',
 	'[[/_admin/crm/status/notify-default]]' => 'Review does not mail you yet when a client comments on a file. The setup switches the notification on; a value you set stays.',
 	'[[/_admin/crm/status/privacy-ok]]' => 'The Datenschutzerklärung is entered.',
+	'[[/_admin/crm/status/privacy-empty]]' => 'The Datenschutzerklärung is empty on purpose; the setup enters no template.',
 	'[[/_admin/crm/status/privacy-default]]' => 'No Datenschutzerklärung is entered yet. The setup enters a template; a text you entered stays.',
 	'[[/_admin/crm/status/home-other]]' => 'The start page of the site is not the door of the portal yet. Setting up makes it so.',
 	'[[/_admin/crm/status/home-own]]' => 'Start page: your own page, not the door.',

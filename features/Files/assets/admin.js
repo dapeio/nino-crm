@@ -899,6 +899,7 @@
 			const files = Nino.admin.files;
 			const limits = files._data.limits;
 			let sent = 0;
+			const made = [];
 
 			files._busy = true;
 			button.disabled = true;
@@ -912,12 +913,22 @@
 				button.disabled = false;
 				input.value = '';
 
-				if( sent > 0 ) {
-					line.idle( files._plural( '/_admin/files/msg/uploaded-file', '/_admin/files/msg/uploaded', sent ) );
-					files.reload();
-				}
-				else
+				if( sent === 0 ) {
 					line.idle( '' );
+					return;
+				}
+
+				line.idle( files._plural( '/_admin/files/msg/uploaded-file', '/_admin/files/msg/uploaded', sent ) );
+
+				// One mail names all the files of the upload: they went in without one, and this call mails them
+				if( files._wantsNotify() === false ) {
+					files.reload();
+					return;
+				}
+
+				files.call( 'notify', { ids : made, notify : true }, function() {
+					files.reload();
+				} );
 			};
 
 			// Every file has its row from the start - the ones that are not at their turn yet wait in it
@@ -970,7 +981,7 @@
 
 				const next = function( index ) {
 
-					files.call( 'upload', { folder : folder.id, name : file.name, size : file.size, upload : upload, index : index, count : parts.length, visible : visible, notify : files._wantsNotify() }, function( answered, response ) {
+					files.call( 'upload', { folder : folder.id, name : file.name, size : file.size, upload : upload, index : index, count : parts.length, visible : visible, notify : false }, function( answered, response ) {
 
 						if( answered === 413 ) {
 
@@ -1005,6 +1016,7 @@
 						row.dataset.state = 'done';
 						status.textContent = Nino.content.getText('/_admin/files/label/done');
 						sent++;
+						made.push( response.id );
 						go( at + 1 );
 					}, { chunk : file.slice( parts[index][0], parts[index][1] ) } );
 				};

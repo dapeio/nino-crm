@@ -229,6 +229,9 @@ class Crm {
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response', [ Portal::class, 'callbackPrivacyWords' ], 2 );
 		\Nino\Callbacks::registerCallback( $appData, '/files/allowed', [ Portal::class, 'callbackFileAllowed' ] );
 
+		// The mail that tells the owner of a comment leads to the card of the project the file belongs to, and names the client and the project
+		\Nino\Callbacks::registerCallback( $appData, '/review/owner-mail', [ \Crm\Surface\Review::class, 'callbackOwnerMail' ] );
+
 		// A document follows the request for its signature: signed or declined by the member in Sign
 		\Nino\Callbacks::registerCallback( $appData, '/sign/signed', [ Documents::class, 'callbackSigned' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/sign/declined', [ Documents::class, 'callbackDeclined' ] );

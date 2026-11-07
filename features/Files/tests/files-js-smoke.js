@@ -691,12 +691,36 @@ console.log( '\nNino.admin.files - whether the members are mailed\n' );
 
 	input.files = [ stood( 'Mailed.mp3', 10 ) ];
 	send.click();
-	check( '...and the upload posts it too', w.last().action === 'files/upload' && w.last().payload.notify === true );
+	check( '...and the upload posts notify false - the mail is one call after the last file', w.last().action === 'files/upload' && w.last().payload.notify === false );
 	w.answer( 200, { id : 'ffffffffffff', name : 'Mailed.mp3', size : 10 } );
+	check( '...that one call is files/notify with the ids of the files that went in', w.last().action === 'files/notify' && JSON.stringify( w.last().payload.ids ) === '["ffffffffffff"]' && w.last().payload.notify === true );
+	w.answer( 200, { mailed : 1 } );
 	w.answer( 200, LIST );
 
 	const again = w.find( w.mount, function( el ) { return el.id === 'files-notify' } );
 	check( '...and the choice stands when the list is drawn again after the upload', w.find( again, function( el ) { return el.tagName === 'INPUT' } ).checked === true );
+}
+
+{
+	// One upload of several files is one mail
+	const w = drawn('en_US');
+	const tick = w.find( w.find( w.mount, function( el ) { return el.id === 'files-notify' } ), function( el ) { return el.tagName === 'INPUT' } );
+	const room = w.find( w.mount, function( el ) { return el.id === 'files-upload-input' } );
+	const send = w.find( w.mount, function( el ) { return el.id === 'files-upload-send' } );
+
+	if( room !== undefined && send !== undefined ) {
+		tick.checked = true;
+		fire( tick, 'change' );
+		room.files = [ stood( 'A.mp3', 10 ), stood( 'B.mp3', 0 ), stood( 'C.mp3', 10 ) ];
+		send.click();
+		w.answer( 200, { id : 'aaaaaaaaaa01', name : 'A.mp3', size : 10 } );
+		w.answer( 200, { id : 'aaaaaaaaaa03', name : 'C.mp3', size : 10 } );
+		check( 'several files are one mail: after the last of them one files/notify names the ids of the files that went in, in the order sent - the empty one that was refused before a byte is not among them', w.requests.filter( function( request ) { return request.action === 'files/notify' } ).length === 1
+			&& JSON.stringify( w.last().payload.ids ) === '["aaaaaaaaaa01","aaaaaaaaaa03"]' && w.last().payload.notify === true && w.requests.filter( function( request ) { return request.action === 'files/upload' } ).every( function( request ) { return request.payload.notify === false } ) );
+		w.answer( 200, { mailed : 1 } );
+	}
+	else
+		check( 'several files are one mail: the form is there to be asked', false );
 }
 
 {

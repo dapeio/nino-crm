@@ -24,6 +24,32 @@ class Review {
 	private const array ACTIONS = [ 'review/comments' => 'apiComments', 'review/done' => 'apiDone' ];
 
 	/**
+	 *	The callback '/review/owner-mail': a comment on a file of a project is told to the owner with the link of the card of that project and the client and the project named. A file
+	 *	in no folder of a client's project is left to the panel's own mail
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$args				file, comment, link and about
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackOwnerMail( array &$appData, array &$args ): void {
+
+		if( \Crm\Projekte::missing( $appData ) === true )
+			return;
+
+		$folder = \Nino\Modules\Files\Store::folder( $appData, (string) ( $args['file']['folder'] ?? '' ) );
+		$number = $folder === null ? null : Files::clientOf( $appData, (string) $folder['group'] );
+		$client = $number === null ? null : \Crm\Clients::byNumber( $appData, $number );
+		$project = $client === null ? null : \Crm\Projekte::ofFolder( $appData, $number, (string) $folder['id'] );
+
+		if( $client === null || $project === null || \Nino\Html::absoluteUrl( $appData ) === '' )
+			return;
+
+		$args['link'] = \Nino\Html::absoluteUrl( $appData, \Crm\Surface::ROUTE. '#projekt-'. rawurlencode( (string) $project['id'] ) );
+		$args['about'] = $client['title']. ' - '. ( $project['title'] !== '' ? $project['title'] : $project['id'] );
+	}
+
+	/**
 	 *	Whether the panel is there to be asked
 	 *
 	 *	@return 	bool

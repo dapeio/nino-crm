@@ -14,7 +14,7 @@ declare(strict_types=1);
  *								A client carries the message the owner wrote to it (message, and message_at, the time it was written; setMessage()), which the portal shows on every page of it.
  *
  *								A write answers the client as list() has it, or a string: 'empty' (neither company nor name - and, for add(), no valid address of a first account),
- *								'email:email', 'long:<field>' or 'format:<field>' (the field a value was refused for; format:business for a flag that is none; message for the message),
+ *								'email:email', 'long:<field>' or 'format:<field>' (the field a value was refused for - a control character (the line break of the notes excepted), a text that is no UTF-8 and a country that is none of the select of the portal are 'format:'; format:business for a flag that is none; message for the message),
  *								'unknown' (no such client). A database failure is a \PDOException the caller answers.
  *
  *								The accounts of a client are rows of client_accounts and accounts of Members. An account belongs
@@ -153,8 +153,8 @@ class Clients {
 	 *
 	 *	@return 	array|string							The client; or why not, see the class. With a first account the client has the key first: what invite()
 	 *																		answered - the account and whether it was mailed - or the code it was refused with (Members' invalid, long,
-	 *																		taken, write; database where the account could not be linked). The client is made all the same: it is
-	 *																		in the books when its account is refused
+	 *																		taken, write; database where the account could not be linked). A client with a company or a name is made all the same: it is
+	 *																		in the books when its account is refused; one with neither is not made, and the answer is that code
 	 */
 	public static function add( array &$appData, array $input, ?array $first = null ): array|string {
 
@@ -167,6 +167,10 @@ class Clients {
 		// The address of the first account is the client's own where the master data has none: a client made with nothing but an address is known by it
 		if( $values['email'] === '' )
 			$values['email'] = $address;
+
+		// A client with nothing but the address of an account that exists is not made: the refusal is known before a row and a number are used for it
+		if( $address !== '' && $values['company'] === '' && $values['name'] === '' && array_filter( \Nino\Modules\Members::accounts( $appData ), static fn( array $account ): bool => strtolower( (string) $account['email'] ) === strtolower( $address ) ) !== [] )
+			return 'taken';
 
 		$pdo = Db::pdo( $appData );
 		$now = gmdate( self::TIME );
@@ -202,11 +206,46 @@ class Clients {
 				$client['first'] = 'database';
 			}
 
+			// A client made with nothing but the address of its first account is of no use where that account is refused: nothing is left of it, and the refusal is the answer
+			if( is_string( $client['first'] ) === true && $values['company'] === '' && $values['name'] === '' && self::discard( $appData, $id ) === true )
+				return $client['first'];
+
 			// The client as it is with its account: the counts are the account's too
 			$client = (array) self::get( $appData, $id ) + [ 'first' => $client['first'] ];
 		}
 
 		return $client;
+	}
+
+	/**
+	 *	Take away a client that was made a moment ago for an account that was refused - if no account was linked to it in the meantime
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *
+	 *	@return 	bool											Whether the client is gone
+	 */
+	private static function discard( array &$appData, int $id ): bool {
+
+		$pdo = Db::pdo( $appData );
+		$pdo->exec( 'BEGIN IMMEDIATE' );
+
+		try {
+			$linked = $pdo->prepare( 'SELECT COUNT(*) FROM client_accounts WHERE client_id = :id' );
+			$linked->execute( [ 'id' => $id ] );
+			$gone = (int) $linked->fetchColumn() === 0;
+
+			if( $gone === true )
+				$pdo->prepare( 'DELETE FROM clients WHERE id = :id' )->execute( [ 'id' => $id ] );
+
+			$pdo->exec( 'COMMIT' );
+		}
+		catch( \Throwable $e ) {
+			$pdo->exec( 'ROLLBACK' );
+			throw $e;
+		}
+
+		return $gone;
 	}
 
 	/**
@@ -225,7 +264,7 @@ class Clients {
 		if( $current === null )
 			return 'unknown';
 
-		$values = self::clean( $input + $current );
+		$values = self::clean( $input + $current, false, (string) $current['country'], array_keys( $input ) );
 
 		if( is_string( $values ) === true )
 			return $values;
@@ -712,10 +751,12 @@ class Clients {
 	 *
 	 *	@param		array 		$input
 	 *	@param		bool			$bare					Whether a client with neither company nor name is allowed (add() has a valid address of a first account to call it by)
+	 *	@param		string		$country			The code the client has already, which stays valid besides the countries of the portal
+	 *	@param		array|null	$sent					The fields the caller sent; the others are what the client holds and are not looked at for control characters - null for all
 	 *
 	 *	@return 	array|string							name => value for every field; or why not
 	 */
-	private static function clean( array $input, bool $bare = false ): array|string {
+	private static function clean( array $input, bool $bare = false, string $country = '', ?array $sent = null ): array|string {
 
 		$values = [];
 
@@ -725,6 +766,16 @@ class Clients {
 
 			if( is_string( $value ) === false )
 				return 'format:'. $field;
+
+			// The master data are one line: no control character (the null byte among them), no separator of lines, no mark that turns the text around, and no text that is no UTF-8 -
+			// preg_match() answers false for it. The notes keep their line breaks; the reference of the buyer is what a document takes: no character of the class C at all
+			if( $sent === null || in_array( $field, $sent, true ) === true ) {
+
+				$pattern = $field === 'buyer_reference' ? '/[\p{C}\x{2028}\x{2029}]/u' : '/[\p{Cc}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u';
+
+				if( preg_match( $pattern, $field === 'notes' ? str_replace( [ "\r", "\n" ], '', $value ) : $value ) !== 0 )
+					return 'format:'. $field;
+			}
 
 			$value = trim( $value );
 
@@ -739,6 +790,10 @@ class Clients {
 
 			if( $value !== '' && isset( self::FORMATS[$field] ) === true && preg_match( self::FORMATS[$field], $value ) !== 1 )
 				return 'format:'. $field;
+
+			// The country is one of the select of the portal, or the code the client has already
+			if( $field === 'country' && in_array( $value, \Crm\Portal\Data::COUNTRIES, true ) === false && $value !== $country )
+				return 'format:country';
 
 			if( $field === 'email' && $value !== '' && filter_var( $value, FILTER_VALIDATE_EMAIL ) === false )
 				return 'email:email';

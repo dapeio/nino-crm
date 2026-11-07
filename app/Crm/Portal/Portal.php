@@ -1111,7 +1111,7 @@ class Portal {
 	}
 
 	/**
-	 *	The cell of the day an invoice is due: "fällig am <day>" where it has one, "zahlbar sofort" for an invoice that is open and has none, nothing for the rest
+	 *	The cell of the day an invoice is due: "fällig am <day>" where it has one and is open or overdue, "zahlbar sofort" for one that is open and has none, nothing for the rest - a paid or cancelled invoice is due no more
 	 *
 	 *	@param		array 		$document			category, due_date
 	 *	@param		string		$state				As customerState() has it
@@ -1120,7 +1120,7 @@ class Portal {
 	 */
 	public static function dueCell( array $document, string $state ): string {
 
-		if( $document['category'] !== 'invoice' )
+		if( $document['category'] !== 'invoice' || in_array( $state, [ 'open', 'overdue' ], true ) === false )
 			return '';
 
 		$day = Documents\Render::day( (string) ( $document['due_date'] ?? '' ) );
@@ -1128,7 +1128,7 @@ class Portal {
 		if( $day !== '' )
 			return self::render( 'document-due', [ '[[iso]]' => \Nino\Modules\Components::escape( (string) $document['due_date'] ), '[[date]]' => \Nino\Modules\Components::escape( $day ) ] );
 
-		return in_array( $state, [ 'open', 'overdue' ], true ) === true ? self::template( 'document-due-none' ) : '';
+		return self::template( 'document-due-none' );
 	}
 
 	/**

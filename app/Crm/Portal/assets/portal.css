@@ -3706,6 +3706,11 @@ a.crm-nav__link[aria-current="page"] .crm-icon {
 		padding-bottom: calc( 56px + env(safe-area-inset-bottom) );
 	}
 
+	/*	A control that takes the focus scrolls into view above the bar of tabs, not under it	*/
+	html:has(.crm-nav) {
+		scroll-padding-bottom: calc( 56px + env(safe-area-inset-bottom) + var(--crm-4) );
+	}
+
 	.crm-bar a.crm-account {
 		justify-content: center;
 		min-width: var(--crm-touch);

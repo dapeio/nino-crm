@@ -795,8 +795,8 @@ foreach( [ 'not json', '[]', '{"action":["crm-documents/list"]}', '{"action":1}'
 	check( 'a body that is no action ('. $broken. ') is 404 action as well', $answer['statusCode'] === 404 && $answer['body']['code'] === 'action' );
 }
 
-check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects and the switch of their download, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the seven of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - the two of the Review panel that read and settle the comments on them, the list of the uploads and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get', 'crm-projekte/download' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/delete', 'files/remove' ], [ 'review/comments', 'review/done' ], [ 'crm-uploads/list' ] )
-	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|delete|remove)|review/(comments|done)|crm-uploads/list)$~D', $action ) !== 1 ) === []
+check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects and the switch of their download, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the eight of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - the two of the Review panel that read and settle the comments on them, the list of the uploads and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get', 'crm-projekte/download' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/notify', 'files/delete', 'files/remove' ], [ 'review/comments', 'review/done' ], [ 'crm-uploads/list' ] )
+	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|notify|delete|remove)|review/(comments|done)|crm-uploads/list)$~D', $action ) !== 1 ) === []
 	&& in_array( 'crm-clients/setup', array_keys( Surface::actions() ), true ) === false && in_array( 'crm-clients/status', array_keys( Surface::actions() ), true ) === false );
 
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiList' ], [ 'year' => (string) date( 'Y' ) ], 'crm-documents/list' );
@@ -1814,6 +1814,7 @@ $oneFile = static fn( ?bool $notify ): int => $mailed( static function() use ( $
 	$sendChunk( [ 'folder' => $folderId, 'name' => 'Kurz.txt', 'size' => 3, 'count' => 1, 'index' => 0, 'upload' => '', 'visible' => true ] + ( $notify === null ? [] : [ 'notify' => $notify ] ), 'abc' );
 } );
 check( '...and so does the upload through the endpoint, mailed once for its last chunk', [ $oneFile( false ), $oneFile( true ), $oneFile( null ) ] === [ 0, 1, 0 ] );
+surfaceNotifyChecks( $appData, $sendChunk, $folderId, $stranger );
 $uploadLog = \Nino\Modules\Files\Admin::log( 'files/upload', [ 'notify' => false ] );
 check( '...the line of the log for an upload or a switch that was not mailed says so, and holds no address', str_contains( \Nino\Modules\Files\Admin::log( 'files/save', [ 'id' => $fileId, 'visible' => true, 'notify' => false ] ), 'not mailed' ) === true
 	&& str_contains( \Nino\Modules\Files\Admin::log( 'files/save', [ 'id' => $fileId, 'visible' => true ] ), 'not mailed' ) === false && str_contains( $uploadLog, '@' ) === false );
@@ -1990,6 +1991,10 @@ $comment2 = \Nino\Modules\Review::add( $appData, $song1['id'], $byMember, null, 
 $answer1 = \Nino\Modules\Review::add( $appData, $song1['id'], [ 'kind' => 'owner', 'id' => '' ], null, 'Ist gemacht', $comment1['id'] );
 $comment3 = \Nino\Modules\Review::add( $appData, $song2['id'], $byMember, 5.5, 'Einsatz zu früh' );
 $commentForeign = \Nino\Modules\Review::add( $appData, $foreign['id'], $byMember, 1.0, 'Ein Kommentar im Ordner einer anderen Gruppe' );
+
+surfaceOwnerMailChecks( $appData, $asItems, $song1, $a, $project, $comment2 );
+surfaceBrandChecks( $appData, $asCrm, $asVisitor, $root );
+surfaceClientChecks( $appData, $asCrm );
 
 // The permissions
 $asCrm();
@@ -2548,6 +2553,201 @@ else {
 	$ran = preg_match( '/(\d+) checks, (\d+) failed/', $output, $counts ) === 1;
 
 	check( 'surface-js-smoke.js passes ('. ( $ran ? $counts[1]. ' checks' : 'no summary' ). ')', $ran && $counts[2] === '0' && (int) $counts[1] >= 400 && str_contains( $output, 'FAIL' ) === false );
+}
+
+/**
+ *	The mail that tells the account of a group of the files of an upload is one mail for all of them: the files go in one after the other without a mail and files/notify mails them
+ *	- for the files of a client's folder, that are visible and kept, in one folder, at most as many as the panel names - and what it refuses it refuses before anybody is mailed
+ *
+ *	@param		array 		&$appData
+ *	@param		\Closure	$sendChunk			Posts one chunk of an upload through the endpoint
+ *	@param		string		$folderId				The folder of the project
+ *	@param		array 		$stranger				A folder of another group
+ *
+ *	@return 	void
+ */
+function surfaceNotifyChecks( array &$appData, \Closure $sendChunk, string $folderId, array $stranger ): void {
+
+	global $mails;
+
+	\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => false ] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+
+	$mine = static fn( int $from ): array => array_values( array_filter( array_slice( $mails->getArrayCopy(), $from ), static fn( array $mail ): bool => $mail['to'] === 'files-notify@example.org' ) );
+	$names = [ 'Erste <b>&.txt', 'Zweite.txt', 'Dritte.txt' ];
+	$ids = [];
+	$from = count( $mails );
+
+	foreach( $names as $name ) {
+
+		$answer = $sendChunk( [ 'folder' => $folderId, 'name' => $name, 'size' => 3, 'count' => 1, 'index' => 0, 'upload' => '', 'visible' => true, 'notify' => false ], 'abc' )[1];
+		$ids[] = (string) ( $answer['id'] ?? '' );
+	}
+
+	check( 'the files of one upload, sent one by one with notify false, mail nobody', count( array_filter( $ids ) ) === 3 && $mine( $from ) === [] );
+
+	[ $status, $body ] = surfaceApi( $appData, 'files/notify', [ 'ids' => $ids, 'notify' => true ] );
+	$sent = $mine( $from );
+
+	check( '...files/notify mails the account of the group once for all three: 200, one mail for each account of the group - one for the account listening here -, with every file in its list and the name escaped', $status === 200 && ( $body['mailed'] ?? 0 ) > 0 && count( $sent ) === 1
+		&& array_filter( $names, static fn( string $name ): bool => str_contains( (string) $sent[0]['body'], \Nino\Modules\Components::escape( $name ) ) === false ) === [] && str_contains( (string) $sent[0]['body'], 'Erste <b>' ) === false );
+
+	$from = count( $mails );
+	[ $status, $body ] = surfaceApi( $appData, 'files/notify', [ 'ids' => $ids ] );
+
+	check( '...without notify the setting decides - off here: 200, mailed 0, nobody is mailed', $status === 200 && ( $body['mailed'] ?? -1 ) === 0 && $mine( $from ) === [] );
+
+	$stray = \Nino\Modules\Files\Store::addFile( $appData, 'dddddddddddd', [ 'folder' => $stranger['id'], 'name' => 'f.txt', 'ext' => 'txt', 'size' => 1, 'mime' => 'text/plain', 'sha256' => str_repeat( 'a', 64 ), 'by' => [ 'kind' => 'owner', 'id' => '' ], 'visible' => true, 'created' => gmdate( 'Y-m-d\TH:i:s\Z' ) ], 0 );
+	surfaceApi( $appData, 'files/save', [ 'id' => $ids[2], 'visible' => false ] );
+	$from = count( $mails );
+	$refused = [
+		'no list'             => [ 'ids' => $ids[0] ],
+		'an empty list'       => [ 'ids' => [] ],
+		'a thing that is no id' => [ 'ids' => [ $ids[0], [ 'x' ] ] ],
+		'an id nobody has'    => [ 'ids' => [ $ids[0], 'cccccccccccc' ] ],
+		'a file that is hidden' => [ 'ids' => [ $ids[0], $ids[2] ] ],
+		'more than the panel names' => [ 'ids' => array_fill( 0, \Nino\Modules\Files\Admin::NOTIFY_MAX + 1, $ids[0] ) ],
+	];
+	$answers = array_map( static fn( array $data ): array => ( static function( array $r ): array { return [ $r[0], (string) ( $r[1]['code'] ?? '' ) ]; } )( surfaceApi( $appData, 'files/notify', $data + [ 'notify' => true ] ) ), $refused );
+
+	check( '...a list that is none, a thing that is no id, an id nobody has, a file that is hidden and a list that is too long are 404 files_unknown, and nobody is mailed', array_filter( $answers, static fn( array $one ): bool => $one !== [ 404, 'files_unknown' ] ) === [] && $mine( $from ) === [] );
+	check( '...a file of a folder of another group in the list is 404 crm_files_group, and nobody is mailed', is_array( $stray ) && ( $r = surfaceApi( $appData, 'files/notify', [ 'ids' => [ $ids[0], 'dddddddddddd' ], 'notify' => true ] ) )[0] === 404 && $r[1]['code'] === 'crm_files_group' && $mine( $from ) === [] );
+
+	\Nino\Modules\Files\Store::deleteFile( $appData, 'dddddddddddd' );
+
+	foreach( $ids as $id )
+		\Nino\Modules\Files\Store::deleteFile( $appData, $id );
+}
+
+/**
+ *	The mail that tells the owner of a comment on a file of a client's project leads to the card of that project - the number of the project in the link, the Surface route - and names the client and
+ *	the project in its subject, with the button that says so; the mail of a file that is in no project's folder is the plain one that opens the panel
+ *
+ *	@param		array 		&$appData
+ *	@param		\Closure	$asItems				Signs in the account that edits the projects
+ *	@param		array 		$song						A file in a folder of the client's group
+ *	@param		array 		$client					The client
+ *	@param		array 		$project				The fields posted to make the project
+ *	@param		array 		$comment				A comment on the file
+ *
+ *	@return 	void
+ */
+function surfaceOwnerMailChecks( array &$appData, \Closure $asItems, array $song, array $client, array $project, array $comment ): void {
+
+	global $mails;
+
+	$asItems();
+	surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'folder' => $song['folder'] ] ] + $project );
+	\Nino\Features::saveSettings( $appData, 'review', [ 'notifyOwner' => true ] );
+	\Nino\Html::addFills( $appData, [ '[[/project/company/contact/email]]' => 'inhaber@example.org' ], '*' );
+	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+
+	$member = [ 'id' => 'aaaaaaaaaaaa', 'name' => 'Lena Brandt', 'email' => 'lena@example.org' ];
+	$from = count( $mails );
+	$told = \Nino\Modules\Review::notifyOwner( $appData, $song, $comment, $member );
+	$sent = array_values( array_filter( array_slice( $mails->getArrayCopy(), $from ), static fn( array $mail ): bool => $mail['to'] === 'inhaber@example.org' ) );
+	$title = (string) \Crm\Clients::get( $appData, $client['id'] )['title'];
+
+	check( 'the mail to the owner about a comment on a file of a project leads to the card of the project: the link is the route of the surface with #projekt- and the number of the project, and the plain link to the panel is not in it',
+		$told === true && count( $sent ) === 1 && str_contains( (string) $sent[0]['body'], \Crm\Surface::ROUTE. '#projekt-00001' ) === true && str_contains( (string) $sent[0]['body'], '#review' ) === false );
+	check( '...its subject names the client and the project, and holds nothing of the token it is made from', str_contains( (string) $sent[0]['subject'], $title ) === true && str_contains( (string) $sent[0]['subject'], 'Album 2027' ) === true && str_contains( (string) $sent[0]['subject'], '[[' ) === false );
+
+	// A file in a folder that is no project's: the panel, and a subject of its own
+	$stray = \Nino\Modules\Files\Store::addFolder( $appData, $client['group'], 'Ohne Projekt' );
+	$loose = \Nino\Modules\Files\Store::addFile( $appData, 'eeeeeeeeeeee', [ 'folder' => $stray['id'], 'name' => 'Lose.wav', 'ext' => 'wav', 'size' => 1, 'mime' => 'audio/wav', 'sha256' => str_repeat( 'b', 64 ), 'by' => [ 'kind' => 'owner', 'id' => '' ], 'visible' => true, 'created' => gmdate( 'Y-m-d\TH:i:s\Z' ) ], 0 );
+	$from = count( $mails );
+	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+	$plain = is_array( $loose ) === true && \Nino\Modules\Review::notifyOwner( $appData, $loose, $comment, $member ) === true;
+	$sentPlain = array_values( array_filter( array_slice( $mails->getArrayCopy(), $from ), static fn( array $mail ): bool => $mail['to'] === 'inhaber@example.org' ) );
+
+	check( '...a file in the folder of no project is the plain mail: the link opens the panel Review and the subject has neither client nor project', $plain === true && count( $sentPlain ) === 1 && str_contains( (string) $sentPlain[0]['body'], '#review' ) === true && str_contains( (string) $sentPlain[0]['body'], '#projekt-' ) === false
+		&& str_contains( (string) $sentPlain[0]['subject'], $title ) === false && $sentPlain[0]['subject'] !== $sent[0]['subject'] );
+
+	// The name of the project is a line of text in the subject, whatever it holds
+	surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'title' => "Zeile\r\nBcc: x@example.org [[about]]" ] ] + $project );
+	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+	$from = count( $mails );
+	\Nino\Modules\Review::notifyOwner( $appData, $song, $comment, $member );
+	$sentLine = array_values( array_filter( array_slice( $mails->getArrayCopy(), $from ), static fn( array $mail ): bool => $mail['to'] === 'inhaber@example.org' ) );
+
+	check( '...a title with a line break and a header in it is one line of the subject: no carriage return, no line feed', count( $sentLine ) === 1 && preg_match( '/[\r\n]/', (string) $sentLine[0]['subject'] ) !== 1 && str_contains( (string) $sentLine[0]['subject'], 'Bcc: x@example.org' ) === true );
+
+	\Nino\Modules\Files\Store::deleteFile( $appData, 'eeeeeeeeeeee' );
+	surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'folder' => '', 'title' => 'Album 2027' ] ] + $project );
+	\Nino\Features::saveSettings( $appData, 'review', [ 'notifyOwner' => false ] );
+}
+
+/**
+ *	The name of the company stands in the bar of the surface as the text it is: a quote, a bracket, an ampersand are what the owner typed, once escaped - not the entity the text fill gives
+ *	twice over - for the page and for the login; and the style sheet lets a long word break where it must (the crumb, the title and the cell of a name)
+ *
+ *	@param		array 		&$appData
+ *	@param		\Closure	$asCrm					Signs in an account of the CRM
+ *	@param		\Closure	$asVisitor			Signs out
+ *	@param		string		$root
+ *
+ *	@return 	void
+ */
+function surfaceBrandChecks( array &$appData, \Closure $asCrm, \Closure $asVisitor, string $root ): void {
+
+	$before = (string) \Nino\Html::resolveTextfill( $appData, '/project/company/general/name' );
+	\Nino\Html::addFills( $appData, [ '[[/project/company/general/name]]' => 'Atelier &quot;Nord&quot; [x] &amp; Co' ], '*' );
+
+	$asVisitor();
+	$login = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
+	$asCrm();
+	$page = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
+	$bar = '<b>'. \Nino\Modules\Components::escape( 'Atelier "Nord" [x] & Co' ). '</b>';
+
+	check( 'the name of the company is in the bar of the page and of the login as the text it is it is: the quote, the bracket and the ampersand escaped once - no &amp;quot; - and not the text fill\'s entity', str_contains( $page, $bar ) === true && str_contains( $login, $bar ) === true && str_contains( $page. $login, '&amp;quot;' ) === false && str_contains( $page. $login, '&amp;amp;' ) === false );
+
+	\Nino\Html::addFills( $appData, [ '[[/project/company/general/name]]' => $before ], '*' );
+
+	$sheet = (string) file_get_contents( $root. '/app/Crm/Surface/assets/crm.css' );
+
+	check( 'the style sheet breaks a long word in the crumb, in the title of the page and in the cell of a name - overflow-wrap: anywhere on each - so that a title of 200 characters without a blank makes no scroll of the page',
+		preg_match( '/^\.crumb \{[^}]*overflow-wrap: anywhere/m', $sheet ) === 1 && preg_match( '/^\.head h1 \{[^}]*overflow-wrap: anywhere/m', $sheet ) === 1 && preg_match( '/^\.tbl td\.wrap \{[^}]*overflow-wrap: anywhere/m', $sheet ) === 1 );
+}
+
+/**
+ *	Through the endpoint of the surface the master data of a client are one line of text and the country is one of the select (400 crm_clients_format at the field, nothing written), and a
+ *	client made with nothing but the address of an account that exists is not made: 409 crm_clients_taken at the email, no client, no account, no mail
+ *
+ *	@param		array 		&$appData
+ *	@param		\Closure	$asCrm					Signs in an account of the CRM
+ *
+ *	@return 	void
+ */
+function surfaceClientChecks( array &$appData, \Closure $asCrm ): void {
+
+	global $mails;
+
+	$asCrm();
+	$clients = count( \Crm\Clients::list( $appData ) );
+	$rows = [];
+
+	foreach( [ 'name' => "Mi\x00a", 'street' => "Weg\x07 1", 'city' => "Wien\n", 'country' => 'XX' ] as $field => $value ) {
+
+		[ $status, $body ] = surfaceApi( $appData, 'crm-clients/save', [ 'company' => 'Prüfung GmbH', $field => $value ] );
+		$rows[$field] = [ $status, $body['code'] ?? '', $body['field'] ?? '' ];
+	}
+
+	check( 'crm-clients/save refuses a null byte, a control character, a line break and a country nobody offers: 400 crm_clients_format at the field, and no client is made', array_filter( $rows, static fn( array $row, string $field ): bool => $row !== [ 400, 'crm_clients_format', $field ], ARRAY_FILTER_USE_BOTH ) === [] && count( \Crm\Clients::list( $appData ) ) === $clients );
+
+	$taken = \Nino\Modules\Members::add( $appData, 'doppelt@example.org', '', 'allgemein' );
+	$members = count( \Nino\Modules\Members::accounts( $appData ) );
+	$sent = count( $mails );
+	[ $status, $body ] = surfaceApi( $appData, 'crm-clients/save', [ 'account_email' => 'doppelt@example.org' ] );
+
+	check( '...an address that is an account already, and nothing else, is 409 crm_clients_taken at the email: no client, no account, no mail', is_array( $taken ) && $status === 409 && ( $body['code'] ?? '' ) === 'crm_clients_taken' && ( $body['field'] ?? '' ) === 'email'
+		&& count( \Crm\Clients::list( $appData ) ) === $clients && count( \Nino\Modules\Members::accounts( $appData ) ) === $members && count( $mails ) === $sent );
+
+	[ $status, $body ] = surfaceApi( $appData, 'crm-clients/save', [ 'company' => 'Doppelt GmbH', 'account_email' => 'doppelt@example.org' ] );
+
+	check( '...with a company the client is made all the same and the answer says the account was refused', $status === 200 && ( $body['first']['refused']['code'] ?? '' ) === 'crm_clients_taken' && count( \Crm\Clients::list( $appData ) ) === $clients + 1 );
+
+	if( is_array( $taken ) === true )
+		\Nino\Modules\Members::remove( $appData, $taken['id'] );
 }
 
 ninoDone( $appData );

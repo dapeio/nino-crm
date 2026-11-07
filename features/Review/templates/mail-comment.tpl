@@ -4,7 +4,7 @@
 	<p style="margin:0 0 [[/project/mail/spacing/medium]];"><strong>[[file]]</strong><br>[[/feature/review/mail/label-time]] [[time]]<br>[[/feature/review/mail/label-by]] [[who]]</p>
 	<p style="margin:0 0 [[/project/mail/spacing/medium]]; padding-left:[[/project/mail/spacing/small]]; border-left:3px solid [[/project/mail/color/primary]];">[[body]]</p>
 	<p style="margin:0 0 [[/project/mail/spacing/medium]]; text-align:center;">
-		<a href="[[link]]" style="display:inline-block; padding:[[/project/mail/spacing/small]] [[/project/mail/spacing/medium]]; background:[[/project/mail/color/primary]]; color:[[/project/mail/color/background]]; text-decoration:none;">[[/feature/review/mail/comment-button]]</a>
+		<a href="[[link]]" style="display:inline-block; padding:[[/project/mail/spacing/small]] [[/project/mail/spacing/medium]]; background:[[/project/mail/color/primary]]; color:[[/project/mail/color/background]]; text-decoration:none;">[[opens]]</a>
 	</p>
 	<p style="margin:0;">[[/feature/review/mail/closing]]<br>[[/project/company/general/name]]</p>
 </div>

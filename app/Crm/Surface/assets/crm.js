@@ -70,7 +70,7 @@
 			cfilter : { q : '', sort : 'number', dir : 1, page : 1 },
 			ufilter : { q : '', sort : 'age', dir : -1, page : 1 }, ubody : null, picked : new Set(),
 			pfilter : { q : '', sort : 'name', dir : 1 }, ifilter : { q : '', sort : 'sort', dir : 1, page : 1 }, pbody : null, jfilter : { q : '', all : false, page : 1 }, jbody : null, busy : null, pdf : { site : [] }, saver : {}, company : null,
-			view : 0, entered : false, seen : null, tab : '', draft : null, saving : false, queued : false, pending : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
+			view : 0, entered : false, seen : null, tab : '', draft : null, saving : false, queued : false, pending : null, privacy : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
 		} );
 	};
 
@@ -407,6 +407,50 @@
 			period_from : '', period_to : '', template_key : '', inputs : {}, reverse_charge : false, title : '', notes : '', project : '', buyer_reference : '', erechnung : null,
 			lines : [], updated : '', dirty : false, templates : [],
 		};
+	};
+
+	/**
+	 *	The template a draft starts with, so that the field is not left empty for the person to fill: the only template of the kind; else the one the newest document of the same kind
+	 *	(an invoice and a credit note are two) and the same client was made with, as long as it is one of the templates; else the template Einrichten made for the kind; else none
+	 *
+	 *	@param		{Object}	draft						category, client_id
+	 *	@param		{Array}		templates				The templates of the kind, each with its key
+	 *	@param		{Array}		documents				The documents of the list, each with id, category, client_id and template_key
+	 *	@param		{string}	standard				The key of the template Einrichten made for the kind; '' for none
+	 *
+	 *	@return		{string}									The key; '' for none
+	 */
+	const templateFor = function( draft, templates, documents, standard ) {
+
+		if( templates.length === 1 )
+			return templates[0].key;
+
+		const keys = templates.map( function( one ) { return one.key } );
+		const own = draft.client_id === '' ? [] : documents.filter( function( row ) {
+			return row.category === draft.category && String( row.client_id ) === draft.client_id && typeof row.template_key === 'string' && keys.includes( row.template_key );
+		} ).sort( function( a, b ) { return b.id - a.id } );
+
+		if( own.length > 0 )
+			return own[0].template_key;
+
+		return keys.includes( standard ) ? standard : '';
+	};
+
+	/**
+	 *	The documents to look through for the template of a new draft: those of the year, and - where none of them was made with a template - those of the year before, so that January has a history
+	 *
+	 *	@param		{Array}		rows						The documents of the year
+	 *
+	 *	@return		{Promise}									The documents
+	 */
+	const templateHistory = function( rows ) {
+
+		if( rows.some( function( row ) { return typeof row.template_key === 'string' && row.template_key !== '' } ) === true )
+			return Promise.resolve( rows );
+
+		return api( 'crm-documents/list', { year : String( new Date().getFullYear() - 1 ) } ).then( function( answer ) {
+			return answer.ok === true && Array.isArray( answer.body.documents ) === true ? rows.concat( answer.body.documents ) : rows;
+		} );
 	};
 
 	/**
@@ -2378,7 +2422,30 @@
 					return;
 				}
 
-				editor( answer.body, mine );
+				if( answer.body.document.template_key !== '' ) {
+					editor( answer.body, mine );
+					return;
+				}
+
+				// A draft made from another document has no template yet: the history of the client and the template of the kind are looked up, to start it with one
+				Promise.all( [ api( 'crm-documents/list', { year : String( new Date().getFullYear() ) } ), api( 'crm-documents/templates', { category : answer.body.document.category } ) ] ).then( function( looked ) {
+
+					if( state.view !== mine )
+						return null;
+
+					if( looked.every( function( one ) { return one.ok === true } ) === false )
+						return editor( answer.body, mine );
+
+					return templateHistory( looked[0].body.documents ).then( function( rows ) {
+
+						if( state.view !== mine )
+							return;
+
+						answer.body.history = rows;
+						answer.body.standard = looked[1].body.standard ?? '';
+						editor( answer.body, mine );
+					} );
+				} );
 			} );
 
 			return;
@@ -2407,7 +2474,15 @@
 
 			draft.templates = answers[1].body.templates;
 			state.offers = answers[1].body.offers;
-			editor( { document : null, draft : draft }, mine );
+
+			templateHistory( answers[0].body.documents ).then( function( rows ) {
+
+				if( state.view !== mine )
+					return;
+
+				draft.template_key = templateFor( draft, draft.templates, rows, answers[1].body.standard ?? '' );
+				editor( { document : null, draft : draft }, mine );
+			} );
 		} );
 	};
 
@@ -2428,6 +2503,12 @@
 
 		if( view.document !== null )
 			draft.templates = view.templates;
+
+		// A draft that was made from another document has none yet where the kinds differ: it starts with the template a new one of its kind does, and is saved with it
+		if( view.document !== null && draft.template_key === '' && templateFor( draft, draft.templates, view.history ?? [], view.standard ?? '' ) !== '' ) {
+			draft.template_key = templateFor( draft, draft.templates, view.history ?? [], view.standard ?? '' );
+			draft.dirty = true;
+		}
 
 		state.draft = draft;
 		reveal();
@@ -5788,6 +5869,7 @@
 		const limits = view.limits;
 		let sent = 0;
 		let mailed = false;
+		const made = [];
 
 		button.disabled = true;
 		list.hidden = false;
@@ -5801,8 +5883,19 @@
 			if( sent === 0 )
 				return;
 
-			// What the toast says of the mail is what the server says: the members are informed where a mail was delivered, not where the box was ticked
-			toast( t( sent === 1 ? 'projects.uploaded-one' : 'projects.uploaded', sent )+ ' '+ t( mailed === true ? 'projects.informed' : 'projects.not-informed' ) );
+			// One mail names all the files of the upload: they are sent without one, and this is the call that mails them. What the toast says of it is what the server says:
+			// the members are informed where a mail was delivered, not where the box was ticked
+			const told = wantsNotify( view ) === true ? call( 'files/notify', { ids : made, notify : true, page : projectTarget( view.project.id ) }, 'projects.error-file' ) : Promise.resolve( null );
+
+			told.then( function( answer ) {
+
+				mailed = answer !== null && answer.ok === true && answer.body.mailed > 0;
+				toast( t( sent === 1 ? 'projects.uploaded-one' : 'projects.uploaded', sent )+ ' '+ t( mailed === true ? 'projects.informed' : 'projects.not-informed' ) );
+				reload();
+			} );
+		};
+
+		const reload = function() {
 
 			if( state.view !== mine )
 				return;
@@ -5863,7 +5956,7 @@
 
 			const next = function( index ) {
 
-				upload( 'files/upload', { folder : view.folder.id, name : file.name, size : file.size, upload : id, index : index, count : parts.length, visible : true, notify : wantsNotify( view ), page : projectTarget( view.project.id ) }, file.slice( parts[index][0], parts[index][1] ), 'chunk' ).then( function( answer ) {
+				upload( 'files/upload', { folder : view.folder.id, name : file.name, size : file.size, upload : id, index : index, count : parts.length, visible : true, notify : false }, file.slice( parts[index][0], parts[index][1] ), 'chunk' ).then( function( answer ) {
 
 					if( answer.status === 413 ) {
 
@@ -5898,9 +5991,7 @@
 					line.row.dataset.state = 'done';
 					line.status.textContent = t( 'projects.up-done' );
 					sent++;
-
-					if( answer.body !== null && typeof answer.body === 'object' && answer.body.mailed > 0 )
-						mailed = true;
+					made.push( answer.body.id );
 
 					go( at + 1 );
 				} );
@@ -6046,8 +6137,10 @@
 		if( editable === false )
 			holder.appendChild( note( '', t( 'projects.files-forbidden' ) ) );
 
-		// While the download is off the customer listens and does not save: the owner is told over the files
-		if( project.download !== true )
+		// While an offer waits for the order the files are shut for the customer altogether; while the download is off the customer listens and does not save: the owner is told over the files
+		if( view.waiting !== null && view.waiting !== undefined )
+			holder.appendChild( el( 'p', { class: 'state-note', id: 'project-waiting-note', text: t( 'projects.waiting-note', view.waiting.number ) } ) );
+		else if( project.download !== true )
 			holder.appendChild( el( 'p', { class: 'state-note', id: 'project-download-note', text: t( 'projects.download-note' ) } ) );
 
 		if( editable === true && linkable( view.client ) === true )
@@ -6856,7 +6949,7 @@
 				const word = 'einrichtung.row-'+ item.key;
 
 				return el( 'li', { 'data-key': item.key, 'data-state': complete( item ) ? 'ok' : 'todo' },
-					el( 'span', {}, el( 'b', { text: typeof state.texts[word] === 'string' ? t( word ) : item.key } ), item.state === 'ok' && item.key !== 'mail-cap' ? null : el( 'span', { class: 'state-note block', text: statusLine( item ) } ) ),
+					el( 'span', {}, el( 'b', { text: typeof state.texts[word] === 'string' ? t( word ) : item.key } ), item.state === 'ok' && item.key !== 'mail-cap' && item.empty !== true ? null : el( 'span', { class: 'state-note block', text: statusLine( item ) } ) ),
 					badge( complete( item ) ? 'signed' : 'portal', t( complete( item ) ? 'einrichtung.state-ok' : 'einrichtung.state-todo' ) ) );
 			} ) ),
 			el( 'div', { class: 'actions top' }, run ),
@@ -6957,7 +7050,7 @@
 
 	const statusLine = function( item ) {
 
-		const key = 'status.'+ item.key+ '-'+ item.state;
+		const key = 'status.'+ item.key+ '-'+ ( item.empty === true ? 'empty' : item.state );
 
 		// What a portal lacks is a kind with a word; what the PDF templates lack are their keys
 		if( item.state === 'partial' && Array.isArray( item.lacks ) === true )
@@ -7020,8 +7113,14 @@
 
 				// The setup changed the routes and the settings of Members the card shows as well as the status: both are read again
 				Promise.all( [ call( 'crm/status', {}, 'error.load' ), call( 'crm-documents/settings-get', {}, 'error.load' ) ] ).then( function( again ) {
-					if( again[0].ok === true && again[1].ok === true && state.view === mine )
-						card.replaceWith( card = portalCard( again[1].body.portal, again[0].body.items, setupSentence( answer.body ), mine ) );
+					if( again[0].ok !== true || again[1].ok !== true || state.view !== mine )
+						return;
+
+					card.replaceWith( card = portalCard( again[1].body.portal, again[0].body.items, setupSentence( answer.body ), mine ) );
+
+					// The run may have entered the Datenschutzerklärung: the field of the block above shows it, so that saving does not write the empty text it had
+					if( state.privacy !== null && state.privacy.view === mine )
+						state.privacy.refresh( again[1].body.settings );
 				} );
 			} );
 		} } } );
@@ -7047,6 +7146,29 @@
 	const COMPANY_PREFIX = '/project/company/';
 	const COMPANY_KEYS = [ 'general/name', 'general/description', 'contact/address', 'contact/country', 'contact/email', 'contact/phone' ];
 	const COMPANY_AREAS = [ 'general/description', 'contact/address' ];
+
+	/**
+	 *	A stored text as the person reads it: the entities the text fill hands out for a quote, a bracket, an ampersand and the signs of markup are the signs they stand for. One pass, so
+	 *	that "&amp;quot;" is "&quot;" and not a quote
+	 *
+	 *	@param		{string}	text
+	 *
+	 *	@return		{string}
+	 */
+	const readableText = function( text ) {
+
+		const named = { quot : '"', amp : '&', lt : '<', gt : '>', apos : "'" };
+
+		return text.replace( /&(quot|amp|lt|gt|apos|#[0-9]{1,7}|#x[0-9a-f]{1,6});/gi, function( found, name ) {
+
+			if( named[name.toLowerCase()] !== undefined )
+				return named[name.toLowerCase()];
+
+			const code = name[1] === 'x' || name[1] === 'X' ? parseInt( name.slice( 2 ), 16 ) : parseInt( name.slice( 1 ), 10 );
+
+			return code > 0 && code <= 0x10FFFF && ( code < 0xD800 || code > 0xDFFF ) ? String.fromCodePoint( code ) : found;
+		} );
+	};
 
 	/**
 	 *	What the block shows: a field for each of the six texts in each language that has it - a text of all languages in the first card (the native language's) alone
@@ -7078,7 +7200,7 @@
 
 				const where = entry.global === true ? '*' : locale;
 				const id = name+ '|'+ where;
-				const value = String( ( entry.values || {} )[where] ?? '' );
+				const value = readableText( String( ( entry.values || {} )[where] ?? '' ) );
 
 				base[id] = value;
 				fields.push( { id : id, name : name, locale : where, card : locale, value : value, writable : editable === true && entry.writable !== false } );
@@ -7405,6 +7527,17 @@
 			el( 'div', { class: 'actions top' }, save ) );
 
 		submitter( 'privacy', box, save, function() { return area.value !== stored } );
+
+		// The text as the module has it now - after a run of Einrichten that entered one -, unless the person is typing in it
+		state.privacy = { view : mine, refresh : function( now ) {
+
+			if( form.dirty === true )
+				return;
+
+			stored = now.privacy_text ?? '';
+			area.value = stored;
+			day.textContent = ( now.privacy_changed ?? '' ) === '' ? t( 'privacy.never' ) : t( 'privacy.changed', dmy( now.privacy_changed ) );
+		} };
 
 		return box;
 	};

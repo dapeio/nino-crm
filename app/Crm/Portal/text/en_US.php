@@ -263,6 +263,7 @@ return [
 	'[[/project/crm-portal/start/privacy-link]]' => 'To the privacy policy',
 	'[[/project/crm-portal/start/new-file-one]]' => 'new file',
 	'[[/project/crm-portal/start/new-file-many]]' => 'new files',
+	'[[/project/crm-portal/start/new-file-waiting]]' => 'They open as soon as you have confirmed the offer.',
 	'[[/project/crm-portal/start/nothing]]' => 'Nothing is up for you right now. New offers, invoices, files and dates appear here as soon as there are any.',
 	'[[/project/crm-portal/start/kpis]]' => 'At a glance',
 	'[[/project/crm-portal/start/kpi-offers]]' => 'Offers to order',

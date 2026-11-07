@@ -46,7 +46,7 @@ main { padding-block: 16px 48px; padding-left: max(20px, env(safe-area-inset-lef
 .head h1 { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: -.01em }
 .head .sub { color: var(--fg-2) }
 .head .grow { flex: 1 1 auto }
-.crumb { color: var(--fg-3); font-size: 12px; margin-bottom: 4px }
+.crumb { color: var(--fg-3); font-size: 12px; margin-bottom: 4px; overflow-wrap: anywhere }
 .crumb a { color: var(--fg-2) }
 .search { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 8px; height: 30px; min-width: 220px }
 .search input { border: 0; background: transparent; outline: 0; font: inherit; color: inherit; width: 100%; }
@@ -201,6 +201,7 @@ a.btn { text-decoration: none }
 .tbl tr.plain, .tbl.ed tbody tr, .tbl.static tbody tr { cursor: default }
 .tbl tr.plain:hover, .tbl.ed tbody tr:hover, .tbl.static tbody tr:hover { background: transparent }
 .tbl td.wrap, .ed td { white-space: normal }
+.tbl td.wrap { overflow-wrap: anywhere }
 .b-expired { background: var(--warn-soft); color: var(--warn) }
 .dot.bad { background: var(--bad) } .dot.warn { background: var(--warn) } .dot.muted { background: var(--fg-3) } .dot.good { background: var(--good) }
 .pager { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 10px }

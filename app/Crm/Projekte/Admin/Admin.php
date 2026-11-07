@@ -9,7 +9,7 @@ declare(strict_types=1);
  *												crm-projekte/list		the projects (a client's, the open ones, a search in the title) with their client, the number of their documents
  *																						and of the offers among them that wait, and the number of their files, and approval (who approved the project in the portal and when; null for a project nobody approved), and consent_social (the client holds a consent to the social use of the work for the project); and native, the language the screens save in, and allowed -
  *																						whether the account holds the permission of the Files panel while the feature is on, as it is now (a setup changes it under the page)
- *												crm-projekte/get		one project with its client, its approval (the record with the JSON the customer was shown), the consents of the client for it (consents: a line for each purpose with a sentence or a consent, the newest consent with the record that took it back), its folder and the files in it - each audio or video file with the number of its comments and of the open ones,
+ *												crm-projekte/get		one project with its client, the offer that holds its files back until the customer has ordered it (waiting: its id and number, or null), its approval (the record with the JSON the customer was shown), the consents of the client for it (consents: a line for each purpose with a sentence or a consent, the newest consent with the record that took it back), its folder and the files in it - each audio or video file with the number of its comments and of the open ones,
  *																						where the feature Review is on (review says whether it is)
  *
  *												crm-projekte/download	switch the download of the files of a project for its client on or off (id, on): the state the portal reads (Projekte::state()); the
@@ -168,9 +168,13 @@ class Admin {
 			$folder = $shown['folder_name'] === null ? null : [ 'id' => $shown['folder'], 'name' => $shown['folder_name'] ];
 			unset( $shown['file_list'], $shown['folder_name'] );
 
+			// The offer that holds the files back until the customer has ordered it: its number, or null where none waits
+			$waiting = $shown['client_id'] === 0 ? null : Projekte::waiting( $appData, $id, $shown['client_id'] );
+
 			\Nino\Http::ok( $request, [
 				'native'  => \Nino\Locales::getNativeLocale( $appData ),
 				'project' => $shown,
+				'waiting' => $waiting === null ? null : [ 'id' => $waiting['id'], 'number' => (string) $waiting['number'] ],
 				'client'  => $shown['client_id'] === 0 ? null : [ 'id' => $shown['client_id'], 'number' => $shown['client'], 'title' => $shown['client_title'], 'active' => $shown['client_active'], 'active_accounts' => $shown['client_accounts'] ],
 				'files'   => self::filesOn( $appData ),
 				'allowed' => \Crm\Surface\Files::allowed( $appData ),

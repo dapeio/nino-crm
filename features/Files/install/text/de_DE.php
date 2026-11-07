@@ -59,5 +59,6 @@ return [
 	'[[/feature/files/mail/new-intro]]'				=> 'Diese Dateien liegen für Dich im Ordner',
 	'[[/feature/files/mail/new-button]]'			=> 'Zur Website',
 	'[[/feature/files/mail/new-notice]]'			=> 'Um sie herunterzuladen, melde Dich mit einem Link an, der an Deine E-Mail-Adresse geschickt wird.',
+	'[[/feature/files/mail/new-notice-code]]'	=> 'Zum Anhören melde Dich an: Der Code für die Anmeldung kommt an Deine E-Mail-Adresse.',
 	'[[/feature/files/mail/closing]]'					=> 'Viele Grüße',
 ];

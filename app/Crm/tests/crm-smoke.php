@@ -1659,6 +1659,7 @@ check( 'setupDone() on a project without /data/crm.sqlite answers nothing and le
 echo "\nThe Datenschutzerklärung of the setup\n";
 
 privacyChecks( $fresh, $run, $root );
+privacyEmptiedChecks( $fresh, $run );
 
 // The permission: a visitor and an account without it get nothing from the run
 unset( $fresh['./nino/auth/current'] );
@@ -1682,7 +1683,7 @@ check( 'the address of the client is its own where the master data has one: the 
 	&& ( \Crm\Clients::add( $appData, [ 'name' => 'Nina Name' ], [ 'email' => 'nina@example.org', 'name' => '' ] )['title'] ?? '' ) === 'Nina Name' && ( \Crm\Clients::add( $appData, [ 'company' => 'Firma X', 'name' => 'Nina' ], [ 'email' => 'x@example.org', 'name' => '' ] )['title'] ?? '' ) === 'Firma X' );
 $before = count( \Crm\Clients::list( $appData ) );
 $takenFirst = \Crm\Clients::add( $appData, [], [ 'email' => 'mika@example.org', 'name' => '' ] );
-check( 'an address that is an account already: the client is made all the same and called by it, the account refused as taken - nobody is left with a client that cannot be told from the address', is_array( $takenFirst ) && $takenFirst['title'] === 'mika@example.org' && $takenFirst['first'] === 'taken' && $takenFirst['accounts'] === 0 && count( \Crm\Clients::list( $appData ) ) === $before + 1 );
+check( 'an address that is an account already, for a client with nothing else: the account is refused as taken and no client is made - nobody is left with a client that cannot be told from the address, and the number it would have had is the next one', $takenFirst === 'taken' && count( \Crm\Clients::list( $appData ) ) === $before );
 check( 'change() keeps asking for a company or a name: a client that has none cannot be saved with a phone number, and with a name it can - the title follows the name', \Crm\Clients::change( $appData, $bare['id'], [ 'phone' => '+49 40 1' ] ) === 'empty' && \Crm\Clients::change( $appData, $bare['id'], [ 'company' => '', 'name' => '' ] ) === 'empty'
 	&& ( $named = \Crm\Clients::change( $appData, $bare['id'], [ 'name' => 'Mika Neu' ] ) ) !== 'empty' && is_array( $named ) && $named['title'] === 'Mika Neu' && $named['ready'] === false && $named['email'] === 'mika@example.org' );
 $ready = \Crm\Clients::change( $appData, $bare['id'], [ 'street' => 'Weg 1', 'zip' => '20095', 'city' => 'Hamburg' ] );
@@ -1702,7 +1703,8 @@ $resetCap();
 check( 'through the endpoint: a client is made with an address alone - 200, no company, no name, the address as its email and title, the account invited', $status === 200 && $body['client']['company'] === '' && $body['client']['email'] === 'nur@example.org' && $body['client']['title'] === 'nur@example.org' && ( $body['first']['account']['email'] ?? '' ) === 'nur@example.org' && $body['client']['ready'] === false );
 check( '...and the log line of it holds the number of the client and no address', \Crm\Clients\Admin::log( 'crm-clients/save', [ 'account_email' => 'nur@example.org' ] ) === 'Added client '. $body['client']['number'] && str_contains( \Crm\Clients\Admin::log( 'crm-clients/save', [ 'account_email' => 'nur@example.org' ] ), '@' ) === false );
 [ $status, $body ] = $call( 'crm-clients/save', [ 'phone' => '+49 40 1' ] );
-check( '...without an address it is 400 crm_clients_empty at the company, and with an address that is none the same - nothing is made', $status === 400 && $body['code'] === 'crm_clients_empty' && $body['field'] === 'company' && $call( 'crm-clients/save', [ 'account_email' => 'no' ] )[0] === 400 && count( \Crm\Clients::list( $appData ) ) === $before + 2 );
+check( '...without an address it is 400 crm_clients_empty at the company, and with an address that is none the same - nothing is made', $status === 400 && $body['code'] === 'crm_clients_empty' && $body['field'] === 'company' && $call( 'crm-clients/save', [ 'account_email' => 'no' ] )[0] === 400 && count( \Crm\Clients::list( $appData ) ) === $before + 1 );
+masterDataChecks( $appData, $call );
 $sentences = [ 'de_DE' => (array) require $root. '/app/Crm/Clients/Admin/text/de_DE.php', 'en_US' => (array) require $root. '/app/Crm/Clients/Admin/text/en_US.php' ];
 check( '...the sentence of the refusal is in both languages and names the address of the first account as the third way to a client', array_filter( $sentences, static fn( array $words ): bool => str_contains( (string) ( $words['[[/_admin/error/crm_clients_empty]]'] ?? '' ), '@' ) === true || trim( (string) ( $words['[[/_admin/error/crm_clients_empty]]'] ?? '' ) ) === '' ) === [] );
 
@@ -2091,5 +2093,152 @@ function crmForgetChecks( array &$appData, callable $call, array $other ): void 
 }
 
 crmForgetChecks( $appData, $call, $kg );
+
+/**
+ *	The master data of a client are one line of text: a control character, a null byte and a text that is no UTF-8 are refused with the field - through the model and
+ *	through the endpoint, and nothing is written -; the country is one of the select of the portal or the code the client has already; and a client made with nothing
+ *	but the address of an account that is refused is not made
+ *
+ *	@param		array 		&$appData
+ *	@param		callable	$call						Runs an action of the panel CRM
+ *
+ *	@return 	void
+ */
+function masterDataChecks( array &$appData, callable $call ): void {
+
+	$client = \Crm\Clients::add( $appData, [ 'name' => 'Stamm Daten', 'country' => 'AT', 'street' => 'Weg 1' ] );
+	$bad = [ 'null byte' => "Mi\x00a", 'bell' => "Weg\x07 1", 'delete' => "a\x7fb", 'line break' => "a\nb", 'tab' => "a\tb", 'next line' => "a\xC2\x85b", 'cut UTF-8' => "Ole\xFF\xFE", 'overlong' => "a\xC0\xAFb", 'line separator' => "a\u{2028}b", 'paragraph separator' => "a\u{2029}b", 'right-to-left override' => "a\u{202E}b", 'isolate' => "a\u{2067}b" ];
+	$wrong = [];
+
+	foreach( \Crm\Clients::FIELDS as $field => $max )
+		foreach( $bad as $what => $value ) {
+
+			// The notes are the one field of many lines: its line break is text
+			if( $field === 'notes' && $what === 'line break' )
+				continue;
+
+			if( \Crm\Clients::change( $appData, $client['id'], [ $field => $value ] ) !== 'format:'. $field )
+				$wrong[] = 'change '. $field. ' '. $what;
+
+			if( \Crm\Clients::add( $appData, [ 'name' => 'Rest', $field => $value ] ) !== 'format:'. $field )
+				$wrong[] = 'add '. $field. ' '. $what;
+		}
+
+	check( 'a control character, a null byte and a text that is no UTF-8 are refused in every field of the master data, by change() and add(), with the field: '. implode( ', ', array_slice( $wrong, 0, 3 ) ), $wrong === [] );
+
+	// The notes keep their line breaks (a carriage return with it), every other control character is refused; the other fields take the joiner and the soft hyphen, the reference of a buyer takes no character of the class C
+	$notes = \Crm\Clients::change( $appData, $client['id'], [ 'notes' => "Erste Zeile\r\nZweite Zeile\n\nDritte" ] );
+
+	check( 'the notes take line breaks: a note of three lines is stored as it was written', is_array( $notes ) && $notes['notes'] === "Erste Zeile\r\nZweite Zeile\n\nDritte" && \Crm\Clients::get( $appData, $client['id'] )['notes'] === $notes['notes'] );
+	check( '...a tab or a bell in the notes is refused, and a client with notes of many lines changes another field - the notes are not looked at when they are not sent', \Crm\Clients::change( $appData, $client['id'], [ 'notes' => "a\tb" ] ) === 'format:notes' && \Crm\Clients::change( $appData, $client['id'], [ 'notes' => "a\x07b" ] ) === 'format:notes'
+		&& ( \Crm\Clients::change( $appData, $client['id'], [ 'phone' => '+49 40 5' ] )['phone'] ?? '' ) === '+49 40 5' && \Crm\Clients::get( $appData, $client['id'] )['notes'] === $notes['notes'] );
+
+	\Crm\Db::exec( $appData, 'UPDATE clients SET street = :street WHERE id = :id', [ 'street' => "Alt\x07straße", 'id' => $client['id'] ] );
+
+	check( '...nor is a field the client holds and the caller does not send: a street with a bell in it, kept from an older day, does not stop a change of the phone - it stops one that sends it',
+		( \Crm\Clients::change( $appData, $client['id'], [ 'phone' => '+49 40 6' ] )['phone'] ?? '' ) === '+49 40 6' && \Crm\Clients::change( $appData, $client['id'], [ 'street' => "Neu\x07" ] ) === 'format:street' );
+
+	\Crm\Db::exec( $appData, 'UPDATE clients SET street = :street WHERE id = :id', [ 'street' => 'Weg 1', 'id' => $client['id'] ] );
+
+	check( '...the joiner and the soft hyphen are text in a name, and the reference of a buyer takes neither - nor any other character of the class C, which a document would refuse', ( \Crm\Clients::change( $appData, $client['id'], [ 'name' => "Stamm\u{200D}Daten\u{00AD}" ] )['name'] ?? '' ) === "Stamm\u{200D}Daten\u{00AD}"
+		&& \Crm\Clients::change( $appData, $client['id'], [ 'buyer_reference' => "04\u{200D}1" ] ) === 'format:buyer_reference' && \Crm\Clients::change( $appData, $client['id'], [ 'buyer_reference' => "04\u{00AD}1" ] ) === 'format:buyer_reference'
+		&& ( \Crm\Clients::change( $appData, $client['id'], [ 'name' => 'Stamm Daten', 'buyer_reference' => '04011000-12345-34' ] )['buyer_reference'] ?? '' ) === '04011000-12345-34' );
+
+	$kept = \Crm\Clients::get( $appData, $client['id'] );
+
+	check( '...and nothing is written: the client is as it was, the number of clients is the same', $kept['name'] === 'Stamm Daten' && $kept['street'] === 'Weg 1' && $kept['country'] === 'AT' && array_column( \Crm\Clients::list( $appData ), 'name' ) !== [] && array_search( 'Rest', array_column( \Crm\Clients::list( $appData ), 'name' ), true ) === false );
+
+	$codes = array_map( static fn( string $code ): mixed => \Crm\Clients::change( $appData, $client['id'], [ 'country' => $code ] ), \Crm\Portal\Data::COUNTRIES );
+
+	check( 'the country is one of the select of the portal - each of them is taken - and one that is none is refused: a code nobody has, a list, a text with a blank, a number', array_filter( $codes, static fn( mixed $one ): bool => is_array( $one ) === false ) === []
+		&& \Crm\Clients::change( $appData, $client['id'], [ 'country' => 'XX' ] ) === 'format:country' && \Crm\Clients::change( $appData, $client['id'], [ 'country' => [ 'DE' ] ] ) === 'format:country'
+		&& \Crm\Clients::change( $appData, $client['id'], [ 'country' => 'Deutschland' ] ) === 'long:country' && \Crm\Clients::change( $appData, $client['id'], [ 'country' => 'D1' ] ) === 'format:country' && \Crm\Clients::add( $appData, [ 'name' => 'Rest', 'country' => 'ZZ' ] ) === 'format:country' );
+	check( '...written small it is the code, and none at all is Germany', ( \Crm\Clients::change( $appData, $client['id'], [ 'country' => ' ch ' ] )['country'] ?? '' ) === 'CH' && ( \Crm\Clients::change( $appData, $client['id'], [ 'country' => '' ] )['country'] ?? '' ) === 'DE' );
+
+	// A code the client has already stays valid - a client of an older day, or one the owner set - for as long as it is not changed away
+	\Crm\Db::exec( $appData, 'UPDATE clients SET country = \'XX\' WHERE id = :id', [ 'id' => $client['id'] ] );
+
+	check( '...the code the client has already stays valid: other fields change with it, and it is the only one that does', ( \Crm\Clients::change( $appData, $client['id'], [ 'city' => 'Wien' ] )['country'] ?? '' ) === 'XX' && ( \Crm\Clients::change( $appData, $client['id'], [ 'country' => 'XX' ] )['city'] ?? '' ) === 'Wien'
+		&& \Crm\Clients::change( $appData, $client['id'], [ 'country' => 'YY' ] ) === 'format:country' && \Crm\Clients::get( $appData, $client['id'] )['country'] === 'XX' );
+
+	// Through the endpoint: 400 at the field, and nothing is saved
+	$street = \Crm\Clients::get( $appData, $client['id'] )['street'];
+	$rows = [];
+
+	foreach( [ 'street' => "Weg\x07 1", 'name' => "Mi\x00a", 'city' => "Wien\x7f", 'country' => 'QQ' ] as $field => $value ) {
+
+		[ $status, $body ] = $call( 'crm-clients/save', [ 'id' => (string) $client['id'], $field => $value ] );
+		$rows[$field] = [ $status, $body['code'] ?? '', $body['field'] ?? '' ];
+	}
+
+	check( 'through crm-clients/save the same is 400 crm_clients_format at the field, and the client is as it was', array_filter( $rows, static fn( array $row, string $field ): bool => $row !== [ 400, 'crm_clients_format', $field ], ARRAY_FILTER_USE_BOTH ) === []
+		&& \Crm\Clients::get( $appData, $client['id'] )['street'] === $street && \Crm\Clients::get( $appData, $client['id'] )['name'] === 'Stamm Daten' );
+
+	\Crm\Clients::change( $appData, $client['id'], [ 'notes' => "Zeile eins\nZeile zwei" ] );
+	[ $status, $body ] = $call( 'crm-clients/save', [ 'id' => (string) $client['id'], 'phone' => '+49 40 7' ] );
+
+	check( 'through crm-clients/save a client with notes of many lines changes its phone: 200, and the notes are as they were', $status === 200 && ( $body['client']['phone'] ?? '' ) === '+49 40 7' && ( $body['client']['notes'] ?? '' ) === "Zeile eins\nZeile zwei" );
+
+	[ $status, $body ] = $call( 'crm-clients/save', [ 'name' => "Neu\x00er", 'country' => 'DE' ] );
+
+	check( '...and a new client with such a value is not made', $status === 400 && $body['code'] === 'crm_clients_format' && $body['field'] === 'name' && array_search( "Neu\x00er", array_column( \Crm\Clients::list( $appData ), 'name' ), true ) === false );
+
+	// A refusal that comes after the account was made and linked - no link could be made for the mail that is not sent - leaves the client: it holds the account
+	$fill = (string) \Nino\Html::resolveTextfill( $appData, '/project/website/general/url' );
+	\Nino\Html::addFills( $appData, [ '[[/project/website/general/url]]' => '' ], '*' );
+	[ $linkStatus, $linkBody ] = $call( 'crm-clients/save', [ 'account_email' => 'ohnelink@example.org', 'notify' => false ] );
+	\Nino\Html::addFills( $appData, [ '[[/project/website/general/url]]' => $fill ], '*' );
+
+	check( 'a client with nothing but an address whose link cannot be made is made all the same - 200 with the account refused as crm_clients_link, as the account is linked and the client holds it, and no database failure',
+		$linkStatus === 200 && ( $linkBody['first']['refused']['code'] ?? '' ) === 'crm_clients_link' && count( \Crm\Clients::accounts( $appData, (int) ( $linkBody['client']['id'] ?? 0 ) ) ) === 1 );
+
+	// A client with nothing but the address of an account that is refused is not made, and the number is not used up
+	$account = \Nino\Modules\Members::add( $appData, 'vergeben@example.org', '', 'k-9999' );
+	$count = count( \Crm\Clients::list( $appData ) );
+	$members = count( \Nino\Modules\Members::accounts( $appData ) );
+	$next = \Crm\Clients::add( $appData, [ 'name' => 'Nummer' ] );
+	\Crm\Db::exec( $appData, 'DELETE FROM clients WHERE id = :id', [ 'id' => $next['id'] ] );
+	[ $status, $body ] = $call( 'crm-clients/save', [ 'account_email' => 'vergeben@example.org' ] );
+	$after = \Crm\Clients::add( $appData, [ 'name' => 'Nummer' ] );
+
+	check( 'through crm-clients/save an address that is an account already, and nothing else, is 409 crm_clients_taken at the email: no client is made, no account is added, and the next client has the number it would have had',
+		is_array( $account ) && $status === 409 && ( $body['code'] ?? '' ) === 'crm_clients_taken' && ( $body['field'] ?? '' ) === 'email' && count( \Crm\Clients::list( $appData ) ) === $count + 1 && count( \Nino\Modules\Members::accounts( $appData ) ) === $members && $after['number'] === $next['number'] );
+}
+
+/**
+ *	A Datenschutzerklärung the owner emptied on purpose is not entered again: the press of Einrichten writes the text only where the setting holds none and never held one
+ *	(privacy_changed has no day), and the status counts the emptied field as ok, with the word for it
+ *
+ *	@param		array 		&$fresh
+ *	@param		callable	$run						Runs an action of the panel CRM on it
+ *
+ *	@return 	void
+ */
+function privacyEmptiedChecks( array &$fresh, callable $run ): void {
+
+	$status = static fn( array $body ): array => array_column( $body['items'], null, 'key' )['privacy'] ?? [];
+
+	\Crm\Db::exec( $fresh, 'DELETE FROM settings WHERE key IN ( \'privacy_text\', \'privacy_changed\' )' );
+	$run( 'crm/setup' );
+	\Crm\Settings::set( $fresh, 'privacy_text', '' );
+	$day = \Crm\Settings::get( $fresh, 'privacy_changed' );
+	[ $code, $body ] = $run( 'crm/setup' );
+
+	check( 'a field the owner emptied after a text was in it stays empty at the next press: nothing added, no day moved - and the answer says it was there', $code === 200 && $body['added']['privacy'] === false && $body['existed']['privacy'] === true && \Crm\Settings::get( $fresh, 'privacy_text' ) === '' && $day !== '' && \Crm\Settings::get( $fresh, 'privacy_changed' ) === $day );
+
+	$line = $status( $run( 'crm/status' )[1] );
+
+	check( '...the status counts it as ok, with the flag that it is empty, and the product is whole', $line === [ 'key' => 'privacy', 'state' => 'ok', 'empty' => true ] && $run( 'crm/status' )[1]['whole'] === true );
+
+	\Crm\Db::exec( $fresh, 'DELETE FROM settings WHERE key IN ( \'privacy_text\', \'privacy_changed\' )' );
+	[ , $body ] = $run( 'crm/setup' );
+
+	check( '...a site whose setting never held a text gets the template, as before, and its line is plain ok', $body['added']['privacy'] === true && $status( $run( 'crm/status' )[1] ) === [ 'key' => 'privacy', 'state' => 'ok' ] );
+
+	\Crm\Settings::set( $fresh, 'privacy_text', '' );
+	$words = [ 'de_DE' => (array) require dirname( __DIR__ ). '/Crm/Admin/text/de_DE.php', 'en_US' => (array) require dirname( __DIR__ ). '/Crm/Admin/text/en_US.php' ];
+
+	check( '...and the word for the emptied field is in both languages', array_filter( $words, static fn( array $one ): bool => trim( (string) ( $one['[[/_admin/crm/status/privacy-empty]]'] ?? '' ) ) === '' ) === [] );
+}
 
 ninoDone( $appData );

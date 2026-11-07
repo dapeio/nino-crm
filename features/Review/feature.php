@@ -68,6 +68,10 @@ return [
 				'en_US' => 'Fired by this feature when a member\'s comment is stored through the route, and when the owner\'s is stored in the panel, with the comment as the argument - an array of id, file, by (kind and id), at, text, parent, done, created and page - for the features that build on it.',
 				'de_DE' => 'Wird von diesem Feature ausgelöst, wenn der Kommentar eines Mitglieds über die Route gespeichert wird und wenn der des Betreibers im Panel gespeichert wird, mit dem Kommentar als Argument – einem Array aus id, file, by (kind und id), at, text, parent, done, created und page –, für die Features, die darauf aufbauen.',
 			],
+			'/review/owner-mail' => [
+				'en_US' => 'Fired by this feature before it mails the owner of a member\'s comment, with an array of file (the entry of Files), comment, link and about. A site that keeps the files in a place of its own sets link to the address of the comment there and about to one line that names what it is about: the mail then has the line in its subject and a button that says so. Left as it is, the mail links the panel Review.',
+				'de_DE' => 'Wird von diesem Feature ausgelöst, bevor es dem Betreiber den Kommentar eines Mitglieds mailt, mit einem Array aus file (der Eintrag von Dateien), comment, link und about. Eine Website, die die Dateien an einem eigenen Ort führt, setzt link auf die Adresse des Kommentars dort und about auf eine Zeile, die nennt, worum es geht: Die Mail trägt die Zeile dann im Betreff und hat einen Knopf, der das sagt. Bleibt es, wie es ist, verlinkt die Mail das Panel Review.',
+			],
 			'/files/delete' => [
 				'en_US' => 'Hooked by this feature: the Files feature fires it for each file it deletes - in its panel, or with its folder - and the comments on that file are dropped with it.',
 				'de_DE' => 'Von diesem Feature eingehängt: Das Feature Dateien löst es für jede Datei aus, die es löscht – in seinem Panel oder mit ihrem Ordner –, und die Kommentare zu dieser Datei fallen mit ihr weg.',

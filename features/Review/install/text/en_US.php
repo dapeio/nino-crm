@@ -46,6 +46,8 @@ return [
 	'[[/feature/review/mail/comment-title]]'	=> 'A new comment',
 	'[[/feature/review/mail/comment-intro]]'	=> 'A member has written a comment:',
 	'[[/feature/review/mail/comment-button]]'	=> 'Open the panel Review',
+	'[[/feature/review/mail/comment-about-subject]]'	=> 'A member wrote a comment: [[about]]',
+	'[[/feature/review/mail/comment-button-card]]'	=> 'Open the project card',
 	'[[/feature/review/mail/label-time]]'		=> 'Time in the track:',
 	'[[/feature/review/mail/label-by]]'			=> 'Written by:',
 	'[[/feature/review/mail/no-time]]'			=> 'none',
@@ -57,5 +59,6 @@ return [
 	'[[/feature/review/mail/note-intro]]'		=> 'The owner has written a comment on the file',
 	'[[/feature/review/mail/answer-button]]'	=> 'Open the website',
 	'[[/feature/review/mail/answer-notice]]'	=> 'To read it, sign in with a link that is sent to your email address.',
+	'[[/feature/review/mail/answer-notice-code]]'	=> 'To read it, sign in: the code for the sign-in is sent to your email address.',
 	'[[/feature/review/mail/closing]]'			=> 'Kind regards',
 ];
