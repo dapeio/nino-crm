@@ -211,6 +211,7 @@ return [
 	'list.title' => 'Belege',
 	'list.count' => '%s von %s',
 	'list.year' => 'Jahr',
+	'list.sort' => 'Sortieren nach',
 	'list.empty' => 'Es gibt in diesem Jahr noch keine Belege. Lege den ersten an.',
 	'list.none' => 'Kein Beleg passt zu Filter und Suche.',
 	'list.sum' => 'Summe der Auswahl',

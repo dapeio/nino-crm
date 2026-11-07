@@ -36,6 +36,9 @@
 	const UNIT_CODES = [ 'H87', 'HUR', 'MIN', 'DAY', 'WEE', 'MON', 'LS', 'C62', 'KMT' ];
 	const PAGE_SIZE = 50;
 
+	// The width under which the lists are cards and an entry of the draft stands in a stack; the stylesheet has the same number
+	const PHONE = '(max-width: 759px)';
+
 	// How many hits of each kind the search of the Übersicht lists
 	const SEARCH_MAX = 5;
 
@@ -1818,7 +1821,7 @@
 		const on = filter.sort === key;
 
 		return el( 'th', { class: ( right === true ? 'r ' : '' )+ 'sortable', scope: 'col', 'aria-sort': on ? ( filter.dir > 0 ? 'ascending' : 'descending' ) : 'none' },
-			el( 'button', { type: 'button', class: 'th', dataset: { sort: key }, text: label+ ( on ? ( filter.dir > 0 ? ' ↑' : ' ↓' ) : '' ), on: { click: function() {
+			el( 'button', { type: 'button', class: 'th', dataset: { sort: key, label: label, first: first }, text: label+ ( on ? ( filter.dir > 0 ? ' ↑' : ' ↓' ) : '' ), on: { click: function() {
 				if( filter.sort === key )
 					filter.dir = -filter.dir;
 				else {
@@ -1827,6 +1830,171 @@
 				}
 				again();
 			} } } ) );
+	};
+
+	/**
+	 *	The sort of a list for the phone: the head of the table is hidden there, and a select with the same sorts takes its place. Each sortable
+	 *	column is offered in both orders, the one its head starts with first; a choice sets what the head sets and draws the list again
+	 *
+	 *	@param		{Object}	box						The card of the table
+	 *	@param		{Object}	filter					sort and dir of the table
+	 *	@param		{Function}	again				Draws the table again
+	 *
+	 *	@return		{Object|null}						Nothing for a table that has no sortable column
+	 */
+	const sortBox = function( box, filter, again ) {
+
+		const heads = box.querySelectorAll( 'button.th' );
+
+		if( heads.length === 0 )
+			return null;
+
+		const options = [];
+
+		heads.forEach( function( head ) {
+
+			const first = Number( head.dataset.first );
+
+			[ first, -first ].forEach( function( dir ) { options.push( el( 'option', { value: head.dataset.sort+ ':'+ dir, text: head.dataset.label+ ( dir > 0 ? ' ↑' : ' ↓' ) } ) ) } );
+		} );
+
+		return el( 'div', { class: 'sortbox' },
+			el( 'label', { for: 'sort-by', text: t( 'list.sort' ) } ),
+			el( 'select', { id: 'sort-by', value: filter.sort+ ':'+ filter.dir, on: { change: function( event ) {
+
+				const chosen = event.target.value.split( ':' );
+
+				filter.sort = chosen[0];
+				filter.dir = Number( chosen[1] );
+				again();
+
+				// The list is drawn again with a new select: the focus goes to it, so that the arrow that was pressed can go on
+				const next = dc.getElementById( 'sort-by' );
+
+				if( next !== null )
+					next.focus();
+			} } }, options ) );
+	};
+
+	/**
+	 *	Say the roles of a table in its markup, for the stylesheet that lays its rows out as a grid on the phone: a screen reader takes the table
+	 *	from a grid otherwise
+	 *
+	 *	@param		{Object}	table
+	 *
+	 *	@return		{void}
+	 */
+	const keepRoles = function( table ) {
+
+		table.setAttribute( 'role', 'table' );
+		table.querySelectorAll( 'thead, tbody, tfoot' ).forEach( function( group ) { group.setAttribute( 'role', 'rowgroup' ) } );
+		table.querySelectorAll( 'tr' ).forEach( function( row ) { row.setAttribute( 'role', 'row' ) } );
+		table.querySelectorAll( 'th' ).forEach( function( head ) { head.setAttribute( 'role', 'columnheader' ) } );
+		table.querySelectorAll( 'td' ).forEach( function( cell ) { cell.setAttribute( 'role', 'cell' ) } );
+	};
+
+	/**
+	 *	The cells of a line of the draft in the order of the window: on a wide one the columns of the table, on the phone the order in which the line
+	 *	is stacked - the title, quantity, price and amount, the unit and the rate, the description, the button - so that the focus walks the
+	 *	card the way the eye does. The description goes into a cell of its own there, which the wide table does not show
+	 *
+	 *	@param		{Object}	row
+	 *	@param		{boolean}	narrow
+	 *
+	 *	@return		{void}
+	 */
+	const arrange = function( row, narrow ) {
+
+		const by = {};
+
+		Array.from( row.children ).forEach( function( cell ) { if( cell.dataset.col !== undefined ) by[cell.dataset.col] = cell } );
+
+		if( by.title === undefined )
+			return;
+
+		const more = by.title.querySelector( 'details' ) || by.desc.querySelector( 'details' );
+
+		( narrow === true ? by.desc : by.title ).appendChild( more );
+		( narrow === true ? [ 'num', 'title', 'qty', 'price', 'amount', 'unit', 'rate', 'desc', 'del' ] : [ 'num', 'title', 'qty', 'unit', 'price', 'rate', 'amount', 'del', 'desc' ] ).forEach( function( col ) {
+			if( by[col] !== undefined )
+				row.appendChild( by[col] );
+		} );
+	};
+
+	/**
+	 *	Whether the window is a phone: the width under which the lists are cards
+	 *
+	 *	@return		{boolean}
+	 */
+	const phone = function() {
+		return typeof wn.matchMedia === 'function' && wn.matchMedia( PHONE ).matches === true;
+	};
+
+	/**
+	 *	A table that is a list becomes cards on the phone by its stylesheet alone: the same rows and cells, each cell named for the card (data-col)
+	 *	and carrying the word of its column (data-label), the cells that hold nothing marked (data-empty). The table keeps its roles, since a
+	 *	grid in place of its rows takes them from a screen reader otherwise. A row of another shape - the one that says there is nothing, the
+	 *	line over several versions - is left as it is
+	 *
+	 *	@param		{Object}	box						The card of the table
+	 *	@param		{string}	kind					Names the layout of the card in the stylesheet
+	 *	@param		{string[]}	columns				The name of each column; with :l the word of the column stands before the cell
+	 *	@param		{Object}	[filter]			With the sort of the list: a select for it goes before the card
+	 *	@param		{Function}	[again]
+	 *
+	 *	@return		{Object|Array}						The card; with a sort the select for it too (null for a table that sorts by no column), before the card
+	 */
+	const cardList = function( box, kind, columns, filter, again ) {
+
+		const table = box.querySelector( 'table' );
+		const heads = table.querySelectorAll( 'th' );
+
+		table.className = table.className+ ' cards';
+		table.dataset.cards = kind;
+		keepRoles( table );
+
+		Array.from( table.querySelectorAll( 'tr' ) ).filter( function( row ) { return row.parentNode.tagName === 'TBODY' } ).forEach( function( row ) {
+
+			const cells = Array.from( row.children ).filter( function( kid ) { return kid.tagName === 'TD' } );
+
+			if( cells.length !== columns.length )
+				return;
+
+			cells.forEach( function( cell, at ) {
+
+				const named = columns[at].split( ':' );
+				const head = heads[at];
+				const button = head === undefined ? null : head.querySelector( 'button.th' );
+
+				cell.dataset.col = named[0];
+
+				if( cell.dataset.label === undefined )
+					cell.dataset.label = head === undefined ? '' : ( button === null ? head.textContent : button.dataset.label );
+
+				if( named[1] === 'l' )
+					cell.dataset.lab = '1';
+
+				if( cell.textContent.trim() in { '' : 1, '–' : 1 } && Array.from( cell.children ).every( function( kid ) { return kid.textContent.trim() in { '' : 1, '–' : 1 } } ) && cell.querySelector( 'input, button, a, select' ) === null )
+					cell.dataset.empty = '1';
+			} );
+		} );
+
+		return filter === undefined ? box : [ sortBox( box, filter, again ), box ];
+	};
+
+	/**
+	 *	Bring the chosen pill of a row that scrolls into the middle of the row, so that the phone shows where the filter stands
+	 *
+	 *	@param		{Object}	strip
+	 *
+	 *	@return		{void}
+	 */
+	const showChosen = function( strip ) {
+
+		const on = strip.querySelector( '.on' );
+
+		if( on !== null && typeof on.offsetLeft === 'number' )
+			strip.scrollLeft = Math.max( 0, on.offsetLeft - ( strip.clientWidth - on.offsetWidth ) / 2 );
 	};
 
 	/**
@@ -1905,7 +2073,7 @@
 					el( 'td', { text: doc.client_title } ),
 					el( 'td', {}, doc.project === '' ? el( 'span', { class: 'muted', text: '–' } ) : link( '#projekt-'+ doc.project, doc.project_title !== '' ? doc.project_title : doc.project, { on: { click: function( event ) { event.stopPropagation() } } } ) ),
 					el( 'td', { text: dmy( doc.date ) } ),
-					el( 'td', { class: doc.overdue === true ? 'bad' : 'muted', text: dmy( doc.due_date || doc.valid_until ) } ),
+					el( 'td', { class: doc.overdue === true ? 'bad' : 'muted', dataset: { label: t( doc.due_date ? 'field.due' : 'field.valid' ) }, text: dmy( doc.due_date || doc.valid_until ) } ),
 					el( 'td', { class: 'r num' }, isPlain( doc ) ? el( 'span', { class: 'muted', text: '–' } ) : cash( doc.gross ) ),
 					el( 'td', {}, badges( doc ), remindedDay( doc ) === '' ? null : clockMark( remindedDay( doc ) ) ),
 					el( 'td', { class: 'r' }, el( 'a', { class: 'btn sm quiet', href: pdf, target: '_blank', rel: 'noopener', text: t( 'list.pdf' ), on: { click: function( event ) { event.stopPropagation() } } } ) ) );
@@ -1944,13 +2112,13 @@
 				redraw( true );
 			} } ), newMenu( t( 'new.label' ) ) ) );
 		state.main.appendChild( el( 'div', { class: 'toolbar' }, tabs, year ) );
-
 		// The tab a link of Braucht Dich chose may lie right of the visible part of the row: it is brought into view
 		const chosen = tabs.querySelector( 'button.on' );
 
 		if( chosen !== null && typeof chosen.scrollIntoView === 'function' )
 			chosen.scrollIntoView( { block: 'nearest', inline: 'nearest' } );
-		append( state.main, [ table, pager ] );
+		append( state.main, [ cardList( table, 'belege', [ 'id', 'kind', 'who', 'proj', 'date', 'due:l', 'sum', 'state', 'acts' ], filter, redraw ), pager ] );
+		showChosen( tabs );
 	};
 
 	/**
@@ -2422,7 +2590,7 @@
 
 		const regular = doc.vat_mode === 'regular';
 
-		return el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static' },
+		return cardList( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static' },
 			el( 'thead', {}, el( 'tr', {}, el( 'th', { text: '#' } ), el( 'th', { text: t( 'column.title' ) } ), el( 'th', { class: 'r', text: t( 'column.qty' ) } ), el( 'th', { text: t( 'column.unit' ) } ), el( 'th', { class: 'r', text: t( 'column.price' ) } ), regular ? el( 'th', { class: 'r', text: t( 'column.rate' ) } ) : null, el( 'th', { class: 'r', text: t( 'column.amount' ) } ) ) ),
 			el( 'tbody', {}, doc.lines.map( function( line, index ) {
 				return el( 'tr', {},
@@ -2433,7 +2601,7 @@
 					el( 'td', { class: 'r num', text: cash( line.price_net ) } ),
 					regular ? el( 'td', { class: 'r num', text: doc.reverse_charge === true ? money().formatRate( 0 ) : money().formatRate( line.vat_rate ) } ) : null,
 					el( 'td', { class: 'r num', text: cash( line.amount_net ) } ) );
-			} ) ) ) );
+			} ) ) ) ), 'lines', regular ? [ 'num', 'title', 'qty:l', 'unit', 'price:l', 'rate:l', 'amount:l' ] : [ 'num', 'title', 'qty:l', 'unit', 'price:l', 'amount:l' ] );
 	};
 
 	const tabLines = function( view ) {
@@ -3369,7 +3537,7 @@
 			[ t( 'field.project' ), projectSelect ],
 		];
 
-		const dl = el( 'dl', { class: 'kv' }, rows.map( function( row ) { return [ el( 'dt', { text: row[0] } ), el( 'dd', {}, row[1] ) ] } ) );
+		const dl = el( 'dl', { class: 'kv stacked' }, rows.map( function( row ) { return [ el( 'dt', { text: row[0] } ), el( 'dd', {}, row[1] ) ] } ) );
 
 		dl.appendChild( el( 'dt', {}, el( 'label', { for: 'f-date', text: t( 'field.date' ) } ) ) );
 		dl.appendChild( el( 'dd', {}, bind( 'date', 'date', el( 'input', { id: 'f-date', type: 'date', value: draft.date } ) ) ) );
@@ -3516,23 +3684,34 @@
 					fields['lines.'+ index+ '.unit_code'] = unitCode;
 					watch( unitCode );
 
-					return el( 'tr', { class: 'plain' },
-						el( 'td', { class: 'muted', text: String( index + 1 ) } ),
-						el( 'td', {}, lineField( index, 'title', { 'aria-label': t( 'column.title' ) } ), lineField( index, 'description', { placeholder: t( 'line.description' ), 'aria-label': t( 'column.description' ) } ) ),
-						el( 'td', {}, lineField( index, 'qty', { 'aria-label': t( 'column.qty' ) }, 'r' ) ),
-						el( 'td', {}, lineField( index, 'unit', { 'aria-label': t( 'column.unit' ) } ), electronic === true ? unitCode : null ),
-						el( 'td', {}, lineField( index, 'price', { 'aria-label': t( 'column.price' ) }, 'r' ) ),
-						rate === null ? null : el( 'td', {}, rate ),
-						el( 'td', { class: 'r num amount', text: '' } ),
-						el( 'td', {}, el( 'button', { type: 'button', class: 'del', title: t( 'line.remove' ), 'aria-label': t( 'line.remove' ), text: '×', dataset: { del: index }, on: { click: function() {
+					// The description is a disclosure: open on a wide window, where the table has the room, and on the phone where the line has one
+					const more = el( 'details', { class: 'desc-box' }, el( 'summary', { text: t( 'column.description' ) } ), lineField( index, 'description', { placeholder: t( 'line.description' ), 'aria-label': t( 'column.description' ) } ) );
+
+					more.open = phone() === false || line.description !== '';
+
+					const lineRow = el( 'tr', { class: 'plain' },
+						el( 'td', { class: 'muted', dataset: { col: 'num' }, text: String( index + 1 ) } ),
+						el( 'td', { dataset: { col: 'title' } }, lineField( index, 'title', { 'aria-label': t( 'column.title' ) } ), more ),
+						el( 'td', { dataset: { col: 'desc' } } ),
+						el( 'td', { dataset: { col: 'qty', label: t( 'column.qty' ) } }, lineField( index, 'qty', { 'aria-label': t( 'column.qty' ) }, 'r' ) ),
+						el( 'td', { dataset: { col: 'unit', label: t( 'column.unit' ) } }, lineField( index, 'unit', { 'aria-label': t( 'column.unit' ) } ), electronic === true ? unitCode : null ),
+						el( 'td', { dataset: { col: 'price', label: t( 'column.price' ) } }, lineField( index, 'price', { 'aria-label': t( 'column.price' ) }, 'r' ) ),
+						rate === null ? null : el( 'td', { dataset: { col: 'rate', label: t( 'column.rate' ) } }, rate ),
+						el( 'td', { class: 'r num amount', dataset: { col: 'amount', label: t( 'column.amount' ) }, text: '' } ),
+						el( 'td', { dataset: { col: 'del' } }, el( 'button', { type: 'button', class: 'del', title: t( 'line.remove' ), 'aria-label': t( 'line.remove' ), text: '×', dataset: { del: index }, on: { click: function() {
 							draft.lines.splice( index, 1 );
 							touch();
 							drawLines();
 							autosave();
 						} } } ) ) );
-				} ),
-				el( 'tr', { class: 'plain' }, el( 'td' ), el( 'td', { colspan: regular ? '7' : '6' }, picker() ) ) ) );
 
+					arrange( lineRow, phone() );
+
+					return lineRow;
+				} ),
+				el( 'tr', { class: 'plain', dataset: { picker: '1' } }, el( 'td' ), el( 'td', { colspan: regular ? '7' : '6' }, picker() ) ) ) );
+
+			keepRoles( table );
 			totalsNode = el( 'div', { class: 'card totals', id: 'totals' } );
 			lineBox.appendChild( el( 'div', { class: 'card wrap-x' }, table ) );
 			lineBox.appendChild( totalsNode );
@@ -3900,7 +4079,7 @@
 				filter.page = 1;
 				keepSearch( drawKunden, true );
 			} } ), link( '#kunde-neu', t( 'clients.new' ), { class: 'btn primary', id: 'new-client' } ) ) );
-		append( state.main, [ table, pagerOf( filter, pages, again ) ] );
+		append( state.main, [ cardList( table, 'kunden', [ 'id', 'who', 'sub', 'city', 'acc:l', 'sum', 'state' ], filter, again ), pagerOf( filter, pages, again ) ] );
 	};
 
 
@@ -4648,7 +4827,7 @@
 	 */
 	const tabClientDocuments = function( view, empty ) {
 
-		return el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl' },
+		return cardList( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl' },
 			el( 'thead', {}, el( 'tr', {}, el( 'th', { text: t( 'column.number' ) } ), el( 'th', { text: t( 'column.category' ) } ), el( 'th', { text: t( 'column.date' ) } ), el( 'th', { class: 'r', text: t( 'column.gross' ) } ), el( 'th', { text: t( 'column.state' ) } ) ) ),
 			el( 'tbody', {}, view.documents.length === 0
 				? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '5', class: 'muted', text: t( empty || 'cdocs.empty' ) } ) )
@@ -4659,7 +4838,7 @@
 						el( 'td', { text: dmy( doc.date ) } ),
 						el( 'td', { class: 'r num' }, isPlain( doc ) ? el( 'span', { class: 'muted', text: '–' } ) : cash( doc.gross ) ),
 						el( 'td', {}, badges( doc ) ) );
-				} ) ) ) );
+				} ) ) ) ), 'cdocs', [ 'id', 'kind', 'date', 'sum', 'state' ] );
 	};
 
 	/**
@@ -4678,7 +4857,7 @@
 
 		return el( 'div', { id: 'client-projects' },
 			state.perms.elements === true && client.active === true ? el( 'div', { class: 'actions top' }, link( '#projekte-neu-k'+ client.id, t( 'projects.new' ), { class: 'btn primary', id: 'client-project-new' } ) ) : null,
-			el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl' },
+			cardList( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl' },
 				el( 'thead', {}, el( 'tr', {}, el( 'th', { text: t( 'projects.column-project' ) } ), el( 'th', { text: t( 'projects.column-started' ) } ), el( 'th', { class: 'r', text: t( 'projects.column-documents' ) } ), el( 'th', { text: t( 'column.state' ) } ) ) ),
 				el( 'tbody', {}, view.projects.length === 0
 					? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '4', class: 'muted', text: t( 'projects.client-empty' ) } ) )
@@ -4688,7 +4867,7 @@
 							el( 'td', { text: dmy( project.started ) } ),
 							el( 'td', { class: 'r num', text: String( project.documents ) } ),
 							el( 'td', {}, projectBadge( project ) ) );
-					} ) ) ) ) );
+					} ) ) ) ), 'cprojects', [ 'id', 'date:l', 'docs:l', 'state' ] ) );
 	};
 
 	/**
@@ -5987,7 +6166,7 @@
 			return;
 		}
 
-		state.main.appendChild( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl', id: 'projects' },
+		append( state.main, [ cardList( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl', id: 'projects' },
 			el( 'thead', {}, el( 'tr', {}, el( 'th', { scope: 'col', text: t( 'projects.column-project' ) } ), el( 'th', { scope: 'col', text: t( 'column.client' ) } ), el( 'th', { scope: 'col', text: t( 'projects.column-started' ) } ),
 				el( 'th', { scope: 'col', class: 'r', text: t( 'projects.column-documents' ) } ), el( 'th', { scope: 'col', class: 'r', text: t( 'projects.column-files' ) } ), el( 'th', { scope: 'col', class: 'r', text: t( 'projects.column-comments' ) } ), el( 'th', { scope: 'col', text: t( 'column.state' ) } ) ) ),
 			el( 'tbody', {}, shown.length === 0
@@ -6001,7 +6180,7 @@
 						el( 'td', { class: 'r num' }, project.files === null ? el( 'span', { class: 'muted', text: '–' } ) : String( project.files ) ),
 						commentCell( project ),
 						el( 'td', {}, projectBadge( project ), project.download === true ? downloadMark() : null, project.consent_social === true ? consentMark() : null ) );
-				} ) ) ) ) );
+				} ) ) ) ), 'projekte', [ 'id', 'who', 'date:l', 'docs:l', 'files:l', 'com:l', 'state' ] ) ] );
 		append( state.main, [ pagerOf( filter, pages, again ), el( 'p', { class: 'state-note top', text: t( edits === true ? 'projects.note-edit' : 'projects.note' ) } ) ] );
 	};
 
@@ -7049,12 +7228,12 @@
 					rows.push( thread );
 			} );
 
-			const table = el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static', id: 'project-file-table' },
+			const table = cardList( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static', id: 'project-file-table' },
 				el( 'thead', {}, el( 'tr', {}, el( 'th', { text: t( 'projects.file-name' ) } ), el( 'th', { class: 'r', text: t( 'projects.file-size' ) } ), el( 'th', { text: t( 'projects.file-day' ) } ), el( 'th', { text: t( 'projects.file-by' ) } ),
 					el( 'th', { text: t( 'projects.file-visible' ) } ), showComments === true ? el( 'th', { class: 'r', text: t( 'projects.file-comments' ), title: t( 'projects.comments-head' ) } ) : null, el( 'th' ) ) ),
 				el( 'tbody', {}, files.length === 0
 					? el( 'tr', { class: 'plain' }, el( 'td', { colspan: String( columns ), class: 'muted', text: t( 'projects.files-empty' ) } ) )
-					: rows ) ) );
+					: rows ) ) ), 'pfiles', showComments === true ? [ 'id', 'sum', 'date:l', 'by:l', 'vis:l', 'com:l', 'acts' ] : [ 'id', 'sum', 'date:l', 'by:l', 'vis:l', 'acts' ] );
 
 			paint();
 
@@ -7465,8 +7644,8 @@
 		if( body.zip !== true )
 			state.main.appendChild( el( 'p', { class: 'state-note', id: 'uploads-zip-off', text: t( 'uploads.zip-off' ) } ) );
 
-		state.main.appendChild( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static', id: 'uploads' },
-			el( 'thead', {}, el( 'tr', {}, el( 'th', { class: 'pick' }, all ), heading( 'client', t( 'uploads.client' ) ), heading( 'name', t( 'uploads.file' ) ), heading( 'by', t( 'uploads.by' ) ), heading( 'size', t( 'uploads.size' ), true ), heading( 'created', t( 'uploads.day' ) ), heading( 'age', t( 'uploads.age' ), true ) ) ),
+		append( state.main, [ cardList( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static', id: 'uploads' },
+			el( 'thead', {}, el( 'tr', {}, el( 'th', { class: 'pick' }, el( 'label', { class: 'hit' }, all, el( 'span', { class: 'pick-word', 'aria-hidden': 'true', text: t( 'uploads.pick-all' ) } ) ) ), heading( 'client', t( 'uploads.client' ) ), heading( 'name', t( 'uploads.file' ) ), heading( 'by', t( 'uploads.by' ) ), heading( 'size', t( 'uploads.size' ), true ), heading( 'created', t( 'uploads.day' ) ), heading( 'age', t( 'uploads.age' ), true ) ) ),
 			el( 'tbody', {}, shown.length === 0
 				? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '7', class: 'muted', text: t( body.rows.length === 0 ? 'uploads.empty' : 'uploads.none' ) } ) )
 				: shown.map( function( row ) {
@@ -7486,14 +7665,14 @@
 					shownBoxes.push( box );
 
 					return el( 'tr', { dataset: { id: row.id }, class: gone === true ? 'dim' : null },
-						el( 'td', { class: 'pick' }, box ),
+						el( 'td', { class: 'pick' }, el( 'label', { class: 'hit' }, box ) ),
 						el( 'td', {}, link( '#kunde-'+ row.client_id, row.client_title ), el( 'span', { class: 'muted', text: ' '+ row.client } ) ),
 						el( 'td', { class: 'wrap' }, row.name, gone === true ? el( 'span', { class: 'gone-note', dataset: { gone: row.id }, text: t( 'projects.file-gone', dmy( row.gone ) ) } ) : null ),
 						el( 'td', { text: row.by.kind === 'owner' ? t( 'projects.by-owner' ) : ( row.by.label !== '' ? row.by.label : t( 'projects.by-member' ) ) } ),
 						el( 'td', { class: 'r num', text: sizeText( row.size ) } ),
 						el( 'td', { text: dmy( row.created ) } ),
 						el( 'td', { class: 'r num', text: String( row.age ) } ) );
-				} ) ) ) ) );
+				} ) ) ) ), 'uploads', [ 'pick', 'who', 'id', 'by:l', 'sum', 'date:l', 'age:l' ], filter, again ) ] );
 
 		all.checked = takeable.length > 0 && takeable.every( function( one ) { return state.picked.has( one.id ) } );
 		refresh();
@@ -10048,6 +10227,24 @@
 
 		wn.addEventListener( 'hashchange', route );
 
+		// A line of the draft shows its description where it has one, or where the window has room; the window that changes its width changes that
+		if( typeof wn.matchMedia === 'function' )
+			wn.matchMedia( PHONE ).addEventListener( 'change', function() {
+				// The cells are put in their new places: the field that has the focus keeps it, and the caret in it
+				const held = dc.activeElement;
+				const from = held === null || held === undefined || typeof held.selectionStart !== 'number' ? null : [ held.selectionStart, held.selectionEnd ];
+
+				dc.querySelectorAll( 'table.ed' ).forEach( function( table ) { table.querySelectorAll( 'tr' ).forEach( function( row ) { arrange( row, phone() ) } ) } );
+				dc.querySelectorAll( 'details.desc-box' ).forEach( function( box ) { box.open = phone() === false || box.querySelector( 'textarea' ).value !== '' } );
+
+				if( held !== null && held !== undefined && dc.activeElement !== held && typeof held.focus === 'function' ) {
+					held.focus();
+
+					if( from !== null && typeof held.setSelectionRange === 'function' )
+						held.setSelectionRange( from[0], from[1] );
+				}
+			} );
+
 		dc.addEventListener( 'click', function( event ) {
 
 			const target = event.target !== null && event.target !== undefined && typeof event.target.closest === 'function' ? event.target : null;
@@ -10121,7 +10318,7 @@
 		state : state,
 		el : el,
 		t : t,
-		model : { docName : docName, visible : visible, visibleClients : visibleClients, clientTitle : clientTitle, ratesText : ratesText, chips : chips, draftOf : draftOf, draftNew : draftNew, payloadOf : payloadOf, totalsOf : totalsOf, ready : ready, lineOf : lineOf, primaryOf : primaryOf, tabsOf : tabsOf, errorText : errorText,
+		model : { cardList : cardList, docName : docName, visible : visible, visibleClients : visibleClients, clientTitle : clientTitle, ratesText : ratesText, chips : chips, draftOf : draftOf, draftNew : draftNew, payloadOf : payloadOf, totalsOf : totalsOf, ready : ready, lineOf : lineOf, primaryOf : primaryOf, tabsOf : tabsOf, errorText : errorText,
 			firstItem : firstItem, owedOf : owedOf, mailtoOf : mailtoOf, telOf : telOf, hitsOf : hitsOf, remindedDay : remindedDay, templateKey : templateKey, positionKey : positionKey, positionDraftOf : positionDraftOf, positionPosts : positionPosts, blockDraft : blockDraft, blockPayload : blockPayload, millimetres : millimetres, tokenGroups : tokenGroups, insertAt : insertAt },
 	};
 

@@ -163,6 +163,9 @@ function world( options ) {
 	const storage = {};
 	const reloads = [];
 	const tabs = [];
+	const queries = [];
+	const mediaListeners = [];
+	let narrow = opts.phone === true;
 
 	const mount = element('div');
 	mount.id = 'root';
@@ -215,6 +218,39 @@ function world( options ) {
 			el.click = function() { downloads.push( el.getAttribute( 'href' ) ); return press === undefined ? undefined : press.call( el ) };
 		}
 
+		// A node that is appended where it already stands elsewhere moves, as in a browser
+		const attach = el.appendChild;
+
+		el.appendChild = function( child ) {
+			const old = child.parentNode === null || child.parentNode === undefined ? -1 : child.parentNode.children.indexOf( child );
+
+			if( old !== -1 )
+				child.parentNode.children.splice( old, 1 );
+
+			// A browser takes the focus from a field that is taken out of the page
+			const holds = function( node, target ) { return node === target || ( node.children || [] ).some( function( kid ) { return holds( kid, target ) } ) };
+
+			if( old !== -1 && page.activeElement !== null && page.activeElement !== undefined && holds( child, page.activeElement ) ) {
+				page.activeElement.focused = false;
+
+				if( typeof page.activeElement.selectionStart === 'number' ) {
+					page.activeElement.selectionStart = 0;
+					page.activeElement.selectionEnd = 0;
+				}
+				page.activeElement = null;
+			}
+
+			return attach( child );
+		};
+
+		// Where a test asks for a layout the nodes have one: a box of 90 in steps of 100 in a row of 300, as the pills of a strip need it
+		if( opts.geometry === true ) {
+			Object.defineProperty( el, 'offsetLeft', { get : function() { return el.parentNode === null || el.parentNode === undefined ? 0 : el.parentNode.children.indexOf( el ) * 100 } } );
+			el.offsetWidth = 90;
+			el.clientWidth = 300;
+			el.scrollLeft = 0;
+		}
+
 		// A node that is scrolled to says so; the browser's own box of a node is none here
 		el.scrollIntoView = function( options ) { scrolled.push( [ el.id, options, el ] ) };
 
@@ -255,6 +291,8 @@ function world( options ) {
 				( windowListeners[name] = windowListeners[name] || [] ).push( fn );
 		},
 		removeEventListener : function( name, fn ) { windowListeners[name] = ( windowListeners[name] || [] ).filter( function( one ) { return one !== fn } ) },
+		// The width the script asks about: a phone where the test says so, and the change of it that a test makes
+		matchMedia : function( query ) { queries.push( query ); return { media : query, get matches() { return narrow }, addEventListener : function( name, fn ) { if( name === 'change' ) mediaListeners.push( fn ) } } },
 		scrollY : 0,
 		scrollTo : function( x, y ) { scrolls.push( [ x, y ] ) },
 		setTimeout : function( fn, ms ) { timers.push( { fn : fn, ms : ms } ); return timers.length },
@@ -296,6 +334,8 @@ function world( options ) {
 	return {
 		app : app, win : win, page : page, calls : calls, tabs : tabs, main : main, toast : toast, dialogRoot : dialogRoot, count : count, clientCount : clientCount, nav : nav, timers : timers, dialogs : dialogs, opened : opened, downloads : downloads, reloads : reloads, storage : storage, answers : opts.answers,
 		location : location, documentListeners : documentListeners, windowListeners : windowListeners, scrolled : scrolled, scrolls : scrolls,
+		queries : queries,
+		setPhone : function( on ) { narrow = on; mediaListeners.forEach( function( fn ) { fn() } ) },
 		boot : function() { app.boot( block ) },
 		last : function( action ) { return calls.filter( function( call ) { return call.action === action } ).pop() },
 		all : function( action ) { return calls.filter( function( call ) { return call.action === action } ) },
@@ -1728,6 +1768,78 @@ function press( w, key, target, mods ) {
 	smallView.boot();
 	await settle();
 	check( '...and in the small business mode the head shows the net as the gross with no VAT, whatever the rates of the lines say: 930,00 for 10 x 60,00 + 3 x 110,00', textOf( field( smallView, 'gross' ) ) === '930,00'+ NBSP+ '€' && textOf( field( smallView, 'totals' ) ).indexOf( 'USt. auf' ) === -1 );
+
+	// --- the phone: the draft is a stack
+	await phoneDraft();
+
+	/**
+	 *	The draft under 760px: each line is a stack of named cells, the description a disclosure that is open where the window has room, and the
+	 *	head of the document one column
+	 */
+	async function phoneDraft() {
+
+		const css = source( OWN+ 'assets/crm.css' );
+		const colsOf = function( tr ) { return Array.from( tr.children ).map( function( td ) { return td.dataset.col } ).join( ' ' ) };
+		const lineRowsOf = function( w ) { return all( all( w.main, 'table.ed' )[0], 'tbody tr' ).filter( function( tr ) { return tr.dataset.picker === undefined } ) };
+		const drafted = async function( phone ) {
+			const w = world( { hash : '#entwurf-16', phone : phone, answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] }, 'crm-documents/get' : function() { return [ 200, view( draftDoc ) ] },
+				'crm-documents/list' : function() { return [ 200, { documents : [], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] }, 'crm-clients/get' : function() { return [ 200, { client : client, accounts : [] } ] } } } );
+			w.boot();
+			await settle();
+			return w;
+		};
+
+		const wide = await drafted( false );
+		const table = all( wide.main, 'table.ed' )[0];
+		const lines = lineRowsOf( wide );
+
+		check( 'the lines of the draft name their cells for the stack of the phone, and the table keeps its roles; on a wide window they stand in the order of the columns, the description in the cell of the title', table.getAttribute( 'role' ) === 'table' && lines.length === 2 && colsOf( lines[0] ) === 'num title qty unit price rate amount del desc' && lines.every( function( tr ) { return tr.getAttribute( 'role' ) === 'row' } ) );
+		check( '...the quantity, the price and the amount carry their words, for the row Menge × Preis = Betrag', Array.from( lines[0].children ).filter( function( td ) { return [ 'qty', 'price', 'amount' ].includes( td.dataset.col ) } ).every( function( td ) { return td.dataset.label !== undefined && td.dataset.label !== '' } ) );
+
+		const box = all( lines[0], 'details' )[0];
+
+		check( '...the description is a disclosure with a summary around its field, open where the window has room', box !== undefined && box.className === 'desc-box' && all( box, 'summary' ).length === 1 && all( box, 'textarea' ).length === 1 && box.open === true && box.parentNode === lines[0].children[1] && all( lineRowsOf( wide )[1], 'details' )[0].open === true );
+		check( '...the row that finds an item and the button for an empty line is a row of their own, not a line', all( table, 'tr' ).filter( function( tr ) { return tr.dataset.picker !== undefined } ).length === 1 && all( table, '#addline' ).length === 1 && all( table, '#additem' ).length === 1 );
+		check( 'the head of the document is one column on the phone: its list of fields says so', all( wide.main, 'dl' ).filter( function( dl ) { return dl.className === 'kv stacked' } ).length === 1 );
+
+		const narrow = await drafted( true );
+		const stacked = lineRowsOf( narrow );
+
+		check( 'on the phone the line is in the order of its stack - the title, quantity, price, amount, the unit, the rate, the description, the button - so that the focus walks it as the eye does, and the description is in a cell of its own', colsOf( stacked[0] ) === 'num title qty price amount unit rate desc del' && stacked[0].children[7].children[0].className === 'desc-box' && stacked[0].children[1].children.length === 1 );
+		check( '...the disclosure is open for the line that has a description and closed for the one that has none', all( stacked[0], 'details' )[0].open === true && all( stacked[1], 'details' )[0].open === false );
+		narrow.setPhone( false );
+		check( '...a window that grows wide opens it and puts the cells back in the order of the columns', all( lineRowsOf( narrow )[1], 'details' )[0].open === true && colsOf( lineRowsOf( narrow )[1] ) === 'num title qty unit price rate amount del desc' && lineRowsOf( narrow )[1].children[1].children.length === 2 );
+		narrow.setPhone( true );
+		check( '...and one that shrinks closes the empty one and stacks the cells again', all( lineRowsOf( narrow )[1], 'details' )[0].open === false && all( lineRowsOf( narrow )[0], 'details' )[0].open === true && colsOf( lineRowsOf( narrow )[1] ) === 'num title qty price amount unit rate desc del' );
+		const typing = all( stacked[0], 'input' )[0];
+		typing.selectionStart = 2;
+		typing.selectionEnd = 3;
+		typing.setSelectionRange = function( from, to ) { typing.selectionStart = from; typing.selectionEnd = to };
+		typing.focus();
+		narrow.page.activeElement = typing;
+		narrow.setPhone( false );
+		check( '...a field that has the focus keeps it when the window turns wide, so that the keyboard stays', typing.focused === true && typing.selectionStart === 2 && typing.selectionEnd === 3 );
+		narrow.setPhone( true );
+		check( 'the width that is asked for is the one under which the stylesheet stacks: the query of the script is the media query of the sheet', narrow.queries.length > 0 && narrow.queries.every( function( query ) { return query === '(max-width: 759px)' } ) && css.includes( '@media '+ narrow.queries[0] ) );
+
+		const lists = css.slice( css.indexOf( '/* The phone, lists' ) );
+		const media = lists.slice( lists.indexOf( '@media (max-width: 759px)' ) );
+		const outside = lists.slice( 0, lists.indexOf( '@media (max-width: 759px)' ) );
+
+		check( 'the stylesheet hides the head of the cards, the cells without a value and the select of the sort on a wide window, and shows the word of a column before its value and the select on the phone',
+			/\.tbl\.cards thead \{ display: none \}/.test( media ) && /td\[data-empty\] \{ display: none !important \}/.test( media ) && /td\[data-lab\]::before \{ content: attr\(data-label\)/.test( media ) && /\.sortbox \{ display: none \}/.test( outside ) && /\.sortbox \{ display: flex/.test( media ) );
+		check( '...the cells of a card wrap and are never cut, a link answers a touch beyond its line, the pills fade at the edge', /\.tbl\.cards td \{[^}]*white-space: normal/.test( media ) && /overflow: hidden/.test( lists ) === false && /\.tbl\.cards td > a::after \{[^}]*top: -13px; bottom: -13px/.test( media ) && /\.tabs \{[^}]*mask-image: linear-gradient/.test( media ) );
+		check( 'the words of the cards are read: the word of a column is the content of its pseudo-element with no alternative text, the day a document is due says what it is, only the signs that decorate are silent',
+			/td\[data-lab\]::before \{ content: attr\(data-label\) " "; color/.test( media ) && /data-col="due"\]::before \{ content: "· " attr\(data-label\) " " \/ attr\(data-label\) " " \}/.test( media ) && /data-label\) " " \/ ""/.test( lists ) === false
+			&& /data-col="proj"\]::before \{ content: "· " \/ "" \}/.test( media ) && /data-col="date"\]::before \{ content: "· " \/ "" \}/.test( media ) && /td\[data-col="qty"\]::after \{ content: "×" \/ "" \}/.test( media ) && /td\[data-col="price"\]::after \{ content: "=" \/ "" \}/.test( media ) );
+		check( '...a row of a card is a grid on the phone, and the table around it a block', /\.tbl\.cards tbody tr \{ display: grid;/.test( media ) && /\.tbl\.cards, \.tbl\.cards tbody, \.tbl\.cards tfoot \{ display: block/.test( media ) );
+		check( '...a select in the head of a screen is never wider than the screen, whatever the name it holds', /\.head select, \.toolbar select \{ max-width: 100%; min-width: 0 \}/.test( media ) );
+		check( '...a link in a card is inline, the second column of the projects shrinks, the head of the uploads stays for the box that picks all, the box of a row is the whole cell, the description is no cell of a wide table, the lines of a document are a grid of figures',
+			/\.tbl\.cards td a \{ position: relative; display: inline \}/.test( media ) && /data-cards="projekte"\] tbody tr \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/.test( media ) && /data-cards="uploads"\] thead \{ display: block \}/.test( media )
+			&& /\.tbl\.cards label\.hit \{[^}]*width: 100%; height: 100%; min-height: 44px/.test( media ) && /\.ed td\[data-col="desc"\] \{ display: none \}/.test( outside ) && /data-cards="lines"\] tbody tr \{ grid-template-columns: 22px minmax\(0, \.8fr\) minmax\(0, 1\.2fr\) minmax\(0, 1\.2fr\); grid-template-areas: "num title title title" "\. qty price amount" "\. unit rate rate"/.test( media ) );
+		check( '...the card of a client is a title with its state, the client with the sum, the person with the town; the card of a file is two columns', /data-cards="kunden"\] tbody tr \{ grid-template-columns: minmax\(0, 1fr\) fit-content\(60%\); grid-template-areas: "id state" "who who" "sub city" "acc sum" \}/.test( media ) && /data-cards="pfiles"\] tbody tr \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); grid-template-areas: "id id" "sum date" "by vis" "com com" "acts acts" \}/.test( media ) );
+		check( '...the head of the document is one column, the description is a summary only on the phone, and the fields of a line are 44px high', /\.kv\.stacked \{ grid-template-columns: minmax\(0, 1fr\)/.test( media ) && /\.ed details\.desc-box > summary \{ display: none \}/.test( outside ) && /\.ed details\.desc-box > summary \{ display: list-item/.test( media ) && /\.tbl\.ed td input, \.tbl\.ed td select \{ min-height: 44px/.test( media ) );
+	}
 
 	// a save made while one runs is not lost: at most one request in flight, the next one waits and sends the latest
 	let letGo;
@@ -5323,6 +5435,147 @@ function press( w, key, target, mods ) {
 		const nofilter = await jopen( '#projekte', { 'crm-clients/list' : function() { return [ 500, { error : 'x' } ] } } );
 		check( '...a list of clients that cannot be read leaves the filter out and the list stays', jf( nofilter, 'p-client' ) === undefined && jrows( nofilter ).length > 0 );
 	}
+	}
+
+
+	// --- the phone: the lists are cards
+	await phoneLists();
+
+	/**
+	 *	The lists of the surface as cards: the same table, each cell named for the card (data-col) with the word of its column (data-label), the roles
+	 *	of the table kept, the head's sorts offered in a select that does what the head does, the pills one strip
+	 */
+	async function phoneLists() {
+
+		const rowsOf = function( node ) { return all( node, 'tr' ).filter( function( tr ) { return tr.parentNode.tagName === 'TBODY' } ) };
+		const colsOf = function( tr ) { return Array.from( tr.children ).map( function( td ) { return td.dataset.col } ).join( ' ' ) };
+		const sorts = function( box ) { return all( box, 'button.th' ) };
+		const sortSelect = function( w ) { return all( w.main, '#sort-by' )[0] };
+		const choose = function( w, value ) { const select = sortSelect( w ); select.value = value; fire( select, 'change', { type : 'change', target : select } ) };
+		const idsOf = function( box ) { return rowsOf( box ).map( function( tr ) { return tr.dataset.id } ).join() };
+		const tableOf = function( w, id ) { return all( w.main, id === undefined ? 'table.tbl' : '#'+ id )[0] };
+
+		const docs = [ row( { id : 1, number : 'R-2026-0001', gross : 100, due_date : '2026-12-01', valid_until : '' } ), row( { id : 2, number : 'A-2026-0002', gross : 300, due_date : '', category : 'offer', valid_until : '2026-12-24' } ), row( { id : 3, number : 'R-2026-0003', gross : 200, due_date : '2026-12-02', valid_until : '' } ) ];
+		const listed = world( { hash : '#belege', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+			'crm-documents/list' : function() { return [ 200, { documents : docs, years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+		listed.boot();
+		await settle();
+
+		const table = tableOf( listed );
+		const first = rowsOf( table )[0];
+		const dueCells = rowsOf( table ).map( function( tr ) { return Array.from( tr.children )[5] } );
+
+		check( 'the table of the documents is a list of cards on the phone: it names its layout and keeps the roles of a table, a row names each cell for the card and carries the word of its column', table.dataset.cards === 'belege' && table.getAttribute( 'role' ) === 'table'
+			&& rowsOf( table ).every( function( tr ) { return tr.getAttribute( 'role' ) === 'row' && Array.from( tr.children ).every( function( td ) { return td.getAttribute( 'role' ) === 'cell' && td.dataset.label !== undefined } ) } )
+			&& colsOf( first ) === 'id kind who proj date due sum state acts' && first.children[0].dataset.label === texts['column.number'] && first.children[6].dataset.label === texts['column.gross'] );
+		check( '...the day a document is due is named for what it is: Fällig for an invoice, Gültig bis for an offer', dueCells[0].dataset.label === texts['field.due'] && dueCells[1].dataset.label === texts['field.valid'] );
+		check( '...a cell that holds nothing is marked, one that holds a link or a button never is', first.children[3].dataset.empty === '1' && first.children[0].dataset.empty === undefined && first.children[8].dataset.empty === undefined );
+
+		const label = all( listed.main, 'label' ).find( function( one ) { return one.getAttribute( 'for' ) === 'sort-by' } );
+
+		check( 'a select with a label offers the sorts of the head, each column in both orders, and stands on the sort of the table', sortSelect( listed ) !== undefined && label !== undefined && textOf( label ) === texts['list.sort'] && all( sortSelect( listed ), 'option' ).length === 2 * sorts( table ).length && sortSelect( listed ).value === 'date:-1' );
+		choose( listed, 'gross:1' );
+		const bySelect = idsOf( tableOf( listed ) );
+		const selectNow = sortSelect( listed ).value;
+		click( listed, all( listed.main, '[data-sort="gross"]' )[0] );
+		check( '...choosing a sort sorts as the head does - the amount from the smallest - and a click on the head turns it, the select following', bySelect === '1,3,2' && selectNow === 'gross:1' && idsOf( tableOf( listed ) ) === '2,3,1' && sortSelect( listed ).value === 'gross:-1' );
+
+		choose( listed, 'gross:1' );
+		const ascending = idsOf( tableOf( listed ) );
+		choose( listed, 'gross:-1' );
+		check( '...the select does both orders: from the largest amount down as it says, and the list is drawn again with the select that has the focus', ascending === '1,3,2' && idsOf( tableOf( listed ) ) === '2,3,1' && sortSelect( listed ).value === 'gross:-1' && sortSelect( listed ).focused === true );
+		check( '...a word stands before the value only where the column asks for it: the day a document is due, not the day it is dated', first.children[5].dataset.lab === '1' && first.children[4].dataset.lab === undefined );
+
+		const strip = all( listed.main, '.tabs' )[0];
+
+		check( 'the pills are one strip in the order of the filters, the chosen one marked, that the phone scrolls', strip.getAttribute( 'role' ) === 'tablist' && strip.children.length > 1 && strip.children.every( function( button ) { return button.tagName === 'BUTTON' && button.getAttribute( 'role' ) === 'tab' } ) && all( strip, 'button.on' ).length === 1 );
+
+		const geo = world( { hash : '#belege', geometry : true, answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+			'crm-documents/list' : function() { return [ 200, { documents : docs, years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+		geo.boot();
+		await settle();
+		const atStart = all( geo.main, '.tabs' )[0].scrollLeft;
+		click( geo, all( all( geo.main, '.tabs' )[0], 'button' )[2] );
+		check( 'the strip of the pills brings the chosen pill into the middle of its row: the third of boxes of 90 in steps of 100 in a row of 300 puts the row 95 to the left, the first leaves it where it is', atStart === 0 && all( geo.main, '.tabs' )[0].scrollLeft === 95 );
+
+		const none = world( { hash : '#belege', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+			'crm-documents/list' : function() { return [ 200, { documents : [], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+		none.boot();
+		await settle();
+		const emptyRow = rowsOf( tableOf( none ) )[0];
+
+		check( 'the row that says there is nothing has the roles and no name for the card: a row of another shape is left as it is', emptyRow.children.length === 1 && emptyRow.children[0].dataset.col === undefined && emptyRow.getAttribute( 'role' ) === 'row' );
+
+		const dashed = world( { hash : '#belege', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+			'crm-documents/list' : function() { return [ 200, { documents : [ row( { id : 5, due_date : '', valid_until : '' } ) ], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+		dashed.boot();
+		await settle();
+
+		check( 'a cell that holds only a dash drops out of the card,: the project of a document that has none is a dash', rowsOf( tableOf( dashed ) )[0].children[3].dataset.empty === '1' && rowsOf( tableOf( listed ) )[0].children[3].dataset.empty === '1' );
+
+		const plainTable = listed.page.createElement( 'table' );
+		const plainBody = listed.page.createElement( 'tbody' );
+		const plainRow = listed.page.createElement( 'tr' );
+		const plainHead = listed.page.createElement( 'tr' );
+		const plainBox = listed.page.createElement( 'div' );
+		[ 'Fällig', 'Name' ].forEach( function( word ) { const th = listed.page.createElement( 'th' ); th.textContent = word; plainHead.appendChild( th ) } );
+		[ '–', 'Wort' ].forEach( function( word ) { const td = listed.page.createElement( 'td' ); td.textContent = word; plainRow.appendChild( td ) } );
+		const plainHeadGroup = listed.page.createElement( 'thead' );
+		plainHeadGroup.appendChild( plainHead );
+		plainBody.appendChild( plainRow );
+		plainTable.appendChild( plainHeadGroup );
+		plainTable.appendChild( plainBody );
+		plainBox.appendChild( plainTable );
+		listed.app.model.cardList( plainBox, 'x', [ 'due', 'who' ] );
+
+		check( 'a cell with a dash of its own - the day a document is due where it has none - drops out of the card, and one with a word in it does not', plainRow.children[0].dataset.empty === '1' && plainRow.children[1].dataset.empty === undefined );
+
+		const kl = await jopen( '#kunden' );
+		const ktable = tableOf( kl );
+
+		check( 'the clients are cards as well: their cells are named and the select sorts by the columns of the head', ktable.dataset.cards === 'kunden' && colsOf( rowsOf( ktable )[0] ) === 'id who sub city acc sum state' && all( sortSelect( kl ), 'option' ).length === 2 * sorts( ktable ).length );
+
+		const uw = await uopen();
+		const utable = tableOf( uw, 'uploads' );
+
+		check( 'the uploads are cards: the box to tick is a cell of its own, the rest are named, and the select sorts by the same columns', utable.dataset.cards === 'uploads' && colsOf( rowsOf( utable )[0] ) === 'pick who id by sum date age' && all( rowsOf( utable )[0], 'input' )[0].dataset.pick !== undefined && all( sortSelect( uw ), 'option' ).length === 2 * sorts( utable ).length );
+		choose( uw, 'size:-1' );
+		const bySizeDown = idsOf( tableOf( uw, 'uploads' ) );
+		choose( uw, 'size:1' );
+		const bySizeUp = idsOf( tableOf( uw, 'uploads' ) );
+		const upNow = sortSelect( uw ).value;
+		click( uw, all( tableOf( uw, 'uploads' ), '[data-sort="size"]' )[0] );
+		check( '...a choice there is a click on the head: the size from the largest and from the smallest, and the click turns it', bySizeDown === 'u00000000001,u00000000003,u00000000002,u00000000004' && bySizeUp === 'u00000000004,u00000000002,u00000000003,u00000000001' && upNow === 'size:1' && idsOf( tableOf( uw, 'uploads' ) ) === 'u00000000001,u00000000003,u00000000002,u00000000004' );
+
+		const pickHead = all( utable, 'th' ).find( function( th ) { return th.className === 'pick' } );
+		const pickCell = rowsOf( utable )[0].children[0];
+
+		check( 'the box of an upload answers a touch on its whole cell, and the box that picks them all has its word where the head of the table is gone', all( pickHead, 'label' ).length === 1 && all( pickHead, 'label' )[0].className === 'hit' && all( pickHead, '#uploads-all' ).length === 1 && textOf( all( pickHead, '.pick-word' )[0] ) === texts['uploads.pick-all'] && all( pickHead, '.pick-word' )[0].getAttribute( 'aria-hidden' ) === 'true'
+			&& pickCell.className === 'pick' && pickCell.children[0].tagName === 'LABEL' && pickCell.children[0].className === 'hit' && all( pickCell, 'input' ).length === 1 );
+
+		const jl = await jopen( '#projekte' );
+		const jtable = tableOf( jl, 'projects' );
+
+		check( 'the projects are cards, with the counts named in a row of their own', jtable.dataset.cards === 'projekte' && colsOf( rowsOf( jtable )[0] ) === 'id who date docs files com state' );
+
+		const cd = await jopen( '#kunde-1-belege' );
+		const cdTable = tableOf( cd );
+		const cp = await jopen( '#kunde-1-projekte' );
+		const cpTable = tableOf( cp );
+		const pf = await jopen( '#projekt-00001-dateien' );
+		const pfTable = tableOf( pf, 'project-file-table' );
+		const fileRow = rowsOf( pfTable ).find( function( tr ) { return tr.dataset.id !== undefined } );
+		const lw = world( { hash : '#beleg-11', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+			'crm-documents/get' : function() { return [ 200, view( {} ) ] }, 'crm-documents/list' : function() { return [ 200, { documents : [], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] },
+			'crm-clients/get' : function() { return [ 200, { client : client, accounts : [] } ] } } } );
+		lw.boot();
+		await settle();
+		const lTable = tableOf( lw );
+
+		check( 'the documents on the card of a client are cards: the kind stands in the second row, and the table keeps its roles', cdTable.dataset.cards === 'cdocs' && colsOf( rowsOf( cdTable )[0] ) === 'id kind date sum state' && cdTable.getAttribute( 'role' ) === 'table' );
+		check( 'the projects on the card of a client are cards with the start and the count of documents named', cpTable.dataset.cards === 'cprojects' && colsOf( rowsOf( cpTable )[0] ) === 'id date docs state' && rowsOf( cpTable )[0].children[1].dataset.lab === '1' );
+		check( 'the files of a project are cards: the name, the size, the day, who sent it, the switch and the buttons - the comments where the feature is on - and the table keeps its roles', pfTable.dataset.cards === 'pfiles' && /^id sum date by vis (com )?acts$/.test( colsOf( fileRow ) ) && pfTable.getAttribute( 'role' ) === 'table' && fileRow.getAttribute( 'role' ) === 'row' );
+		check( 'the lines of a document are cards: the number, the title, the quantity, the unit, the price, the rate and the amount, each of the figures with its word', lTable !== undefined && lTable.dataset.cards === 'lines' && colsOf( rowsOf( lTable )[0] ) === 'num title qty unit price rate amount' && rowsOf( lTable )[0].children[2].dataset.lab === '1' && rowsOf( lTable )[0].children[6].dataset.label === texts['column.amount'] );
 	}
 
 	// a dropped connection is not a 413

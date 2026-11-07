@@ -453,3 +453,127 @@ dialog.dlg .field > span { color: var(--fg-2) }
 	.drop input[type="file"], .check { min-height: 44px }
 	.drop input[type="file"] { max-width: 100% }
 }
+
+/* The phone, lists: under 760px a row of a list is a card - the same table, its rows laid out as a grid by the name each cell carries (data-col) */
+.sortbox { display: none }
+.tbl th.pick .pick-word { display: none }
+.ed td[data-col="desc"] { display: none }
+.ed details.desc-box > summary { display: none }
+@media (max-width: 759px) {
+	.sortbox { display: flex; align-items: center; gap: 8px; margin: 0 0 10px }
+	.sortbox label { color: var(--fg-2); font-size: 12.5px; flex: 0 0 auto }
+	.sortbox select { flex: 1 1 auto; min-width: 0; min-height: 44px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: inherit; font: inherit; padding: 0 8px }
+	.tabs { position: relative; scrollbar-width: none; padding-right: 24px; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent) }
+	.tabs::-webkit-scrollbar { display: none }
+	.tabs button, .tabs a { min-height: 44px }
+	.head select, .toolbar select { max-width: 100%; min-width: 0 }
+	.toolbar .tabs { flex: 1 1 100% }
+	.tbl.cards, .tbl.cards tbody, .tbl.cards tfoot { display: block; width: 100% }
+	.tbl.cards thead { display: none }
+	.tbl.cards tbody tr { display: grid; align-items: center; gap: 2px 10px; padding: 10px 12px; border-bottom: 1px solid var(--line) }
+	.tbl.cards tbody tr:last-child { border-bottom: 0 }
+	.tbl.cards tbody tr.plain { display: block }
+	.tbl.cards td { display: block; height: auto; min-width: 0; padding: 0; border: 0; white-space: normal; overflow-wrap: anywhere }
+	.tbl.cards td[colspan] { grid-column: 1 / -1; padding: 4px 0 }
+	.tbl.cards td[data-lab]::before { content: attr(data-label) " "; color: var(--fg-2); font-size: 11.5px }
+	.tbl.cards td.r { text-align: left }
+	.tbl.cards td[data-col="sum"] { text-align: right; justify-self: end; font-weight: 500; white-space: nowrap }
+	.tbl.cards td[data-col="state"] { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; justify-self: end }
+	.tbl.cards td[data-col="acts"] { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; justify-self: end }
+	.tbl.cards td[data-col="acts"] .btn { flex: 0 0 auto }
+	.tbl.cards td[data-col="id"] { font-size: 14px; font-weight: 500 }
+	.tbl.cards td[data-col="kind"], .tbl.cards td[data-col="by"], .tbl.cards td[data-col="date"], .tbl.cards td[data-col="due"], .tbl.cards td[data-col="sub"], .tbl.cards td[data-col="city"], .tbl.cards td[data-col="age"], .tbl.cards td[data-col="docs"], .tbl.cards td[data-col="files"], .tbl.cards td[data-col="acc"], .tbl.cards td[data-col="proj"], .tbl.cards td[data-col="who"] { color: var(--fg-2); font-size: 12.5px }
+	.tbl.cards td[data-col="proj"]::before { content: "· " }
+	.tbl.cards td[data-col="proj"]::before { content: "· " / "" }
+	.tbl.cards td[data-col="vis"], .tbl.cards td[data-col="com"] { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 44px; color: var(--fg-2); font-size: 12.5px }
+	.tbl.cards td[data-col="vis"] input { margin: 0 }
+	.tbl.cards td a { position: relative; display: inline }
+	.tbl.cards td > a::after { content: ""; position: absolute; left: 0; right: 0; top: -13px; bottom: -13px }
+	.tbl.cards td[data-col="pick"] { align-self: stretch; width: auto; padding: 0 }
+	.tbl.cards label.hit { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; min-height: 44px; cursor: pointer }
+	.tbl.cards td.pick input, .tbl.cards th.pick input { width: 24px; height: 24px; margin: 0 }
+	.tbl.cards tfoot tr { display: flex; justify-content: space-between; padding: 10px 12px; border-top: 1px solid var(--line) }
+	.tbl.cards tfoot td { display: block; height: auto; padding: 0 }
+	.tbl.cards tfoot td:empty { display: none }
+	.tbl.cards td[data-col="id"] { grid-area: id } .tbl.cards td[data-col="kind"] { grid-area: kind } .tbl.cards td[data-col="who"] { grid-area: who } .tbl.cards td[data-col="proj"] { grid-area: proj }
+	.tbl.cards td[data-col="date"] { grid-area: date } .tbl.cards td[data-col="due"] { grid-area: due } .tbl.cards td[data-col="sum"] { grid-area: sum } .tbl.cards td[data-col="state"] { grid-area: state }
+	.tbl.cards td[data-col="acts"] { grid-area: acts } .tbl.cards td[data-col="sub"] { grid-area: sub } .tbl.cards td[data-col="city"] { grid-area: city } .tbl.cards td[data-col="acc"] { grid-area: acc }
+	.tbl.cards td[data-col="docs"] { grid-area: docs } .tbl.cards td[data-col="files"] { grid-area: files } .tbl.cards td[data-col="com"] { grid-area: com } .tbl.cards td[data-col="by"] { grid-area: by }
+	.tbl.cards td[data-col="vis"] { grid-area: vis } .tbl.cards td[data-col="pick"] { grid-area: pick } .tbl.cards td[data-col="age"] { grid-area: age }
+	.tbl.cards td[data-col="num"] { grid-area: num } .tbl.cards td[data-col="title"] { grid-area: title } .tbl.cards td[data-col="qty"] { grid-area: qty } .tbl.cards td[data-col="unit"] { grid-area: unit }
+	.tbl.cards td[data-col="price"] { grid-area: price } .tbl.cards td[data-col="rate"] { grid-area: rate } .tbl.cards td[data-col="amount"] { grid-area: amount; text-align: right }
+	.tbl.cards td[data-empty] { display: none !important }
+	.tbl.cards[data-cards="belege"] tbody tr:not(.plain) { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px }
+	.tbl.cards[data-cards="belege"] tbody tr:not(.plain)::before, .tbl.cards[data-cards="belege"] tbody tr:not(.plain)::after { content: ""; flex: 0 0 100%; height: 0; order: 3 }
+	.tbl.cards[data-cards="belege"] tbody tr:not(.plain)::after { order: 7 }
+	.tbl.cards[data-cards="belege"] td[data-col="id"] { order: 1; flex: 1 1 50% }
+	.tbl.cards[data-cards="belege"] td[data-col="state"] { order: 2; flex: 0 1 auto; margin-left: auto }
+	.tbl.cards[data-cards="belege"] td[data-col="who"] { order: 4; flex: 0 1 auto; max-width: 60% }
+	.tbl.cards[data-cards="belege"] td[data-col="proj"] { order: 5; flex: 1 1 30%; min-width: 3em }
+	.tbl.cards[data-cards="belege"] td[data-col="sum"] { order: 6; flex: 0 0 auto; margin-left: auto }
+	.tbl.cards[data-cards="belege"] td[data-col="kind"] { order: 8 }
+	.tbl.cards[data-cards="belege"] td[data-col="date"] { order: 9 }
+	.tbl.cards[data-cards="belege"] td[data-col="due"] { order: 10 }
+	.tbl.cards[data-cards="belege"] td[data-col="acts"] { order: 11; margin-left: auto }
+	.tbl.cards[data-cards="belege"] td[data-col="date"]::before { content: "· " }
+	.tbl.cards[data-cards="belege"] td[data-col="date"]::before { content: "· " / "" }
+	.tbl.cards[data-cards="belege"] td[data-col="due"]::before { content: "· " attr(data-label) " " }
+	.tbl.cards[data-cards="belege"] td[data-col="due"]::before { content: "· " attr(data-label) " " / attr(data-label) " " }
+	.tbl.cards[data-cards="kunden"] tbody tr { grid-template-columns: minmax(0, 1fr) fit-content(60%); grid-template-areas: "id state" "who who" "sub city" "acc sum" }
+	.tbl.cards[data-cards="projekte"] tbody tr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "id state" "who who" "date docs" "files com" }
+	.tbl.cards[data-cards="uploads"] tbody tr { grid-template-columns: 44px minmax(0, 1fr) fit-content(40%); padding-left: 0; grid-template-areas: "pick id sum" "pick who who" "pick by date" "pick age age" }
+	.tbl.cards[data-cards="uploads"] thead { display: block }
+	.tbl.cards[data-cards="uploads"] thead tr { display: block; padding: 0 12px; border-bottom: 1px solid var(--line) }
+	.tbl.cards[data-cards="uploads"] th:not(.pick) { display: none }
+	.tbl.cards[data-cards="uploads"] th.pick { display: block; padding: 0; width: auto; border: 0 }
+	.tbl.cards[data-cards="uploads"] th.pick label.hit { justify-content: flex-start; gap: 10px }
+	.tbl.cards[data-cards="uploads"] th.pick .pick-word { display: inline; color: var(--fg-2); font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 12.5px }
+	.tbl.cards[data-cards="cdocs"] tbody tr { grid-template-columns: minmax(0, 1fr) fit-content(60%); grid-template-areas: "id state" "kind sum" "date sum" }
+	.tbl.cards[data-cards="cprojects"] tbody tr { grid-template-columns: minmax(0, 1fr) fit-content(60%); grid-template-areas: "id state" "date docs" }
+	.tbl.cards[data-cards="pfiles"] tbody tr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "id id" "sum date" "by vis" "com com" "acts acts" }
+	.tbl.cards[data-cards="pfiles"] tbody tr.plain { display: block }
+	.tbl.cards[data-cards="lines"] tbody tr { grid-template-columns: 22px minmax(0, .8fr) minmax(0, 1.2fr) minmax(0, 1.2fr); grid-template-areas: "num title title title" ". qty price amount" ". unit rate rate"; gap: 4px 10px }
+	.tbl.cards[data-cards="lines"] td[data-lab]::before { display: block; font-size: 11px }
+	.tbl.cards[data-cards="lines"] td[data-col="qty"], .tbl.cards[data-cards="lines"] td[data-col="price"], .tbl.cards[data-cards="lines"] td[data-col="rate"], .tbl.cards[data-cards="lines"] td[data-col="unit"] { color: var(--fg-2); font-size: 12.5px }
+}
+
+/* The phone, the draft: a line is a stack - the title over the whole width, Menge × Preis = Betrag in one row, the unit and the rate beneath, the description as a disclosure, the button at the end */
+@media (max-width: 759px) {
+	.kv.stacked { grid-template-columns: minmax(0, 1fr); gap: 2px }
+	.kv.stacked dt { margin-top: 8px }
+	.kv.stacked dt:first-child { margin-top: 0 }
+	.kv.stacked dd.pair { flex-wrap: wrap }
+	.kv.stacked dd.pair input { flex: 1 1 140px }
+	.tbl.ed { min-width: 0; table-layout: auto }
+	.tbl.ed, .tbl.ed tbody { display: block; width: 100% }
+	.tbl.ed thead { display: none }
+	.tbl.ed tbody tr.plain { display: grid; grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "num title title title" ". qty price amount" ". unit unit rate" ". desc desc del"; gap: 8px 20px; align-items: end; padding: 12px; border-bottom: 1px solid var(--line) }
+	.tbl.ed tbody tr.plain td { height: auto; padding: 0; border: 0; min-width: 0; white-space: normal }
+	.tbl.ed td[data-col="num"] { grid-area: num; align-self: center }
+	.tbl.ed td[data-col="title"] { grid-area: title }
+	.tbl.ed td[data-col="desc"] { grid-area: desc; display: block }
+	.tbl.ed td[data-col="qty"] { grid-area: qty } .tbl.ed td[data-col="price"] { grid-area: price } .tbl.ed td[data-col="amount"] { grid-area: amount }
+	.tbl.ed td[data-col="unit"] { grid-area: unit; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: end }
+	.tbl.ed td[data-col="unit"]::before { grid-column: 1 / -1 }
+	.tbl.ed td[data-col="rate"] { grid-area: rate } .tbl.ed td[data-col="del"] { grid-area: del; justify-self: end }
+	.tbl.ed td[data-label]::before { content: attr(data-label); display: block; color: var(--fg-2); font-size: 11.5px; margin-bottom: 2px }
+	.tbl.ed td[data-col="qty"], .tbl.ed td[data-col="price"] { position: relative }
+	.tbl.ed td[data-col="qty"]::after, .tbl.ed td[data-col="price"]::after { position: absolute; right: -15px; bottom: 11px; width: 10px; text-align: center; color: var(--fg-2) }
+	.tbl.ed td[data-col="qty"]::after { content: "×" }
+	.tbl.ed td[data-col="qty"]::after { content: "×" / "" }
+	.tbl.ed td[data-col="price"]::after { content: "=" }
+	.tbl.ed td[data-col="price"]::after { content: "=" / "" }
+	.tbl.ed td[data-col="amount"] { text-align: right; font-weight: 500; min-height: 44px; display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-end; overflow-wrap: anywhere }
+	.tbl.ed td input, .tbl.ed td select { min-height: 44px; height: 44px }
+	.tbl.ed td[data-col="title"] > input { width: 100% }
+	.tbl.ed .desc { width: 100%; min-height: 44px; margin-top: 4px }
+	.ed details.desc-box > summary { display: list-item; min-height: 44px; line-height: 44px; cursor: pointer; color: var(--accent) }
+	.ed .del { min-width: 44px; min-height: 44px }
+	.tbl.ed td[data-col="unit"] select.unit-code { margin-top: 0; font-size: 12px }
+	.tbl.ed tbody tr[data-picker] { display: block; padding: 12px }
+	.tbl.ed tbody tr[data-picker] td { display: block }
+	.tbl.ed tbody tr[data-picker] td:empty { display: none }
+	.tbl.ed .picker { flex-wrap: wrap }
+	.tbl.ed .picker input { flex: 1 1 100%; min-width: 0 }
+	.tbl.ed .picker .btn { min-height: 44px }
+}
