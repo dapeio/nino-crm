@@ -920,8 +920,22 @@ class Admin {
 			'projects'  => self::_projects( $appData, $document['client_id'] ),
 			'accounts'  => $document['state'] !== 'draft' ? self::_accounts( $appData, $document['client_id'] ) : [],
 			'order'     => $document['state'] !== 'draft' ? \Crm\Records::forDocument( $appData, $document['id'] ) : null,
+			'decline'   => $document['state'] !== 'draft' ? self::_withReason( \Crm\Records::declineOf( $appData, $document['id'] ) ) : null,
+			'payment'   => $document['state'] !== 'draft' ? \Crm\Records::paymentOf( $appData, $document['id'] ) : null,
 			'sign_days' => max( 1, min( 90, (int) \Nino\Features::setting( $appData, 'sign', 'days', 14 ) ) ),
 		];
+	}
+
+	/**
+	 *	The record of a decline with the reason the customer wrote, which the JSON that was shown holds
+	 *
+	 *	@param		array|null	$record				As Records::declineOf() has it
+	 *
+	 *	@return 	array|null								The record with reason; null for none
+	 */
+	private static function _withReason( ?array $record ): ?array {
+
+		return $record === null ? null : $record + [ 'reason' => \Crm\Records::reasonOf( $record ) ];
 	}
 
 	/**

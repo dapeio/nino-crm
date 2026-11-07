@@ -1209,7 +1209,8 @@ class Portal {
 	 *	How an open invoice is paid, as the PDF says it: the amount, the payee (the company of the site), the bank, the IBAN and the BIC of the
 	 *	settings and the number as the purpose - and, where the settings hold the PayPal.me name (paypalLink()), a row with the button that opens the payment of this amount
 	 *	at PayPal, which asks for the number as the purpose too. Nothing where the settings hold neither a bank nor an IBAN nor a PayPal.me name: then there is nothing to tell;
-	 *	with the name alone the block has the amount, the purpose and the PayPal row
+	 *	with the name alone the block has the amount, the purpose and the PayPal row. The IBAN has a button that copies it without its blanks (hidden: the script of the portal shows it), and under the facts stands
+	 *	the form that reports the payment, or the line that says it was reported (Payment::block())
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document			As Documents::released() has it
@@ -1232,13 +1233,14 @@ class Portal {
 
 		foreach( [ 'to' => $bank !== '' || $iban !== '' ? $company : '', 'bank' => $bank, 'iban' => $iban, 'bic' => $bic ] as $name => $value )
 			if( $value !== '' )
-				$rows .= self::render( 'document-pay-row', [ '[[name]]' => $name, '[[value]]' => \Nino\Modules\Components::escape( $value ) ] );
+				$rows .= self::render( $name === 'iban' ? 'document-pay-iban' : 'document-pay-row', [ '[[name]]' => $name, '[[value]]' => \Nino\Modules\Components::escape( $value ), '[[copy]]' => \Nino\Modules\Components::escape( (string) preg_replace( '/\s+/u', '', $value ) ) ] );
 
 		return self::render( 'document-pay', [
 			'[[number]]' => \Nino\Modules\Components::escape( $document['number'] ),
 			'[[amount]]' => self::amount( $appData, $document ),
 			'[[rows]]'   => $rows,
 			'[[paypal]]' => $link === '' ? '' : self::paypal( $appData, $link, (string) $document['number'] ),
+			'[[notice]]' => Portal\Payment::block( $appData, $document, \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) ) ),
 		] );
 	}
 

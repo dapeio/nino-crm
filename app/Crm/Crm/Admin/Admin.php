@@ -100,7 +100,9 @@ class Admin {
 	 *	  6. the cap of mails: '/nino/mail/cap' of config.php is set to CAP where config.php carries no value of its own, the way the Config panel writes a key
 	 *	     (the key in the request's data, then AppData::writeContentData()); a value that is there - the owner's own, 0 for no cap among them - stays,
 	 *	  7. the notification of the owner: the setting notifyOwner of Review is switched on (Features::saveSettings()) where the setting has no value of its own; a value that
-	 *	     is there - off among them - stays.
+	 *	     is there - off among them - stays,
+	 *	  8. the upload folders: every active client whose group has no upload folder in Files gets one (Clients::makeUploadFolder(), with the permission of this module); the clients that have one keep it,
+	 *	     one that cannot be made is a warning in the log and the run goes on. added.upload_folders is how many were made, existed.upload_folders how many clients had one.
 	 *	Answers what was added and what existed
 	 */
 	public static function apiSetup( array &$appData, array &$request ): void {
@@ -115,8 +117,8 @@ class Admin {
 		foreach( self::FEATURES as $key )
 			$missed[$key] = self::unitLacks( $appData, $key );
 
-		$added = [ 'features' => [], 'features_units' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ];
-		$existed = [ 'features' => [], 'features_units' => [], 'routes' => [], 'templates' => [], 'types' => [], 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ];
+		$added = [ 'features' => [], 'features_units' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false, 'upload_folders' => 0 ];
+		$existed = [ 'features' => [], 'features_units' => [], 'routes' => [], 'templates' => [], 'types' => [], 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false, 'upload_folders' => 0 ];
 
 		// 1. The features. One is on when it is active at its version and nothing is wrong with it; what is on before the first step is "there
 		// already", even where a feature that was switched on before it - Sign takes PDF with it - did the work
@@ -356,6 +358,32 @@ class Admin {
 		}
 		else
 			$existed['notify'] = \Nino\Features::setting( $appData, 'review', self::NOTIFY_SETTING, false ) === true;
+
+		// 8. The upload folders: the clients that were made before the folder was made with them, or whose folder could not be made. A client that is off gets none; a folder that cannot be made is
+		// a warning, and the run goes on with the next client
+		try {
+			foreach( \Crm\Clients::list( $appData ) as $client ) {
+
+				if( $client['active'] === false )
+					continue;
+
+				if( \Crm\Clients::uploadFolder( $appData, $client ) !== null ) {
+					$existed['upload_folders']++;
+					continue;
+				}
+
+				$made = \Crm\Clients::makeUploadFolder( $appData, $client );
+
+				if( $made === 'write' )
+					trigger_error( 'Crm: the upload folder of client '. $client['number']. ' was not made: '. $made, E_USER_WARNING );
+				elseif( is_array( $made ) === true )
+					$added['upload_folders']++;
+			}
+		}
+		catch( \PDOException $e ) {
+			\Nino\Http::fail( $request, 500, 'the clients could not be read' );
+			return;
+		}
 
 		// A run that went through is written down: the screen of the first run is for a product that was never set up
 		try {

@@ -395,6 +395,17 @@
 		return hits;
 	};
 
+	/**
+	 *	Whether the customer reported that it paid an invoice that is not marked as paid yet
+	 *
+	 *	@param		{Object}	doc
+	 *
+	 *	@return		{boolean}
+	 */
+	const awaitsPayment = function( doc ) {
+		return doc.category === 'invoice' && [ 'open', 'sent' ].includes( doc.state ) === true && typeof doc.paid_notice === 'string' && doc.paid_notice !== '';
+	};
+
 	const chips = [
 		{ key : 'all', test : function() { return true } },
 		{ key : 'open', test : function( doc ) { return doc.category !== 'offer' && [ 'open', 'sent' ].includes( doc.state ) === true && doc.overdue !== true } },
@@ -402,9 +413,11 @@
 		{ key : 'drafts', test : function( doc ) { return doc.state === 'draft' } },
 		{ key : 'offers', test : function( doc ) { return doc.category === 'offer' } },
 		{ key : 'accepted', test : function( doc ) { return doc.state === 'accepted' } },
+		{ key : 'declined', sparse : true, test : function( doc ) { return doc.state === 'declined' } },
 		{ key : 'invoices', test : function( doc ) { return doc.category === 'invoice' || doc.category === 'credit' } },
 		{ key : 'plain', test : function( doc ) { return isPlain( doc ) } },
 		{ key : 'paid', test : function( doc ) { return doc.state === 'paid' } },
+		{ key : 'notified', sparse : true, test : function( doc ) { return awaitsPayment( doc ) } },
 	];
 
 	const sortKeys = {
@@ -1241,7 +1254,7 @@
 	 */
 	const badges = function( doc ) {
 
-		const list = [ stateBadge( doc ) ].concat( marks( doc ) );
+		const list = [ stateBadge( doc ) ].concat( marks( doc ), awaitsPayment( doc ) === true ? [ el( 'span', { class: 'pay-icon', dataset: { icon: 'banknote' }, role: 'img', title: t( 'payment.mark-title', dmy( doc.paid_notice ) ), 'aria-label': t( 'payment.mark-title', dmy( doc.paid_notice ) ) } ) ] : [] );
 
 		return list.flatMap( function( one, index ) { return index === 0 ? [ one ] : [ ' ', one ] } );
 	};
@@ -1529,6 +1542,20 @@
 			return el( 'li', {}, el( 'span', {}, dot( 'good' ), link( '#projekte', t( need.count === 1 ? 'needs.approved-one' : 'needs.approved-many', need.count ), { id: 'needs-approved', on: { click: function() {
 				state.jfilter.all = true;
 				state.jfilter.page = 1;
+			} } } ) ) );
+
+		// The invoices a customer reported as paid that are not marked as paid: one line, and the link shows them
+		if( need.kind === 'payments' )
+			return el( 'li', {}, el( 'span', {}, dot( 'warn' ), link( '#belege', t( need.count === 1 ? 'needs.payments-one' : 'needs.payments-many', need.count ), { id: 'needs-payments', on: { click: function() {
+				state.filter.chip = 'notified';
+				state.filter.page = 1;
+			} } } ) ), el( 'span', { class: 'r', text: cash( need.gross ) } ) );
+
+		// The offers the customers declined: one line, and the link shows the offers that are declined
+		if( need.kind === 'declined' )
+			return el( 'li', {}, el( 'span', {}, dot( 'muted' ), link( '#belege', t( need.count === 1 ? 'needs.declined-one' : 'needs.declined-many', need.count, need.days ), { id: 'needs-declined', on: { click: function() {
+				state.filter.chip = 'declined';
+				state.filter.page = 1;
 			} } } ) ) );
 
 		if( need.kind === 'sign' )
@@ -1891,7 +1918,10 @@
 
 		const pager = pagerOf( filter, pages, redraw );
 
-		const tabs = el( 'div', { class: 'tabs top', role: 'tablist' }, chips.map( function( chip ) {
+		// A tab that is about what the customers did in the portal - declined offers, reported payments - is there while it has a document or is the one chosen
+		const tabs = el( 'div', { class: 'tabs top', role: 'tablist' }, chips.filter( function( chip ) {
+			return chip.sparse !== true || filter.chip === chip.key || state.docs.some( chip.test ) === true;
+		} ).map( function( chip ) {
 			return el( 'button', { type: 'button', role: 'tab', 'aria-selected': filter.chip === chip.key ? 'true' : 'false', class: filter.chip === chip.key ? 'on' : '', dataset: { chip: chip.key }, on: { click: function() {
 				filter.chip = chip.key;
 				filter.page = 1;
@@ -1914,6 +1944,12 @@
 				redraw( true );
 			} } ), newMenu( t( 'new.label' ) ) ) );
 		state.main.appendChild( el( 'div', { class: 'toolbar' }, tabs, year ) );
+
+		// The tab a link of Braucht Dich chose may lie right of the visible part of the row: it is brought into view
+		const chosen = tabs.querySelector( 'button.on' );
+
+		if( chosen !== null && typeof chosen.scrollIntoView === 'function' )
+			chosen.scrollIntoView( { block: 'nearest', inline: 'nearest' } );
 		append( state.main, [ table, pager ] );
 	};
 
@@ -2524,25 +2560,44 @@
 		if( record.revoked !== undefined && record.revoked !== null )
 			facts.push( [ t( 'record.revoked-at' ), stamp( record.revoked.at ) ], [ t( 'record.revoked-by' ), recordWho( record.revoked ) ], [ t( 'record.revoked-ip' ), record.revoked.ip ], [ t( 'record.revoked-agent' ), record.revoked.agent ] );
 
+		// The reason a customer gave for declining an offer is in the JSON that is kept; the dialog says it among the facts
+		if( record.kind === 'decline' ) {
+
+			let reason = '';
+
+			try {
+				reason = String( JSON.parse( record.shown ).reason ?? '' );
+			}
+			catch( problem ) {
+				reason = '';
+			}
+
+			facts.push( [ t( 'decline.reason' ), reason === '' ? t( 'decline.reason-none' ) : reason ] );
+		}
+
 		return dialog( { title: t( 'record.title-'+ record.kind ), text: t( 'record.hash', record.sha256 ), facts: facts, pre: record.shown, close: true, wide: true } );
 	};
 
 	/**
-	 *	The card of the order in the tab Portal of a document: when, by whom and from where the customer ordered, the hash, and the way to the text that was shown
+	 *	The card of what the customer did in the tab Portal of a document - the order, the decline of an offer, the report of a payment: when, by whom and from where, the hash, and the way
+	 *	to the text that was shown
 	 *
-	 *	@param		{Object}	order						The record
+	 *	@param		{string}	kind						order, decline or payment: the ids of the card
+	 *	@param		{string}	title						Its heading
+	 *	@param		{Object}	record					The record
 	 *
 	 *	@return		{Object}
 	 */
-	const orderCard = function( order ) {
+	const noticeCard = function( kind, title, record ) {
 
-		return el( 'div', { class: 'card pad gap', id: 'order-card' }, el( 'h3', { text: t( 'order.title' ) } ), kv( [
-			[ t( 'order.at' ), stamp( order.at ) ],
-			[ t( 'order.by' ), order.member_name !== '' ? order.member_name+ ' <'+ order.member_email+ '>' : order.member_email ],
-			[ t( 'order.ip' ), order.ip ],
-			[ t( 'order.agent' ), order.agent ],
-			[ t( 'order.hash' ), el( 'code', { class: 'num', text: order.sha256 } ) ],
-		] ), el( 'div', { class: 'actions' }, el( 'button', { type: 'button', class: 'btn sm', id: 'order-show', text: t( 'order.show' ), on: { click: function() { showRecord( order ) } } } ) ) );
+		return el( 'div', { class: 'card pad gap', id: kind+ '-card' }, el( 'h3', { text: title } ), kv( [
+			[ t( 'order.at' ), stamp( record.at ) ],
+			[ t( 'order.by' ), record.member_name !== '' ? record.member_name+ ' <'+ record.member_email+ '>' : record.member_email ],
+			[ t( 'order.ip' ), record.ip ],
+			[ t( 'order.agent' ), record.agent ],
+			kind === 'decline' ? [ t( 'decline.reason' ), el( 'span', { class: 'pre', text: record.reason !== '' && record.reason !== undefined ? record.reason : t( 'decline.reason-none' ) } ) ] : [ '', '' ],
+			[ t( 'order.hash' ), el( 'code', { class: 'num', text: record.sha256 } ) ],
+		] ), el( 'div', { class: 'actions' }, el( 'button', { type: 'button', class: 'btn sm', id: kind+ '-show', text: t( 'order.show' ), on: { click: function() { showRecord( record ) } } } ) ) );
 	};
 
 	/**
@@ -2605,7 +2660,9 @@
 
 		const cols = el( 'div', { class: 'cols' }, card( t( 'portal.title' ), portal ), card( t( 'other.title' ), other ) );
 
-		return view.order === null || view.order === undefined ? cols : el( 'div', { class: 'gap' }, cols, orderCard( view.order ) );
+		const records = [ [ 'order', t( 'order.title' ), view.order ], [ 'decline', t( 'decline.title' ), view.decline ], [ 'payment', t( 'payment.title' ), view.payment ] ].filter( function( one ) { return one[2] !== null && one[2] !== undefined } );
+
+		return records.length === 0 ? cols : el( 'div', { class: 'gap' }, cols, records.map( function( one ) { return noticeCard( one[0], one[1], one[2] ) } ) );
 	};
 
 	const tabNotes = function( view ) {
@@ -2649,6 +2706,8 @@
 			[ doc.paid_at, t( 'history.paid' ) ],
 			[ doc.signed_at, t( 'history.signed' ) ],
 			[ view.order ? view.order.at : '', view.order ? t( 'history.ordered', recordWho( view.order ) ) : '' ],
+			[ view.decline ? view.decline.at : '', view.decline ? t( 'history.declined', recordWho( view.decline ) ) : '' ],
+			[ view.payment ? view.payment.at : '', view.payment ? t( 'history.payment', recordWho( view.payment ) ) : '' ],
 		].filter( function( entry ) { return typeof entry[0] === 'string' && entry[0] !== '' } );
 
 		entries.sort( function( a, b ) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0 } );
@@ -2697,6 +2756,13 @@
 		// The reminder that went out stays said under the head: the owner looks here before the next call
 		if( remindedDay( doc ) !== '' )
 			state.main.appendChild( el( 'p', { class: 'state-note', id: 'reminded-head' }, clockMark( remindedDay( doc ) ), ' '+ t( doc.reminded_mail === true ? 'reminded.head-mail' : 'reminded.head-quiet', dmy( doc.reminded_at ) ) ) );
+
+		// An offer the customer declined in the portal, with the reason it gave; an invoice the customer reported as paid, which stays as it is until it is marked as paid
+		if( view.decline !== null && view.decline !== undefined )
+			state.main.appendChild( el( 'p', { class: 'state-note', id: 'decline-head' }, badge( 'portal', t( 'order.badge' ) ), ' ', view.decline.reason === '' ? t( 'decline.head', dmy( view.decline.at ), recordWho( view.decline ) ) : t( 'decline.head-reason', dmy( view.decline.at ), recordWho( view.decline ) )+ ' ', view.decline.reason === '' ? null : el( 'span', { class: 'pre', text: view.decline.reason } ) ) );
+
+		if( view.payment !== null && view.payment !== undefined )
+			state.main.appendChild( el( 'p', { class: 'state-note', id: 'payment-head' }, badge( 'portal', t( 'order.badge' ) ), ' '+ t( 'payment.head', dmy( view.payment.at ), recordWho( view.payment ) ) ) );
 
 		if( doc.overdue === true )
 			state.main.appendChild( note( '', t( 'overdue.note', dmy( doc.due_date ) ), ' ', doc.released === true && [ 'open', 'sent' ].includes( doc.state ) === true ? el( 'button', { type: 'button', class: 'btn sm', id: 'remind', text: t( 'menu.remind' ), on: { click: function() { remind( view ) } } } ) : t( 'overdue.release' ) ) );
@@ -4625,11 +4691,41 @@
 					} ) ) ) ) );
 	};
 
+	/**
+	 *	The button Upload-Ordner anlegen of the tab Portal: the client has no folder the members of its group upload into, so the page Upload of the portal would be empty. It asks
+	 *	crm-clients/upload-folder, which makes the folder with the CRM's own permission, and tells the tab to read the portal of the client again
+	 *
+	 *	@param		{Object}	view						The client
+	 *	@param		{Function}	again					Called once the folder is made
+	 *
+	 *	@return		{Object}
+	 */
+	const uploadFolderButton = function( view, again ) {
+
+		const button = el( 'button', { type: 'button', class: 'btn sm', id: 'client-upload-folder', text: t( 'cportal.upload-folder' ), on: { click: function() {
+
+			button.disabled = true;
+
+			call( 'crm-clients/upload-folder', { id : String( view.client.id ) }, 'error.client-upload-folder' ).then( function( answer ) {
+
+				button.disabled = false;
+
+				if( answer.ok === true ) {
+					toast( t( 'cportal.upload-folder-done' ) );
+					again();
+				}
+			} );
+		} } } );
+
+		return el( 'div', { class: 'actions', id: 'client-upload-folder-box' }, button, el( 'span', { class: 'state-note', text: t( 'cportal.upload-folder-hint' ) } ) );
+	};
+
 	const tabClientPortal = function( view ) {
 
 		const holder = el( 'div' );
 		const body = el( 'div', { class: 'card pad', id: 'client-portal' }, el( 'h3', { text: t( 'cportal.title' ) } ), holder );
 		const mine = state.view;
+		let load = null;
 		const draw = function( portal ) {
 
 			const plural = function( count ) { return count === 1 ? t( 'cportal.file-one', count ) : t( 'cportal.file-many', count ) };
@@ -4645,6 +4741,11 @@
 					: el( 'ul', { class: 'list-mini' }, portal.folders.length === 0 ? el( 'li', { class: 'muted', text: t( 'cportal.files-none' ) } ) : portal.folders.map( function( folder ) {
 						return el( 'li', {}, el( 'span', { text: t( 'cportal.folder', folder.name, plural( folder.files ), t( folder.upload === true ? 'cportal.upload-yes' : 'cportal.upload-no' ) ) } ) );
 					} ) ),
+				portal.features.files === true && view.client.active === true && portal.folders.some( function( folder ) { return folder.upload === true } ) === false ? uploadFolderButton( view, function() {
+					view.portal = null;
+					clear( holder );
+					load();
+				} ) : null,
 				portal.features.review === true ? el( 'p', { class: 'state-note', text: portal.review.media === 0 ? t( 'cportal.review-none' ) : t( 'cportal.review', portal.review.media, portal.review.comments ) } ) : null,
 				el( 'p', { class: 'state-note', text: t( 'cportal.rest' ) } ),
 				Array.isArray( portal.records ) === false ? null : [
@@ -4661,9 +4762,8 @@
 			] );
 		};
 
-		if( view.portal !== null )
-			draw( view.portal );
-		else {
+		load = function() {
+
 			holder.appendChild( el( 'p', { class: 'state-note', role: 'status', text: t( 'loading' ) } ) );
 
 			call( 'crm-clients/portal', { id : String( view.client.id ) }, 'error.client-portal' ).then( function( answer ) {
@@ -4675,7 +4775,12 @@
 				clear( holder );
 				draw( view.portal );
 			} );
-		}
+		};
+
+		if( view.portal !== null )
+			draw( view.portal );
+		else
+			load();
 
 		return body;
 	};

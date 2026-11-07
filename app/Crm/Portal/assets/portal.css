@@ -1760,6 +1760,63 @@ body:has(.crm-bar) .crm-offer {
 	display: none;
 }
 
+/*	The IBAN and its button: the button is hidden in the markup and the script shows it; the live line beside it says the result	*/
+.crm-pay__fact--iban dd {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--crm-2) var(--crm-3);
+	font-family: inherit;
+	font-size: var(--crm-text-m);
+	letter-spacing: normal;
+	white-space: normal;
+}
+
+.crm-pay__value {
+	font-family: var(--fontfamily-code);
+	font-size: var(--crm-text-xs);
+	letter-spacing: .02em;
+	white-space: nowrap;
+}
+
+.crm-pay__copy[hidden] {
+	display: none;
+}
+
+.crm-pay__copied {
+	color: var(--crm-ink-2);
+	font-family: inherit;
+	font-size: var(--crm-text-s);
+	font-weight: 400;
+	letter-spacing: normal;
+}
+
+.crm-pay__copied:empty {
+	display: none;
+}
+
+/*	The report that the money is on its way: the form under the facts, or the line that says it was reported	*/
+.crm-pay-notice {
+	margin: var(--crm-3) 0 0;
+	padding: var(--crm-4) var(--crm-5);
+}
+
+.crm-pay-notice__hint {
+	margin: 0 0 var(--crm-3);
+	color: var(--crm-ink-2);
+	font-size: var(--crm-text-s);
+}
+
+.crm-pay-notice .crm-order__actions {
+	margin: 0;
+}
+
+.crm-pay-notice.crm-note {
+	padding: var(--crm-3) var(--crm-4);
+}
+
+/*	The facts of a stacked line are one line of words; a dot stands behind a fact that another follows, so that a line that breaks never
+	begins with one	*/
 @media (max-width: 1023.98px) {
 
 	.crm-facts {
@@ -2043,6 +2100,48 @@ body:has(.crm-bar) .crm-offer {
 
 .crm-order__group {
 	margin: var(--crm-3) 0 var(--crm-2);
+}
+
+/*	The two quiet ways under the form of the order: the fold that declines the offer and the question by mail	*/
+.crm-order__ways {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: var(--crm-2) var(--crm-4);
+	margin: var(--crm-3) 0 0;
+}
+
+.crm-order__ways > .crm-decline {
+	flex: 1 1 100%;
+}
+
+.crm-decline__summary {
+	display: inline-flex;
+	cursor: pointer;
+}
+
+.crm-decline[open] > .crm-decline__summary {
+	margin-bottom: var(--crm-2);
+}
+
+.crm-decline__form {
+	margin: 0;
+	padding: var(--crm-4) var(--crm-5);
+}
+
+.crm-decline__field {
+	margin: 0 0 var(--crm-3);
+}
+
+.crm-decline__input {
+	display: block;
+	min-height: 5.5rem;
+	padding: var(--crm-2) var(--crm-3);
+	resize: vertical;
+}
+
+.crm-order--declined {
+	margin: var(--crm-4) 0 0;
 }
 
 /*	The sentence of the owner is a text of its own for the direction of its letters: a mark that turns a line round does not turn the page	*/
@@ -3893,6 +3992,8 @@ a.crm-nav__link[aria-current="page"] .crm-icon {
 	.crm-login__devices,
 	.crm-data__also,
 	.crm-order--form,
+	.crm-order__ways,
+	.crm-pay-notice:not(.crm-note),
 	.crm-order--privacy,
 	.crm-approval__form,
 	.crm-consent__form,

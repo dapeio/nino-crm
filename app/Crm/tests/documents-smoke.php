@@ -429,6 +429,7 @@ $ownProjects['model']['title']['maxlength'] = 200;
 $restore();
 
 // What the owner enters in the Elements panel: the words per language, the numbers for all. Workshop has a text in English only
+$ignored = ninoWarnings();
 $made = [
 	\Nino\Elements::insertElement( $appData, '/positionen/hosting', [ 'price' => 90, 'vat' => 0, 'sort' => 1, 'title' => 'Hosting', 'unit' => 'Monat' ], 'de_DE' ),
 	\Nino\Elements::updateElement( $appData, '/positionen/hosting', [ 'title' => 'Hosting plan', 'unit' => 'month' ], 'en_US' ),
@@ -1851,7 +1852,7 @@ check( '...the client is frozen in it: a change of the client does not reach the
 check( '...it is fixed: nothing but the notes changes, a finalised document is not deleted, and finalising again is refused', Documents::change( $appData, $contract['id'], [ 'title' => 'x' ] ) === 'fixed' && Documents::remove( $appData, $contract['id'] ) === 'fixed' && Documents::finalise( $appData, $contract['id'] ) === 'fixed'
 	&& is_array( Documents::setNotes( $appData, $contract['id'], 'neu' ) ) );
 check( '...and appears in the list under its title, with no amount worth a line', ( array_values( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['id'] === $contract['id'] ) )[0] ?? [] ) === [
-	'id' => $contract['id'], 'category' => 'contract', 'number' => '', 'title' => 'Vertrag neu', 'state' => 'open', 'released' => false, 'reminded_at' => '', 'reminded_mail' => false, 'sign_state' => '', 'expired' => false, 'overdue' => false, 'date' => $today, 'due_date' => null, 'valid_until' => null, 'gross' => 0, 'client_id' => $first['id'], 'client_title' => 'Studio Nord GmbH', 'parent_id' => $offerFinal['id'], 'project' => '', 'project_title' => '', 'template_key' => 'dienstleistung' ] );
+	'id' => $contract['id'], 'category' => 'contract', 'number' => '', 'title' => 'Vertrag neu', 'state' => 'open', 'released' => false, 'reminded_at' => '', 'reminded_mail' => false, 'sign_state' => '', 'expired' => false, 'overdue' => false, 'date' => $today, 'due_date' => null, 'valid_until' => null, 'gross' => 0, 'client_id' => $first['id'], 'client_title' => 'Studio Nord GmbH', 'parent_id' => $offerFinal['id'], 'project' => '', 'project_title' => '', 'template_key' => 'dienstleistung', 'paid_notice' => '' ] );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Neu GmbH' ] );
 check( '...the client it shows is the one frozen into it, not the one the client is now', array_column( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['id'] === $contract['id'] ), 'client_title' ) === [ 'Studio Nord GmbH' ] );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Nord GmbH' ] );

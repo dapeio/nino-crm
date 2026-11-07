@@ -9,6 +9,11 @@ declare(strict_types=1);
  *								the sentence), the SHA-256 of that text, the time and the address and browser of the request. The module writes a record once and never changes or deletes it: there is no statement for it in this class or anywhere
  *								else, and the table refuses the deletion of a client or a document a record names.
  *
+ *								Two more kinds are about a document and change none of its contract: decline (the customer declined an offer; the text kept is the JSON the page of the offer was drawn from
+ *								with the reason the customer wrote, which may be empty) and payment (the customer reported that it has paid an invoice; the text kept is the JSON of its number, its sum and the
+ *								day). A decline names the offer as an order does and is written in the transaction that moves the offer to declined (Documents::decline()); a payment names the
+ *								invoice, there is one for each invoice, and it moves nothing: the owner marks the invoice as paid.
+ *
  *								Two kinds stand beside these for what goes beyond the contract: consent (the customer agrees to a purpose: social, the use of the work for
  *								the references and channels of the studio, or archive, the keeping of it beyond the periods) and revocation (the customer takes a consent back;
  *								it names the consent in parent). A consent holds the purpose, the project of the offer it was given with ('' for none) and the sentence of its
@@ -21,7 +26,7 @@ declare(strict_types=1);
  *								holds now. A text that is changed asks again; the old records stay. Where the text is empty the portal asks for nothing.
  *
  *								add() answers the record as of() has it, or a string: 'kind' (not one of KINDS), 'client' (no such client), 'member' (no account),
- *								'document' (an order needs the document it is for; the other kinds have none), 'project' (an approval needs the project it is for),
+ *								'document' (an order, a decline and a payment need the document they are for; the other kinds have none), 'project' (an approval needs the project it is for),
  *								'purpose' (a consent needs one of PURPOSES), 'parent' (a revocation needs a consent of the same client that no revocation names),
  *								'shown' (nothing was shown). A database failure is a
  *								\PDOException the caller answers.
@@ -30,7 +35,13 @@ namespace Crm;
 
 class Records {
 
-	public const array KINDS = [ 'privacy', 'order', 'approval', 'consent', 'revocation' ];
+	public const array KINDS = [ 'privacy', 'order', 'approval', 'consent', 'revocation', 'decline', 'payment' ];
+
+	// The kinds that name the document they are about
+	private const array OF_DOCUMENT = [ 'order', 'decline', 'payment' ];
+
+	// The longest reason a customer gives for declining an offer
+	public const int REASON = 500;
 
 	// The purposes a consent can be for
 	public const array PURPOSES = [ 'social', 'archive' ];
@@ -144,7 +155,7 @@ class Records {
 			is_string( $member['id'] ?? null ) === false || $member['id'] === ''             => 'member',
 			$kind === 'consent' && in_array( $purpose, self::PURPOSES, true ) === false     => 'purpose',
 			$shown === ''                                                                     => 'shown',
-			$kind === 'order' ? is_int( $document ) === false : ( $document !== null && ( $kind !== 'consent' || is_int( $document ) === false ) ) => 'document',
+			in_array( $kind, self::OF_DOCUMENT, true ) === true ? is_int( $document ) === false : ( $document !== null && ( $kind !== 'consent' || is_int( $document ) === false ) ) => 'document',
 			$kind === 'approval' && preg_match( Projekte::ID, (string) ( $input['project'] ?? '' ) ) !== 1 => 'project',
 			default                                                                           => '',
 		};
@@ -247,6 +258,36 @@ class Records {
 	public static function forDocument( array &$appData, int $documentId ): ?array {
 
 		$row = Db::row( $appData, 'SELECT * FROM records WHERE document_id = :id AND kind = \'order\' ORDER BY id DESC LIMIT 1', [ 'id' => $documentId ] );
+
+		return $row === null ? null : self::shape( $row );
+	}
+
+	/**
+	 *	The decline that was made for an offer
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$documentId
+	 *
+	 *	@return 	array|null								The newest record of kind decline; null for an offer nobody declined in the portal
+	 */
+	public static function declineOf( array &$appData, int $documentId ): ?array {
+
+		$row = Db::row( $appData, 'SELECT * FROM records WHERE document_id = :id AND kind = \'decline\' ORDER BY id DESC LIMIT 1', [ 'id' => $documentId ] );
+
+		return $row === null ? null : self::shape( $row );
+	}
+
+	/**
+	 *	The payment a customer reported for an invoice
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$documentId
+	 *
+	 *	@return 	array|null								The newest record of kind payment; null for an invoice nobody reported paid
+	 */
+	public static function paymentOf( array &$appData, int $documentId ): ?array {
+
+		$row = Db::row( $appData, 'SELECT * FROM records WHERE document_id = :id AND kind = \'payment\' ORDER BY id DESC LIMIT 1', [ 'id' => $documentId ] );
 
 		return $row === null ? null : self::shape( $row );
 	}
@@ -464,6 +505,19 @@ class Records {
 	 */
 	public static function orderShown( array &$appData, array $document, string $sentence, array $consents = [] ): string {
 
+		return self::json( self::offerShown( $appData, $document ) + [ 'sentence' => $sentence ] + ( $consents === [] ? [] : [ 'consents' => $consents ] ) );
+	}
+
+	/**
+	 *	The page of an offer as the records of an order and of a decline keep it: the number, the title, the day, the validity, the lines, the sums, the VAT mode and the particulars of the company
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			As Documents::get() has it, finalised
+	 *
+	 *	@return 	array
+	 */
+	private static function offerShown( array &$appData, array $document ): array {
+
 		$totals = Documents\Money::totals( $document['lines'], (string) $document['vat_mode'], (bool) $document['reverse_charge'] );
 		$sums = [ 'net' => $totals['net'], 'vat' => [], 'gross' => $totals['gross'] ];
 
@@ -490,7 +544,7 @@ class Records {
 
 		$company['tax_id'] = Settings::get( $appData, 'tax_id' );
 
-		return (string) json_encode( [
+		return [
 			'document'       => (int) $document['id'],
 			'number'         => (string) $document['number'],
 			'title'          => (string) $document['title'],
@@ -503,8 +557,79 @@ class Records {
 			'lines'          => $lines,
 			'sums'           => $sums,
 			'company'        => $company,
-			'sentence'       => $sentence,
-		] + ( $consents === [] ? [] : [ 'consents' => $consents ] ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR );
+		];
+	}
+
+	/**
+	 *	What the decline of an offer shows: the JSON the page of the offer is drawn from and the reason the customer gave. The same offer and reason give the same text, so the hash of a
+	 *	record can be made again; the form carries the hash of the text with no reason
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			As Documents::get() has it, finalised
+	 *	@param		string		$reason				As reason() has it; '' for none
+	 *
+	 *	@return 	string										JSON
+	 */
+	public static function declineShown( array &$appData, array $document, string $reason ): string {
+
+		return self::json( self::offerShown( $appData, $document ) + [ 'reason' => $reason ] );
+	}
+
+	/**
+	 *	What the report of a payment shows: the number of the invoice, its sum in hundredths of the currency, the currency and the day of the report
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			As Documents::get() has it
+	 *
+	 *	@return 	string										JSON
+	 */
+	public static function paymentShown( array &$appData, array $document ): string {
+
+		return self::json( [ 'document' => (int) $document['id'], 'number' => (string) $document['number'], 'gross' => (int) $document['gross'], 'currency' => Settings::get( $appData, 'currency' ), 'date' => gmdate( 'Y-m-d' ) ] );
+	}
+
+	/**
+	 *	The reason a customer wrote for declining an offer, as it is kept: line breaks as \n, trimmed, and no control character but the line break and the tab (a null byte among them is dropped), and no invisible mark of direction
+	 *
+	 *	@param		mixed			$posted
+	 *
+	 *	@return 	string|null								The reason, '' for none; null for one that is no text, no UTF-8 or longer than REASON characters
+	 */
+	public static function reason( mixed $posted ): ?string {
+
+		if( $posted === null )
+			return '';
+
+		if( is_string( $posted ) === false || mb_check_encoding( $posted, 'UTF-8' ) === false )
+			return null;
+
+		$text = trim( (string) preg_replace( '/[^\P{Cc}\n\t]|[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{FEFF}]/u', '', str_replace( [ "\r\n", "\r" ], "\n", $posted ) ) );
+
+		return mb_strlen( $text, 'UTF-8' ) > self::REASON ? null : $text;
+	}
+
+	/**
+	 *	The reason a decline kept
+	 *
+	 *	@param		array 		$record				A record of kind decline, as declineOf() has it
+	 *
+	 *	@return 	string										'' for none and for a record that holds none
+	 */
+	public static function reasonOf( array $record ): string {
+
+		$shown = json_decode( (string) ( $record['shown'] ?? '' ), true );
+
+		return is_array( $shown ) === true && is_string( $shown['reason'] ?? null ) === true ? $shown['reason'] : '';
+	}
+
+	/**
+	 *	@param		array 		$data
+	 *
+	 *	@return 	string										JSON
+	 */
+	private static function json( array $data ): string {
+
+		return (string) json_encode( $data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR );
 	}
 
 	/**

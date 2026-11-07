@@ -29,7 +29,7 @@ class Files {
 
 	/**
 	 *	[crm-uploads] - the files of the upload folder of the member's group that the member may see (their own and the visible ones), the newest
-	 *	first: name, size, day and the download. A group without an upload folder reads the sentence that the owner has to make one. Nothing
+	 *	first: name, size, day and the download. A group without an upload folder - the module makes one with every client, so this is a client whose folder could not be made - reads the sentence that the area is being set up. Nothing
 	 *	for a visitor
 	 *
 	 *	@param		array 		&$appData
@@ -52,7 +52,7 @@ class Files {
 		$folder = self::uploadFolder( $appData );
 
 		if( $folder === null )
-			return self::message( $appData, 'none', $classes );
+			return self::message( $appData, 'preparing', $classes );
 
 		$rows = self::rows( $appData, self::visible( $appData, $folder['id'] ), '', '', true );
 

@@ -1118,6 +1118,12 @@ check( 'the items through the endpoint: the type is there now, empty - the local
 
 // what the client sees in the portal
 \Nino\Features::activate( $appData, 'review' );
+
+// The module makes an upload folder with every client; the checks below are about the folders the owner makes
+foreach( \Crm\Clients::list( $appData ) as $withFolder )
+	if( ( $autoFolder = \Crm\Clients::uploadFolder( $appData, $withFolder ) ) !== null )
+		\Nino\Modules\Files\Store::deleteFolder( $appData, $autoFolder['id'] );
+
 $folder = \Nino\Modules\Files\Store::addFolder( $appData, $a['group'], 'Nordwind Album' );
 $file = static function( string $name, string $mime, bool $visible, array $by = [ 'kind' => 'owner', 'id' => '' ] ) use ( &$appData, $folder ): string {
 	$id = bin2hex( random_bytes( 6 ) );
@@ -2540,7 +2546,77 @@ function surfaceConsentChecks( array &$appData, array $a, array $b, array $proje
 		&& substr_count( $texts['consent.line-given'], '%s' ) === 3 && substr_count( $texts['consent.line-revoked'], '%s' ) === 3 && substr_count( $texts['consent.line-none'], '%s' ) === 1 );
 }
 
+// --- Kundenaktionen: a declined offer, a reported payment, the upload folder -----------------------------------------------------------------
+
+/**
+ *	The checks of what the surface reads of the decline of an offer and of the report of a payment, and of the action that makes an upload folder
+ */
+function surfaceNoticeChecks( array &$appData, array $a, array $b, \Closure $asCrm, \Closure $final, \Closure $line, \Closure $day ): void {
+
+	echo "\nKundenaktionen in the surface\n";
+
+	$asCrm();
+	$anna = [ 'id' => 'aaaaaaaaaaaa', 'email' => 'anna@studio-nord.example', 'name' => 'Anna Nord' ];
+	$offer = $final( 'offer', $a['id'], [ 'date' => $day( -1 ), 'valid_until' => $day( 20 ), 'lines' => [ $line( 'Abgelehnt' ) ], 'template_key' => 'angebot' ] );
+	$other = $final( 'offer', $a['id'], [ 'date' => $day( -1 ), 'valid_until' => $day( 20 ), 'lines' => [ $line( 'Offen' ) ], 'template_key' => 'angebot' ] );
+	$invoice = $final( 'invoice', $a['id'], [ 'date' => $day( -1 ), 'lines' => [ $line( 'Gemeldet' ) ], 'template_key' => 'rechnung' ] );
+	$quiet = $final( 'invoice', $a['id'], [ 'date' => $day( -1 ), 'lines' => [ $line( 'Still' ) ], 'template_key' => 'rechnung' ] );
+	$draft = \Crm\Documents::add( $appData, 'offer', $a['id'], [ 'lines' => [ $line( 'Entwurf' ) ] ] );
+
+	foreach( [ $offer, $other, $invoice, $quiet ] as $document )
+		\Crm\Documents::release( $appData, $document['id'], false );
+
+	foreach( [ $invoice, $quiet ] as $document )
+		\Crm\Documents::setState( $appData, $document['id'], 'sent' );
+
+	$before = array_column( surfaceApi( $appData, 'crm-documents/overview' )[1]['needs'], 'kind' );
+	$declined = \Crm\Documents::decline( $appData, $offer['id'], $a['id'], $anna, "Zu teuer <b>[[x]]</b>\nZweite Zeile", [ 'ip' => '203.0.113.7', 'agent' => 'Test' ] );
+	$reported = \Crm\Documents::payment( $appData, $invoice['id'], $a['id'], $anna, [ 'ip' => '203.0.113.7', 'agent' => 'Test' ] );
+	[ $status, $view ] = surfaceApi( $appData, 'crm-documents/get', [ 'id' => (string) $offer['id'] ] );
+	check( 'crm-documents/get carries the decline of an offer: the record with the account, the address, the hash and the JSON that was shown - and the reason as the customer wrote it, kept as text', is_array( $declined ) && $status === 200 && $view['decline']['id'] === $declined['record']['id'] && $view['decline']['member_name'] === 'Anna Nord' && $view['decline']['ip'] === '203.0.113.7'
+		&& $view['decline']['sha256'] === hash( 'sha256', $view['decline']['shown'] ) && $view['decline']['reason'] === "Zu teuer <b>[[x]]</b>\nZweite Zeile" && $view['order'] === null && $view['payment'] === null && $view['document']['state'] === 'declined' );
+	[ , $viewInvoice ] = surfaceApi( $appData, 'crm-documents/get', [ 'id' => (string) $invoice['id'] ] );
+	check( '...and the report of a payment: the record, the JSON of the number and the sum - the state of the invoice is the one it had', is_array( $reported ) && $viewInvoice['payment']['id'] === $reported['record']['id'] && $viewInvoice['payment']['sha256'] === hash( 'sha256', $viewInvoice['payment']['shown'] ) && json_decode( $viewInvoice['payment']['shown'], true )['gross'] === $invoice['gross'] && $viewInvoice['decline'] === null && $viewInvoice['document']['state'] === 'sent' );
+	check( '...a document with neither has none, a draft neither', surfaceApi( $appData, 'crm-documents/get', [ 'id' => (string) $other['id'] ] )[1]['decline'] === null && surfaceApi( $appData, 'crm-documents/get', [ 'id' => (string) $quiet['id'] ] )[1]['payment'] === null && surfaceApi( $appData, 'crm-documents/get', [ 'id' => (string) $draft['id'] ] )[1]['decline'] === null && surfaceApi( $appData, 'crm-documents/get', [ 'id' => (string) $draft['id'] ] )[1]['payment'] === null );
+	$rows = array_column( surfaceApi( $appData, 'crm-documents/list' )[1]['documents'], null, 'id' );
+	check( 'the list has paid_notice for each row: the day the customer reported the payment, an empty text for the rest', $rows[$invoice['id']]['paid_notice'] === gmdate( 'Y-m-d' ) && $rows[$quiet['id']]['paid_notice'] === '' && $rows[$offer['id']]['paid_notice'] === '' );
+	$needs = surfaceApi( $appData, 'crm-documents/overview' )[1]['needs'];
+	$kinds = array_column( $needs, 'kind' );
+	$payments = array_values( array_filter( $needs, static fn( array $need ): bool => $need['kind'] === 'payments' ) );
+	$gone = array_values( array_filter( $needs, static fn( array $need ): bool => $need['kind'] === 'declined' ) );
+	check( 'the overview has the line of the payments that were reported and are not marked as paid - how many, what they come to, no document - and the line of the offers declined in the last days - how many and the days', count( $payments ) === 1 && $payments[0]['count'] === 1 && $payments[0]['gross'] === $invoice['gross'] && $payments[0]['id'] === 0
+		&& count( $gone ) === 1 && $gone[0]['count'] === 1 && $gone[0]['days'] === 30 && $gone[0]['id'] === 0 && in_array( 'payments', $before, true ) === false && in_array( 'declined', $before, true ) === false );
+	check( '...the payments stand after the overdue invoices and before the orders, the declines after the approvals', array_search( 'payments', $kinds, true ) === count( array_filter( $kinds, static fn( string $kind ): bool => $kind === 'overdue' ) ) && ( array_search( 'declined', $kinds, true ) > array_search( 'payments', $kinds, true ) ) );
+	\Crm\Documents::setState( $appData, $invoice['id'], 'paid' );
+	check( '...an invoice the owner has marked as paid leaves the line', array_filter( surfaceApi( $appData, 'crm-documents/overview' )[1]['needs'], static fn( array $need ): bool => $need['kind'] === 'payments' ) === [] );
+	[ , $portal ] = surfaceApi( $appData, 'crm-clients/portal', [ 'id' => (string) $a['id'] ] );
+	$records = array_column( $portal['records'], null, 'kind' );
+	check( 'the tab Portal of the client lists the decline and the payment among its records, each naming its document by the number', ( $records['decline']['document_number'] ?? '' ) === $offer['number'] && ( $records['payment']['document_number'] ?? '' ) === $invoice['number'] && ( $records['decline']['shown'] ?? '' ) === $view['decline']['shown'] );
+
+	// the upload folder: a client is made with one, the action makes it again for a client that has none
+	$c = \Crm\Clients::add( $appData, [ 'company' => 'Ordner Eins GmbH', 'name' => 'Olga Eins' ] );
+	$folder = \Crm\Clients::uploadFolder( $appData, $c );
+	check( 'a client made here has its upload folder already, and the card lists it as the folder to upload into', is_array( $c ) && $folder !== null && $folder['name'] === $c['number']. ' Ordner Eins GmbH'
+		&& array_values( array_filter( surfaceApi( $appData, 'crm-clients/portal', [ 'id' => (string) $c['id'] ] )[1]['folders'], static fn( array $one ): bool => $one['upload'] === true ) ) === [ [ 'id' => $folder['id'], 'name' => $folder['name'], 'upload' => true, 'files' => 0 ] ] );
+	\Nino\Modules\Files\Store::deleteFolder( $appData, $folder['id'] );
+	check( '...once the folder is gone the card has none marked', array_filter( surfaceApi( $appData, 'crm-clients/portal', [ 'id' => (string) $c['id'] ] )[1]['folders'], static fn( array $one ): bool => $one['upload'] === true ) === [] );
+	[ $status, $made ] = surfaceApi( $appData, 'crm-clients/upload-folder', [ 'id' => (string) $c['id'] ] );
+	[ , $portalNow ] = surfaceApi( $appData, 'crm-clients/portal', [ 'id' => (string) $c['id'] ] );
+	check( 'crm-clients/upload-folder through the endpoint makes it: the answer names the folder, and the card lists it as the folder to upload into - the log names the number of the client', $status === 200 && $made['created'] === true && $made['folder']['upload'] === true && $made['folder']['name'] === $c['number']. ' Ordner Eins GmbH'
+		&& array_values( array_filter( $portalNow['folders'], static fn( array $one ): bool => $one['upload'] === true ) ) === [ [ 'id' => $made['folder']['id'], 'name' => $made['folder']['name'], 'upload' => true, 'files' => 0 ] ] && str_contains( \Crm\Clients\Admin::log( 'crm-clients/upload-folder', [] ), $c['number'] ) === true );
+	[ $status, $again ] = surfaceApi( $appData, 'crm-clients/upload-folder', [ 'id' => (string) $c['id'] ] );
+	check( '...a second call makes no second folder', $status === 200 && $again['created'] === false && $again['folder']['id'] === $made['folder']['id'] && count( \Nino\Modules\Files::folders( $appData, $c['group'] ) ) === 1 );
+
+	// the words
+	$texts = \Crm\Surface::texts();
+	$keys = [ 'chip.declined', 'chip.notified', 'needs.payments-one', 'needs.payments-many', 'needs.declined-one', 'needs.declined-many', 'payment.head', 'payment.title', 'payment.mark-title', 'decline.head', 'decline.head-reason', 'decline.title', 'decline.reason', 'decline.reason-none', 'history.declined', 'history.payment',
+		'record.kind-decline', 'record.kind-payment', 'record.title-decline', 'record.title-payment', 'cportal.upload-folder', 'cportal.upload-folder-hint', 'cportal.upload-folder-done', 'error.client-upload-folder', 'error.crm_clients_files', 'error.crm_clients_folder', 'error.crm_clients_folder_inactive' ];
+	check( 'the words of the screens are there, each a sentence in the Du form where it speaks to the owner', array_filter( $keys, static fn( string $key ): bool => trim( (string) ( $texts[$key] ?? '' ) ) === '' ) === [] && preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', array_map( static fn( string $key ): string => (string) $texts[$key], $keys ) ) ) !== 1
+		&& substr_count( $texts['decline.head'], '%s' ) === 2 && substr_count( $texts['decline.head-reason'], '%s' ) === 2 && substr_count( $texts['payment.head'], '%s' ) === 2 && substr_count( $texts['needs.declined-many'], '%s' ) === 2 && substr_count( $texts['needs.payments-many'], '%s' ) === 1 );
+}
+
 surfaceConsentChecks( $appData, $a, $b, $project, $asCrm, $asItems );
+surfaceNoticeChecks( $appData, $a, $b, $asCrm, $final, $line, $day );
 surfaceLinkChecks( $appData, $a, $accounts, $asLinker, $asCrm, $reset );
 surfaceEverydayChecks( $appData, $a, $c, $final, $line, $day, $reset, $asCrm );
 

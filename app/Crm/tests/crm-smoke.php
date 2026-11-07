@@ -311,7 +311,7 @@ check( 'the workbench has one panel of the module, in the content group, and the
 check( 'its permission is /_admin/crm/manage, the one of the whole CRM', \Crm\Crm\Admin::perm() === '/_admin/crm/manage' && ( new \ReflectionClass( \Crm\Crm::class ) )->getConstant( 'MANAGE_PERM' ) === '/_admin/crm/manage' && ( $panels['crm']['perm'] ?? '' ) === '/_admin/crm/manage' );
 check( 'its actions are the two that moved from Kunden: the status and the setup', array_keys( \Crm\Crm\Admin::actions() ) === [ 'crm/status', 'crm/setup' ] );
 check( 'the API of the clients is the fifteen actions that remain, and has no setup and no status - and no panel in it', array_keys( \Crm\Clients\Admin::actions() ) === [ 'crm-clients/list', 'crm-clients/get', 'crm-clients/save', 'crm-clients/active', 'crm-clients/invite', 'crm-clients/accounts', 'crm-clients/unlinked',
-	'crm-clients/account-link', 'crm-clients/account-resend', 'crm-clients/account-active', 'crm-clients/account-name', 'crm-clients/account-email', 'crm-clients/account-forget', 'crm-clients/account-remove', 'crm-clients/portal', 'crm-clients/message' ]
+	'crm-clients/account-link', 'crm-clients/account-resend', 'crm-clients/account-active', 'crm-clients/account-name', 'crm-clients/account-email', 'crm-clients/account-forget', 'crm-clients/account-remove', 'crm-clients/portal', 'crm-clients/message', 'crm-clients/upload-folder' ]
 	&& array_filter( [ 'nav', 'icon', 'template', 'assets', 'text', 'summary', 'perm', 'apiSetup', 'apiStatus', 'unitDir' ], static fn( string $method ): bool => method_exists( \Crm\Clients\Admin::class, $method ) === true ) === [] );
 
 $assets = \Crm\Crm\Admin::assets();
@@ -345,7 +345,7 @@ ninoUser( $appData, 'admin@example.com' );
 $posts = [ 'crm-clients/list' => [], 'crm-clients/get' => [ 'id' => '1' ], 'crm-clients/save' => [ 'name' => 'Nobody' ], 'crm-clients/active' => [ 'id' => '1' ],
 	'crm-clients/invite' => [ 'id' => '1', 'email' => 'nobody@example.org' ], 'crm-clients/accounts' => [ 'id' => '1' ], 'crm-clients/unlinked' => [],
 	'crm-clients/account-link' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/account-resend' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/account-active' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ],
-	'crm-clients/account-name' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa', 'name' => 'Nobody' ], 'crm-clients/account-email' => [ 'id' => '1', 'member' => 'aaaaaaaaaaaa', 'email' => 'nobody@example.org' ], 'crm-clients/account-forget' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/account-remove' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/portal' => [ 'id' => '1' ], 'crm-clients/message' => [ 'id' => '1', 'text' => 'x' ] ];
+	'crm-clients/account-name' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa', 'name' => 'Nobody' ], 'crm-clients/account-email' => [ 'id' => '1', 'member' => 'aaaaaaaaaaaa', 'email' => 'nobody@example.org' ], 'crm-clients/account-forget' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/account-remove' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/portal' => [ 'id' => '1' ], 'crm-clients/message' => [ 'id' => '1', 'text' => 'x' ], 'crm-clients/upload-folder' => [ 'id' => '1' ] ];
 $denied = [ 'signed out' => [], 'without the permission' => [] ];
 
 unset( $appData['./nino/auth/current'] );
@@ -1456,7 +1456,7 @@ $own['name'] = 'Meine Rechnung';
 \Nino\Filesystem::putFileContent( $fresh, '/data/pdf/layout.php', array_merge( \Nino\Modules\Pdf::layout( $fresh ), [ 'header' => '<p>Mein Kopf</p>' ] ) );
 $routesBeforeTwice = \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'];
 [ $status, $body ] = $run( 'crm/setup' );
-check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'features_units' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ]
+check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'features_units' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false, 'upload_folders' => 0 ]
 	&& $body['existed']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['features_units'] === [ 'members', 'files', 'review', 'sign', 'events' ] && $body['existed']['pdf']['templates'] === $keys && $body['existed']['home'] === 'door' && count( $body['existed']['routes'] ) === 7 );
 check( '...the template the owner changed is the owner\'s still, so is the header; the routes are as they were', ( \Nino\Modules\Pdf::template( $fresh, 'rechnung' )['name'] ?? '' ) === 'Meine Rechnung' && \Nino\Modules\Pdf::layout( $fresh )['header'] === '<p>Mein Kopf</p>' && \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'] === $routesBeforeTwice );
 check( '...and the status is still whole', $run( 'crm/status' )[1]['whole'] === true );
@@ -1829,7 +1829,7 @@ foreach( new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $root.
 		$sources[$file->getPathname()] = (string) file_get_contents( $file->getPathname() );
 
 check( 'the module never changes or deletes a record: no statement of it on the table records but the insert, the reads and the columns a migration adds - and the class has no method that does', array_filter( $sources, static fn( string $code ): bool => preg_match( '/(UPDATE|DELETE\s+FROM|DROP\s+TABLE|REPLACE\s+INTO|INSERT\s+OR\s+REPLACE\s+INTO|ALTER\s+TABLE)\s+records\b(?!\s+ADD\s+COLUMN\b)/i', $code ) === 1 ) === []
-	&& preg_match_all( '/INSERT INTO records/', implode( "\n", $sources ) ) === 1 && array_values( array_filter( get_class_methods( \Crm\Records::class ), static fn( string $method ): bool => preg_match( '/^(add|insert|revoke|of|forDocument|approval|approvals|approvalShown|latestPrivacy|privacy|privacies|privacyText|hash|source|sentence|orderShown|consents|consent|consentsOfProject|consentsOfDocument|names)$/', $method ) !== 1 ) ) === [] );
+	&& preg_match_all( '/INSERT INTO records/', implode( "\n", $sources ) ) === 1 && array_values( array_filter( get_class_methods( \Crm\Records::class ), static fn( string $method ): bool => preg_match( '/^(add|insert|revoke|of|forDocument|approval|approvals|approvalShown|latestPrivacy|privacy|privacies|privacyText|hash|source|sentence|orderShown|declineShown|paymentShown|declineOf|paymentOf|reason|reasonOf|consents|consent|consentsOfProject|consentsOfDocument|names)$/', $method ) !== 1 ) ) === [] );
 
 \Nino\Filesystem::removeDir( ninoSandboxDir( $rec ) );
 
@@ -1873,7 +1873,7 @@ function crmConsentChecks( string $root ): void {
 	$add = static fn( array $over = [] ): array|string => \Crm\Records::add( $rec, $over + [ 'kind' => 'consent', 'client_id' => $ra['id'], 'member' => $anna, 'purpose' => 'social', 'shown' => 'Ich willige ein.', 'project' => '00001', 'ip' => '203.0.113.7', 'agent' => 'Agent' ] );
 
 	$constants = static fn( string $class ): array => ( new \ReflectionClass( $class ) )->getConstants();
-	check( 'the purposes of a consent are two and the kinds of a record five', $constants( \Crm\Records::class )['PURPOSES'] === [ 'social', 'archive' ] && $constants( \Crm\Records::class )['KINDS'] === [ 'privacy', 'order', 'approval', 'consent', 'revocation' ] );
+	check( 'the purposes of a consent are two and the kinds of a record seven', $constants( \Crm\Records::class )['PURPOSES'] === [ 'social', 'archive' ] && $constants( \Crm\Records::class )['KINDS'] === [ 'privacy', 'order', 'approval', 'consent', 'revocation', 'decline', 'payment' ] );
 
 	// the consent
 	$one = $add();
@@ -2243,10 +2243,6 @@ function privacyEmptiedChecks( array &$fresh, callable $run ): void {
 
 /**
  *	The sentence of the door names the code: the template reads a key of its own, both languages deliver it, and the key it read before is still in the texts for a site installed with the older template
- *
- *	@param		string		$root
- *
- *	@return 	void
  */
 function crmDoorCodeChecks( string $root ): void {
 
@@ -2259,5 +2255,196 @@ function crmDoorCodeChecks( string $root ): void {
 }
 
 crmDoorCodeChecks( $root );
+/**
+ *	The upload folder of a client: made with the client by every way a client is made - Clients::add() with and without a first account, the address alone, the action save without an id -
+ *	with the permission of the module and not the panel's; a failure (Files off, the index of Files unwritable) is a warning and the client is made all the same; the action of the card and the
+ *	step of the setup make the folder of a client that has none, and a client that is switched off gets none
+ *
+ *	@param		array 		$fresh					The site of the setup, set up already
+ *	@param		callable	$run						Runs an action of the panel CRM on it
+ *	@param		string		$root
+ *
+ *	@return 	void
+ */
+function crmUploadFolderChecks( array &$fresh, callable $run, string $root ): void {
+
+	echo "\nThe upload folder of a client\n";
+
+	$panel = static function( array &$appData, array &$request ): void {
+		[ $class, $method ] = \Crm\Surface::actions()[(string) $_POST['action']];
+		$class::{$method}( $appData, $request );
+	};
+	$folders = static function( array $client ) use ( &$fresh ): array {
+		return \Nino\Modules\Files::folders( $fresh, (string) $client['group'] );
+	};
+	$save = static function( array $data ) use ( &$fresh, $panel ): array {
+		return ninoCall( $fresh, $panel, $data, 'crm-clients/save' );
+	};
+	$press = static function( array $client ) use ( &$fresh, $panel ): array {
+		return ninoCall( $fresh, $panel, [ 'id' => (string) $client['id'] ], 'crm-clients/upload-folder' );
+	};
+	$ignored = ninoWarnings();
+	\Nino\Auth::loginUser( $fresh, 'admin@example.com', 'correct horse battery staple' );
+
+	$one = \Crm\Clients::add( $fresh, [ 'company' => 'Ordner AG', 'name' => 'Olga Ordner' ] );
+	$list = $folders( $one );
+	check( 'a client made by Clients::add() has the upload folder of its group: one folder, named by the number and the title, marked as the folder the group uploads into, and nothing in the log', is_array( $one ) && count( $list ) === 1
+		&& $list[0]['name'] === $one['number']. ' Ordner AG' && $list[0]['upload'] === true && ( \Crm\Clients::uploadFolder( $fresh, $one )['id'] ?? '' ) === $list[0]['id'] && ninoWarnings() === [] );
+
+	$two = \Crm\Clients::add( $fresh, [ 'name' => 'Zora Zeile' ], [ 'email' => 'zora@example.org', 'name' => 'Zora', 'notify' => false ] );
+	$three = \Crm\Clients::add( $fresh, [], [ 'email' => 'nur@example.org', 'notify' => false ] );
+	check( '...so has a client made with a first account, and a client made with nothing but an address (known by it)', is_array( $two ) && is_array( $two['first'] ) && count( $folders( $two ) ) === 1 && $folders( $two )[0]['name'] === $two['number']. ' Zora Zeile' && $folders( $two )[0]['upload'] === true
+		&& is_array( $three ) && count( $folders( $three ) ) === 1 && $folders( $three )[0]['name'] === $three['number']. ' nur@example.org' );
+
+	[ $status, $body ] = $save( [ 'company' => 'Per Aktion GmbH' ] );
+	$four = $body['client'] ?? [];
+	$madeFolders = $folders( $four );
+	$changed = $save( [ 'id' => (string) $four['id'], 'city' => 'Bonn' ] );
+	$afterChange = $folders( $four );
+	check( '...and so has a client made by the action save without an id; the same action with an id changes the client and makes no second folder', $status === 200 && count( $madeFolders ) === 1 && $madeFolders[0]['upload'] === true && $changed[0] === 200 && $afterChange === $madeFolders );
+
+	$long = \Crm\Clients::add( $fresh, [ 'company' => str_repeat( 'Ä', 120 ) ] );
+	check( '...a title longer than a folder\'s name may be is cut: the number first, 80 characters, the client made all the same and nothing in the log', is_array( $long ) && mb_strlen( $folders( $long )[0]['name'], 'UTF-8' ) === \Nino\Modules\Files\Store::FOLDER_LENGTH
+		&& str_starts_with( $folders( $long )[0]['name'], $long['number']. ' ÄÄ' ) === true && ninoWarnings() === [] );
+
+	// The permission of the module: an account with the CRM and without Files may press the button, and the folder is made
+	ninoUser( $fresh, 'crm-only@example.com', [ '/_admin/crm/manage' ] );
+	$bare = \Crm\Clients::add( $fresh, [ 'name' => 'Ohne Ordner' ] );
+	\Nino\Modules\Files\Store::deleteFolder( $fresh, \Crm\Clients::uploadFolder( $fresh, $bare )['id'] );
+	[ $status, $body ] = $press( $bare );
+	check( 'the button of the card makes the folder of a client that has none, with the permission of the CRM alone: that account may not manage Files, and the folder is made, marked, named and counted as a folder of no file', \Nino\Auth::checkPermission( $fresh, '/_admin/files/manage' ) === false && $status === 200
+		&& $body['created'] === true && $body['folder']['upload'] === true && $body['folder']['files'] === 0 && $body['folder']['name'] === $bare['number']. ' Ohne Ordner' && ( \Crm\Clients::uploadFolder( $fresh, $bare )['id'] ?? '' ) === $body['folder']['id'] );
+	[ $status, $again ] = $press( $bare );
+	check( '...a second press makes no second folder: the same folder, created false', $status === 200 && $again['created'] === false && $again['folder']['id'] === $body['folder']['id'] && count( $folders( $bare ) ) === 1
+		&& \Crm\Clients\Admin::log( 'crm-clients/upload-folder', [ 'id' => (string) $bare['id'] ] ) === '' );
+	ninoUser( $fresh, 'plain-folder@example.com', [] );
+	check( '...an account without the permission of the CRM is refused with 403 and makes none; so is a visitor with 401', ( $deniedFolder = ninoCall( $fresh, $panel, [ 'id' => (string) $bare['id'] ], 'crm-clients/upload-folder' ) )[0] === 403 && count( $folders( $bare ) ) === 1 );
+	\Nino\Auth::loginUser( $fresh, 'admin@example.com', 'correct horse battery staple' );
+
+	[ $status, $body ] = ninoCall( $fresh, $panel, [ 'id' => '99999' ], 'crm-clients/upload-folder' );
+	[ $badStatus, $bad ] = ninoCall( $fresh, $panel, [ 'id' => '1; DROP' ], 'crm-clients/upload-folder' );
+	check( '...a client nobody has is 404 crm_clients_unknown and an id that is none is 400 crm_clients_id', $status === 404 && $body['code'] === 'crm_clients_unknown' && $badStatus === 400 && $bad['code'] === 'crm_clients_id' );
+
+	// A client that is switched off gets none; the folder it has stays
+	$off = \Crm\Clients::add( $fresh, [ 'name' => 'Aus Kunde' ] );
+	$offFolder = \Crm\Clients::uploadFolder( $fresh, $off );
+	\Crm\Clients::setActive( $fresh, $off['id'], false );
+	check( 'switching a client off leaves its folder and its files (the data stay)', ( \Crm\Clients::uploadFolder( $fresh, (array) \Crm\Clients::get( $fresh, $off['id'] ) )['id'] ?? '' ) === $offFolder['id'] );
+	\Nino\Modules\Files\Store::deleteFolder( $fresh, $offFolder['id'] );
+	[ $status, $body ] = $press( $off );
+	check( '...a client that is off and has none gets none: the model says inactive and the button is 409 crm_clients_folder_inactive', \Crm\Clients::makeUploadFolder( $fresh, (array) \Crm\Clients::get( $fresh, $off['id'] ) ) === 'inactive' && $status === 409 && $body['code'] === 'crm_clients_folder_inactive' && $folders( $off ) === [] );
+
+	// Files off: the client is made, the log says so; the button says why not
+	\Nino\Features::deactivate( $fresh, 'review' );
+	\Nino\Features::deactivate( $fresh, 'files' );
+	$ignored = ninoWarnings();
+	$nofiles = \Crm\Clients::add( $fresh, [ 'name' => 'Ohne Dateien' ] );
+	check( 'with Files off - the choice of the owner - the client is made all the same and the log says nothing', is_array( $nofiles ) && $nofiles['active'] === true && ninoWarnings() === [] );
+	[ $status, $body ] = $press( $nofiles );
+	check( '...the button is 409 crm_clients_files and the card of the portal has no folder to list', $status === 409 && $body['code'] === 'crm_clients_files' && \Crm\Clients::uploadFolder( $fresh, $nofiles ) === null );
+	\Nino\Features::activate( $fresh, 'files' );
+	\Nino\Features::activate( $fresh, 'review' );
+	[ $status, $body ] = $press( $nofiles );
+	check( '...and once Files is on again the same button makes it', $status === 200 && $body['created'] === true && count( $folders( $nofiles ) ) === 1 && $folders( $nofiles )[0]['upload'] === true );
+
+	// The index of Files cannot be written: a directory stands where its file belongs
+	$index = \Nino\Filesystem::path( $fresh, \Nino\Modules\Files\Store::INDEX );
+	$indexBytes = is_file( $index ) === true ? (string) file_get_contents( $index ) : '';
+	@unlink( $index );
+	mkdir( $index, 0775, true );
+	$ignored = ninoWarnings();
+	$stuck = \Crm\Clients::add( $fresh, [ 'name' => 'Schreibfehler' ] );
+	check( 'an index that cannot be written leaves the client made, with one line in the log that names its number and the reason write - and no folder', is_array( $stuck ) && ninoWarnings() === [ 'Crm: the upload folder of client '. $stuck['number']. ' was not made: write' ] );
+	[ $status, $body ] = $press( $stuck );
+	check( '...the button is 500 crm_clients_folder, and the log has the line of the failure too - the number and the reason write', $status === 500 && $body['code'] === 'crm_clients_folder' && ninoWarnings() === [ 'Crm: the upload folder of client '. $stuck['number']. ' was not made: write' ] );
+	rmdir( $index );
+	file_put_contents( $index, $indexBytes );
+	$ignored = ninoWarnings();
+	check( '...with the index back the same button makes the folder, and the client has one marked folder', $press( $stuck )[0] === 200 && count( $folders( $stuck ) ) === 1 && $folders( $stuck )[0]['upload'] === true );
+
+	// The step of the setup: every active client without an upload folder gets one, and what exists stays
+	$active = array_values( array_filter( \Crm\Clients::list( $fresh ), static fn( array $client ): bool => $client['active'] === true ) );
+	$own = \Nino\Modules\Files\Store::addFolder( $fresh, (string) $active[0]['group'], 'Eigener Ordner' );
+	$kept = [];
+
+	foreach( $active as $index => $client ) {
+
+		$have = \Crm\Clients::uploadFolder( $fresh, $client );
+
+		if( $index < 3 && $have !== null )
+			\Nino\Modules\Files\Store::deleteFolder( $fresh, $have['id'] );
+		else
+			$kept[$client['id']] = $have['id'] ?? '';
+	}
+
+	$without = [];
+	$ignored = ninoWarnings();
+
+	foreach( $active as $client )
+		if( \Crm\Clients::uploadFolder( $fresh, $client ) === null )
+			$without[] = $client['id'];
+
+	[ $status, $body ] = $run( 'crm/setup' );
+	$stillWithout = [];
+	$changed = [];
+
+	foreach( $active as $client ) {
+
+		$now = \Crm\Clients::uploadFolder( $fresh, $client );
+
+		if( $now === null )
+			$stillWithout[] = $client['id'];
+
+		if( ( $kept[$client['id']] ?? '' ) !== '' && ( $now['id'] ?? '' ) !== $kept[$client['id']] )
+			$changed[] = $client['id'];
+	}
+
+	$offAfter = $folders( $off );
+	$setupWarnings = ninoWarnings();
+	check( 'the press skips a client that is switched off without a word in the log: it gets no folder and no warning', $offAfter === [] && $setupWarnings === [] && \Crm\Clients::makeUploadFolder( $fresh, (array) \Crm\Clients::get( $fresh, $off['id'] ) ) === 'inactive' );
+	check( 'the setup makes the folder of every active client that has none and says how many: added.upload_folders is that number, existed.upload_folders the clients that had one - a client that is switched off gets none, a folder the owner made stays', $status === 200
+		&& count( $without ) === 3 && $body['added']['upload_folders'] === count( $without ) && $body['existed']['upload_folders'] === count( $active ) - count( $without ) && $stillWithout === [] && $changed === [] && $offAfter === []
+		&& \Nino\Modules\Files\Store::folder( $fresh, $own['id'] ) !== null );
+	[ $status, $body ] = $run( 'crm/setup' );
+	check( '...a second press makes none: added.upload_folders is 0 and every active client counts as having one', $status === 200 && $body['added']['upload_folders'] === 0 && $body['existed']['upload_folders'] === count( $active ) );
+
+	// The lock of the module: where it cannot be taken nothing is made, and the answer is write
+	$locked = \Crm\Clients::add( $fresh, [ 'name' => 'Gesperrt' ] );
+	\Nino\Modules\Files\Store::deleteFolder( $fresh, \Crm\Clients::uploadFolder( $fresh, $locked )['id'] );
+	$locks = \Nino\Filesystem::path( $fresh, '/data' ). '/.locks';
+	$key = ( new \ReflectionMethod( \Nino\Filesystem::class, '_canonicalPath' ) )->invokeArgs( null, [ &$fresh, '/data/crm-upload-folder' ] );
+	$mine = $locks. '/'. sha1( (string) $key ). '.lock';
+	$whileLocked = 'no lock file';
+
+	if( is_file( $mine ) === true ) {
+		unlink( $mine );
+		mkdir( $mine );
+		$whileLocked = \Crm\Clients::makeUploadFolder( $fresh, (array) \Crm\Clients::get( $fresh, $locked['id'] ) );
+		rmdir( $mine );
+	}
+
+	$ignored = ninoWarnings();
+	$first = \Crm\Clients::makeUploadFolder( $fresh, (array) \Crm\Clients::get( $fresh, $locked['id'] ) );
+	$second = \Crm\Clients::makeUploadFolder( $fresh, (array) \Crm\Clients::get( $fresh, $locked['id'] ) );
+	check( 'the folder is made under a lock of the module: where the lock cannot be taken nothing is made (write), and two calls one after the other see the same folder - the lock is given back', $whileLocked === 'write' && is_array( $first ) && is_array( $second ) && $first['id'] === $second['id'] && count( $folders( $locked ) ) === 1 );
+
+	// The press where the lock cannot be taken: one warning for the client whose folder failed, none for the client that is off and has none
+	$stuckSetup = \Crm\Clients::add( $fresh, [ 'name' => 'Einrichten stockt' ] );
+	\Nino\Modules\Files\Store::deleteFolder( $fresh, \Crm\Clients::uploadFolder( $fresh, $stuckSetup )['id'] );
+	$ignored = ninoWarnings();
+	unlink( $mine );
+	mkdir( $mine );
+	[ $status, $body ] = $run( 'crm/setup' );
+	$lines = array_values( array_filter( ninoWarnings(), static fn( string $line ): bool => str_contains( $line, 'upload folder' ) ) );
+	rmdir( $mine );
+	check( 'a press that cannot make a folder says so once in the log - the number of the client and the reason write - and goes on: the other clients are counted, and the client that is switched off is passed over without a line', $status === 200 && $lines === [ 'Crm: the upload folder of client '. $stuckSetup['number']. ' was not made: write' ] && \Crm\Clients::uploadFolder( $fresh, $stuckSetup ) === null && $body['added']['upload_folders'] === 0 );
+	$run( 'crm/setup' );
+
+	$readme = (string) file_get_contents( $root. '/app/Crm/README.md' );
+	check( 'the README says how the upload folder comes about and what the button and the step do, and has the section on the decline of an offer and the report of a payment with its routes, its transactions and its two kinds of record', array_filter( [ '`crm-clients/upload-folder`', '`added.upload_folders`', '`Store::addFolder()`', '`Store::markUpload()`', '`Clients::add()`', '`crm_clients_folder_inactive`',
+		'`POST /.crm/ablehnen`', '`POST /.crm/bezahlt`', '`Documents::decline()`', '`Documents::payment()`', '`decline`', '`payment`', '`?state=declined`', '`?state=paid-notice`', '`navigator.clipboard`', '`records`' ], static fn( string $token ): bool => str_contains( $readme, $token ) === false ) === [] );
+}
+
+crmUploadFolderChecks( $fresh, $run, $root );
 
 ninoDone( $appData );

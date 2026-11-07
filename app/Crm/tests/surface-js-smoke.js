@@ -216,7 +216,7 @@ function world( options ) {
 		}
 
 		// A node that is scrolled to says so; the browser's own box of a node is none here
-		el.scrollIntoView = function( options ) { scrolled.push( [ el.id, options ] ) };
+		el.scrollIntoView = function( options ) { scrolled.push( [ el.id, options, el ] ) };
 
 		if( tag === 'dialog' ) {
 			el.open = false;
@@ -6186,6 +6186,139 @@ function press( w, key, target, mods ) {
 		const listClocks = all( listed.main, 'tbody .clock' );
 		check( 'the list of the documents has the clock with the day beside the state of an invoice that was reminded and is still asked for - and none beside the others', listClocks.length === 1 && listClocks[0].title === fill( 'reminded.title', '06.11.2026' ) && listClocks[0].parentNode.parentNode.dataset.id === '1' );
 	}
+
+
+	// === Kundenaktionen: a declined offer, a reported payment, the upload folder
+
+	const kundenaktionen = async function() {
+
+		const record = function( over ) {
+			return x18_record( Object.assign( { id : 9, kind : 'decline', document_id : 31, document_number : 'A-2026-0031', project : '00001', sha256 : 'd'.repeat( 64 ), shown : '{\n    "number": "A-2026-0031",\n    "reason": "Zu teuer <b>x</b>"\n}', reason : 'Zu teuer <b>x</b>\nZweite Zeile' }, over ) );
+		};
+		const declined = record( {} );
+		const noReason = record( { id : 10, shown : '{\n    "reason": ""\n}', reason : '' } );
+		const payment = record( { id : 11, kind : 'payment', document_id : 11, document_number : 'R-2026-0007', project : '', shown : '{\n    "number": "R-2026-0007",\n    "gross": 119000\n}', reason : undefined } );
+		const detail = async function( hash, over, extra ) {
+			const w = world( { hash : hash, answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] }, 'crm-documents/get' : function() { return [ 200, view( over, extra ) ] } } } );
+			w.boot();
+			await settle();
+			return w;
+		};
+		const tabOf = function( w, name ) { click( w, all( w.main, '.tabs button' ).find( function( b ) { return b.dataset.tab === name } ) ) };
+
+		// the head, the card and the history of the offer
+		const offer = await detail( '#beleg-31', { id : 31, category : 'offer', number : 'A-2026-0031', state : 'declined', due_date : null, valid_until : '2026-12-01', released : true, released_at : '2026-11-01T09:00:00Z' }, { decline : declined } );
+		const headLine = all( offer.main, '#decline-head' )[0];
+		check( 'the head of an offer the customer declined says so under the head: when, by whom and the reason, as text', headLine !== undefined && textOf( headLine ).indexOf( texts['decline.head-reason'].replace( '%s', '03.11.2026' ).replace( '%s', 'Lena Brandt' ) ) !== -1 && textOf( headLine ).indexOf( 'Zu teuer <b>x</b>' ) !== -1
+			&& findAll( headLine, function( node ) { return node.tagName === 'B' } ).length === 0 && all( headLine, '.pre' ).length === 1 && all( offer.main, '#payment-head' ).length === 0 && all( offer.main, '#order-head' ).length === 0 );
+		const quiet = await detail( '#beleg-31', { id : 31, category : 'offer', number : 'A-2026-0031', state : 'declined', valid_until : '2026-12-01', released : true }, { decline : noReason } );
+		check( '...a decline with no reason says when and by whom and nothing else: no colon, no reason', textOf( all( quiet.main, '#decline-head' )[0] ).indexOf( texts['decline.head'].replace( '%s', '03.11.2026' ).replace( '%s', 'Lena Brandt' ) ) !== -1 && all( all( quiet.main, '#decline-head' )[0], '.pre' ).length === 0 );
+		tabOf( offer, 'portal' );
+		const card = all( offer.main, '#decline-card' )[0];
+		check( 'the tab Portal has the card of the decline: the time, the account with its address, the address, the browser, the reason with its line breaks kept, the hash - the card has its space like the order\'s', card !== undefined && textOf( card ).indexOf( texts['decline.title'] ) === 0 && textOf( card ).indexOf( 'Lena Brandt <lena@nordlicht.example>' ) !== -1 && textOf( card ).indexOf( '203.0.113.7' ) !== -1 && textOf( card ).indexOf( 'Zu teuer <b>x</b>' ) !== -1
+			&& textOf( card ).indexOf( 'd'.repeat( 64 ) ) !== -1 && all( card, '.pre' ).length === 1 && card.classList.contains( 'gap' ) === true && all( offer.main, '#order-card' ).length === 0 && all( offer.main, '#payment-card' ).length === 0 );
+		click( offer, all( offer.main, '#decline-show' )[0] );
+		check( '...the button opens the JSON that was shown as text, and the reason among the facts', offer.dialogs.length === 1 && textOf( all( offer.dialogs[0], 'pre' )[0] ) === declined.shown && textOf( offer.dialogs[0] ).indexOf( texts['decline.reason'] ) !== -1 && textOf( offer.dialogs[0] ).indexOf( 'Zu teuer <b>x</b>' ) !== -1 && findAll( offer.dialogs[0], function( node ) { return node.tagName === 'B' } ).length === 0 );
+		tabOf( offer, 'history' );
+		check( '...the history has the line of the decline', textOf( all( offer.main, '.log' )[0] ).indexOf( texts['history.declined'].replace( '%s', 'Lena Brandt' ) ) !== -1 );
+		tabOf( quiet, 'portal' );
+		check( '...a decline with no reason says so in the card', textOf( all( quiet.main, '#decline-card' )[0] ).indexOf( texts['decline.reason-none'] ) !== -1 );
+		const invoice = await detail( '#beleg-11', { id : 11, state : 'sent', released : true }, { payment : payment } );
+		check( 'the head of an invoice the customer reported as paid says so under the head: "Kunde meldet Zahlung am … durch …" - the state of the invoice is the one it has', textOf( all( invoice.main, '#payment-head' )[0] ).indexOf( texts['payment.head'].replace( '%s', '03.11.2026' ).replace( '%s', 'Lena Brandt' ) ) !== -1 && all( invoice.main, '#decline-head' ).length === 0 && all( invoice.main, '#order-head' ).length === 0 );
+		tabOf( invoice, 'portal' );
+		check( '...and the tab Portal has the card of the report and the history its line', textOf( all( invoice.main, '#payment-card' )[0] ).indexOf( texts['payment.title'] ) === 0 && all( invoice.main, '#decline-card' ).length === 0 );
+		tabOf( invoice, 'history' );
+		check( '...the history has the line of the report', textOf( all( invoice.main, '.log' )[0] ).indexOf( texts['history.payment'].replace( '%s', 'Lena Brandt' ) ) !== -1 );
+		const plain = await detail( '#beleg-11', { id : 11 }, {} );
+		check( 'a document with neither has no line under the head and no card', all( plain.main, '#decline-head' ).length === 0 && all( plain.main, '#payment-head' ).length === 0 );
+
+		// the list: the mark of a report and the chips that are there while they have a document
+		const docs = [
+			row( { id : 21, number : 'R-2026-0021', state : 'sent', paid_notice : '2026-11-03', gross : 10000 } ),
+			row( { id : 22, number : 'R-2026-0022', state : 'sent', paid_notice : '', gross : 20000 } ),
+			row( { id : 23, number : 'R-2026-0023', state : 'paid', paid_notice : '2026-11-02', gross : 30000 } ),
+			row( { id : 24, category : 'offer', number : 'A-2026-0024', state : 'declined', paid_notice : '', gross : 40000 } ),
+		];
+		const listing = world( { hash : '#belege', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] }, 'crm-documents/list' : function() { return [ 200, { documents : docs, years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+		listing.boot();
+		await settle();
+		const rowOf = function( w, id ) { return all( w.main, 'tbody tr' ).find( function( tr ) { return tr.dataset.id === String( id ) } ) };
+		const mark = all( rowOf( listing, 21 ), '.pay-icon' );
+		check( 'an invoice the customer reported as paid has a small icon in the state cell with a title that names the day - an image for a reader, the title as text - and no other row has one: not an invoice with no report, not a paid one, not an offer', mark.length === 1 && mark[0].getAttribute( 'role' ) === 'img' && mark[0].title === texts['payment.mark-title'].replace( '%s', '03.11.2026' ) && mark[0].getAttribute( 'aria-label' ) === mark[0].title
+			&& all( listing.main, '.pay-icon' ).length === 1 );
+		const chipOf = function( w, key ) { return all( w.main, '.tabs button' ).find( function( b ) { return b.dataset.chip === key } ) };
+		check( '...the chips Abgelehnt and Zahlung gemeldet are there while a row fits them - with their counts - after the others', textOf( chipOf( listing, 'declined' ) ) === texts['chip.declined']+ '1' && textOf( chipOf( listing, 'notified' ) ) === texts['chip.notified']+ '1' && all( listing.main, '.tabs button' ).length === 11 );
+		click( listing, chipOf( listing, 'notified' ) );
+		check( '...the chip Zahlung gemeldet shows the invoice that was reported and is not paid: the paid one with a report is not among them', all( listing.main, 'tbody tr' ).length === 1 && all( listing.main, 'tbody tr' )[0].dataset.id === '21' );
+		click( listing, chipOf( listing, 'declined' ) );
+		check( '...and Abgelehnt the declined offer', all( listing.main, 'tbody tr' ).length === 1 && all( listing.main, 'tbody tr' )[0].dataset.id === '24' );
+		const without = world( { hash : '#belege', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] }, 'crm-documents/list' : function() { return [ 200, { documents : [ docs[1], docs[2] ], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+		without.boot();
+		await settle();
+		check( 'with no such row the two chips are not there, and the row of a paid invoice has no mark', chipOf( without, 'declined' ) === undefined && chipOf( without, 'notified' ) === undefined && all( without.main, '.tabs button' ).length === 9 && all( without.main, '.pay-icon' ).length === 0 );
+
+		check( 'a reason without a blank wraps inside the head of the document and in the card: the class of the text keeps its line breaks and may break anywhere - a line of 480 letters does not make the page scroll sideways', /\.pre \{ white-space: pre-wrap; overflow-wrap: anywhere \}/.test( source( OWN+ 'assets/crm.css' ) ) === true && all( offer.main, '#decline-head .pre' ).length === 1 );
+
+		// Braucht Dich
+		const need = function( over ) { return Object.assign( { kind : 'payments', id : 0, client_id : 0, client_title : '', number : '', title : '', date : '', gross : 238000, sign_state : '', count : 2 }, over ) };
+		const overview = world( { hash : '#uebersicht', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [ need( {} ), need( { kind : 'declined', gross : 0, count : 3, days : 30 } ) ], recent : [], settings : settings } ] }, 'crm-documents/list' : function() { return [ 200, { documents : docs, years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+		overview.boot();
+		await settle();
+		const payLine = all( overview.main, '#needs-payments' )[0];
+		const goneLine = all( overview.main, '#needs-declined' )[0];
+		check( '"Braucht Dich" has a line for the payments that were reported and are not marked as paid: how many, the sum, a link to the Belege - and a line for the offers declined in the last days: how many and the days', payLine !== undefined && textOf( payLine ) === texts['needs.payments-many'].replace( '%s', '2' ) && payLine.getAttribute( 'href' ) === '#belege' && textOf( payLine.parentNode.parentNode ).indexOf( '2.380,00'+ NBSP+ '€' ) !== -1
+			&& goneLine !== undefined && textOf( goneLine ) === texts['needs.declined-many'].replace( '%s', '3' ).replace( '%s', '30' ) && goneLine.getAttribute( 'href' ) === '#belege' );
+		click( overview, payLine );
+		overview.location.hash = '#belege';
+		await settle();
+		const nearest = overview.scrolled.filter( function( one ) { return one[1] !== undefined && one[1].inline === 'nearest' && one[1].block === 'nearest' } );
+		const chosenTab = nearest.length === 1 ? nearest[0][2] : null;
+		check( 'the tab that a line of Braucht Dich chose is brought into view in the row of the tabs, as near as it is: the row is wider than the window with all the tabs there - it is the tab that is on, the one of the payments', nearest.length === 1 && chosenTab.dataset.chip === 'notified' && chosenTab.className.split( ' ' ).includes( 'on' ) === true && chosenTab.getAttribute( 'aria-selected' ) === 'true' );
+		check( '...the click on the payments shows the Belege filtered by the report: the chip is on and only the invoice that was reported is in the table', chipOf( overview, 'notified' ).classList.contains( 'on' ) === true && all( overview.main, 'tbody tr' ).length === 1 );
+		const overview2 = world( { hash : '#uebersicht', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [ need( { count : 1 } ), need( { kind : 'declined', gross : 0, count : 1, days : 30 } ) ], recent : [], settings : settings } ] }, 'crm-documents/list' : function() { return [ 200, { documents : docs, years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+		overview2.boot();
+		await settle();
+		check( '...one of each is said in the singular', textOf( all( overview2.main, '#needs-payments' )[0] ) === texts['needs.payments-one'].replace( '%s', '1' ) && textOf( all( overview2.main, '#needs-declined' )[0] ) === texts['needs.declined-one'].replace( '%s', '1' ).replace( '%s', '30' ) );
+		click( overview2, all( overview2.main, '#needs-declined' )[0] );
+		overview2.location.hash = '#belege';
+		await settle();
+		check( '...and the click on the declines shows the declined offers', chipOf( overview2, 'declined' ).classList.contains( 'on' ) === true && all( overview2.main, 'tbody tr' ).length === 1 && all( overview2.main, 'tbody tr' )[0].dataset.id === '24' );
+
+		// the tab Portal of the client: the records, and the button of the upload folder
+		const records = await kopen( '#kunde-1-portal', { 'crm-clients/portal' : function() { return [ 200, Object.assign( {}, kportal, { records : [ payment, declined, noReason ] } ) ] } } );
+		const rows = all( all( records.main, '#client-records' )[0], 'li' );
+		check( 'the tab Portal lists the decline and the payment among the records: the kind in words, the time, the account and the link to the document', rows.length === 3 && rows[0].dataset.kind === 'payment' && rows[1].dataset.kind === 'decline' && textOf( rows[0] ).indexOf( texts['record.kind-payment']+ ' · 03.11.2026 ' ) === 0 && textOf( rows[1] ).indexOf( texts['record.kind-decline']+ ' · 03.11.2026 ' ) === 0
+			&& all( rows[1], 'a' )[0].getAttribute( 'href' ) === '#beleg-31' && textOf( all( rows[1], 'a' )[0] ) === 'A-2026-0031' && all( rows[0], 'a' )[0].getAttribute( 'href' ) === '#beleg-11' );
+		click( records, all( rows[1], 'button' )[0] );
+		check( '...Anzeigen on a decline opens the dialog with the title of a decline, the reason among the facts and the JSON as text - markup in it is not markup', records.dialogs[0].getAttribute( 'aria-label' ) === texts['record.title-decline'] && textOf( records.dialogs[0] ).indexOf( 'Zu teuer <b>x</b>' ) !== -1 && textOf( all( records.dialogs[0], 'pre' )[0] ) === declined.shown && findAll( records.dialogs[0], function( node ) { return node.tagName === 'B' } ).length === 0 );
+		click( records, all( rows[0], 'button' )[0] );
+		check( '...and on a payment the title of a payment', records.dialogs[1].getAttribute( 'aria-label' ) === texts['record.title-payment'] && textOf( records.dialogs[1] ).indexOf( texts['decline.reason'] ) === -1 );
+		check( 'a client whose group has an upload folder has no button; nor has one while Files is off or the client is off', all( ( await kopen( '#kunde-1-portal' ) ).main, '#client-upload-folder' ).length === 0
+			&& all( ( await kopen( '#kunde-1-portal', { 'crm-clients/portal' : function() { return [ 200, Object.assign( {}, kportal, { features : { files : false, review : false }, folders : [] } ) ] } } ) ).main, '#client-upload-folder' ).length === 0
+			&& all( ( await kopen( '#kunde-1-portal', { 'crm-clients/get' : function() { return [ 200, { client : Object.assign( {}, kclient, { active : false } ), accounts : kaccounts } ] }, 'crm-clients/portal' : function() { return [ 200, Object.assign( {}, kportal, { folders : [] } ) ] } } ) ).main, '#client-upload-folder' ).length === 0 );
+		const folders = [ { id : 'f9', name : 'Eigener', upload : false, files : 2 } ];
+		const posted = [];
+		let made = false;
+		const folder = await kopen( '#kunde-1-portal', {
+			'crm-clients/portal' : function() { return [ 200, Object.assign( {}, kportal, { folders : made ? [ { id : 'f10', name : 'K-0001 Nordlicht Records GmbH', upload : true, files : 0 } ].concat( folders ) : folders } ) ] },
+			'crm-clients/upload-folder' : function( data ) { posted.push( data ); made = true; return [ 200, { folder : { id : 'f10', name : 'K-0001 Nordlicht Records GmbH', upload : true, files : 0 }, created : true } ]; },
+		} );
+		const button = all( folder.main, '#client-upload-folder' )[0];
+		check( 'a client with folders and none to upload into has the button Upload-Ordner anlegen with a hint, in the tab Portal, under the list of the folders', button !== undefined && textOf( button ) === texts['cportal.upload-folder'] && textOf( all( folder.main, '#client-upload-folder-box' )[0] ).indexOf( texts['cportal.upload-folder-hint'] ) !== -1 && button.disabled === false );
+		click( folder, button );
+		await settle();
+		check( '...a click posts crm-clients/upload-folder { id }, says that the folder is made and reads the portal of the client again: the folder is in the list as the folder to upload into and the button is gone', JSON.stringify( posted ) === '[{"id":"1"}]' && folder.toast.textContent === texts['cportal.upload-folder-done'] && folder.all( 'crm-clients/portal' ).length === 2
+			&& textOf( all( folder.main, '#client-portal' )[0] ).indexOf( 'K-0001 Nordlicht Records GmbH' ) !== -1 && all( folder.main, '#client-upload-folder' ).length === 0 );
+		const refused = await kopen( '#kunde-1-portal', {
+			'crm-clients/portal' : function() { return [ 200, Object.assign( {}, kportal, { folders : folders } ) ] },
+			'crm-clients/upload-folder' : function() { return [ 500, { error : 'x', code : 'crm_clients_folder', params : [], field : '' } ]; },
+		} );
+		click( refused, all( refused.main, '#client-upload-folder' )[0] );
+		await settle();
+		check( '...a refusal is said in the sentence of its code, the button is on again and the portal is not read twice', refused.toast.textContent === texts['error.crm_clients_folder'] && all( refused.main, '#client-upload-folder' )[0].disabled === false && refused.all( 'crm-clients/portal' ).length === 1 );
+	};
+
+	await kundenaktionen();
 
 
 	done();

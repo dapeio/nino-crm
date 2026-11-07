@@ -25,4 +25,7 @@ return [
 	'[[/_admin/error/crm_clients_unknown]]' => 'Diesen Kunden gibt es nicht.',
 	'[[/_admin/error/crm_clients_link_perm]]' => 'Einen Link ohne Mail darf nur sehen, wer das Panel Mitglieder verwalten darf. Sende die Mail oder bitte jemanden mit dieser Berechtigung.',
 	'[[/_admin/error/crm_clients_link]]' => 'Der Link konnte nicht gemacht werden. Das Konto ist da; frage den Link über das Menü des Kontos noch einmal an.',
+	'[[/_admin/error/crm_clients_files]]' => 'Das Feature Dateien ist nicht aktiv. Schalte es im Panel Features ein, dann kann der Upload-Ordner angelegt werden.',
+	'[[/_admin/error/crm_clients_folder_inactive]]' => 'Der Kunde ist deaktiviert und bekommt keinen Upload-Ordner. Aktiviere ihn zuerst.',
+	'[[/_admin/error/crm_clients_folder]]' => 'Der Upload-Ordner konnte nicht angelegt werden. Prüfe, ob der Ordner der Daten beschreibbar ist, und versuche es noch einmal.',
 ];

@@ -857,7 +857,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 276 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 291 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -1200,7 +1200,7 @@ check( '...then four tabs with their sections, each with a heading: Angebot, Dat
 $offerQuery = '//section[contains(@class, "crm-project__section--offer")]//details[contains(concat(" ", normalize-space(@class), " "), " crm-offer ")]';
 $offers = portalFind( $html, $offerQuery );
 check( 'Angebot: the released offers of the project, newest first - not the one that is not released, not the offer of another project, not another client\'s - each a card that folds', array_map( static fn( \DOMElement $offer ): string => $offer->getAttribute( 'data-document' ), $offers ) === [ (string) $offerRegular['id'], (string) $offerReverse['id'], (string) $offerSmall['id'] ]
-	&& array_filter( $offers, static fn( \DOMElement $offer ): bool => $offer->getElementsByTagName( 'summary' )->length !== 1 || $offer->getAttribute( 'id' ) !== 'angebot-'. $offer->getAttribute( 'data-document' ) ) === []
+	&& array_filter( $offers, static fn( \DOMElement $offer ): bool => count( array_filter( iterator_to_array( $offer->childNodes ), static fn( \DOMNode $node ): bool => $node->nodeName === 'summary' ) ) !== 1 || $offer->getAttribute( 'id' ) !== 'angebot-'. $offer->getAttribute( 'data-document' ) ) === []
 	&& str_contains( $html, 'Nicht freigegeben' ) === false && str_contains( $html, 'Andere Seite' ) === false && str_contains( $html, 'Fremdes Angebot' ) === false );
 check( '...all three can be ordered here, so all three are expanded, and no heading of folded ones stands between them', array_filter( $offers, static fn( \DOMElement $offer ): bool => $offer->hasAttribute( 'open' ) === false ) === [] && portalFind( $html, '//h3[contains(@class, "crm-project__rest")]' ) === [] );
 $validWas = Db::row( $appData, 'SELECT valid_until FROM documents WHERE id = :id', [ 'id' => $offerReverse['id'] ] )['valid_until'];
@@ -1234,7 +1234,7 @@ $reverseHtml = $offers[1]->ownerDocument->saveHTML( $offers[1] );
 $smallHtml = $offers[2]->ownerDocument->saveHTML( $offers[2] );
 check( '...a reverse charge says so as the PDF says it and carries no VAT; a small business has the gross alone, with its note, and no VAT rate on its lines', portalText( $reverseHtml, '//p[@class="crm-offer__note"]' ) === \Crm\Documents\Render::text( 'vatnote.reverse' ) && portalText( $reverseHtml, '//div[contains(@class, "crm-offer__sum--vat")]/dd' ) === '0,00 €'
 	&& count( portalFind( $smallHtml, '//dl/div' ) ) === 1 && portalFind( $smallHtml, '//div[contains(@class, "crm-offer__sum--gross")]' ) !== [] && portalText( $smallHtml, '//p[@class="crm-offer__note"]' ) === \Crm\Documents\Render::text( 'vatnote.small_business' ) && portalFind( $smallHtml, '//span[@class="crm-offer__line-rate"]' ) === [] );
-check( '...the form of the order stands under the offers that can be ordered and under no other: as many forms in the section as there are offers open or sent that have not run out (the order itself is pinned further down)', count( portalFind( $html, '//section[contains(@class, "crm-project__section--offer")]//form' ) )
+check( '...the form of the order stands under the offers that can be ordered and under no other: as many forms in the section as there are offers open or sent that have not run out (the order itself is pinned further down)', count( portalFind( $html, '//section[contains(@class, "crm-project__section--offer")]//form[contains(@class, "crm-order--form")]' ) )
 	=== count( array_filter( [ $offerRegular, $offerReverse, $offerSmall ], static fn( array $offer ): bool => Documents::orderable( (array) Documents::get( $appData, $offer['id'] ) ) === true ) ) );
 
 // the files
@@ -1462,6 +1462,10 @@ check( 'Documents::released() takes the project: only that project\'s documents,
 // --- The uploads ------------------------------------------------------------------------------------------------------------------
 
 echo "\n[crm-uploads] and the page Upload\n";
+
+// The module makes an upload folder with every client; the checks that follow are about a group that has none
+foreach( [ $a, $b ] as $withFolder )
+	$store::markUpload( $appData, (string) ( \Crm\Clients::uploadFolder( $appData, $withFolder )['id'] ?? '' ), false );
 
 $asVisitor();
 check( 'a visitor gets nothing of the uploads', trim( \Nino\Html::renderHtml( $appData, '[crm-uploads]' ) ) === '' );
@@ -2655,7 +2659,7 @@ $pay = $payOf( $docs, $invFuture['id'] );
 $facts = $pay === [] ? [] : portalFind( $pay[0]->ownerDocument->saveHTML( $pay[0] ), '//div[contains(@class, "crm-pay__fact")]' );
 check( 'an open invoice folds out to how it is paid: the amount, the payee, the bank, the IBAN and the BIC of the settings, and the number as the purpose - in a nested card, every value escaped, collapsed until it is asked for', count( $pay ) === 1 && str_contains( $pay[0]->getAttribute( 'class' ), 'crm-card--nested' ) === true
 	&& array_map( static fn( \DOMElement $fact ): string => preg_replace( '/^.*crm-pay__fact--/', '', $fact->getAttribute( 'class' ) ), $facts ) === [ 'amount', 'to', 'bank', 'iban', 'bic', 'purpose' ]
-	&& array_map( static fn( \DOMElement $fact ): string => portalText( $fact->ownerDocument->saveHTML( $fact ), '//dd' ), $facts ) === [ '100,00 €', portalText( $pay[0]->ownerDocument->saveHTML( $pay[0] ), '//div[contains(@class, "crm-pay__fact--to")]/dd' ), 'Hamburger <b>Sparkasse</b>', 'DE02 1203 0000 0000 2020 51', 'BYLADEM1001', $invFuture['number'] ]
+	&& array_map( static fn( \DOMElement $fact ): string => portalText( $fact->ownerDocument->saveHTML( $fact ), '//dd' ), $facts ) === [ '100,00 €', portalText( $pay[0]->ownerDocument->saveHTML( $pay[0] ), '//div[contains(@class, "crm-pay__fact--to")]/dd' ), 'Hamburger <b>Sparkasse</b>', 'DE02 1203 0000 0000 2020 51 '. $wordsDe['[[/project/crm-portal/pay/copy]]'], 'BYLADEM1001', $invFuture['number'] ]
 	&& portalFind( $docs, '//li[@data-document="'. $invFuture['id']. '"]/details/@open' ) === [] && portalFind( $docs, '//li[@data-document="'. $invFuture['id']. '"]//dl[contains(@class, "crm-pay")]//b' ) === [] );
 check( '...the row has the button that unfolds it, a span in the summary with the word and the number for a screen reader; an invoice past its day has the same block', portalText( $docs, '//li[@data-document="'. $invFuture['id']. '"]/details/summary//span[contains(@class, "crm-table__toggle")]/span[1]' ) === $wordsDe['[[/project/crm-portal/pay/fold]]']
 	&& portalText( $docs, '//li[@data-document="'. $invFuture['id']. '"]/details/summary//span[contains(@class, "crm-table__toggle")]/span[contains(@class, "nino-sr-only")]' ) === $invFuture['number'] && count( $payOf( $docs, $invPast['id'] ) ) === 1 && count( $payOf( $docs, $invNoDue['id'] ) ) === 1 );
@@ -4845,7 +4849,7 @@ function portalConsentChecks( array &$appData, array $a, array $b, array $accoun
 	$ids = array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'id' ), portalFind( $page, '//input[starts-with(@name, "consent[")]' ) );
 	check( 'a sentence for each purpose makes two boxes, the social use first; the ids are unique on the page, which holds a form for each offer', $names === [ 'consent[social]', 'consent[archive]' ] && count( $ids ) === count( array_unique( $ids ) ) && count( $ids ) >= 2
 		&& array_filter( $boxes( $page, $offer0['id'] ), static fn( \DOMElement $input ): bool => $input->hasAttribute( 'required' ) === true ) === [] );
-	$overviewForm = '//form[@data-document="'. $offer0['id']. '"][.//input[@name="from"][@value="uebersicht"]]';
+	$overviewForm = '//form[contains(@class, "crm-order--form")][@data-document="'. $offer0['id']. '"][.//input[@name="from"][@value="uebersicht"]]';
 	check( 'the form in the tab Übersicht (from=uebersicht) has the boxes too, in their group, with ids of their own: the same two purposes as the form of the tab Angebot', count( portalFind( $page, $overviewForm ) ) === 1 && array_map( static fn( \DOMElement $input ): string => $input->getAttribute( 'name' ), portalFind( $page, $overviewForm. '//div[@role="group"]//input[starts-with(@name, "consent[")]' ) ) === [ 'consent[social]', 'consent[archive]' ]
 		&& count( portalFind( $page, '//form[@data-document="'. $offer0['id']. '"][.//input[@name="from"][@value="projekt"]]//input[starts-with(@name, "consent[")]' ) ) === 2 );
 	check( '...a null byte in the sentence is not on the page', str_contains( $page, "\0" ) === false && str_contains( portalText( $page, '(//form[@data-document="'. $offer0['id']. '"])[1]//input[@name="consent[archive]"]/ancestor::label' ), 'ArchivEnde' ) === true );
@@ -5187,7 +5191,373 @@ function portalConsentChecks( array &$appData, array $a, array $b, array $accoun
 	\Crm\Settings::set( $appData, 'consent_archive', '' );
 }
 
+// --- Angebot ablehnen, Frage zum Angebot: the two quiet ways under the form of the order ----------------------------------------------------------
+
+/**
+ *	The checks of the decline of an offer (POST /.crm/ablehnen, Documents::decline()), of the question by mail and of what needs() says of it
+ */
+function portalDeclineChecks( array &$appData, array $a, array $b, array $accounts, array $stray, string $p1, string $today, array $wordsDe, array $wordsEn, \Closure $reset, \Closure $asAdmin, \Closure $asVisitor, \Closure $final, \Closure $line, \Closure $made, \Closure $location, \Closure $mkOffer ): void {
+
+	global $mails;
+
+	echo "\nPOST /.crm/ablehnen and the question about an offer\n";
+
+	$reset();
+	$asAdmin();
+	$privacyWas = \Crm\Settings::get( $appData, 'privacy_text' );
+	\Crm\Settings::set( $appData, 'privacy_text', '' );
+	$valid = static fn( int $days ): string => date( 'Y-m-d', strtotime( ( $days >= 0 ? '+' : '' ). $days. ' days' ) );
+	$declinesOf = static fn( int $clientId ): array => \Crm\Records::of( $appData, $clientId, 'decline' );
+	$stateOf = static fn( int $id ): string => (string) Documents::get( $appData, $id )['state'];
+	$declineMails = static fn( int $from ): array => array_values( array_filter( portalMailsFrom( $from ), static fn( array $mail ): bool => str_starts_with( (string) ( $mail['subject'] ?? '' ), 'Angebot abgelehnt' ) ) );
+	$offerOne = $mkOffer( 'Ablehnen eins', [ 'project' => $p1 ] );
+	$offerTwo = $mkOffer( 'Ablehnen zwei', [] );
+	$offerThree = $mkOffer( 'Ablehnen drei', [ 'project' => $p1 ] );
+	$offerExpired = $mkOffer( 'Ablehnen abgelaufen', [ 'project' => $p1, 'valid_until' => $valid( -1 ) ] );
+	$offerUnreleased = $mkOffer( 'Ablehnen nicht freigegeben', [ 'project' => $p1 ], false );
+	$offerBen = $final( 'offer', $b['id'], [ 'date' => $today, 'valid_until' => $valid( 20 ), 'template_key' => 'angebot', 'lines' => [ $line( 'Bens Angebot' ) ] ] );
+	Documents::release( $appData, $offerBen['id'], false );
+	$pBen = $made( 'Ablehnen Bens Projekt', $b['number'], [], false );
+	$offerBenProject = $final( 'offer', $b['id'], [ 'date' => $today, 'valid_until' => $valid( 20 ), 'project' => $pBen, 'template_key' => 'angebot', 'lines' => [ $line( 'Bens Angebot mit Projekt' ) ] ] );
+	Documents::release( $appData, $offerBenProject['id'], false );
+	$invoice = $final( 'invoice', $a['id'], [ 'date' => $today, 'template_key' => 'rechnung', 'lines' => [ $line( 'Rechnung' ) ] ] );
+	Documents::release( $appData, $invoice['id'], false );
+	$pDecline = $made( 'Ablehnen Projekt', $a['number'], [], false );
+	$offerFiles = $mkOffer( 'Ablehnen sperrt', [ 'project' => $pDecline ] );
+	$offerOwner = $mkOffer( 'Ablehnen Inhaber', [ 'project' => $p1 ] );
+	Documents::setState( $appData, $offerOwner['id'], 'declined' );
+	$hash = static function( int $id, string $reason = '' ) use ( &$appData ): string {
+		return hash( 'sha256', \Crm\Records::declineShown( $appData, (array) Documents::get( $appData, $id ), $reason ) );
+	};
+	$post = static function( array $over = [], array $server = [] ) use ( &$appData, $offerOne, $hash ): array {
+
+		$id = is_string( $over['document'] ?? null ) === true && ctype_digit( $over['document'] ) === true ? (int) $over['document'] : $offerOne['id'];
+		$over += [ 'document' => (string) $offerOne['id'], 'from' => 'projekt', 'reason' => '' ];
+
+		if( array_key_exists( 'shown', $over ) === false )
+			$over['shown'] = Documents::get( $appData, $id ) === null ? 'x' : $hash( $id );
+
+		return portalServe( $appData, '/.crm/ablehnen', 'POST', $over, $server );
+	};
+	$untouched = static fn(): bool => $declinesOf( $a['id'] ) === [] && $declinesOf( $b['id'] ) === [] && in_array( Documents::get( $appData, $offerOne['id'] )['state'], [ 'open', 'sent' ], true ) === true;
+	$to = static fn( string $state, int $id, string $project = '' ): string => $project === '' ? '/portal/belege?state='. $state. '&beleg='. $id. '#beleg-'. $id : '/portal/projekte?projekt='. $project. '&tab=angebot&state='. $state. '&beleg='. $id. '#angebot-'. $id;
+
+	// the two ways under the form
+	\Nino\Html::addFills( $appData, [ '[[/project/company/contact/email]]' => 'owner@example.org' ], '*' );
+	portalSignIn( $appData, $accounts['anna'] );
+	$page = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
+	$section = portalSection( $page, 'offer' );
+	$fold = portalFind( $section, '//details[contains(concat(" ", normalize-space(@class), " "), " crm-decline ")][.//form[@data-document="'. $offerOne['id']. '"]]' );
+	$form = portalFind( $section, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerOne['id']. '"]' );
+	check( 'under the form of the order of each offer that can be ordered stands a fold Angebot ablehnen with a form of its own - and under no other offer: not the one that ran out, the one not released, the one the owner declined', count( $fold ) === 1 && count( $form ) === 1 && $fold[0]->hasAttribute( 'open' ) === false
+		&& count( portalFind( $section, '//form[contains(@class, "crm-decline__form")]' ) ) === count( portalFind( $section, '//form[contains(@class, "crm-order--form")]' ) ) && portalFind( $section, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerExpired['id']. '"]' ) === []
+		&& portalFind( $section, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerOwner['id']. '"]' ) === [] && portalFind( $section, '//details[contains(@class, "crm-offer")][@data-document="'. $offerOne['id']. '"]//details[contains(@class, "crm-decline")]/summary' ) !== [] );
+	check( '...the form is a plain form that posts to /.crm/ablehnen with the token, the offer, the page it stands on and the hash of the offer as it shows it (the JSON without a reason); its one field is a text area for the reason, voluntary and at most 500 characters, with a label', portalFind( $section, '//form[@data-document="'. $offerOne['id']. '"][contains(@class, "crm-decline__form")]/@action' )[0]->nodeValue === '/.crm/ablehnen' && $form[0]->getAttribute( 'method' ) === 'post'
+		&& portalFind( $section, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerOne['id']. '"]//input[@name="_csrf"]/@value' )[0]->nodeValue === \Nino\Csrf::getToken( $appData ) && portalFind( $section, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerOne['id']. '"]//input[@name="document"]/@value' )[0]->nodeValue === (string) $offerOne['id']
+		&& portalFind( $section, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerOne['id']. '"]//input[@name="from"]/@value' )[0]->nodeValue === 'projekt' && portalFind( $section, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerOne['id']. '"]//input[@name="shown"]/@value' )[0]->nodeValue === $hash( $offerOne['id'] )
+		&& count( portalFind( $section, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerOne['id']. '"]//textarea[@name="reason"][@maxlength="500"][not(@required)]' ) ) === 1 && portalFind( $section, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerOne['id']. '"]//textarea[@name="reason"]/@id' )[0]->nodeValue !== ''
+		&& portalFind( $section, '//label[@for="'. portalFind( $section, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerOne['id']. '"]//textarea/@id' )[0]->nodeValue. '"]' ) !== [] && portalFind( $section, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerOne['id']. '"]//button[@type="submit"]' ) !== [] && ( new \ReflectionClass( \Crm\Records::class ) )->getConstant( 'REASON' ) === 500 );
+	$belege = portalPage( $appData, '/portal/belege' )[1];
+	check( '...the list of documents has the fold under the row of an offer that can be ordered, from=belege, and under no row of an invoice', portalFind( $belege, '//li[@data-document="'. $offerTwo['id']. '"]//form[contains(@class, "crm-decline__form")]//input[@name="from"]/@value' )[0]->nodeValue === 'belege' && portalFind( $belege, '//li[@data-category="invoice"]//form[contains(@class, "crm-decline__form")]' ) === [] );
+
+	// the question
+	$mail = portalFind( $section, '//details[@data-document="'. $offerOne['id']. '"]//a[contains(@class, "crm-order__question")]' );
+	check( 'the question is a link mailto: to the contact address of the company with the number of the offer as the subject, encoded for the query - no blank in the address of the link', count( $mail ) === 1 && str_contains( $page, '?subject=Angebot%20' ) === true && str_contains( $page, '?subject=Angebot ' ) === false && $mail[0]->getAttribute( 'href' ) === 'mailto:owner@example.org?subject='. rawurlencode( 'Angebot '. $offerOne['number'] ) && trim( $mail[0]->textContent ) !== '' );
+	\Nino\Html::addFills( $appData, [ '[[/project/company/contact/email]]' => 'a&b=c?d@example.org' ], '*' );
+	$odd = portalFind( portalSection( portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1], 'offer' ), '//details[@data-document="'. $offerOne['id']. '"]//a[contains(@class, "crm-order__question")]/@href' );
+	check( '...an address with characters that end a query is encoded, the sign @ stays, and nothing of it can open a second header or a second parameter', count( $odd ) === 1 && $odd[0]->nodeValue === 'mailto:a%26b%3Dc%3Fd@example.org?subject='. rawurlencode( 'Angebot '. $offerOne['number'] ) );
+	$withoutAddress = [];
+
+	foreach( [ 'none' => '', 'not an address' => 'not an address', 'a line break' => "x@example.org\r\nBcc: y@example.org", 'markup' => '<b>@example.org' ] as $label => $value ) {
+		\Nino\Html::addFills( $appData, [ '[[/project/company/contact/email]]' => $value ], '*' );
+		$html = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
+		$withoutAddress[$label] = portalFind( $html, '//a[contains(@class, "crm-order__question")]' ) === [] && str_contains( $html, 'mailto:' ) === false && portalFind( $html, '//details[contains(@class, "crm-decline")]' ) !== [];
+	}
+
+	check( '...there is no link without an address, with one that is none, with a line break in it or with markup: the fold stays', array_keys( array_filter( $withoutAddress, static fn( bool $ok ): bool => $ok === false ) ) === [] );
+	\Nino\Html::addFills( $appData, [ '[[/project/company/contact/email]]' => 'owner@example.org' ], '*' );
+
+	// the post that is refused
+	$asVisitor();
+	check( 'a visitor posting the form is answered 404', $post()['statusCode'] === 404 && $untouched() );
+	portalSignIn( $appData, $stray );
+	check( '...so is a member of no client', $post()['statusCode'] === 404 && $untouched() );
+	portalSignIn( $appData, $accounts['anna'] );
+	$beforeMails = count( $mails );
+	check( '...a token that is not the session\'s is ?state=expired, on the page the form stood on, nothing kept', $location( $post( [ '_csrf' => 'wrong' ] ) ) === $to( 'expired', $offerOne['id'], $p1 ) && $untouched() );
+	check( '...an offer that is none of the client\'s - another client\'s, one that is not there, an id that is none, an invoice - is ?state=invalid, the list of documents, no offer named and no project of the other client either', $location( $post( [ 'document' => (string) $offerBen['id'] ] ) ) === '/portal/belege?state=invalid' && $location( $post( [ 'document' => (string) $offerBenProject['id'] ] ) ) === '/portal/belege?state=invalid' && $location( $post( [ 'document' => '99999' ] ) ) === '/portal/belege?state=invalid'
+		&& $location( $post( [ 'document' => '1; DROP' ] ) ) === '/portal/belege?state=invalid' && $location( $post( [ 'document' => (string) $invoice['id'], 'shown' => 'x' ] ) ) === '/portal/belege?state=invalid' && $location( $post( [ 'document' => [ 'x' ] ] ) ) === '/portal/belege?state=invalid' && $untouched() && Documents::get( $appData, $offerBen['id'] )['state'] !== 'declined' && Documents::get( $appData, $offerBenProject['id'] )['state'] !== 'declined' );
+	check( '...an offer that is not released, that ran out or that the owner declined already is ?state=invalid too, on the page of its project and with no offer named', array_filter( [ $offerUnreleased, $offerExpired, $offerOwner ], static fn( array $offer ): bool => $location( $post( [ 'document' => (string) $offer['id'] ] ) ) !== '/portal/projekte?projekt='. $p1. '&tab=angebot&state=invalid' ) === [] && $untouched() );
+	check( '...a post whose hash is not the hash of the offer as it stands - none, an old one, an array - is ?state=changed and keeps nothing', $location( $post( [ 'shown' => 'x' ] ) ) === $to( 'changed', $offerOne['id'], $p1 ) && $location( $post( [ 'shown' => null ] ) ) === $to( 'changed', $offerOne['id'], $p1 ) && $location( $post( [ 'shown' => [ 'x' ] ] ) ) === $to( 'changed', $offerOne['id'], $p1 ) && $untouched() );
+	check( '...a reason that is longer than 500 characters, no text or no UTF-8 is ?state=reason, and a reason of exactly 500 characters is taken', $location( $post( [ 'reason' => str_repeat( 'x', 501 ) ] ) ) === $to( 'reason', $offerOne['id'], $p1 ) && $location( $post( [ 'reason' => [ 'x' ] ] ) ) === $to( 'reason', $offerOne['id'], $p1 ) && $location( $post( [ 'reason' => "\xff\xfe" ] ) ) === $to( 'reason', $offerOne['id'], $p1 ) && $untouched() && count( $declineMails( $beforeMails ) ) === 0
+		&& \Crm\Records::reason( str_repeat( 'ä', 500 ) ) === str_repeat( 'ä', 500 ) && \Crm\Records::reason( str_repeat( 'ä', 501 ) ) === null );
+	check( '...nothing was mailed by any of these', count( portalMailsFrom( $beforeMails ) ) === 0 );
+
+	// the decline
+	$reason = "Zu teuer <b>fett</b> [crm-client] [[/project/company/general/name]]\0 &amp;\r\n\tZweite Zeile\x07";
+	$kept = "Zu teuer <b>fett</b> [crm-client] [[/project/company/general/name]] &amp;\n\tZweite Zeile";
+	$offerBefore = (array) Documents::get( $appData, $offerOne['id'] );
+	$answer = $post( [ 'reason' => $reason, 'shown' => $hash( $offerOne['id'] ) ], [ 'HTTP_USER_AGENT' => 'Browser/1.0 (Decline)' ] );
+	$records = $declinesOf( $a['id'] );
+	$shown = (array) json_decode( $records[0]['shown'] ?? '', true );
+	check( 'the decline: ?state=declined on the page of the project with the offer named, the offer is declined and one record of kind decline is kept', $answer['statusCode'] === 303 && $location( $answer ) === $to( 'declined', $offerOne['id'], $p1 ) && $stateOf( $offerOne['id'] ) === 'declined' && count( $records ) === 1 && $records[0]['kind'] === 'decline' );
+	check( '...the record names the offer and its project, the account as it was, the client, the time, the address and the browser - and leaves the purpose empty', $records[0]['document_id'] === $offerOne['id'] && $records[0]['project'] === $p1 && $records[0]['client_id'] === $a['id'] && $records[0]['member_id'] === $accounts['anna']['id'] && $records[0]['member_email'] === 'anna@example.org' && $records[0]['member_name'] === 'Anna Nord'
+		&& substr( $records[0]['at'], 0, 10 ) === gmdate( 'Y-m-d' ) && $records[0]['ip'] === '127.0.0.1' && $records[0]['agent'] === 'Browser/1.0 (Decline)' && $records[0]['purpose'] === '' && $records[0]['parent'] === null && \Crm\Records::declineOf( $appData, $offerOne['id'] ) === $records[0] && \Crm\Records::forDocument( $appData, $offerOne['id'] ) === null );
+	check( '...what was shown is the JSON of the offer and the reason - no control character but the line break and the tab, the null byte gone, markup and shortcodes as typed - with its hash; the same offer and reason give the same text again', $records[0]['sha256'] === hash( 'sha256', $records[0]['shown'] ) && $shown['reason'] === $kept && $shown['number'] === $offerOne['number'] && $shown['project'] === $p1 && $shown['lines'][0]['title'] === 'Ablehnen eins' && $shown['sums']['gross'] === 10000 && array_key_exists( 'sentence', $shown ) === false
+		&& \Crm\Records::declineShown( $appData, $offerBefore, $kept ) === $records[0]['shown'] && \Crm\Records::reasonOf( $records[0] ) === $kept && str_contains( $records[0]['shown'], "\0" ) === false );
+	$out = $declineMails( $beforeMails );
+	check( 'one mail goes out, to the owner alone: "Angebot abgelehnt: <number> von Kunde <number and company> durch <account>", the reply to the account - and none to the customer', count( $out ) === 1 && count( portalMailsFrom( $beforeMails ) ) === 1 && ( $out[0]['to'] ?? '' ) === 'owner@example.org' && ( $out[0]['replyTo'] ?? '' ) === 'anna@example.org'
+		&& ( $out[0]['subject'] ?? '' ) === 'Angebot abgelehnt: '. $offerOne['number']. ' von Kunde K-0001 '. \Crm\Clients::get( $appData, $a['id'] )['company']. ' durch Anna Nord' );
+	$body = (string) ( $out[0]['body'] ?? '' );
+	check( '...its body links to the document in the surface and gives the reason as text: the markup and the brackets of the reason are written as typed, the line break is a break, the null byte is gone - and nothing of a fill is left', str_contains( $body, 'href="https://example.org/club/crm#beleg-'. $offerOne['id']. '"' ) === true && str_contains( $body, 'Zu teuer &lt;b&gt;fett&lt;/b&gt; ' ) === true && str_contains( $body, '&#91;crm-client]' ) === true
+		&& str_contains( $body, '<b>fett</b>' ) === false && str_contains( $body, '[crm-client]' ) === false && str_contains( $body, '[[' ) === false && str_contains( $body, "\0" ) === false && str_contains( $body, '<br>' ) === true && preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', strip_tags( $body ) ) !== 1 );
+
+	// after the decline
+	$after = portalPage( $appData, '/portal/projekte?projekt='. $p1 )[1];
+	$afterSection = portalSection( $after, 'offer' );
+	$done = portalFind( $afterSection, '//p[contains(@class, "crm-order--declined")][@data-document="'. $offerOne['id']. '"]' );
+	check( 'the card of a declined offer says when and by whom, with the day as a machine day, and has neither the form of the order nor the fold of the decline - the other offers keep theirs', count( $done ) === 1 && portalFind( $afterSection, '//p[contains(@class, "crm-order--declined")][@data-document="'. $offerOne['id']. '"]//time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' ) && str_contains( portalText( $afterSection, '//p[contains(@class, "crm-order--declined")][@data-document="'. $offerOne['id']. '"]' ), 'Anna Nord' ) === true
+		&& portalFind( $afterSection, '//form[@data-document="'. $offerOne['id']. '"]' ) === [] && portalFind( $afterSection, '//form[contains(@class, "crm-decline__form")][@data-document="'. $offerThree['id']. '"]' ) !== [] && portalFind( $afterSection, '//form[contains(@class, "crm-order--form")][@data-document="'. $offerThree['id']. '"]' ) !== [] );
+	check( '...the offer that the owner declined (no record) says nothing, as it did', portalFind( $afterSection, '//p[contains(@class, "crm-order--declined")][@data-document="'. $offerOwner['id']. '"]' ) === [] );
+	check( '...the sentence of the state is said at the card the query names, as a status; the state reason is said as an alert', portalFind( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&state=declined&beleg='. $offerOne['id'] )[1], '//p[@role="status"][contains(@class, "crm-order__state--declined")]' ) !== [] && portalFind( portalPage( $appData, '/portal/projekte?projekt='. $p1. '&state=reason&beleg='. $offerThree['id'] )[1], '//p[@role="alert"][contains(@class, "crm-order__state--reason")]' ) !== []
+		&& trim( $wordsDe['[[/project/crm-portal/order/state-declined]]'] ) !== '' && trim( $wordsEn['[[/project/crm-portal/order/state-reason]]'] ) !== '' );
+
+	// a second post: the offer is declined, so it is invalid, and nothing is kept twice
+	$sentSoFar = count( $mails );
+	$twice = $post( [ 'reason' => 'noch einmal', 'shown' => $hash( $offerOne['id'] ) ] );
+	check( 'the same offer declined again is ?state=invalid: no second record, no second step, no mail', $location( $twice ) === '/portal/projekte?projekt='. $p1. '&tab=angebot&state=invalid' && count( $declinesOf( $a['id'] ) ) === 1 && count( $mails ) === $sentSoFar );
+	check( '...and a declined offer cannot be ordered either: the order is ?state=invalid, no order record', $location( portalServe( $appData, '/.crm/auftrag', 'POST', [ 'document' => (string) $offerOne['id'], 'from' => 'projekt', 'agree' => '1', 'shown' => 'x' ] ) ) === '/portal/projekte?projekt='. $p1. '&tab=angebot&state=invalid' && \Crm\Records::forDocument( $appData, $offerOne['id'] ) === null );
+	$fromList = portalServe( $appData, '/.crm/ablehnen', 'POST', [ 'document' => (string) $offerTwo['id'], 'from' => 'belege', 'shown' => $hash( $offerTwo['id'] ), 'reason' => '' ] );
+	check( 'the list of documents declines too: back to the list with the offer named and the anchor of its row; no reason is a decline with an empty reason', $location( $fromList ) === '/portal/belege?state=declined&beleg='. $offerTwo['id']. '#beleg-'. $offerTwo['id'] && $stateOf( $offerTwo['id'] ) === 'declined' && \Crm\Records::reasonOf( (array) \Crm\Records::declineOf( $appData, $offerTwo['id'] ) ) === '' );
+	portalSignIn( $appData, $accounts['ben'] );
+	$benPost = portalServe( $appData, '/.crm/ablehnen', 'POST', [ 'document' => (string) $offerThree['id'], 'from' => 'belege', 'shown' => $hash( $offerThree['id'] ), 'reason' => '' ] );
+	check( '...Ben posting the offer of Anna\'s client is ?state=invalid, nothing kept', $location( $benPost ) === '/portal/belege?state=invalid' && $stateOf( $offerThree['id'] ) !== 'declined' && $declinesOf( $a['id'] ) !== [] && count( $declinesOf( $a['id'] ) ) === 2 );
+	portalSignIn( $appData, $accounts['anna'] );
+
+	// the files of the project are free
+	check( 'while a released offer of a project can be ordered the project waits for the order and its files stay closed; once the customer has declined it, nothing waits', \Crm\Projekte::waiting( $appData, $pDecline, $a['id'] ) !== null );
+	$declineFiles = $post( [ 'document' => (string) $offerFiles['id'], 'shown' => $hash( $offerFiles['id'] ), 'reason' => '' ] );
+	check( '...declined: waiting() answers none, in the same process', $location( $declineFiles ) === $to( 'declined', $offerFiles['id'], $pDecline ) && \Crm\Projekte::waiting( $appData, $pDecline, $a['id'] ) === null );
+
+	// Documents::decline(): one transaction
+	$offerAtomic = $mkOffer( 'Ablehnen atomar', [ 'project' => $p1 ] );
+	$memberOf = [ 'id' => $accounts['anna']['id'], 'email' => 'anna@example.org', 'name' => 'Anna Nord' ];
+	Db::exec( $appData, 'CREATE TRIGGER zz_no_decline BEFORE UPDATE OF state ON documents WHEN NEW.state = \'declined\' BEGIN SELECT RAISE( ABORT, \'no\' ); END' );
+	$thrown = false;
+
+	try {
+		Documents::decline( $appData, $offerAtomic['id'], $a['id'], $memberOf, '', [] );
+	}
+	catch( \PDOException $e ) {
+		$thrown = true;
+	}
+
+	Db::exec( $appData, 'DROP TRIGGER zz_no_decline' );
+	check( 'the record and the step are one transaction: a step that cannot be taken leaves no record, and the offer as it was', $thrown === true && \Crm\Records::declineOf( $appData, $offerAtomic['id'] ) === null && in_array( $stateOf( $offerAtomic['id'] ), [ 'open', 'sent' ], true ) === true );
+	$noAccount = Documents::decline( $appData, $offerAtomic['id'], $a['id'], [ 'id' => '', 'email' => '', 'name' => '' ], '', [] );
+	$otherClient = Documents::decline( $appData, $offerAtomic['id'], $b['id'], $memberOf, '', [] );
+	$gone = Documents::decline( $appData, 99999, $a['id'], $memberOf, '', [] );
+	$long = Documents::decline( $appData, $offerAtomic['id'], $a['id'], $memberOf, str_repeat( 'x', 501 ), [] );
+	$unclean = Documents::decline( $appData, $offerAtomic['id'], $a['id'], $memberOf, "a\0b", [] );
+	$expired = Documents::decline( $appData, $offerExpired['id'], $a['id'], $memberOf, '', [] );
+	$invoiceRefused = Documents::decline( $appData, $invoice['id'], $a['id'], $memberOf, '', [] );
+	check( '...an account without an id, an offer of another client or none, a reason that is too long or not as it is kept, an offer that ran out and an invoice are refused with their codes and write nothing', $noAccount === 'member' && $otherClient === 'unknown' && $gone === 'unknown' && $long === 'reason' && $unclean === 'reason' && $expired === 'state' && $invoiceRefused === 'state'
+		&& \Crm\Records::declineOf( $appData, $offerAtomic['id'] ) === null && in_array( $stateOf( $offerAtomic['id'] ), [ 'open', 'sent' ], true ) === true );
+	$taken = Documents::decline( $appData, $offerAtomic['id'], $a['id'], $memberOf, 'Reicht nicht', [ 'ip' => '203.0.113.5', 'agent' => 'Direct' ] );
+	check( '...and the decline made directly answers the document as it is now and the record, and a second one is refused with state', is_array( $taken ) && $taken['document']['state'] === 'declined' && $taken['record']['kind'] === 'decline' && $taken['record']['ip'] === '203.0.113.5' && Documents::decline( $appData, $offerAtomic['id'], $a['id'], $memberOf, '', [] ) === 'state' && count( array_filter( \Crm\Records::of( $appData, $a['id'], 'decline' ), static fn( array $record ): bool => $record['document_id'] === $offerAtomic['id'] ) ) === 1 );
+
+	// the transaction looks at the offer again: one that was ordered since the first look is not declined
+	$offerRace = $mkOffer( 'Ablehnen Rennen', [ 'project' => $p1 ] );
+	$raceDocument = (array) Documents::get( $appData, $offerRace['id'] );
+	Db::exec( $appData, 'UPDATE documents SET released = 0 WHERE id = :id', [ 'id' => $offerRace['id'] ] );
+	$inside = ( new \ReflectionMethod( Documents::class, 'declineNow' ) )->invoke( null, $appData, $offerRace['id'], $a['id'], $memberOf, $raceDocument, \Crm\Records::declineShown( $appData, $raceDocument, '' ), [] );
+	check( '...an offer that was taken back from the portal between the first look and the transaction is refused inside it with state, and no record is kept', $inside === 'state' && \Crm\Records::declineOf( $appData, $offerRace['id'] ) === null && in_array( $stateOf( $offerRace['id'] ), [ 'open', 'sent' ], true ) === true );
+
+	// the name of the account and the reason are kept to what a header and a line can carry
+	check( 'a reason loses the marks that turn a line round and the invisible ones, as a name of a file does: the text that is left is the one a person reads', \Crm\Records::reason( "a\u{202E}b\u{200B}c\u{2066}d\u{2069}e\u{FEFF}f" ) === 'abcdef' );
+	$offerSubject = $mkOffer( 'Ablehnen Kopf', [ 'project' => $p1 ] );
+	$nameWas = (string) \Nino\Modules\Members::account( $appData, $accounts['anna']['id'] )['name'];
+	\Nino\Modules\Members::change( $appData, $accounts['anna']['id'], [ 'name' => "Anna\r\nBcc: spy@example.org\u{202E}Nord" ] );
+	portalSignIn( $appData, $accounts['anna'] );
+	$fromMail = count( $mails );
+	$post( [ 'document' => (string) $offerSubject['id'], 'shown' => $hash( $offerSubject['id'] ) ] );
+	$subjectMail = $declineMails( $fromMail )[0] ?? [];
+	check( 'the name of the account is cleaned in the subject of the mail to the company: no line break, no mark that turns a line round, no second header - and the mail has no Bcc', $subjectMail !== [] && preg_match( '/[\r\n\x{202E}]/u', (string) $subjectMail['subject'] ) !== 1 && str_ends_with( (string) $subjectMail['subject'], 'durch Anna Bcc: spy@example.org Nord' ) === true
+		&& array_filter( array_keys( $subjectMail ), static fn( string $key ): bool => stripos( $key, 'bcc' ) !== false ) === [] && str_contains( (string) ( $subjectMail['replyTo'] ?? '' ), "\n" ) === false );
+	\Nino\Modules\Members::change( $appData, $accounts['anna']['id'], [ 'name' => $nameWas ] );
+	portalSignIn( $appData, $accounts['anna'] );
+
+	// what needs the owner
+	$needs = array_column( Documents::needs( $appData ), null, 'kind' );
+	check( 'needs() has one line for the offers the customers declined in the last days, with how many and the days - after the lines of the orders and approvals', ( $needs['declined']['count'] ?? 0 ) === count( $declinesOf( $a['id'] ) ) && ( $needs['declined']['days'] ?? 0 ) === ( new \ReflectionClass( Documents::class ) )->getConstant( 'DECLINE_DAYS' ) && ( $needs['declined']['days'] ?? 0 ) === 30 && $needs['declined']['id'] === 0 );
+	$kindsInOrder = array_values( array_unique( array_column( Documents::needs( $appData ), 'kind' ) ) );
+	check( '...in the order overdue, payments, orders, approved, declined, sign, expiring, account', $kindsInOrder === array_values( array_intersect( [ 'overdue', 'payments', 'orders', 'approved', 'declined', 'sign', 'expiring', 'account' ], $kindsInOrder ) ) && array_search( 'declined', $kindsInOrder, true ) !== false );
+	Db::exec( $appData, 'UPDATE records SET at = :at WHERE kind = \'decline\'', [ 'at' => gmdate( 'Y-m-d\TH:i:s\Z', time() - 31 * 86400 ) ] );
+	check( '...a decline of more than 30 days ago is not on it any more, and an offer the owner declined (no record) was never', array_column( Documents::needs( $appData ), 'kind' ) === array_values( array_filter( array_column( Documents::needs( $appData ), 'kind' ), static fn( string $kind ): bool => $kind !== 'declined' ) ) );
+	Db::exec( $appData, 'UPDATE records SET at = :at WHERE kind = \'decline\'', [ 'at' => gmdate( 'Y-m-d\TH:i:s\Z' ) ] );
+
+	// the words and the route
+	$wordsMail = [ 'decline.owner.subject', 'decline.owner.title', 'decline.owner.intro', 'decline.owner.offer', 'decline.owner.client', 'decline.owner.reason', 'decline.owner.reason-none', 'decline.owner.account', 'decline.owner.button', 'decline.owner.notice' ];
+	check( 'every word of the mail is there, in German with Du; the route is registered for the POST alone', array_filter( $wordsMail, static fn( string $key ): bool => trim( \Crm\Documents\Mail::text( $key, 'x', 'x', 'x', 'x' ) ) === '' || preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', \Crm\Documents\Mail::text( $key, 'x', 'x', 'x', 'x' ) ) === 1 ) === []
+		&& ( $appData['/nino/http/routes']['POST://.crm/ablehnen']['uri'] ?? '' ) === \Crm\Portal\Order::ROUTE_DECLINE && isset( $appData['/nino/http/routes']['GET://.crm/ablehnen'] ) === false && in_array( 'decline', ( new \ReflectionClass( \Crm\Records::class ) )->getConstant( 'KINDS' ), true ) === true );
+	check( '...and the words of the fold are in both languages', array_filter( [ 'decline-fold', 'decline-reason', 'decline-button', 'declined', 'state-declined', 'state-reason', 'question', 'question-subject' ], static fn( string $key ): bool => trim( (string) ( $wordsDe['[[/project/crm-portal/order/'. $key. ']]'] ?? '' ) ) === '' || trim( (string) ( $wordsEn['[[/project/crm-portal/order/'. $key. ']]'] ?? '' ) ) === '' ) === [] );
+
+	\Crm\Settings::set( $appData, 'privacy_text', $privacyWas );
+	$asAdmin();
+}
+
+// --- Ich habe überwiesen, IBAN kopieren ---------------------------------------------------------------------------------------------------------
+
+/**
+ *	The checks of the report that an invoice is paid (POST /.crm/bezahlt, Documents::payment(), the block of the payment) and of what needs() and the list say of it
+ */
+function portalPaymentChecks( array &$appData, array $a, array $b, array $accounts, array $stray, string $today, \Closure $reset, \Closure $asAdmin, \Closure $asVisitor, \Closure $final, \Closure $line, \Closure $location ): void {
+
+	global $mails;
+
+	echo "\nPOST /.crm/bezahlt and the copy button of the IBAN\n";
+
+	$reset();
+	$asAdmin();
+	$settingsWere = [ 'bank_name' => \Crm\Settings::get( $appData, 'bank_name' ), 'iban' => \Crm\Settings::get( $appData, 'iban' ), 'bic' => \Crm\Settings::get( $appData, 'bic' ) ];
+	\Crm\Settings::set( $appData, 'bank_name', 'Hamburger Sparkasse' );
+	\Crm\Settings::set( $appData, 'iban', 'DE02 1203 0000 0000 2020 51' );
+	\Crm\Settings::set( $appData, 'bic', 'BYLADEM1001' );
+	\Nino\Html::addFills( $appData, [ '[[/project/company/contact/email]]' => 'owner@example.org' ], '*' );
+	$invoice = static function( string $title, array $over = [], string $to = 'sent', int $client = 0 ) use ( $final, $line, $a, $today, &$appData ): array {
+
+		$made = $final( 'invoice', $client === 0 ? $a['id'] : $client, $over + [ 'date' => $today, 'template_key' => 'rechnung', 'lines' => [ $line( $title ) ] ] );
+		Documents::release( $appData, $made['id'], false );
+
+		if( $to !== 'open' )
+			Documents::setState( $appData, $made['id'], 'sent' );
+
+		if( $to === 'paid' )
+			Documents::setState( $appData, $made['id'], 'paid' );
+
+		return $made;
+	};
+	$sent = $invoice( 'Melden eins' );
+	$open = $invoice( 'Melden offen', [], 'open' );
+	$late = $invoice( 'Melden spät', [ 'date' => '2026-01-10' ] );
+	$paid = $invoice( 'Melden bezahlt', [], 'paid' );
+	$unreleased = $final( 'invoice', $a['id'], [ 'date' => $today, 'template_key' => 'rechnung', 'lines' => [ $line( 'Melden unfrei' ) ] ] );
+	$ben = $invoice( 'Melden Ben', [], 'sent', $b['id'] );
+	$offer = $final( 'offer', $a['id'], [ 'date' => $today, 'template_key' => 'angebot', 'lines' => [ $line( 'Melden Angebot' ) ] ] );
+	Documents::release( $appData, $offer['id'], false );
+	$paymentsOf = static fn( int $clientId ): array => \Crm\Records::of( $appData, $clientId, 'payment' );
+	$stateOf = static fn( int $id ): string => (string) Documents::get( $appData, $id )['state'];
+	$paymentMails = static fn( int $from ): array => array_values( array_filter( portalMailsFrom( $from ), static fn( array $mail ): bool => str_starts_with( (string) ( $mail['subject'] ?? '' ), 'Zahlung gemeldet' ) ) );
+	$post = static function( array $over = [], array $server = [] ) use ( &$appData, $sent ): array {
+		return portalServe( $appData, '/.crm/bezahlt', 'POST', $over + [ 'document' => (string) $sent['id'] ], $server );
+	};
+	$to = static fn( string $state, int $id ): string => '/portal/belege?state='. $state. '&beleg='. $id. '#beleg-'. $id;
+	$row = static function( string $html, int $id ): string {
+
+		$nodes = portalFind( $html, '//li[@data-document="'. $id. '"]' );
+
+		return $nodes === [] ? '' : (string) $nodes[0]->ownerDocument->saveHTML( $nodes[0] );
+	};
+
+	// the block: the button that copies the IBAN, and the form
+	portalSignIn( $appData, $accounts['anna'] );
+	$page = portalPage( $appData, '/portal/belege' )[1];
+	$block = $row( $page, $sent['id'] );
+	$copy = portalFind( $block, '//button[@data-crm-copy]' );
+	check( 'the IBAN has a button that copies it: a button, hidden in the markup so that a page without the script has the IBAN to select and no button; it carries the IBAN as it stands and the two sentences the script says, and a line beside it that is read out when it is filled', count( $copy ) === 1 && $copy[0]->getAttribute( 'type' ) === 'button' && $copy[0]->hasAttribute( 'hidden' ) === true
+		&& $copy[0]->getAttribute( 'data-crm-copy' ) === 'DE02120300000000202051' && $copy[0]->getAttribute( 'data-copied' ) === 'Die IBAN ist in der Zwischenablage.' && $copy[0]->getAttribute( 'data-failed' ) !== '' && trim( $copy[0]->textContent ) !== ''
+		&& count( portalFind( $block, '//div[contains(@class, "crm-pay__fact--iban")]/dd/span[contains(@class, "crm-pay__value")]' ) ) === 1 && portalText( $block, '//div[contains(@class, "crm-pay__fact--iban")]/dd/span[contains(@class, "crm-pay__value")]' ) === 'DE02 1203 0000 0000 2020 51'
+		&& count( portalFind( $block, '//div[contains(@class, "crm-pay__fact--iban")]/dd/span[@role="status"][@aria-live="polite"][contains(@class, "crm-pay__copied")]' ) ) === 1 && trim( portalText( $block, '//span[contains(@class, "crm-pay__copied")]' ) ) === '' );
+	Db::exec( $appData, 'UPDATE settings SET value = :v WHERE key = \'iban\'', [ 'v' => 'DE"><b>' ] );
+	$odd = portalFind( $row( portalPage( $appData, '/portal/belege' )[1], $sent['id'] ), '//button[@data-crm-copy]' );
+	check( '...what the settings hold enters the attribute as text: a quote and a tag in the IBAN neither close it nor open an element', count( $odd ) === 1 && $odd[0]->getAttribute( 'data-crm-copy' ) === 'DE"><b>' && portalFind( $row( portalPage( $appData, '/portal/belege' )[1], $sent['id'] ), '//dd//b' ) === [] );
+	\Crm\Settings::set( $appData, 'iban', 'DE02 1203 0000 0000 2020 51' );
+	\Crm\Settings::set( $appData, 'iban', '' );
+	check( '...no IBAN, no button; the form of the report is there all the same while the settings hold a bank', portalFind( $row( portalPage( $appData, '/portal/belege' )[1], $sent['id'] ), '//button[@data-crm-copy]' ) === [] && portalFind( $row( portalPage( $appData, '/portal/belege' )[1], $sent['id'] ), '//form[contains(@class, "crm-pay-notice")]' ) !== [] );
+	\Crm\Settings::set( $appData, 'iban', 'DE02 1203 0000 0000 2020 51' );
+	$block = $row( portalPage( $appData, '/portal/belege' )[1], $sent['id'] );
+	$form = portalFind( $block, '//form[contains(@class, "crm-pay-notice")]' );
+	check( 'under the facts of an open invoice stands the form Ich habe überwiesen: a plain form that posts to /.crm/bezahlt with the token and the invoice, a hint that the invoice stays open, and a button', count( $form ) === 1 && $form[0]->getAttribute( 'action' ) === '/.crm/bezahlt' && $form[0]->getAttribute( 'method' ) === 'post' && $form[0]->getAttribute( 'data-document' ) === (string) $sent['id']
+		&& portalFind( $block, '//form[contains(@class, "crm-pay-notice")]//input[@name="_csrf"]/@value' )[0]->nodeValue === \Nino\Csrf::getToken( $appData ) && portalFind( $block, '//form[contains(@class, "crm-pay-notice")]//input[@name="document"]/@value' )[0]->nodeValue === (string) $sent['id']
+		&& portalFind( $block, '//form[contains(@class, "crm-pay-notice")]//button[@type="submit"]' ) !== [] && portalFind( $block, '//form[contains(@class, "crm-pay-notice")]//p[contains(@class, "crm-pay-notice__hint")]' ) !== [] && portalFind( $block, '//dl[contains(@class, "crm-pay")]/following-sibling::form[contains(@class, "crm-pay-notice")]' ) !== [] );
+	check( '...an invoice past its day has it, an invoice that is not paid and not sent too; a paid one, an offer and an invoice that is not released have neither the block nor the form', portalFind( $row( portalPage( $appData, '/portal/belege' )[1], $late['id'] ), '//form[contains(@class, "crm-pay-notice")]' ) !== [] && portalFind( $row( portalPage( $appData, '/portal/belege' )[1], $open['id'] ), '//form[contains(@class, "crm-pay-notice")]' ) !== []
+		&& portalFind( portalPage( $appData, '/portal/belege' )[1], '//li[@data-document="'. $paid['id']. '"]//form[contains(@class, "crm-pay-notice")] | //li[@data-document="'. $offer['id']. '"]//form[contains(@class, "crm-pay-notice")] | //li[@data-document="'. $unreleased['id']. '"]//form[contains(@class, "crm-pay-notice")]' ) === [] );
+
+	// the post that is refused
+	$asVisitor();
+	check( 'a visitor posting the form is answered 404 and nothing is kept', $post()['statusCode'] === 404 && $paymentsOf( $a['id'] ) === [] );
+	portalSignIn( $appData, $stray );
+	check( '...so is a member of no client', $post()['statusCode'] === 404 && $paymentsOf( $a['id'] ) === [] );
+	portalSignIn( $appData, $accounts['anna'] );
+	$beforeMails = count( $mails );
+	check( '...a token that is not the session\'s is ?state=expired on the list with the invoice named', $location( $post( [ '_csrf' => 'wrong' ] ) ) === $to( 'expired', $sent['id'] ) && $paymentsOf( $a['id'] ) === [] );
+	check( '...an invoice of another client, one that is not there, an id that is none, an array, an invoice that is not released, an invoice that is paid and an offer are ?state=invalid, no document named', array_filter( [ $ben['id'], 99999, '1; DROP', [ 'x' ], $unreleased['id'], $paid['id'], $offer['id'] ], static fn( mixed $id ): bool => $location( $post( [ 'document' => is_int( $id ) === true ? (string) $id : $id ] ) ) !== '/portal/belege?state=invalid' ) === []
+		&& $paymentsOf( $a['id'] ) === [] && $paymentsOf( $b['id'] ) === [] && $stateOf( $sent['id'] ) === 'sent' && count( portalMailsFrom( $beforeMails ) ) === 0 );
+
+	// the report
+	$answer = $post( [], [ 'HTTP_USER_AGENT' => 'Browser/1.0 (Pay)' ] );
+	$records = $paymentsOf( $a['id'] );
+	$shown = (array) json_decode( $records[0]['shown'] ?? '', true );
+	check( 'the report: ?state=paid-notice on the list with the invoice named and one record of kind payment kept', $answer['statusCode'] === 303 && $location( $answer ) === $to( 'paid-notice', $sent['id'] ) && count( $records ) === 1 && $records[0]['kind'] === 'payment' );
+	check( '...it names the invoice, the account as it was, the client, the time, the address and the browser, and keeps no project and no purpose; the text is the JSON of the number, the sum, the currency and the day, with its hash', $records[0]['document_id'] === $sent['id'] && $records[0]['member_id'] === $accounts['anna']['id'] && $records[0]['member_name'] === 'Anna Nord' && $records[0]['client_id'] === $a['id'] && $records[0]['project'] === '' && $records[0]['purpose'] === '' && $records[0]['agent'] === 'Browser/1.0 (Pay)'
+		&& $records[0]['sha256'] === hash( 'sha256', $records[0]['shown'] ) && $shown === [ 'document' => $sent['id'], 'number' => $sent['number'], 'gross' => 10000, 'currency' => \Crm\Settings::get( $appData, 'currency' ), 'date' => gmdate( 'Y-m-d' ) ] && \Crm\Records::paymentOf( $appData, $sent['id'] ) === $records[0] );
+	check( '...the state of the invoice is not touched - the owner marks it as paid - and it has no day of payment', $stateOf( $sent['id'] ) === 'sent' && Documents::get( $appData, $sent['id'] )['paid_at'] === null );
+	$out = $paymentMails( $beforeMails );
+	$sum = \Crm\Documents\Money::format( 10000, \Crm\Settings::get( $appData, 'currency' ) );
+	check( 'one mail goes out, to the owner alone: "Zahlung gemeldet: Rechnung <number> <sum> von Kunde <number and company> durch <account>", the reply to the account; none to the customer', count( $out ) === 1 && count( portalMailsFrom( $beforeMails ) ) === 1 && ( $out[0]['to'] ?? '' ) === 'owner@example.org' && ( $out[0]['replyTo'] ?? '' ) === 'anna@example.org'
+		&& ( $out[0]['subject'] ?? '' ) === 'Zahlung gemeldet: Rechnung '. $sent['number']. ' '. $sum. ' von Kunde K-0001 '. \Crm\Clients::get( $appData, $a['id'] )['company']. ' durch Anna Nord' );
+	check( '...its body gives the invoice, the sum and the account and links to the document in the surface; every value is text and nothing of a fill is left', str_contains( (string) $out[0]['body'], 'href="https://example.org/club/crm#beleg-'. $sent['id']. '"' ) === true && str_contains( $out[0]['body'], $sent['number'] ) === true && str_contains( $out[0]['body'], 'anna@example.org' ) === true && str_contains( $out[0]['body'], '[[' ) === false
+		&& str_contains( strip_tags( $out[0]['body'] ), $sum ) === true && preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', strip_tags( $out[0]['body'] ) ) !== 1 );
+	$list = portalPage( $appData, '/portal/belege?state=paid-notice&beleg='. $sent['id'] )[1];
+	$done = portalFind( $row( $list, $sent['id'] ), '//p[contains(@class, "crm-pay-notice--done")]' );
+	check( 'the row of the invoice says when the payment was reported, with the day as a machine day, instead of the form; the row is open and the state of the query is said in it', count( $done ) === 1 && portalFind( $row( $list, $sent['id'] ), '//p[contains(@class, "crm-pay-notice--done")]//time/@datetime' )[0]->nodeValue === gmdate( 'Y-m-d' ) && portalFind( $row( $list, $sent['id'] ), '//form[contains(@class, "crm-pay-notice")]' ) === []
+		&& portalFind( $row( $list, $sent['id'] ), '//details/@open' ) !== [] && portalFind( $row( $list, $sent['id'] ), '//p[@role="status"][contains(@class, "crm-order__state--paid-notice")]' ) !== [] && portalFind( $row( $list, $open['id'] ), '//form[contains(@class, "crm-pay-notice")]' ) !== [] );
+
+	// once for each invoice
+	$sentSoFar = count( $mails );
+	check( 'a second post of the invoice is ?state=invalid: no second record, no second mail', $location( $post() ) === '/portal/belege?state=invalid' && count( $paymentsOf( $a['id'] ) ) === 1 && count( $mails ) === $sentSoFar );
+	$memberOf = [ 'id' => $accounts['anna']['id'], 'email' => 'anna@example.org', 'name' => 'Anna Nord' ];
+	check( '...Documents::payment() says again for it, unknown for another client\'s invoice, a missing one and an account without an id, state for a paid invoice and an offer - and writes nothing', Documents::payment( $appData, $sent['id'], $a['id'], $memberOf, [] ) === 'again' && Documents::payment( $appData, $ben['id'], $a['id'], $memberOf, [] ) === 'unknown' && Documents::payment( $appData, 99999, $a['id'], $memberOf, [] ) === 'unknown'
+		&& Documents::payment( $appData, $open['id'], $a['id'], [ 'id' => '', 'email' => '', 'name' => '' ], [] ) === 'member' && Documents::payment( $appData, $paid['id'], $a['id'], $memberOf, [] ) === 'state' && Documents::payment( $appData, $offer['id'], $a['id'], $memberOf, [] ) === 'state' && Documents::payment( $appData, $unreleased['id'], $a['id'], $memberOf, [] ) === 'state' && count( $paymentsOf( $a['id'] ) ) === 1 );
+	Db::exec( $appData, 'CREATE TRIGGER zz_no_payment BEFORE INSERT ON records WHEN NEW.kind = \'payment\' BEGIN SELECT RAISE( ABORT, \'no\' ); END' );
+	$thrown = false;
+
+	try {
+		Documents::payment( $appData, $open['id'], $a['id'], $memberOf, [] );
+	}
+	catch( \PDOException $e ) {
+		$thrown = true;
+	}
+
+	Db::exec( $appData, 'DROP TRIGGER zz_no_payment' );
+	check( '...a record that cannot be written leaves the exception and no half report', $thrown === true && \Crm\Records::paymentOf( $appData, $open['id'] ) === null );
+	$overdue = $post( [ 'document' => (string) $late['id'] ] );
+	check( 'an invoice past its day is reported all the same, and an invoice that was never sent (open) too', $location( $overdue ) === $to( 'paid-notice', $late['id'] ) && $location( $post( [ 'document' => (string) $open['id'] ] ) ) === $to( 'paid-notice', $open['id'] ) && count( $paymentsOf( $a['id'] ) ) === 3 && $stateOf( $late['id'] ) === 'sent' && $stateOf( $open['id'] ) === 'open' );
+
+	// what needs the owner, and the list of the owner
+	$needs = array_column( Documents::needs( $appData ), null, 'kind' );
+	check( 'needs() has one line for the invoices that were reported and are not marked as paid: how many and what they come to', ( $needs['payments']['count'] ?? 0 ) === 3 && ( $needs['payments']['gross'] ?? 0 ) === 30000 && $needs['payments']['id'] === 0 );
+	Documents::setState( $appData, $sent['id'], 'paid' );
+	$needs = array_column( Documents::needs( $appData ), null, 'kind' );
+	check( '...an invoice the owner has marked as paid is not on it any more', ( $needs['payments']['count'] ?? 0 ) === 2 && ( $needs['payments']['gross'] ?? 0 ) === 20000 );
+	$listed = array_column( Documents::list( $appData ), 'paid_notice', 'id' );
+	check( '...the list of the documents carries the day of the report for each invoice and an empty text for the others', $listed[$late['id']] === gmdate( 'Y-m-d' ) && $listed[$open['id']] === gmdate( 'Y-m-d' ) && $listed[$ben['id']] === '' && $listed[$offer['id']] === '' );
+	$kindsInOrder = array_values( array_unique( array_column( Documents::needs( $appData ), 'kind' ) ) );
+	check( '...and the line stands after the overdue invoices and before the orders', array_search( 'payments', $kindsInOrder, true ) !== false && ( array_search( 'overdue', $kindsInOrder, true ) === false || array_search( 'overdue', $kindsInOrder, true ) < array_search( 'payments', $kindsInOrder, true ) ) && ( array_search( 'orders', $kindsInOrder, true ) === false || array_search( 'payments', $kindsInOrder, true ) < array_search( 'orders', $kindsInOrder, true ) ) );
+	$wordsOfMail = [ 'payment.owner.subject', 'payment.owner.title', 'payment.owner.intro', 'payment.owner.invoice', 'payment.owner.client', 'payment.owner.sum', 'payment.owner.account', 'payment.owner.button', 'payment.owner.notice' ];
+	check( '...every word of the mail is there, in German with Du; the route is registered for the POST alone', array_filter( $wordsOfMail, static fn( string $key ): bool => trim( \Crm\Documents\Mail::text( $key, 'x', 'x', 'x', 'x' ) ) === '' || preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', \Crm\Documents\Mail::text( $key, 'x', 'x', 'x', 'x' ) ) === 1 ) === []
+		&& ( $appData['/nino/http/routes']['POST://.crm/bezahlt']['uri'] ?? '' ) === \Crm\Portal\Payment::ROUTE && isset( $appData['/nino/http/routes']['GET://.crm/bezahlt'] ) === false && in_array( 'payment', ( new \ReflectionClass( \Crm\Records::class ) )->getConstant( 'KINDS' ), true ) === true );
+
+	foreach( $settingsWere as $key => $value )
+		\Crm\Settings::set( $appData, $key, $value );
+
+	$asAdmin();
+}
+
+
 portalConsentChecks( $appData, $a, $b, $accounts, $stray, $p1, $today, $wordsDe, $wordsEn, $reset, $asAdmin, $asVisitor, $made, $location, $mkOffer );
+portalDeclineChecks( $appData, $a, $b, $accounts, $stray, $p1, $today, $wordsDe, $wordsEn, $reset, $asAdmin, $asVisitor, $final, $line, $made, $location, $mkOffer );
+portalPaymentChecks( $appData, $a, $b, $accounts, $stray, $today, $reset, $asAdmin, $asVisitor, $final, $line, $location );
 portalHomeChecks( $appData, $a, $accounts, $stray, (string) $p1, $asVisitor, $asAdmin, $reset );
 
 // The rest of the suite runs as it did before: Review and Events off

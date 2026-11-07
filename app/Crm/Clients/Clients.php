@@ -11,6 +11,10 @@ declare(strict_types=1);
  *								or a name. A client is ready for an invoice (invoiceReady()) when it has a company or a name and a street, a postal code, a city and a country; get() and list()
  *								carry ready and title.
  *
+ *								Every client has the upload folder of its group in the feature Files (a folder named by the client's number and title, marked as the folder the members of the group upload into): add() makes it
+ *								when the client is made, uploadFolder() reads it and makeUploadFolder() makes it for a client that has none - the module does it with its own permission, through the
+ *								store of Files, never through the actions of the panel. A client that is made while Files is off or cannot be written is made all the same, and an index that cannot be written is a warning (Files that is off is the owner's choice and says nothing).
+ *
  *								A client carries the message the owner wrote to it (message, and message_at, the time it was written; setMessage()), which the portal shows on every page of it.
  *
  *								A write answers the client as list() has it, or a string: 'empty' (neither company nor name - and, for add(), no valid address of a first account),
@@ -46,6 +50,9 @@ class Clients {
 	public const int MESSAGE_MAX = 2000;
 
 	private const string TIME = 'Y-m-d\TH:i:s\Z';
+
+	// The lock that lets one call at a time make the upload folder of a client
+	private const string LOCK = '/data/crm-upload-folder';
 
 	/**
 	 *	The clients, by number
@@ -195,6 +202,12 @@ class Clients {
 		}
 
 		$client = (array) self::get( $appData, $id );
+		$folder = self::makeUploadFolder( $appData, $client );
+
+		// Files that is off is a choice of the owner and no warning; an index that cannot be written is one
+		if( $folder === 'write' )
+			trigger_error( 'Crm: the upload folder of client '. $client['number']. ' was not made: '. $folder, E_USER_WARNING );
+
 		$email = trim( (string) ( $first['email'] ?? '' ) );
 
 		if( $email !== '' ) {
@@ -350,6 +363,76 @@ class Clients {
 	public static function group( string $number ): string {
 
 		return \Nino\Feature::slug( $number );
+	}
+
+	/**
+	 *	The folder the members of a client's group upload into: the folder of the group that Files marks as the upload folder
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client				As get() has it
+	 *
+	 *	@return 	array|null								The folder as Files has it (id, group, name, upload, created); null for a group without one and while Files is off
+	 */
+	public static function uploadFolder( array &$appData, array $client ): ?array {
+
+		if( Crm::featureOn( $appData, 'files' ) === false )
+			return null;
+
+		foreach( \Nino\Modules\Files::folders( $appData, (string) $client['group'] ) as $folder )
+			if( $folder['upload'] === true )
+				return $folder;
+
+		return null;
+	}
+
+	/**
+	 *	Make the upload folder of a client where it has none: a folder in the client's group named by its number and its title (cut to the length a folder name may have), marked as the folder
+	 *	the group uploads into. Done with the store of Files, so with the permission of this module and not the panel's. A client that has the folder keeps it; a second call - or one at the same time, which waits for the lock - makes no second.
+	 *	A client that is switched off gets none, and a folder that was made and could not be marked is taken away again
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$client				As get() has it
+	 *
+	 *	@return 	array|string							The folder, as uploadFolder() has it; or why not: 'inactive' (the client is switched off), 'files' (the feature is off), 'write' (the index of Files could not be written)
+	 */
+	public static function makeUploadFolder( array &$appData, array $client ): array|string {
+
+		if( $client['active'] !== true )
+			return 'inactive';
+
+		if( Crm::featureOn( $appData, 'files' ) === false )
+			return 'files';
+
+		// One folder for a client, whoever asks: two calls at once (the button while a client is made) would both find none. The lock is the module's own; the lock on the index of Files
+		// is given back by its own writes
+		if( \Nino\Filesystem::lockFile( $appData, self::LOCK ) === false )
+			return 'write';
+
+		try {
+			$have = self::uploadFolder( $appData, $client );
+
+			if( $have !== null )
+				return $have;
+
+			$name = mb_substr( \Nino\Modules\Files\Store::cleanFolder( (string) $client['number']. ' '. (string) $client['title'] ), 0, \Nino\Modules\Files\Store::FOLDER_LENGTH, 'UTF-8' );
+			$folder = \Nino\Modules\Files\Store::addFolder( $appData, (string) $client['group'], $name );
+
+			if( is_string( $folder ) === true )
+				return 'write';
+
+			$marked = \Nino\Modules\Files\Store::markUpload( $appData, $folder['id'], true );
+
+			if( is_string( $marked ) === true ) {
+				\Nino\Modules\Files\Store::deleteFolder( $appData, $folder['id'] );
+
+				return 'write';
+			}
+
+			return $marked;
+		}
+		finally {
+			\Nino\Filesystem::unlockFile( $appData, self::LOCK );
+		}
 	}
 
 	/**

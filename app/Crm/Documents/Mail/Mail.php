@@ -5,7 +5,7 @@ declare(strict_types=1);
  *												account of the client, in German (a document is the owner's letter to his client, and an account of
  *												Members has no language of its own), with, for a release, a subject, a button and a sentence of the kind of the document (told()) and the absolute link to the document in the portal (Portal::documentHref(): its row in the list of documents, for a document of a project its card on the page of the project) and no attachment.
  *												All mails are one call of the kernel's mail, which counts a call against the cap of mails an hour and not
- *												a mail. The words are in text/de_DE.php, the markup in templates/release.tpl (changed.tpl for the mail to the owner about changed data, order-owner.tpl and order-confirm.tpl for the order of an offer, approval-owner.tpl for the approval of a project, order-consent.tpl for a sentence about a consent that was given with an order, revocation-owner.tpl for the revocation of a consent); a value enters the
+ *												a mail. The words are in text/de_DE.php, the markup in templates/release.tpl (changed.tpl for the mail to the owner about changed data, order-owner.tpl and order-confirm.tpl for the order of an offer, approval-owner.tpl for the approval of a project, order-consent.tpl for a sentence about a consent that was given with an order, revocation-owner.tpl for the revocation of a consent, decline-owner.tpl for the decline of an offer, payment-owner.tpl for the report of a payment); a value enters the
  *												template after it was rendered, escaped, so that nothing in it is read as a fill or a shortcode. The same
  *												mail, in the words of a reminder (text/de_DE.php, remind.*), asks for the payment of an invoice that is overdue.
  */
@@ -563,6 +563,139 @@ class Mail {
 
 		if( $delivered === false )
 			trigger_error( 'Crm: the mail about the revocation of a consent was not delivered', E_USER_WARNING );
+
+		return count( array_filter( (array) ( $appData['./nino/mail/results'] ?? [] ), static fn( mixed $result ): bool => $result === true ) );
+	}
+
+	/**
+	 *	Mail the owner that a client declined an offer in the portal: one mail to the contact address of the company (subject "Angebot abgelehnt: <number> von Kunde <number and title>
+	 *	durch <account>", the reply to the account, the reason the customer gave or the sentence that it gave none, the link to the document in the surface). The customer gets no mail.
+	 *	Own template (templates/decline-owner.tpl) and own words (text/de_DE.php, decline.owner.*); the names enter the subject without control characters and the reason enters the
+	 *	body escaped, its line breaks as breaks
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			The offer, as Documents::get() has it, declined
+	 *	@param		array 		$record				The record of the decline, as Records::of() has it
+	 *	@param		array 		$client				As Clients::get() has it
+	 *	@param		string		$reason				As Records::reason() has it; '' for none
+	 *
+	 *	@return 	int|string								How many mails were delivered; 'address' where the site has no address to link to or the company has no contact address, 'limit' where the cap of mails an hour refused it
+	 */
+	public static function declined( array &$appData, array $document, array $record, array $client, string $reason ): int|string {
+
+		$line = static fn( string $text ): string => trim( (string) preg_replace( '/[\s\p{C}]+/u', ' ', $text ) );
+		$number = $line( (string) $document['number'] !== '' ? (string) $document['number'] : (string) $document['title'] );
+		$customer = $line( (string) $client['number']. ' '. (string) $client['title'] );
+
+		return self::toOwner( $appData, 'decline-owner', 'decline.owner', 'decline', $record, \Nino\Html::absoluteUrl( $appData, \Crm\Surface::ROUTE. '#beleg-'. (int) $document['id'] ), [
+			'[[offer]]'  => self::text( 'decline.owner.offer', $number ),
+			'[[client]]' => self::text( 'decline.owner.client', $customer ),
+		], [
+			'[[reason]]' => $reason === '' ? self::text( 'decline.owner.reason-none' ) : self::text( 'decline.owner.reason', $reason ),
+		], [ $number, $customer ], 'document '. Render::name( $document ) );
+	}
+
+	/**
+	 *	Mail the owner that a client reported in the portal that it has paid an invoice: one mail to the contact address of the company (subject "Zahlung gemeldet: Rechnung <number>
+	 *	<sum> von Kunde <number and title> durch <account>", the reply to the account, the link to the document in the surface). The customer gets no mail. Own template
+	 *	(templates/payment-owner.tpl) and own words (text/de_DE.php, payment.owner.*); the names enter the subject without control characters
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			The invoice, as Documents::get() has it
+	 *	@param		array 		$record				The record of the payment, as Records::of() has it
+	 *	@param		array 		$client				As Clients::get() has it
+	 *
+	 *	@return 	int|string								How many mails were delivered; 'address' where the site has no address to link to or the company has no contact address, 'limit' where the cap of mails an hour refused it
+	 */
+	public static function paid( array &$appData, array $document, array $record, array $client ): int|string {
+
+		$line = static fn( string $text ): string => trim( (string) preg_replace( '/[\s\p{C}]+/u', ' ', $text ) );
+		$number = $line( (string) $document['number'] !== '' ? (string) $document['number'] : (string) $document['title'] );
+		$customer = $line( (string) $client['number']. ' '. (string) $client['title'] );
+		$sum = Money::format( (int) $document['gross'], \Crm\Settings::get( $appData, 'currency' ) );
+
+		return self::toOwner( $appData, 'payment-owner', 'payment.owner', 'payment notice', $record, \Nino\Html::absoluteUrl( $appData, \Crm\Surface::ROUTE. '#beleg-'. (int) $document['id'] ), [
+			'[[invoice]]' => self::text( 'payment.owner.invoice', $number ),
+			'[[client]]'  => self::text( 'payment.owner.client', $customer ),
+			'[[sum]]'     => self::text( 'payment.owner.sum', $sum ),
+		], [], [ $number, $sum, $customer ], 'document '. Render::name( $document ) );
+	}
+
+	/**
+	 *	The one mail to the contact address of the company that tells what a customer did in the portal: the template and the words of a kind, the account that did it as the
+	 *	reply-to and in the body, the link and its button
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$template			A file of templates/ without .tpl
+	 *	@param		string		$words				The prefix of the words: <prefix>.subject, .title, .intro, .account, .button and .notice
+	 *	@param		string		$about				What happened, for the line of the log
+	 *	@param		array 		$record				The record, as Records::of() has it: it holds the account
+	 *	@param		string		$link					Absolute; '' where the site has no address
+	 *	@param		array 		$values				The tokens of the body that are the kind's and are escaped
+	 *	@param		array 		$free					Tokens of the body that hold text a customer wrote: escaped, their line breaks made breaks
+	 *	@param		array 		$subject			The values of the words <prefix>.subject before the account
+	 *	@param		string		$name					What the line of the log names
+	 *
+	 *	@return 	int|string								How many mails were delivered; 'address' or 'limit'
+	 */
+	private static function toOwner( array &$appData, string $template, string $words, string $about, array $record, string $link, array $values, array $free, array $subject, string $name ): int|string {
+
+		if( $link === '' ) {
+			trigger_error( 'Crm: the mail about the '. $about. ' of '. $name. ' was not sent: the site has no address to link to', E_USER_WARNING );
+
+			return 'address';
+		}
+
+		$locale = \Nino\Locales::getCurrentLocale( $appData );
+
+		\Nino\Locales::useLocale( $appData, \Nino\Locales::getNativeLocale( $appData ) );
+
+		try {
+			$markup = \Nino\Html::renderHtml( $appData, self::template( $template ) );
+			$owner = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ) );
+		}
+		finally {
+			\Nino\Locales::useLocale( $appData, $locale );
+		}
+
+		if( filter_var( $owner, FILTER_VALIDATE_EMAIL ) === false ) {
+			trigger_error( 'Crm: the mail about the '. $about. ' of '. $name. ' was not sent: the company has no contact address', E_USER_WARNING );
+
+			return 'address';
+		}
+
+		$line = static fn( string $text ): string => trim( (string) preg_replace( '/[\s\p{C}]+/u', ' ', $text ) );
+		$escape = static fn( string $value ): string => \Nino\Modules\Components::escape( $value );
+		$who = $line( (string) $record['member_name'] !== '' ? (string) $record['member_name'] : (string) $record['member_email'] );
+		$account = $line( (string) $record['member_name'] !== '' ? $record['member_name']. ' <'. $record['member_email']. '>' : (string) $record['member_email'] );
+		$values += [
+			'[[heading]]' => self::text( $words. '.title' ),
+			'[[intro]]'   => self::text( $words. '.intro' ),
+			'[[account]]' => self::text( $words. '.account', $account ),
+			'[[link]]'    => $link,
+			'[[cta]]'     => self::text( $words. '.button' ),
+			'[[notice]]'  => self::text( $words. '.notice' ),
+		];
+		$body = str_replace( array_keys( $values ), array_map( $escape, array_values( $values ) ), $markup );
+
+		foreach( $free as $token => $text )
+			$body = str_replace( $token, str_replace( [ "\r\n", "\r", "\n" ], '<br>', $escape( $text ) ), $body );
+
+		$delivered = \Nino\Mail::sendAll( $appData, [ [
+			'to'      => $owner,
+			'subject' => self::text( $words. '.subject', ...array_merge( $subject, [ $who ] ) ),
+			'body'    => $body,
+			'replyTo' => filter_var( $record['member_email'], FILTER_VALIDATE_EMAIL ) === false ? '' : (string) $record['member_email'],
+		] ] );
+
+		if( \Nino\Mail::rateLimited( $appData ) === true ) {
+			trigger_error( 'Crm: the mail about the '. $about. ' of '. $name. ' was refused by the cap of mails an hour', E_USER_WARNING );
+
+			return 'limit';
+		}
+
+		if( $delivered === false )
+			trigger_error( 'Crm: the mail about the '. $about. ' of '. $name. ' was not delivered', E_USER_WARNING );
 
 		return count( array_filter( (array) ( $appData['./nino/mail/results'] ?? [] ), static fn( mixed $result ): bool => $result === true ) );
 	}

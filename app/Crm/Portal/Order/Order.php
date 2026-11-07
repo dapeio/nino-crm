@@ -30,6 +30,7 @@ class Order {
 
 	// The route the form posts to, the pages it goes back to
 	public const string ROUTE = '/.crm/auftrag';
+	public const string ROUTE_DECLINE = '/.crm/ablehnen';
 	public const string PAGE_DOCUMENTS = '/portal/belege';
 	public const string PAGE_PROJECTS = '/portal/projekte';
 
@@ -43,6 +44,9 @@ class Order {
 		'privacy'   => [ 'warning', 'shield-check', 'alert' ],
 		'expired'   => [ 'error', 'circle-alert', 'alert' ],
 		'changed'   => [ 'error', 'circle-alert', 'alert' ],
+		'declined'  => [ 'success', 'circle-check', 'status' ],
+		'reason'    => [ 'error', 'circle-alert', 'alert' ],
+		'paid-notice' => [ 'success', 'circle-check', 'status' ],
 	];
 	public const array FROM = [ 'belege', 'projekt', 'uebersicht' ];
 
@@ -67,6 +71,11 @@ class Order {
 		if( $record !== null )
 			return self::done( $record, $dir ). Consent::done( $appData, (int) $offer['id'], $dir );
 
+		$declined = Records::declineOf( $appData, (int) $offer['id'] );
+
+		if( $declined !== null && $offer['state'] === 'declined' )
+			return self::declinedLine( $declined );
+
 		if( Documents::orderable( $offer ) === false || Portal::pending( $appData, $client ) === 'privacy' )
 			return '';
 
@@ -85,6 +94,59 @@ class Order {
 			'[[sentence]]' => \Nino\Modules\Components::escape( $sentence ),
 			'[[consents]]' => Consent::boxes( $offered, $from, (int) $offer['id'] ),
 			'[[hash]]'     => Records::hash( Records::orderShown( $appData, $full, $sentence, $offered ) ),
+		] ). self::ways( $appData, $full, $from, $dir );
+	}
+
+	/**
+	 *	The two quiet ways under the form: the fold that declines the offer and the question by mail. The form of the decline carries the hash of the offer as it is shown; the question is
+	 *	a link to the contact address of the company with the number as the subject - and nothing where the site has no valid address
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			As Documents::get() has it
+	 *	@param		string		$from					One of FROM
+	 *	@param		string		$dir					Escaped
+	 *
+	 *	@return 	string
+	 */
+	private static function ways( array &$appData, array $document, string $from, string $dir ): string {
+
+		Portal::words( $appData );
+
+		$address = Portal::contactMail( $appData );
+		$name = (string) $document['number'] !== '' ? (string) $document['number'] : (string) $document['title'];
+		$subject = str_replace( '{number}', (string) preg_replace( '/[\s\p{C}]+/u', ' ', $name ), (string) \Nino\Html::resolveTextfill( $appData, '/project/crm-portal/order/question-subject' ) );
+
+		// The address and the subject are encoded for the query of the link: an address may hold characters that end a query, the @ stays
+		$question = $address === '' ? '' : Portal::render( 'order-question', [ '[[href]]' => \Nino\Modules\Components::escape( 'mailto:'. str_replace( '%40', '@', rawurlencode( $address ) ). '?subject='. rawurlencode( $subject ) ) ] );
+
+		return Portal::render( 'order-ways', [
+			'[[decline]]'  => Portal::render( 'order-decline', [
+				'[[id]]'   => (string) $document['id'],
+				'[[dir]]'  => $dir,
+				'[[from]]' => $from,
+				'[[hash]]' => Records::hash( Records::declineShown( $appData, $document, '' ) ),
+				'[[max]]'  => (string) Records::REASON,
+			] ),
+			'[[question]]' => $question,
+		] );
+	}
+
+	/**
+	 *	The line that says an offer was declined, and by whom
+	 *
+	 *	@param		array 		$record				As Records::declineOf() has it
+	 *
+	 *	@return 	string
+	 */
+	private static function declinedLine( array $record ): string {
+
+		$name = (string) $record['member_name'] !== '' ? (string) $record['member_name'] : (string) $record['member_email'];
+
+		return Portal::render( 'order-declined', [
+			'[[id]]'   => (string) $record['document_id'],
+			'[[iso]]'  => \Nino\Modules\Components::escape( substr( (string) $record['at'], 0, 10 ) ),
+			'[[date]]' => \Nino\Modules\Components::escape( Documents\Render::day( substr( (string) $record['at'], 0, 10 ) ) ),
+			'[[name]]' => \Nino\Modules\Components::escape( $name ),
 		] );
 	}
 
@@ -209,11 +271,7 @@ class Order {
 		$member = $client === null ? null : \Nino\Modules\Members::current( $appData );
 
 		if( $client === null || $member === null ) {
-
-			$request['/nino/http/response']['statusCode']								= 404;
-			$request['/nino/http/response']['body']										= 'Not Found';
-			$request['/nino/http/response']['header']['Content-Type']		= 'text/plain; charset=utf-8';
-			$request['/nino/http/response']['header']['Cache-Control']	= 'no-store';
+			self::notFound( $request );
 
 			return;
 		}
@@ -274,6 +332,88 @@ class Order {
 	}
 
 	/**
+	 *	'/nino/http/response/POST://.crm/ablehnen': the fold under an offer. A visitor and a member of no client are answered 404; a token that is not the session's is the redirect with
+	 *	?state=expired; an offer that is not the client's, is not released, cannot be ordered any more or is not there is ?state=invalid; a reason that is no text or too long is ?state=reason;
+	 *	an offer that was changed since the page was drawn is ?state=changed. Else the decline is made (Documents::decline()), the owner is mailed and the answer is ?state=declined; a mail that
+	 *	does not go out leaves the decline kept
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackDecline( array &$appData, array &$request ): void {
+
+		$client = Portal::client( $appData );
+		$member = $client === null ? null : \Nino\Modules\Members::current( $appData );
+
+		if( $client === null || $member === null ) {
+			self::notFound( $request );
+
+			return;
+		}
+
+		$from = is_string( $_POST['from'] ?? null ) === true && in_array( $_POST['from'], self::FROM, true ) === true ? $_POST['from'] : 'belege';
+		$id = is_string( $_POST['document'] ?? null ) === true && preg_match( '/^[1-9][0-9]{0,9}$/D', $_POST['document'] ) === 1 ? (int) $_POST['document'] : 0;
+		$document = $id === 0 ? null : Documents::get( $appData, $id );
+
+		if( $document !== null && $document['client_id'] !== $client['id'] )
+			$document = null;
+
+		if( \Nino\Form::blocked( $request ) === true ) {
+			self::redirect( $appData, $request, 'expired', $from, $document );
+
+			return;
+		}
+
+		if( $document === null || $document['released'] !== true || $document['pdf_path'] === '' || Documents::orderable( $document ) === false ) {
+			self::redirect( $appData, $request, 'invalid', $from, $document );
+
+			return;
+		}
+
+		if( ( $_POST['shown'] ?? null ) !== Records::hash( Records::declineShown( $appData, $document, '' ) ) ) {
+			self::redirect( $appData, $request, 'changed', $from, $document );
+
+			return;
+		}
+
+		$reason = Records::reason( $_POST['reason'] ?? null );
+
+		if( $reason === null ) {
+			self::redirect( $appData, $request, 'reason', $from, $document );
+
+			return;
+		}
+
+		$declined = Documents::decline( $appData, $id, $client['id'], [ 'id' => $member['id'], 'email' => $member['email'], 'name' => $member['name'] ], $reason, Records::source( $appData, $request ) );
+
+		if( is_string( $declined ) === true ) {
+			self::redirect( $appData, $request, 'invalid', $from, $document );
+
+			return;
+		}
+
+		Documents\Mail::declined( $appData, $declined['document'], $declined['record'], $client, $reason );
+		self::redirect( $appData, $request, 'declined', $from, $declined['document'] );
+	}
+
+	/**
+	 *	The answer to a post of someone who is no member of a client: 404, as the other forms of the portal answer a stranger
+	 *
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function notFound( array &$request ): void {
+
+		$request['/nino/http/response']['statusCode']								= 404;
+		$request['/nino/http/response']['body']										= 'Not Found';
+		$request['/nino/http/response']['header']['Content-Type']		= 'text/plain; charset=utf-8';
+		$request['/nino/http/response']['header']['Cache-Control']	= 'no-store';
+	}
+
+	/**
 	 *	The line that says an offer was ordered, and by whom
 	 *
 	 *	@param		array 		$record				As Records::of() has it
@@ -306,7 +446,7 @@ class Order {
 	 *
 	 *	@return 	void
 	 */
-	private static function redirect( array &$appData, array &$request, string $state, string $from, ?array $document ): void {
+	public static function redirect( array &$appData, array &$request, string $state, string $from, ?array $document ): void {
 
 		$project = $document !== null && $from !== 'belege' && preg_match( Projekte::ID, (string) $document['project'] ) === 1 ? (string) $document['project'] : '';
 		$tab = $from === 'uebersicht' ? 'uebersicht' : 'angebot';

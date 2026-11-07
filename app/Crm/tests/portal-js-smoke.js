@@ -7,7 +7,8 @@
  *												of a message is posted in the background: the card goes when the server answered, stays when the answer is no page, says the
  *												token ran out or never comes, and a form that posts to another site is left to the browser. The player of a project page without the
  *												page loading again (a click on Anhören, the choice of a version and the position that goes with it, an answer that is not the route's)
- *												is the last part. Only the browser is a stand-in.
+ *												is the last part. The button that copies the IBAN of an invoice is shown where the browser can write to the clipboard, copies the IBAN
+ *												it carries and says in the live line beside it that it is copied or that it failed. Only the browser is a stand-in.
  *
  *	Usage: node app/Crm/tests/portal-js-smoke.js
  */
@@ -116,6 +117,7 @@ function run( model, over ) {
 		window : win, document : doc, console : console, URL : URL, URLSearchParams : URLSearchParams, Promise : Promise,
 		location : { search : '', hash : ( over && over.hash ) || '', pathname : parsed.pathname, href : parsed.href, origin : parsed.origin },
 		history : { state : null, replaceState : function() {} },
+		navigator : over && over.navigator !== undefined ? over.navigator : undefined,
 		fetch : over && over.fetch !== undefined ? over.fetch : function( url, options ) {
 			calls.fetches.push( { url : url, options : options } );
 			return Promise.resolve( { ok : true, url : ORIGIN+ '/portal/belege' } );
@@ -213,6 +215,67 @@ function submit( form ) {
  *
  *	@return		{Promise}
  */
+
+/**
+ *	The block of an invoice with the button that copies the IBAN: hidden, as the server writes it, beside the line that is read out
+ *
+ *	@return		{Object}
+ */
+function copyPage() {
+	const button = make( 'button', 'crm-pay__copy crm-btn', { type : 'button', 'data-crm-copy' : 'DE02 1203 0000 0000 2020 51', 'data-copied' : 'Die IBAN ist in der Zwischenablage.', 'data-failed' : 'Das Kopieren hat nicht geklappt.' } );
+	button.hidden = true;
+	button.setAttribute( 'hidden', '' );
+	const live = make( 'span', 'crm-pay__copied', { role : 'status', 'aria-live' : 'polite' } );
+	const value = make( 'span', 'crm-pay__value' );
+	value.textContent = 'DE02 1203 0000 0000 2020 51';
+	const dd = make( 'dd', '', {}, [ value, button, live ] );
+	const mount = make( 'div', 'root', {}, [ make( 'div', 'crm-portal' ), dd ] );
+	findAll( mount, function() { return true; } ).concat( [ mount ] ).forEach( function( el ) {
+		Object.defineProperty( el, 'parentElement', { get : function() { return el.parentNode; } } );
+	} );
+	return { mount : mount, rows : [], button : button, live : live, dd : dd };
+}
+
+/**
+ *	The checks of the copy button of the IBAN
+ *
+ *	@return		{Promise}
+ */
+async function copyChecks() {
+
+	console.log( '\nThe IBAN that is copied' );
+
+	// A clipboard that refuses is a promise that is rejected: one nobody handles is counted
+	let lost = 0;
+	const count = function() { lost++; };
+	process.on( 'unhandledRejection', count );
+
+	let model = copyPage();
+	run( model );
+	check( 'without a clipboard to write to (no navigator) the button stays hidden: the IBAN is there to select', model.button.hidden === true && model.live.textContent === '' );
+	model = copyPage();
+	run( model, { navigator : { clipboard : {} } } );
+	check( '...so it does where the clipboard cannot write (a page that is no secure context)', model.button.hidden === true );
+	const written = [];
+	model = copyPage();
+	run( model, { navigator : { clipboard : { writeText : function( text ) { written.push( text ); return Promise.resolve(); } } } } );
+	check( 'where the browser can write to the clipboard the script shows the button, and nothing is written or said before it is clicked', model.button.hidden === false && written.length === 0 && model.live.textContent === '' );
+	fire( model.button, 'click' );
+	await settle();
+	check( 'a click writes the IBAN the button carries, as text, and the live line says that it is on the clipboard', written.join() === 'DE02 1203 0000 0000 2020 51' && model.live.textContent === 'Die IBAN ist in der Zwischenablage.' );
+	model.live.textContent = '';
+	fire( model.button, 'click' );
+	await settle();
+	check( '...and says it again at the next click', written.length === 2 && model.live.textContent === 'Die IBAN ist in der Zwischenablage.' );
+	model = copyPage();
+	run( model, { navigator : { clipboard : { writeText : function() { return Promise.reject( new Error( 'denied' ) ); } } } } );
+	fire( model.button, 'click' );
+	await settle();
+	check( 'a clipboard that refuses is said in the sentence the button carries for it, and no promise is left unhandled', model.live.textContent === 'Das Kopieren hat nicht geklappt.' && lost === 0 );
+	check( '...the script writes the line as text and the button\'s data is the only place the words come from: no sentence of the copying is in the script', source( SCRIPT ).indexOf( 'Zwischenablage' ) === -1 && source( SCRIPT ).indexOf( 'live.textContent' ) !== -1 );
+	process.removeListener( 'unhandledRejection', count );
+}
+
 async function suite() {
 
 	console.log( '\nThe pills' );
@@ -307,6 +370,7 @@ async function suite() {
 	await playerSuite();
 	await homeSuite();
 	anchorSuite();
+	await copyChecks();
 
 	done();
 }

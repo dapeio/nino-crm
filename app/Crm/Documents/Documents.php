@@ -33,7 +33,7 @@ declare(strict_types=1);
  *											Finalising an invoice or a credit note of a business client also writes its electronic invoice beside the PDF, where XRechnung::lacks() says nothing is
  *											missing; otherwise the document keeps the list of what was missing (xml_lacks) and is finalised without a file. A finalised document never gets one later.
  *											A database failure is a \PDOException the caller answers. Beside the steps there are readings for the surface: overdue(), summary(), needs()
- *											(what needs the owner), recent(), order() (the customer orders an offer in the portal: the record of Records and the step to accepted in one transaction), and two things made of a document: copy() (a draft of it) and preview() (the PDF of a draft, stored nowhere).
+ *											(what needs the owner), recent(), order() (the customer orders an offer in the portal: the record of Records and the step to accepted in one transaction), decline() (the customer declines it: the record and the step to declined in one transaction), payment() (the customer reports that an invoice is paid: the record alone), and two things made of a document: copy() (a draft of it) and preview() (the PDF of a draft, stored nowhere).
  */
 namespace Crm;
 
@@ -80,6 +80,9 @@ class Documents {
 	// How many days an approval of a project that no invoice names stays among the things that need the owner
 	public const int APPROVAL_DAYS = 30;
 
+	// How many days an offer the customer declined stays among the things that need the owner
+	public const int DECLINE_DAYS = 30;
+
 	// The fields of the client that are frozen into a finalised document: business is frozen as 1 or 0, the others as text. The electronic invoice
 	// reads the frozen client, so what it says is what the client was when the document was finalised
 	private const array CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'number', 'vat_id', 'email', 'business', 'buyer_reference' ];
@@ -102,7 +105,7 @@ class Documents {
 	 *	@param		array 		$filter				category, state (or expired), year, client_id, project (the id of a project)
 	 *	@param		bool			$sync					Whether the state of the requests waiting in Sign is read first; a caller that needs no state leaves it out
 	 *
-	 *	@return 	array											Each with its client's title as the document shows it, and whether it is expired (an offer) or overdue (an invoice), and the key of the PDF template it was made with (template_key, '' for none)
+	 *	@return 	array											Each with its client's title as the document shows it, and whether it is expired (an offer) or overdue (an invoice), and the key of the PDF template it was made with (template_key, '' for none), and paid_notice, the day the customer reported that it paid the invoice ('' for none)
 	 */
 	public static function list( array &$appData, array $filter = [], bool $sync = true ): array {
 
@@ -147,7 +150,8 @@ class Documents {
 
 		$titles = Projekte::titles( $appData );
 
-		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.parent_id, d.project, d.template_key, d.client_json, d.released, d.reminded_at, d.reminded_mail, d.sign_id, d.sign_state, c.company AS live_company, c.name AS live_name, c.email AS live_email
+		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.parent_id, d.project, d.template_key, d.client_json, d.released, d.reminded_at, d.reminded_mail, d.sign_id, d.sign_state, c.company AS live_company, c.name AS live_name, c.email AS live_email,
+			( SELECT SUBSTR( MAX( r.at ), 1, 10 ) FROM records r WHERE r.document_id = d.id AND r.kind = \'payment\' ) AS paid_notice
 			FROM documents d JOIN clients c ON c.id = d.client_id'. ( $where === [] ? '' : ' WHERE '. implode( ' AND ', $where ) ). ' ORDER BY d.date DESC, d.id DESC', $params );
 
 		return array_map( static function( array $row ) use ( $today, $titles ): array {
@@ -178,6 +182,7 @@ class Documents {
 				'project'      => (string) $row['project'],
 				'project_title' => $titles[(string) $row['project']] ?? '',
 				'template_key' => (string) $row['template_key'],
+				'paid_notice'  => (string) ( $row['paid_notice'] ?? '' ),
 			];
 		}, $rows );
 	}
@@ -636,6 +641,166 @@ class Documents {
 	}
 
 	/**
+	 *	The customer declines an offer in the portal: the record of the decline and the step of the offer to declined are one transaction, so that an offer is never declined
+	 *	without the record of who declined it and the reason, nor a record kept of an offer that stayed as it was. The offer must be the client's, finalised and released to the
+	 *	portal, open or sent and not expired - the offer that can be ordered; what the customer was shown, the JSON the page of the offer is drawn from, is kept with the reason,
+	 *	its hash, the account, the time and the circumstances of the request
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id						The offer
+	 *	@param		int				$clientId			The client of the account that declines
+	 *	@param		array 		$member				id, email and name of that account
+	 *	@param		string		$reason				As Records::reason() has it, '' for none
+	 *	@param		array 		$source				ip and agent of the request, see Records::source()
+	 *
+	 *	@return 	array|string							document (as get() has it, declined) and record (as Records::of() has it); or why not: unknown (no offer of the client), state (the offer cannot be declined), reason (the reason is none that Records::reason() keeps as it is), kind, member, shown (see Records)
+	 */
+	public static function decline( array &$appData, int $id, int $clientId, array $member, string $reason, array $source ): array|string {
+
+		Projekte::forget( $appData );
+
+		$document = self::get( $appData, $id );
+
+		if( $document === null || $document['client_id'] !== $clientId )
+			return 'unknown';
+
+		if( self::orderable( $document ) === false || $document['released'] !== true || $document['pdf_path'] === '' )
+			return 'state';
+
+		if( Records::reason( $reason ) !== $reason )
+			return 'reason';
+
+		return self::declineNow( $appData, $id, $clientId, $member, $document, Records::declineShown( $appData, $document, $reason ), $source );
+	}
+
+	/**
+	 *	The transaction of decline(): the offer is looked at again inside it, so that one that was ordered, declined, taken back or let run out since the first look is not declined
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id
+	 *	@param		int				$clientId
+	 *	@param		array 		$member
+	 *	@param		array 		$document			The offer as get() had it
+	 *	@param		string		$shown				What the customer was shown, with the reason
+	 *	@param		array 		$source
+	 *
+	 *	@return 	array|string							As decline() has it
+	 */
+	private static function declineNow( array &$appData, int $id, int $clientId, array $member, array $document, string $shown, array $source ): array|string {
+
+		$pdo = Db::pdo( $appData );
+		$pdo->exec( 'BEGIN IMMEDIATE' );
+
+		try {
+			// Looked at again inside the transaction: an offer that another request ordered, declined, took back or let run out meanwhile is not declined twice
+			$statement = $pdo->prepare( 'SELECT category, state, released, valid_until FROM documents WHERE id = :id AND client_id = :client' );
+			$statement->execute( [ 'id' => $id, 'client' => $clientId ] );
+			$row = $statement->fetch();
+
+			if( $row === false || (int) $row['released'] !== 1 || self::orderable( $row ) === false ) {
+				$pdo->exec( 'ROLLBACK' );
+				return $row === false ? 'unknown' : 'state';
+			}
+
+			$record = Records::insert( $appData, $pdo, [
+				'kind' => 'decline', 'client_id' => $clientId, 'member' => $member, 'document_id' => $id, 'project' => $document['project'], 'shown' => $shown,
+				'ip' => (string) ( $source['ip'] ?? '' ), 'agent' => (string) ( $source['agent'] ?? '' ),
+			] );
+			$refused = is_string( $record ) === true ? $record : self::moveIn( $pdo, $id, 'declined', null );
+
+			if( $refused !== '' ) {
+				$pdo->exec( 'ROLLBACK' );
+				return $refused;
+			}
+
+			$pdo->exec( 'COMMIT' );
+		}
+		catch( \Throwable $e ) {
+			$pdo->exec( 'ROLLBACK' );
+			throw $e;
+		}
+
+		return [ 'document' => (array) self::get( $appData, $id ), 'record' => (array) $record ];
+	}
+
+	/**
+	 *	The customer reports in the portal that it has paid an invoice: one record of kind payment, and nothing else - the state of the invoice stays as it is, because it is the
+	 *	owner who sees the money and marks the invoice as paid. The invoice must be the client's, finalised and released to the portal, open or sent; there is one report for each
+	 *	invoice, looked at again inside the transaction so that two posts of one button keep one record
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$id						The invoice
+	 *	@param		int				$clientId			The client of the account that reports
+	 *	@param		array 		$member				id, email and name of that account
+	 *	@param		array 		$source				ip and agent of the request, see Records::source()
+	 *
+	 *	@return 	array|string							document (as get() has it) and record (as Records::of() has it); or why not: unknown (no invoice of the client), state (it is no invoice that is released and not paid), again (reported already), kind, member, shown (see Records)
+	 */
+	public static function payment( array &$appData, int $id, int $clientId, array $member, array $source ): array|string {
+
+		$document = self::get( $appData, $id );
+
+		if( $document === null || $document['client_id'] !== $clientId )
+			return 'unknown';
+
+		if( self::payable( $document ) === false )
+			return 'state';
+
+		$shown = Records::paymentShown( $appData, $document );
+		$pdo = Db::pdo( $appData );
+		$pdo->exec( 'BEGIN IMMEDIATE' );
+
+		try {
+			$statement = $pdo->prepare( 'SELECT category, state, released, pdf_path FROM documents WHERE id = :id AND client_id = :client' );
+			$statement->execute( [ 'id' => $id, 'client' => $clientId ] );
+			$row = $statement->fetch();
+
+			if( $row === false || self::payable( [ 'released' => (int) $row['released'] === 1, 'pdf_path' => (string) $row['pdf_path'] ] + $row ) === false ) {
+				$pdo->exec( 'ROLLBACK' );
+				return $row === false ? 'unknown' : 'state';
+			}
+
+			$statement = $pdo->prepare( 'SELECT id FROM records WHERE document_id = :id AND kind = \'payment\'' );
+			$statement->execute( [ 'id' => $id ] );
+
+			if( $statement->fetchColumn() !== false ) {
+				$pdo->exec( 'ROLLBACK' );
+				return 'again';
+			}
+
+			$record = Records::insert( $appData, $pdo, [
+				'kind' => 'payment', 'client_id' => $clientId, 'member' => $member, 'document_id' => $id, 'shown' => $shown,
+				'ip' => (string) ( $source['ip'] ?? '' ), 'agent' => (string) ( $source['agent'] ?? '' ),
+			] );
+
+			if( is_string( $record ) === true ) {
+				$pdo->exec( 'ROLLBACK' );
+				return $record;
+			}
+
+			$pdo->exec( 'COMMIT' );
+		}
+		catch( \Throwable $e ) {
+			$pdo->exec( 'ROLLBACK' );
+			throw $e;
+		}
+
+		return [ 'document' => (array) self::get( $appData, $id ), 'record' => (array) $record ];
+	}
+
+	/**
+	 *	Whether an invoice may be reported as paid by the customer: it is an invoice, open or sent, finalised and released to the portal
+	 *
+	 *	@param		array 		$row					category, state, released (a bool) and pdf_path
+	 *
+	 *	@return 	bool
+	 */
+	public static function payable( array $row ): bool {
+
+		return ( $row['category'] ?? '' ) === 'invoice' && in_array( $row['state'] ?? '', [ 'open', 'sent' ], true ) === true && ( $row['released'] ?? false ) === true && ( $row['pdf_path'] ?? '' ) !== '';
+	}
+
+	/**
 	 *	Whether an offer may be ordered: it is an offer, open or sent, and not past its validity day (an offer without one does not run out)
 	 *
 	 *	@param		array 		$row					category, state and valid_until - or expired, which a document as get() and released() have it carries already
@@ -793,14 +958,14 @@ class Documents {
 	}
 
 	/**
-	 *	What needs the owner: the invoices that are overdue (the oldest due first), the orders of the portal of the last ORDER_DAYS days that no invoice has followed (one
-	 *	entry, kind orders, with how many and the sum, and items: the newest NEEDS_ORDERS of them, each with id, number, title, client_title, project, project_title and gross), the projects the customer approved in the last APPROVAL_DAYS days that no invoice names (one entry, kind approved, with how many), the offers that run out within the next seven days, the contracts and privacy documents whose signature was
+	 *	What needs the owner: the invoices that are overdue (the oldest due first), the invoices a customer reported as paid that are not marked as paid yet (one entry, kind payments, with how many and the sum), the orders of the portal of the last ORDER_DAYS days that no invoice has followed (one
+	 *	entry, kind orders, with how many and the sum, and items: the newest NEEDS_ORDERS of them, each with id, number, title, client_title, project, project_title and gross), the projects the customer approved in the last APPROVAL_DAYS days that no invoice names (one entry, kind approved, with how many), the offers a customer declined in the last DECLINE_DAYS days (one entry, kind declined, with how many), the offers that run out within the next seven days, the contracts and privacy documents whose signature was
 	 *	looked at and not given or ran out of time, and the active clients that have no account
 	 *
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	array											A list in that order; each has kind (overdue, orders, approved, expiring, sign, account), id (the document, 0 for a client), client_id, client_title, number, title,
-	 *																		date (the due date, the day the offer runs out, the day the state last changed, ''), gross, sign_state ('' unless it is a signature) and reminded_at (the time of the last payment reminder, '' for none)
+	 *	@return 	array											A list in that order; each has kind (overdue, payments, orders, approved, declined, expiring, sign, account), id (the document, 0 for a client), client_id, client_title, number, title,
+	 *																		date (the due date, the day the offer runs out, the day the state last changed, ''), gross, sign_state ('' unless it is a signature) and reminded_at (the time of the last payment reminder, '' for none); payments, orders, approved and declined carry count, declined also days
 	 */
 	public static function needs( array &$appData ): array {
 
@@ -869,7 +1034,16 @@ class Documents {
 
 		$approvals = $approved === [] ? [] : [ [ 'kind' => 'approved', 'id' => 0, 'client_id' => 0, 'client_title' => '', 'number' => '', 'title' => '', 'date' => '', 'gross' => 0, 'sign_state' => '', 'count' => count( $approved ) ] ];
 
-		return array_merge( $groups['overdue'], $ordered, $approvals, $groups['sign'], $groups['expiring'], $accounts );
+		// The invoices a customer reported as paid that the owner has not marked as paid: one line with how many and what they come to
+		$reported = Db::row( $appData, 'SELECT COUNT( DISTINCT d.id ) AS n, COALESCE( SUM( d.gross ), 0 ) AS gross FROM records r JOIN documents d ON d.id = r.document_id
+			WHERE r.kind = \'payment\' AND d.category = \'invoice\' AND d.state IN ( \'open\', \'sent\' )' );
+		$payments = (int) ( $reported['n'] ?? 0 ) === 0 ? [] : [ [ 'kind' => 'payments', 'id' => 0, 'client_id' => 0, 'client_title' => '', 'number' => '', 'title' => '', 'date' => '', 'gross' => (int) $reported['gross'], 'sign_state' => '', 'count' => (int) $reported['n'] ] ];
+
+		// The offers a customer declined in the last DECLINE_DAYS days: one line with how many
+		$gone = Db::row( $appData, 'SELECT COUNT( DISTINCT d.id ) AS n FROM records r JOIN documents d ON d.id = r.document_id WHERE r.kind = \'decline\' AND d.state = \'declined\' AND r.at >= :since', [ 'since' => gmdate( self::TIME, time() - self::DECLINE_DAYS * 86400 ) ] );
+		$declined = (int) ( $gone['n'] ?? 0 ) === 0 ? [] : [ [ 'kind' => 'declined', 'id' => 0, 'client_id' => 0, 'client_title' => '', 'number' => '', 'title' => '', 'date' => '', 'gross' => 0, 'sign_state' => '', 'count' => (int) $gone['n'], 'days' => self::DECLINE_DAYS ] ];
+
+		return array_merge( $groups['overdue'], $payments, $ordered, $approvals, $declined, $groups['sign'], $groups['expiring'], $accounts );
 	}
 
 	/**

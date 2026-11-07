@@ -36,6 +36,9 @@ class Admin {
 		'ratelimit' => [ 429, 'the mail cap of the kernel for one address is reached', 'crm_clients_ratelimit', [], '' ],
 		'link_perm' => [ 403, 'a link without the mail needs the permission of Members', 'crm_clients_link_perm', [], '' ],
 		'database' => [ 500, 'the database failed', 'crm_clients_database', [], '' ],
+		'files'    => [ 409, 'the feature Files is off', 'crm_clients_files', [], '' ],
+		'folder_inactive' => [ 409, 'a client that is switched off gets no upload folder', 'crm_clients_folder_inactive', [], '' ],
+		'folder'   => [ 500, 'the folder could not be made', 'crm_clients_folder', [], '' ],
 	];
 
 	// The number of the client an action made or touched, by action: written by the action, read by log() in the same request
@@ -59,6 +62,7 @@ class Admin {
 			'crm-clients/account-remove' => [ self::class, 'apiAccountRemove' ],
 			'crm-clients/portal'   => [ self::class, 'apiPortal' ],
 			'crm-clients/message'  => [ self::class, 'apiMessage' ],
+			'crm-clients/upload-folder' => [ self::class, 'apiUploadFolder' ],
 		];
 	}
 
@@ -89,6 +93,7 @@ class Admin {
 			'crm-clients/account-forget' => 'Signed account'. $id. ' of client'. $of. ' out of all devices',
 			'crm-clients/account-remove' => 'Deleted account'. $id. ' of client'. $of,
 			'crm-clients/message'        => 'Changed the message of client'. $of,
+			'crm-clients/upload-folder'  => $of === '' ? '' : 'Made the upload folder of client'. $of,
 			default                      => '',
 		};
 	}
@@ -634,6 +639,45 @@ class Admin {
 			self::$_made['crm-clients/message'] = $client['number'];
 
 			\Nino\Http::ok( $request, [ 'client' => $saved ] );
+		} );
+	}
+
+	/**
+	 *	Make the upload folder of a client that has none (a client made before the folder was made with it, or one whose folder could not be made): the folder of its group in Files, marked as the
+	 *	upload folder, with the permission of the CRM and not the Files panel's (Clients::makeUploadFolder()). A client that has one gets it back and nothing is made (created false); a client that is
+	 *	switched off is 409 crm_clients_folder_inactive, Files being off is 409 crm_clients_files and an index that cannot be written is 500 crm_clients_folder. The log names the number
+	 *	of the client where a folder was made
+	 */
+	public static function apiUploadFolder( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		self::_run( $request, static function() use ( &$appData, &$request ): void {
+
+			unset( self::$_made['crm-clients/upload-folder'] );
+
+			$client = self::_client( $appData, $request, \Nino\Admin\Admin::postData() );
+
+			if( $client === null )
+				return;
+
+			$had = \Crm\Clients::uploadFolder( $appData, $client ) !== null;
+			$folder = \Crm\Clients::makeUploadFolder( $appData, $client );
+
+			if( is_string( $folder ) === true ) {
+
+				if( $folder === 'write' )
+					trigger_error( 'Crm: the upload folder of client '. $client['number']. ' was not made: '. $folder, E_USER_WARNING );
+
+				self::_refuse( $request, match( $folder ) { 'inactive' => 'folder_inactive', 'files' => 'files', default => 'folder' } );
+				return;
+			}
+
+			if( $had === false )
+				self::$_made['crm-clients/upload-folder'] = $client['number'];
+
+			\Nino\Http::ok( $request, [ 'folder' => [ 'id' => $folder['id'], 'name' => $folder['name'], 'upload' => true, 'files' => count( \Nino\Modules\Files::files( $appData, $folder['id'] ) ) ], 'created' => $had === false ] );
 		} );
 	}
 

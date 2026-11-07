@@ -7,7 +7,7 @@
  *							leave the page); the open tab is scrolled into the row of tabs where the row is wider than the window; a message the address carries (?state=..., ?sign-state=...) is taken out of the address once the page has shown it,
  *							so that a reload does not say it again; the place on the page an address names survives the sign-in (the field return of the login form carries it); the card or the row an anchor names (#angebot-<id>, #beleg-<id>), or the row of the document
  *							Sign has just brought back (data-sign-state), is unfolded and brought into view, also when it stands in a tab the kernel's script has
- *							hidden; the field of Meine Daten the server refused gets the focus; the drop zone of the upload says that a file hangs over it; and the select of the versions over a player sends its form when the choice changes - at once for the mouse and touch, on Enter or on leaving for the keyboard - and gets the focus back after the page is loaded (the button that does it without the script is taken away). The player does not need the page to load again: a click on *Anhören* (or on the name of a file that is played) and the choice of another version ask the route /.crm/player, whose address the column of the player carries (data-crm-player), for the player of that file, and put the answer - the markup the server draws, parsed and taken over as nodes, only where it comes from this origin, from the path of that route and holds a player - in the column; the list marks the row that plays from a template of the page, the address follows (replaceState), and Review binds the new player (Nino.review.init). A version takes over the position of the player it replaces and plays on where that played; the focus stays in the select. Where the answer is anything else, or the network fails, the link is followed and the form is sent the plain way. The pills over the list of documents are shown and filter its rows (a row that does not fit is hidden, the number over the list says how many are shown; the pill the server pressed is the one that applies at first, and a row that is hidden is not unfolded by an anchor); a message of the owner is put away by posting the form on its card, and the card goes from the page once the server has answered (it stays where the post fails). The card that tells how to put the portal on the home screen (data-crm-home, drawn hidden by the server) is shown where the page is no app yet (not display-mode standalone), the window is under 1024px wide and the device has not put it away; the button that puts it away does so for good by writing crm-homescreen to the localStorage of the device (the one thing the script stores, and nothing is sent to the server); where the browser offers the install itself (beforeinstallprompt) the button to install is shown in place of the sentence for Android and asks the browser for it. No markup is made here, nothing is sent but those two forms (a plain GET, a post to the same site) and the request for a player (a GET of the route the column names).
+ *							hidden; the field of Meine Daten the server refused gets the focus; the drop zone of the upload says that a file hangs over it; and the select of the versions over a player sends its form when the choice changes - at once for the mouse and touch, on Enter or on leaving for the keyboard - and gets the focus back after the page is loaded (the button that does it without the script is taken away). The player does not need the page to load again: a click on *Anhören* (or on the name of a file that is played) and the choice of another version ask the route /.crm/player, whose address the column of the player carries (data-crm-player), for the player of that file, and put the answer - the markup the server draws, parsed and taken over as nodes, only where it comes from this origin, from the path of that route and holds a player - in the column; the list marks the row that plays from a template of the page, the address follows (replaceState), and Review binds the new player (Nino.review.init). A version takes over the position of the player it replaces and plays on where that played; the focus stays in the select. Where the answer is anything else, or the network fails, the link is followed and the form is sent the plain way. The pills over the list of documents are shown and filter its rows (a row that does not fit is hidden, the number over the list says how many are shown; the pill the server pressed is the one that applies at first, and a row that is hidden is not unfolded by an anchor); a message of the owner is put away by posting the form on its card, and the card goes from the page once the server has answered (it stays where the post fails). The card that tells how to put the portal on the home screen (data-crm-home, drawn hidden by the server) is shown where the page is no app yet (not display-mode standalone), the window is under 1024px wide and the device has not put it away; the button that puts it away does so for good by writing crm-homescreen to the localStorage of the device (the one thing the script stores, and nothing is sent to the server); where the browser offers the install itself (beforeinstallprompt) the button to install is shown in place of the sentence for Android and asks the browser for it. The button that copies the IBAN of an invoice (data-crm-copy, hidden in the markup) is shown where the browser can write to the clipboard, and says in the live line beside it that the IBAN is copied or that the copying failed (the words are the button's own data-copied and data-failed). No markup is made here, nothing is sent but those two forms (a plain GET, a post to the same site) and the request for a player (a GET of the route the column names).
  */
 ( function() {
 
@@ -513,11 +513,29 @@
 		} );
 	}
 
+	// The IBAN of an invoice is copied by a button that is hidden until here: a page without the script, or a browser that cannot write to the clipboard, has the IBAN to select and no button
+	function watchCopy() {
+		if( typeof navigator === 'undefined' || navigator.clipboard === undefined || typeof navigator.clipboard.writeText !== 'function' )
+			return;
+		dc.querySelectorAll( 'button[data-crm-copy]' ).forEach( function( button ) {
+			const live = button.parentElement === null ? null : button.parentElement.querySelector( '.crm-pay__copied' );
+			const say = function( attribute ) {
+				if( live !== null )
+					live.textContent = button.getAttribute( attribute ) || '';
+			};
+			button.hidden = false;
+			button.addEventListener( 'click', function() {
+				navigator.clipboard.writeText( button.getAttribute( 'data-crm-copy' ) || '' ).then( function() { say( 'data-copied' ); }, function() { say( 'data-failed' ); } );
+			} );
+		} );
+	}
+
 	function init() {
 		keepAnchor();
 		if( dc.querySelector( '.crm-portal' ) === null )
 			return;
 		watchHome();
+		watchCopy();
 		focusRefused();
 		followTabs();
 		showOpenTab();

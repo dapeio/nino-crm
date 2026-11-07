@@ -1,0 +1,1 @@
+<p class="crm-order crm-order--declined crm-note crm-note--muted" data-document="[[id]]">[[icon:circle-check]]<span class="crm-note__text">[[/project/crm-portal/order/declined]] <time datetime="[[iso]]">[[date]]</time> [[/project/crm-portal/order/by]] <span class="crm-order__who">[[name]]</span>.</span></p>

@@ -4,3 +4,4 @@
 				<div class="crm-pay__fact crm-pay__fact--purpose"><dt>[[/project/crm-portal/pay/purpose]]</dt><dd>[[number]]</dd></div>
 				[[paypal]]
 			</dl>
+			[[notice]]
