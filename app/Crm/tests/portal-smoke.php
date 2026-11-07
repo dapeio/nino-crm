@@ -4389,7 +4389,12 @@ function portalFinishingTouches( array &$appData, array $accounts, array $stray 
 	\Crm\Portal::forget( $appData );
 	$onProject = portalPage( $appData, '/portal/projekte?projekt='. $project )[1];
 	check( '...the list of documents on the page of a project has no pills and keeps the newest first: the information of the later day stands over the overdue invoice there', $project !== '' && $ids( $onProject ) === [ $infoNew, $overdueOld ] && portalFind( $onProject, '//div[contains(@class, "crm-filter")]' ) === [] );
-	$credit = $make( 'credit', $client, [ 'date' => '2026-10-28', 'template_key' => 'rechnung', 'lines' => [ $line( 'Gutschrift' ) ] ] );
+	$charged = (array) Documents::finalise( $appData, (int) Documents::add( $appData, 'invoice', $client, [ 'date' => '2026-10-28', 'template_key' => 'rechnung', 'lines' => [ $line( 'Gutschrift' ) ] ] )['id'] );
+	$creditDraft = (array) Documents::creditOf( $appData, $charged['id'] );
+	Documents::change( $appData, $creditDraft['id'], [ 'date' => '2026-10-28', 'template_key' => 'rechnung' ] );
+	$creditDone = (array) Documents::finalise( $appData, $creditDraft['id'] );
+	Documents::release( $appData, $creditDone['id'], false );
+	$credit = $creditDone['id'];
 	Documents::setState( $appData, $credit, 'sent', '2026-10-28' );
 	Db::exec( $appData, 'UPDATE documents SET released = 0 WHERE id IN ( :one, :two )', [ 'one' => $contract, 'two' => $privacy ] );
 	Db::exec( $appData, 'UPDATE documents SET state = \'sent\' WHERE id = :id', [ 'id' => $paid ] );

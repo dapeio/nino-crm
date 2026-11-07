@@ -141,8 +141,10 @@ class Elements {
 	 */
 	public static function apiSave( array &$appData, array &$request ): void {
 
-		if( self::guard( $appData, $request ) === true && self::projectSaved( $appData, $request ) === true && self::eventSaved( $appData, $request ) === true )
+		if( self::guard( $appData, $request ) === true && self::projectSaved( $appData, $request ) === true && self::eventSaved( $appData, $request ) === true ) {
 			\Nino\Modules\Elements\Admin::apiSave( $appData, $request );
+			self::coded( $appData, $request );
+		}
 	}
 
 	/**
@@ -153,8 +155,66 @@ class Elements {
 	 */
 	public static function apiDelete( array &$appData, array &$request ): void {
 
-		if( self::guard( $appData, $request ) === true && self::projectDeleted( $appData, $request ) === true )
+		if( self::guard( $appData, $request ) === true && self::projectDeleted( $appData, $request ) === true ) {
 			\Nino\Modules\Elements\Admin::apiDelete( $appData, $request );
+			self::coded( $appData, $request );
+		}
+	}
+
+	/**
+	 *	A refusal of the panel that has no code gets one - the panel answers some of its refusals with the kernel's English sentence alone -, and the field it is about where it names
+	 *	one, so that the page says it in its own words at the field
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request					The answer of the panel
+	 *
+	 *	@return 	void
+	 */
+	private static function coded( array &$appData, array &$request ): void {
+
+		$body = $request['/nino/http/response']['body'] ?? null;
+
+		if( (int) ( $request['/nino/http/response']['statusCode'] ?? 200 ) < 400 || is_array( $body ) === false || isset( $body['code'] ) === true || is_string( $body['error'] ?? null ) === false )
+			return;
+
+		$error = $body['error'];
+		$data = \Nino\Admin\Admin::postData();
+		$type = \Nino\Admin\Admin::postString( $data, 'type' );
+		$field = '';
+
+		if( $error === 'invalid type, uri or locale' || $error === 'invalid type or uri' ) {
+
+			$code = match( true ) {
+				$error === 'invalid type, uri or locale' && \Nino\Locales::verifyLocale( $appData, \Nino\Admin\Admin::postString( $data, 'locale' ) ) === false => 'locale',
+				in_array( $type, \Nino\Modules\Elements\Admin::types( $appData ), true ) === false => 'type',
+				default => 'uri',
+			};
+			$code = 'crm_elements_'. $code;
+			$field = substr( $code, 13 );
+		}
+		elseif( str_starts_with( $error, 'not allowed to' ) === true )
+			$code = 'crm_elements_denied';
+		elseif( str_contains( $error, 'does not exist' ) === true || $error === 'unknown type or element' || $error === 'element not found' ) {
+			$code = 'crm_elements_unknown';
+			$field = 'uri';
+		}
+		elseif( str_contains( $error, 'already exists' ) === true ) {
+			$code = 'crm_elements_exists';
+			$field = 'uri';
+		}
+		elseif( preg_match( '/(?:required element key|var type|Element value|Element reference) \'([^\']+)\'/', $error, $found ) === 1 ) {
+			$code = 'crm_elements_value';
+			$field = $found[1];
+		}
+		elseif( $error === 'delete vetoed' || (int) $request['/nino/http/response']['statusCode'] === 409 )
+			$code = 'crm_elements_vetoed';
+		else
+			$code = 'crm_elements_failed';
+
+		$request['/nino/http/response']['body']['code'] = $code;
+
+		if( $field !== '' )
+			$request['/nino/http/response']['body']['field'] = $field;
 	}
 
 	/**

@@ -53,10 +53,11 @@ class Money {
 	 *	@param		array 		$lines				Each with qty, price_net and vat_rate
 	 *	@param		string		$vatMode			small_business or regular
 	 *	@param		bool			$reverse
+	 *	@param		array|null	$given				The tax of the rates where it is not the tax of their own net (rate => cents): the credit note of an invoice, see Documents::creditVat()
 	 *
 	 *	@return 	array											net, vat, gross, rates (rate => [ net, vat ], the highest rate first), amounts (the amount of each line)
 	 */
-	public static function totals( array $lines, string $vatMode, bool $reverse = false ): array {
+	public static function totals( array $lines, string $vatMode, bool $reverse = false, ?array $given = null ): array {
 
 		$zero = $vatMode === 'small_business' || $reverse === true;
 		$rates = [];
@@ -82,6 +83,17 @@ class Money {
 			$perRate[$rate] = [ 'net' => $sum, 'vat' => $tax ];
 			$net += $sum;
 			$vat += $tax;
+		}
+
+		// The tax of a rate that is given is the tax of that rate: a credit note carries the tax rounded on what its invoice has given back so far
+		if( $given !== null && $zero === false ) {
+
+			$vat = 0;
+
+			foreach( $perRate as $rate => $part ) {
+				$perRate[$rate]['vat'] = $given[$rate] ?? $part['vat'];
+				$vat += $perRate[$rate]['vat'];
+			}
 		}
 
 		return [ 'net' => $net, 'vat' => $vat, 'gross' => $net + $vat, 'rates' => $perRate, 'amounts' => $amounts ];

@@ -30,6 +30,14 @@ if( preg_match( '#^/private(?:/|$)#'. $i, $uri ) === 1 ) {
     return true;
 }
 
+// The data of the project is private as well (Filesystem::PRIVATE_DIRS): the database lives below private/, and a directory data/ in the
+// public root, where a file could be put by hand, is nothing to serve. Refused where it is a directory, as /docs is: an address of that shape
+// without the directory is a route
+if( preg_match( '#^/data(?:/|$)#'. $i, $uri ) === 1 && is_dir( __DIR__. '/data' ) === true ) {
+	http_response_code( 404 );
+	return true;
+}
+
 // The installer's library is what the setup wizard copies a project out of,
 // not a second public asset tree - and since 1.2 there is nothing public in
 // it at all. Mirror _admin/install/library/.htaccess here because PHP's

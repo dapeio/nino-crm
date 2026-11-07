@@ -211,6 +211,7 @@ class Surface {
 		$data = [
 			'base'  => $dir,
 			'csrf'  => \Nino\Csrf::getToken( $appData ),
+			'today' => date( 'Y-m-d' ),
 			'user'  => [ 'name' => (string) $user['mail'] ],
 			'perm'  => \Crm\Crm::MANAGE_PERM,
 			'perms' => [ 'crm' => true, 'pdf' => Surface\Pdf::allowed( $appData ), 'elements' => Surface\Elements::allowed( $appData ), 'text' => Surface\Texts::allowed( $appData ), 'files' => Surface\Files::allowed( $appData ), 'review' => Surface\Review::allowed( $appData ), 'members' => \Crm\Crm::featureOn( $appData, 'members' ) === true && \Crm\Crm::mayLink( $appData, 'members' ), 'sign' => \Crm\Crm::featureOn( $appData, 'sign' ) === true && \Crm\Crm::mayLink( $appData, 'sign' ) ],

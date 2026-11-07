@@ -1878,6 +1878,10 @@ body.nino-scroll-down .nino-scroll-header:where(:not(:has(:focus-visible))) {
 /*	One section of the imprint or the privacy policy (Modules\Legal): its heading
  *	over a .nino-richtext, and a gap before the next section - the reset has
  *	taken the heading's own margins away */
+.nino-legal-section {
+	max-width: 40rem;
+	margin-inline: auto;
+}
 .nino-legal-section > h3 {
 	margin-bottom: calc(var(--space-1) * var(--whitespace-text));
 }
@@ -1962,9 +1966,11 @@ body.nino-scroll-down .nino-scroll-header:where(:not(:has(:focus-visible))) {
 		section has a side padding of its own, the room between the page and its
 		row, and a row that says nino-pl-0 or nino-pr-0 - its content at the edge -
 		would still stand that far from it. So the section that holds such a row
-		gives up the padding on that side; below 768px it has none	*/
-	.nino-section:has(> .nino-grid-row.nino-pl-0) { padding-left: 0; }
-	.nino-section:has(> .nino-grid-row.nino-pr-0) { padding-right: 0; }
+		gives up the padding on that side, unless the section says a padding of
+		its own (nino-pl-*, nino-pr-*, nino-p-*), which is then what it has; below
+		768px it has none	*/
+	.nino-section:has(> .nino-grid-row.nino-pl-0):not([class*="nino-pl-"], [class*="nino-p-"]) { padding-left: 0; }
+	.nino-section:has(> .nino-grid-row.nino-pr-0):not([class*="nino-pr-"], [class*="nino-p-"]) { padding-right: 0; }
 	/*	A mirrored section has the columns of its row in the opposite order - the
 		first one at the right - so that a loop that says alternate="1" puts the
 		picture on the other side from one section to the next. [sections] writes
@@ -2380,7 +2386,6 @@ body.nino-scroll-down .nino-scroll-header:where(:not(:has(:focus-visible))) {
  *			.nino-pricing-row, .nino-pricing-item(--featured), .nino-pricing-title, .nino-pricing-price
  *			.nino-accordion, .nino-accordion-trigger, .nino-accordion-panel
  *			.nino-pagination
- *			.nino-logos, .nino-logos-item
  *			.nino-gallery, .nino-gallery-item(--wide, --tall)
  *			.nino-feature-list, .nino-feature-item
  *			.nino-timeline, .nino-timeline-step, .nino-timeline-number
@@ -3470,33 +3475,6 @@ body.nino-scroll-btf .nino-back-to-top {
 }
 
 
-/* Logo/Partner strip - text placeholders standing in for real logo
-   images (SVG/PNG), grayscale-to-color on hover */
-.nino-logos {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	justify-content: center;
-	gap: var(--space-4);
-}
-.nino-logos-item {
-	font-size: 1.25rem;
-	font-weight: 700;
-	opacity: .5;
-	filter: grayscale(1);
-	transition: opacity .2s ease, filter .2s ease;
-}
-.nino-logos-item:hover {
-	opacity: 1;
-	filter: grayscale(0);
-}
-.nino-logos-item img {
-	display: block;
-	max-width: 9rem;
-	max-height: 3.5rem;
-	object-fit: contain;
-}
-
 /* Gallery/Mosaic grid - fixed row height, items span extra columns/rows
    via --wide/--tall to break up the grid */
 .nino-gallery {
@@ -3862,6 +3840,14 @@ body.nino-scroll-btf .nino-back-to-top {
 	display:none;
 }
 
+/*	While a menu is open - any burger whose button says aria-expanded - the document stays where it is, so the header keeps the button that closes
+	the menu and the page is where it was when the menu closes. The overlay
+	scrolls by itself when its list is longer than the window	*/
+html:has(.nino-nav-burger > button[aria-expanded="true"]) {
+	overflow: hidden;
+	scrollbar-gutter: stable;
+}
+
 /*	Open, the overlay paints the page ground over whatever the header frame
 	paints, so it restores that ground's ink and roles with it - a frame
 	drawing its bar on the deepest surface otherwise handed its own white ink
@@ -3869,6 +3855,8 @@ body.nino-scroll-btf .nino-back-to-top {
 	screen and has to keep inheriting the bar's	*/
 .nino-nav-burger > button[aria-expanded="true"] ~ .nino-nav-content {
 	max-height: 100vh;
+	overflow-y: auto;
+	overscroll-behavior: contain;
 	visibility: visible;
 	transition: max-height .4s;
 	color: var(--color-text);
@@ -4354,10 +4342,10 @@ header .nino-headernav-logo:empty {
 	height: 180%;
 	will-change: transform;
 }
-@media (prefers-reduced-motion: reduce), (pointer: coarse) {
+@media (prefers-reduced-motion: reduce), (pointer: coarse), (max-width: 767.98px) {
 	.nino-parallex > img { top: 0 !important; height: 100%; transform: none !important; will-change: auto; animation: none; }
 }
-@media (prefers-reduced-motion: reduce), (pointer: coarse) {
+@media (prefers-reduced-motion: reduce), (pointer: coarse), (max-width: 767.98px) {
 	.nino-parallex > .nino-section-bg > img { top: 0 !important; height: 100%; transform: none !important; will-change: auto; animation: none; }
 }
 
@@ -5301,25 +5289,115 @@ header .nino-headernav-logo:empty {
 .nino-text-center > .nino-btn, .nino-text-center > .nino-card-content > .nino-btn { margin-right: calc(var(--space-1) / 2); margin-left: calc(var(--space-1) / 2); }
 .nino-text-right > .nino-btn, .nino-text-right > .nino-card-content > .nino-btn { margin-left: var(--space-1); }
 
+/*	The alignment of the text from a width up, the tiers of the grid: each tier
+	brings what the class without a tier brings - the titles, the margins of a
+	button, where a button stands in a stack, a card and a tile, the loud text -
+	and the four blocks stand in the order of the widths, after the rules above,
+	so that a wider tier wins over a narrower one and every tier over the class
+	without a tier	*/
 @media (min-width: 640px) {
 	.nino-text-s-left { text-align: left; }
+	.nino-text-s-left :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: left; }
+	.nino-text-s-left > .nino-btn, .nino-text-s-left > .nino-card-content > .nino-btn { margin-right: 0; margin-left: 0; }
+	.nino-text-s-left > .nino-section-text--loud { margin-right: 0; margin-left: 0; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-s-left > .nino-btn { justify-self: start; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-s-left > .nino-btn,
+	.nino-card--last-bottom.nino-text-s-left > .nino-card-content > .nino-btn { align-self: flex-start; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-s-left > .nino-btn { justify-self: start; }
 	.nino-text-s-center { text-align: center; }
+	.nino-text-s-center :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: center; }
+	.nino-text-s-center > .nino-btn, .nino-text-s-center > .nino-card-content > .nino-btn { margin-right: calc(var(--space-1) / 2); margin-left: calc(var(--space-1) / 2); }
+	.nino-text-s-center > .nino-section-text--loud { margin-right: auto; margin-left: auto; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-s-center > .nino-btn { justify-self: center; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-s-center > .nino-btn,
+	.nino-card--last-bottom.nino-text-s-center > .nino-card-content > .nino-btn { align-self: center; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-s-center > .nino-btn { justify-self: center; }
 	.nino-text-s-right { text-align: right; }
+	.nino-text-s-right :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: right; }
+	.nino-text-s-right > .nino-btn, .nino-text-s-right > .nino-card-content > .nino-btn { margin-right: 0; margin-left: var(--space-1); }
+	.nino-text-s-right > .nino-section-text--loud { margin-right: 0; margin-left: 0; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-s-right > .nino-btn { justify-self: end; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-s-right > .nino-btn,
+	.nino-card--last-bottom.nino-text-s-right > .nino-card-content > .nino-btn { align-self: flex-end; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-s-right > .nino-btn { justify-self: end; }
 }
 @media (min-width: 768px) {
 	.nino-text-m-left { text-align: left; }
+	.nino-text-m-left :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: left; }
+	.nino-text-m-left > .nino-btn, .nino-text-m-left > .nino-card-content > .nino-btn { margin-right: 0; margin-left: 0; }
+	.nino-text-m-left > .nino-section-text--loud { margin-right: 0; margin-left: 0; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-m-left > .nino-btn { justify-self: start; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-m-left > .nino-btn,
+	.nino-card--last-bottom.nino-text-m-left > .nino-card-content > .nino-btn { align-self: flex-start; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-m-left > .nino-btn { justify-self: start; }
 	.nino-text-m-center { text-align: center; }
+	.nino-text-m-center :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: center; }
+	.nino-text-m-center > .nino-btn, .nino-text-m-center > .nino-card-content > .nino-btn { margin-right: calc(var(--space-1) / 2); margin-left: calc(var(--space-1) / 2); }
+	.nino-text-m-center > .nino-section-text--loud { margin-right: auto; margin-left: auto; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-m-center > .nino-btn { justify-self: center; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-m-center > .nino-btn,
+	.nino-card--last-bottom.nino-text-m-center > .nino-card-content > .nino-btn { align-self: center; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-m-center > .nino-btn { justify-self: center; }
 	.nino-text-m-right { text-align: right; }
+	.nino-text-m-right :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: right; }
+	.nino-text-m-right > .nino-btn, .nino-text-m-right > .nino-card-content > .nino-btn { margin-right: 0; margin-left: var(--space-1); }
+	.nino-text-m-right > .nino-section-text--loud { margin-right: 0; margin-left: 0; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-m-right > .nino-btn { justify-self: end; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-m-right > .nino-btn,
+	.nino-card--last-bottom.nino-text-m-right > .nino-card-content > .nino-btn { align-self: flex-end; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-m-right > .nino-btn { justify-self: end; }
 }
 @media (min-width: 1024px) {
 	.nino-text-l-left { text-align: left; }
+	.nino-text-l-left :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: left; }
+	.nino-text-l-left > .nino-btn, .nino-text-l-left > .nino-card-content > .nino-btn { margin-right: 0; margin-left: 0; }
+	.nino-text-l-left > .nino-section-text--loud { margin-right: 0; margin-left: 0; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-l-left > .nino-btn { justify-self: start; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-l-left > .nino-btn,
+	.nino-card--last-bottom.nino-text-l-left > .nino-card-content > .nino-btn { align-self: flex-start; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-l-left > .nino-btn { justify-self: start; }
 	.nino-text-l-center { text-align: center; }
+	.nino-text-l-center :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: center; }
+	.nino-text-l-center > .nino-btn, .nino-text-l-center > .nino-card-content > .nino-btn { margin-right: calc(var(--space-1) / 2); margin-left: calc(var(--space-1) / 2); }
+	.nino-text-l-center > .nino-section-text--loud { margin-right: auto; margin-left: auto; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-l-center > .nino-btn { justify-self: center; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-l-center > .nino-btn,
+	.nino-card--last-bottom.nino-text-l-center > .nino-card-content > .nino-btn { align-self: center; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-l-center > .nino-btn { justify-self: center; }
 	.nino-text-l-right { text-align: right; }
+	.nino-text-l-right :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: right; }
+	.nino-text-l-right > .nino-btn, .nino-text-l-right > .nino-card-content > .nino-btn { margin-right: 0; margin-left: var(--space-1); }
+	.nino-text-l-right > .nino-section-text--loud { margin-right: 0; margin-left: 0; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-l-right > .nino-btn { justify-self: end; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-l-right > .nino-btn,
+	.nino-card--last-bottom.nino-text-l-right > .nino-card-content > .nino-btn { align-self: flex-end; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-l-right > .nino-btn { justify-self: end; }
 }
 @media (min-width: 1280px) {
 	.nino-text-xl-left { text-align: left; }
+	.nino-text-xl-left :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: left; }
+	.nino-text-xl-left > .nino-btn, .nino-text-xl-left > .nino-card-content > .nino-btn { margin-right: 0; margin-left: 0; }
+	.nino-text-xl-left > .nino-section-text--loud { margin-right: 0; margin-left: 0; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-xl-left > .nino-btn { justify-self: start; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-xl-left > .nino-btn,
+	.nino-card--last-bottom.nino-text-xl-left > .nino-card-content > .nino-btn { align-self: flex-start; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-xl-left > .nino-btn { justify-self: start; }
 	.nino-text-xl-center { text-align: center; }
+	.nino-text-xl-center :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: center; }
+	.nino-text-xl-center > .nino-btn, .nino-text-xl-center > .nino-card-content > .nino-btn { margin-right: calc(var(--space-1) / 2); margin-left: calc(var(--space-1) / 2); }
+	.nino-text-xl-center > .nino-section-text--loud { margin-right: auto; margin-left: auto; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-xl-center > .nino-btn { justify-self: center; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-xl-center > .nino-btn,
+	.nino-card--last-bottom.nino-text-xl-center > .nino-card-content > .nino-btn { align-self: center; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-xl-center > .nino-btn { justify-self: center; }
 	.nino-text-xl-right { text-align: right; }
+	.nino-text-xl-right :is(.nino-section-title, .nino-section-subtitle, .nino-hero-title, .nino-hero-subtitle) { text-align: right; }
+	.nino-text-xl-right > .nino-btn, .nino-text-xl-right > .nino-card-content > .nino-btn { margin-right: 0; margin-left: var(--space-1); }
+	.nino-text-xl-right > .nino-section-text--loud { margin-right: 0; margin-left: 0; }
+	.nino-grid-row > :is(.nino-stack-start, .nino-stack-center, .nino-stack-end, [class*="nino-stack-gap-"]:not(.nino-stack)).nino-text-xl-right > .nino-btn { justify-self: end; }
+	:is(.nino-card--middle, .nino-card--bottom, .nino-card--last-bottom).nino-text-xl-right > .nino-btn,
+	.nino-card--last-bottom.nino-text-xl-right > .nino-card-content > .nino-btn { align-self: flex-end; }
+	:where(.nino-tiles) > .nino-grid-row > .nino-text-xl-right > .nino-btn { justify-self: end; }
 }
 
 

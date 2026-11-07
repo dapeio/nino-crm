@@ -38,6 +38,3 @@ Thumbs.db
 
 # Patches are handed around, never versioned - the change itself is
 *.patch
-
-# Dummy content
-crm-dummy.php

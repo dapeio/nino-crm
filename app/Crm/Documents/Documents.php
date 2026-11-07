@@ -227,6 +227,14 @@ class Documents {
 		$parent = $document['parent_id'] === null ? null : Db::row( $appData, 'SELECT id, number, title, category, state, date FROM documents WHERE id = :id', [ 'id' => $document['parent_id'] ] );
 		$document['parent'] = $parent === null ? null : [ 'id' => (int) $parent['id'], 'number' => (string) ( $parent['number'] ?? '' ), 'date' => (string) $parent['date'], 'title' => (string) $parent['title'], 'category' => $parent['category'], 'state' => $parent['state'] ];
 		$document['parent_number'] = $document['parent']['number'] ?? '';
+
+		// A credit note that is finalised carries the tax of each rate it was finalised with, which is not the tax of its lines taken alone
+		$vatOf = $document['category'] === 'credit' && $document['state'] !== 'draft' ? self::creditVat( $appData, $document, $document['lines'], array_column( $document['lines'], 'amount_net' ) ) : null;
+		$document['rates'] = [];
+
+		foreach( $vatOf === null ? [] : Money::totals( $document['lines'], $document['vat_mode'], $document['reverse_charge'], $vatOf )['rates'] as $rate => $part )
+			$document['rates'][] = [ 'rate' => $rate, 'net' => $part['net'], 'vat' => $part['vat'] ];
+
 		$document['children'] = array_map( static fn( array $child ): array => [ 'id' => (int) $child['id'], 'number' => (string) ( $child['number'] ?? '' ), 'title' => (string) $child['title'], 'category' => $child['category'], 'state' => $child['state'], 'gross' => (int) $child['gross'] ],
 			Db::rows( $appData, 'SELECT id, number, title, category, state, gross FROM documents WHERE parent_id = :id ORDER BY id', [ 'id' => $id ] ) );
 
@@ -234,18 +242,18 @@ class Documents {
 	}
 
 	/**
-	 *	Add a draft
+	 *	Add a draft. A credit note is none of them: it is made from its invoice, by creditOf()
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		string		$category
 	 *	@param		int				$clientId			An active client. A contract takes the client of its offer: 0, or the same client
 	 *	@param		array 		$input				See change(); parent_id (the offer) for a contract; the date is today and the due or validity date follows from the settings where they are not given
 	 *
-	 *	@return 	array|string
+	 *	@return 	array|string							The draft as get() has it; or category (none of the six, or a credit note), client, inactive, date:<field> and what clean() refuses with
 	 */
 	public static function add( array &$appData, string $category, int $clientId, array $input = [] ): array|string {
 
-		if( in_array( $category, self::CATEGORIES, true ) === false )
+		if( in_array( $category, self::CATEGORIES, true ) === false || $category === 'credit' )
 			return 'category';
 
 		$parentId = null;
@@ -283,6 +291,10 @@ class Documents {
 		if( is_string( $date ) === true && self::validDate( $date ) === true && in_array( $category, self::PLAIN, true ) === false ) {
 			$key = $category === 'offer' ? 'valid_until' : 'due_date';
 			$base[$key] = self::dayAfter( $appData, $date, $category === 'offer' ? 'offer_days' : 'payment_days' );
+
+			// A day so late that the due or validity day after it is beyond the years there are: it is the date that is wrong, not a day nobody typed
+			if( $base[$key] !== null && array_key_exists( $key, $input ) === false && self::validDate( $base[$key] ) === false )
+				return 'date:date';
 		}
 
 		$values = self::clean( $appData, $input, $base );
@@ -325,6 +337,18 @@ class Documents {
 
 			$input['client_id'] = $offer['client_id'];
 			$input['parent_id'] = $offer['id'];
+		}
+
+		// The client of a credit note is its invoice's, as a contract's is its offer's: the credit note takes back what that client was charged
+		if( $current['category'] === 'credit' ) {
+
+			$bound = $current['parent_id'] === null ? null : Db::row( $appData, 'SELECT client_id FROM documents WHERE id = :id', [ 'id' => $current['parent_id'] ] );
+			$bound = $bound === null ? $current['client_id'] : (int) $bound['client_id'];
+
+			if( isset( $input['client_id'] ) === true && $input['client_id'] !== $bound )
+				return 'client';
+
+			$input['client_id'] = $bound;
 		}
 
 		if( isset( $input['client_id'] ) === true && $input['client_id'] !== $current['client_id'] ) {
@@ -826,18 +850,22 @@ class Documents {
 	 *	@param		string		$state
 	 *	@param		string|null	$date
 	 *
-	 *	@return 	string										'' once the document is moved; or why not: unknown, state, date:date
+	 *	@return 	string										'' once the document is moved; or why not: unknown, state, date:date, daterange (the day of sending or of payment is before the document, or the payment before the sending, or the day is to come)
 	 */
 	private static function moveIn( \PDO $pdo, int $id, string $state, ?string $date ): string {
 
-		$statement = $pdo->prepare( 'SELECT category, state FROM documents WHERE id = :id' );
+		$statement = $pdo->prepare( 'SELECT category, state, date, sent_at FROM documents WHERE id = :id' );
 		$statement->execute( [ 'id' => $id ] );
 		$row = $statement->fetch();
+
+		// The day of sending and of payment is none before the day of the document, none before the day of sending (a payment) and none to come
+		$earliest = $row === false ? '' : max( (string) $row['date'], $state === 'paid' ? substr( (string) ( $row['sent_at'] ?? '' ), 0, 10 ) : '' );
 
 		$refused = match( true ) {
 			$row === false                                                                           => 'unknown',
 			in_array( $state, self::TRANSITIONS[$row['category']][$row['state']] ?? [], true ) === false => 'state',
 			$date !== null && self::validDate( $date ) === false                                     => 'date:date',
+			in_array( $state, [ 'sent', 'paid' ], true ) === true && ( ( $date ?? date( 'Y-m-d' ) ) < $earliest || ( $date ?? date( 'Y-m-d' ) ) > self::latest() ) => 'daterange',
 			default                                                                                  => '',
 		};
 
@@ -1088,7 +1116,7 @@ class Documents {
 				'xml_path'     => (string) ( $row['xml_path'] ?? '' ),
 				'xml_sha256'   => (string) ( $row['xml_sha256'] ?? '' ),
 			];
-		}, Db::rows( $appData, 'SELECT id, category, number, date, client_json, net, vat, gross, state, paid_at, project, pdf_path, pdf_sha256, xml_path, xml_sha256 FROM documents WHERE '. implode( ' AND ', $where ). ' ORDER BY date, id', $params ) );
+		}, Db::rows( $appData, 'SELECT id, category, number, date, client_json, net, vat, gross, state, paid_at, project, pdf_path, pdf_sha256, xml_path, xml_sha256 FROM documents WHERE '. implode( ' AND ', $where ). ' ORDER BY date, number, id', $params ) );
 	}
 
 	/**
@@ -1201,7 +1229,7 @@ class Documents {
 	 *	@param		array 		&$appData
 	 *	@param		int				$id
 	 *
-	 *	@return 	array|string							The draft as get() has it; or why not, see add() - and line:<i>:rate:vat_rate for a rate the setting does not allow
+	 *	@return 	array|string							The draft as get() has it; or why not, see add() - state for a credit note, and line:<i>:rate:vat_rate for a rate the setting does not allow
 	 */
 	public static function copy( array &$appData, int $id ): array|string {
 
@@ -1209,6 +1237,10 @@ class Documents {
 
 		if( $source === null )
 			return 'unknown';
+
+		// A credit note takes back an invoice: a copy would hang on none
+		if( $source['category'] === 'credit' )
+			return 'state';
 
 		$tag = Render::tag( $source['category'] );
 		$keeps = $source['template_key'] !== '' && Crm::featureOn( $appData, 'pdf' ) === true && isset( \Nino\Modules\Pdf::templates( $appData, $tag )[$source['template_key']] ) === true;
@@ -1268,14 +1300,48 @@ class Documents {
 		if( $document['released'] === false )
 			return 'released';
 
+		return self::reminded( $appData, $document, $mail );
+	}
+
+	/**
+	 *	The write of a reminder and its mail: the invoice is noted, in a transaction of its own that is over before the mail goes, only while it is still open or sent, and only a note that was made is mailed, so that an invoice
+	 *	that was paid since it was read is neither noted nor mailed. A mail that is refused takes its note back - the note of that time and of nobody else's
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			As get() has it, read before
+	 *	@param		bool			$mail
+	 *
+	 *	@return 	array|string							As remind() has it
+	 */
+	private static function reminded( array &$appData, array $document, bool $mail ): array|string {
+
+		$now = gmdate( self::TIME );
+		$pdo = Db::pdo( $appData );
+		$pdo->exec( 'BEGIN IMMEDIATE' );
+
+		try {
+			$noted = $pdo->prepare( 'UPDATE documents SET reminded_at = :now, reminded_mail = :mail WHERE id = :id AND category = \'invoice\' AND state IN ( \'open\', \'sent\' )' );
+			$noted->execute( [ 'now' => $now, 'mail' => $mail === true ? 1 : 0, 'id' => $document['id'] ] );
+			$changed = $noted->rowCount();
+			$pdo->exec( 'COMMIT' );
+		}
+		catch( \Throwable $e ) {
+			$pdo->exec( 'ROLLBACK' );
+			throw $e;
+		}
+
+		if( $changed === 0 )
+			return 'state';
+
 		$sent = $mail === true ? Mail::remind( $appData, $document ) : 0;
 
-		if( is_string( $sent ) === true )
+		// A mail that was refused leaves no note: the one of this call goes, and a note another call made after it stays
+		if( is_string( $sent ) === true ) {
+			Db::exec( $appData, 'UPDATE documents SET reminded_at = :before, reminded_mail = :beforeMail WHERE id = :id AND reminded_at = :now', [ 'before' => $document['reminded_at'] === '' ? null : $document['reminded_at'], 'beforeMail' => $document['reminded_mail'] === true ? 1 : 0, 'now' => $now, 'id' => $document['id'] ] );
 			return $sent;
+		}
 
-		Db::exec( $appData, 'UPDATE documents SET reminded_at = :now, reminded_mail = :mail WHERE id = :id', [ 'now' => gmdate( self::TIME ), 'mail' => $mail === true ? 1 : 0, 'id' => $id ] );
-
-		return [ 'document' => (array) self::get( $appData, $id ), 'mailed' => $sent ];
+		return [ 'document' => (array) self::get( $appData, $document['id'] ), 'mailed' => $sent ];
 	}
 
 	/**
@@ -1703,9 +1769,23 @@ class Documents {
 	 */
 	public static function validDate( string $date ): bool {
 
+		// Four digits, two, two and nothing after them: a null byte is an error to the parser, and a longer text is read up to the day
+		if( preg_match( '/^\d{4}-\d{2}-\d{2}$/D', $date ) !== 1 )
+			return false;
+
 		$parsed = \DateTimeImmutable::createFromFormat( '!Y-m-d', $date );
 
 		return $parsed !== false && $parsed->format( 'Y-m-d' ) === $date && $parsed->format( 'Y' ) >= '2000' && $parsed->format( 'Y' ) <= '2999';
+	}
+
+	/**
+	 *	The last day a document may be dated, or a step be dated: today (the page takes the day of the server as the day of its dialogs)
+	 *
+	 *	@return 	string										Y-m-d
+	 */
+	public static function latest(): string {
+
+		return date( 'Y-m-d' );
 	}
 
 	/**
@@ -1928,18 +2008,51 @@ class Documents {
 			return true;
 		}
 
-		// An invoice that is cancelled already is not taken back again
-		$parent = $document['category'] === 'credit' && $document['parent'] !== null ? Db::row( $appData, 'SELECT gross, state FROM documents WHERE id = :id AND category = \'invoice\'', [ 'id' => $document['parent']['id'] ] ) : null;
+		// A document is dated today at the latest
+		if( $document['date'] > self::latest() )
+			return 'date:date';
 
-		if( $parent !== null && $parent['state'] === 'cancelled' )
-			return 'state';
+		$totals = Money::totals( $document['lines'], $document['vat_mode'], $document['reverse_charge'] );
+
+		// An invoice claims something: a negative one is a credit note, which takes an invoice back, and one of nothing would use a number for no claim; an offer is none below 0
+		if( ( $document['category'] === 'invoice' && $totals['gross'] <= 0 ) || ( $document['category'] === 'offer' && $totals['gross'] < 0 ) )
+			return 'gross';
+
+		$parent = null;
+
+		// A credit note takes back an invoice of its client that is open, sent or paid, dated no later than the credit note - and no more of it than it charged in any rate, together with the credit notes that were finalised before.
+		// All of it is read in the transaction that numbers it
+		if( $document['category'] === 'credit' ) {
+
+			$parent = $document['parent_id'] === null ? null : Db::row( $appData, 'SELECT gross, state, client_id, date FROM documents WHERE id = :id AND category = \'invoice\'', [ 'id' => $document['parent_id'] ] );
+
+			if( $parent === null || (int) $parent['client_id'] !== $document['client_id'] )
+				return 'credit_parent';
+
+			if( in_array( $parent['state'], [ 'open', 'sent', 'paid' ], true ) === false )
+				return 'state';
+
+			if( $document['date'] < $parent['date'] )
+				return 'date:date';
+
+			if( $totals['gross'] >= 0 )
+				return 'credit_lines';
+
+			$account = self::creditCheck( $appData, $document['parent_id'], $document['vat_mode'], $document['reverse_charge'], $document['lines'], $totals['amounts'], false );
+			$account = is_string( $account ) === true ? $account : self::creditCheck( $appData, $document['parent_id'], $document['vat_mode'], $document['reverse_charge'], $document['lines'], $totals['amounts'], true );
+
+			if( is_string( $account ) === true )
+				return $account;
+
+			// The tax of each rate is rounded on what the invoice has given back in that rate so far: the credit notes of an invoice come to its tax in every rate
+			$totals = Money::totals( $document['lines'], $document['vat_mode'], $document['reverse_charge'], self::creditVat( $appData, $document, $document['lines'], $totals['amounts'] ) );
+		}
 
 		$number = Numbers::next( $pdo, $document['category'], (int) substr( $document['date'], 0, 4 ), Settings::get( $appData, Settings::FORMATS[$document['category']] ) );
 
 		if( $number === null )
 			return 'number';
 
-		$totals = Money::totals( $document['lines'], $document['vat_mode'], $document['reverse_charge'] );
 		$lines = array_map( static fn( array $line, int $amount ): array => [ 'amount_net' => $amount ] + $line, $document['lines'], $totals['amounts'] );
 		$statement = $pdo->prepare( 'UPDATE document_lines SET amount_net = :amount WHERE id = :id' );
 
@@ -1964,11 +2077,145 @@ class Documents {
 			->execute( [ 'number' => $number, 'net' => $totals['net'], 'vat' => $totals['vat'], 'gross' => $totals['gross'], 'client' => json_encode( $frozen, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR ),
 				'now' => $now, 'path' => $made['path'], 'sha' => $made['sha256'], 'id' => $id ] + $electronic );
 
-		// A credit note that takes the whole of an invoice back cancels it; one that takes a part leaves its state
-		if( $parent !== null && (int) $parent['gross'] === -$totals['gross'] )
+		// The credit notes that take every rate of an invoice back, together, cancel it; one that takes a part leaves its state
+		if( $parent !== null && ( $account['closes'] ?? false ) === true )
 			$pdo->prepare( 'UPDATE documents SET state = \'cancelled\', updated = :now WHERE id = :id' )->execute( [ 'now' => $now, 'id' => $document['parent']['id'] ] );
 
 		return true;
+	}
+
+	/**
+	 *	The tax of each rate of a credit note, rounded on what its invoice has given back in that rate so far: the tax of the rate on the net given back with this credit note and the credit notes before it, less the tax
+	 *	of the rate on the net given back before it. So each credit note is within a cent of its net times the rate, and the credit notes of an invoice come to the tax of the invoice in every rate. The credit notes before
+	 *	are those finalised before this one, by the time and, within a second, by the number (all of them while it is a draft)
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			A credit note as get() has it (a draft, or finalised)
+	 *	@param		array 		$lines				Its lines, each with vat_rate
+	 *	@param		array 		$amounts			The net of each of its lines, in cents
+	 *
+	 *	@return 	array|null								rate => tax in cents; null for what is no credit note of an invoice, or has no tax to round
+	 */
+	public static function creditVat( array &$appData, array $document, array $lines, array $amounts ): ?array {
+
+		if( $document['category'] !== 'credit' || $document['parent_id'] === null || $document['vat_mode'] !== 'regular' || $document['reverse_charge'] === true )
+			return null;
+
+		$finalised = (string) ( $document['finalised'] ?? '' );
+		$before = [];
+
+		foreach( Db::rows( $appData, 'SELECT l.qty, l.price_net, l.vat_rate FROM document_lines l JOIN documents d ON d.id = l.document_id WHERE d.parent_id = :parent AND d.category = \'credit\' AND d.state != \'draft\' AND d.id != :id
+			AND ( :finalised = \'\' OR d.finalised < :finalised OR ( d.finalised = :finalised AND d.number < :number ) )', [ 'parent' => $document['parent_id'], 'id' => $document['id'], 'finalised' => $finalised, 'number' => (string) ( $document['number'] ?? '' ) ] ) as $line )
+			$before[(int) $line['vat_rate']] = ( $before[(int) $line['vat_rate']] ?? 0 ) + Money::lineAmount( (int) $line['qty'], (int) $line['price_net'] );
+
+		$own = [];
+
+		foreach( array_values( $lines ) as $index => $line )
+			$own[(int) $line['vat_rate']] = ( $own[(int) $line['vat_rate']] ?? 0 ) + (int) $amounts[$index];
+
+		$vat = [];
+
+		foreach( $own as $rate => $net )
+			$vat[$rate] = Money::vat( ( $before[$rate] ?? 0 ) + $net, $rate ) - Money::vat( $before[$rate] ?? 0, $rate );
+
+		return $vat;
+	}
+
+	/**
+	 *	Whether the lines of a credit note give back what its invoice charged, and what the credit notes finalised before have taken. The credit note has the VAT mode and the reverse charge of the invoice,
+	 *	every line is in a rate the invoice has, takes back the opposite way (a charge is taken back by a negative line, a discount by a positive one) and is no more than the largest line of the invoice that way
+	 *	in that rate. The lines of a rate - those of this credit note and, with $cumulative, those of the credit notes finalised before - are no more than the lines of the invoice that way in that rate, and
+	 *	take back no more net in a rate than the invoice charged there. All of it is measured net, in cents
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int|null	$parentId			The invoice
+	 *	@param		string		$vatMode
+	 *	@param		bool			$reverse
+	 *	@param		array 		$lines				Each with qty, price_net and vat_rate
+	 *	@param		array 		$amounts			The net of each line, in cents
+	 *	@param		bool			$cumulative		Whether the credit notes of the invoice that are finalised count
+	 *
+	 *	@return 	array|string							closes (whether every rate of the invoice is taken back in full with this one); or credit_parent (there is no such invoice), credit_lines, credit_over (with $cumulative: the credit notes together take back more than the invoice charged)
+	 */
+	private static function creditCheck( array &$appData, ?int $parentId, string $vatMode, bool $reverse, array $lines, array $amounts, bool $cumulative ): array|string {
+
+		$invoice = $parentId === null ? null : Db::row( $appData, 'SELECT vat_mode, reverse_charge FROM documents WHERE id = :id AND category = \'invoice\'', [ 'id' => $parentId ] );
+
+		if( $invoice === null )
+			return 'credit_parent';
+
+		if( $invoice['vat_mode'] !== $vatMode || ( (int) $invoice['reverse_charge'] === 1 ) !== $reverse )
+			return 'credit_lines';
+
+		$zero = $vatMode === 'small_business' || $reverse === true;
+		$over = $cumulative === true ? 'credit_over' : 'credit_lines';
+		$net = [];
+		$charged = [ 'charge' => [], 'discount' => [] ];
+
+		foreach( Db::rows( $appData, 'SELECT qty, price_net, vat_rate FROM document_lines WHERE document_id = :id', [ 'id' => $parentId ] ) as $line ) {
+
+			$amount = Money::lineAmount( (int) $line['qty'], (int) $line['price_net'] );
+			$rate = $zero === true ? 0 : (int) $line['vat_rate'];
+			$net[$rate] = ( $net[$rate] ?? 0 ) + $amount;
+			$kind = $amount < 0 ? 'discount' : 'charge';
+
+			if( $amount !== 0 )
+				$charged[$kind][$rate] = [ 'sum' => ( $charged[$kind][$rate]['sum'] ?? 0 ) + abs( $amount ), 'max' => max( $charged[$kind][$rate]['max'] ?? 0, abs( $amount ) ) ];
+		}
+
+		$given = [ 'charge' => [], 'discount' => [] ];
+		$back = array_fill_keys( array_keys( $net ), 0 );
+
+		if( $cumulative === true ) {
+
+			foreach( Db::rows( $appData, 'SELECT l.qty, l.price_net, l.vat_rate FROM document_lines l JOIN documents d ON d.id = l.document_id WHERE d.parent_id = :id AND d.category = \'credit\' AND d.state != \'draft\'', [ 'id' => $parentId ] ) as $line ) {
+
+				$amount = Money::lineAmount( (int) $line['qty'], (int) $line['price_net'] );
+				$rate = $zero === true ? 0 : (int) $line['vat_rate'];
+				$kind = $amount < 0 ? 'charge' : 'discount';
+				$given[$kind][$rate] = ( $given[$kind][$rate] ?? 0 ) + abs( $amount );
+				$back[$rate] = ( $back[$rate] ?? 0 ) + $amount;
+			}
+		}
+
+		$own = [];
+
+		foreach( $lines as $index => $line ) {
+
+			$amount = (int) $amounts[$index];
+			$rate = $zero === true ? 0 : (int) $line['vat_rate'];
+
+			if( isset( $net[$rate] ) === false )
+				return 'credit_lines';
+
+			if( $amount === 0 )
+				continue;
+
+			// A negative line gives back a charge, a positive one a discount
+			$kind = $amount < 0 ? 'charge' : 'discount';
+			$own[$kind][$rate] = ( $own[$kind][$rate] ?? 0 ) + abs( $amount );
+			$given[$kind][$rate] = ( $given[$kind][$rate] ?? 0 ) + abs( $amount );
+			$back[$rate] += $amount;
+
+			if( abs( $amount ) > ( $charged[$kind][$rate]['max'] ?? 0 ) || $own[$kind][$rate] > $charged[$kind][$rate]['sum'] )
+				return 'credit_lines';
+
+			if( $given[$kind][$rate] > $charged[$kind][$rate]['sum'] )
+				return $over;
+		}
+
+		$closes = true;
+
+		// In no rate is more net taken back than was charged, and from the charge of a rate and from nothing else
+		foreach( $net as $rate => $charge ) {
+
+			if( ( $charge >= 0 && $charge + $back[$rate] < 0 ) || ( $charge < 0 && $charge + $back[$rate] > 0 ) )
+				return $over;
+
+			$closes = $closes && $charge + $back[$rate] === 0;
+		}
+
+		return [ 'closes' => $closes ];
 	}
 
 	/**
@@ -2252,6 +2499,19 @@ class Documents {
 
 		if( abs( $totals['net'] ) > Money::MAX_TOTAL )
 			return 'total';
+
+		if( $values['category'] === 'credit' ) {
+
+			$account = self::creditCheck( $appData, $values['parent_id'], $values['vat_mode'], $reverse, $clean, $totals['amounts'], false );
+
+			if( is_string( $account ) === true )
+				return $account;
+
+			$origin = Db::row( $appData, 'SELECT date FROM documents WHERE id = :id', [ 'id' => $values['parent_id'] ] );
+
+			if( $origin !== null && $values['date'] < $origin['date'] )
+				return 'date:date';
+		}
 
 		return $values + [ 'lines' => $clean, 'amounts' => $totals['amounts'] ] + $totals;
 	}

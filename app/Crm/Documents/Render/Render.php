@@ -186,7 +186,7 @@ class Render {
 		}
 
 		$regular = $document['vat_mode'] === 'regular';
-		$totals = Money::totals( $lines, (string) $document['vat_mode'], (bool) $document['reverse_charge'] );
+		$totals = Money::totals( $lines, (string) $document['vat_mode'], (bool) $document['reverse_charge'], $document['category'] === 'credit' ? \Crm\Documents::creditVat( $appData, $document, $lines, array_map( static fn( array $line ): int => Money::lineAmount( (int) $line['qty'], (int) $line['price_net'] ), array_values( $lines ) ) ) : null );
 
 		$vatnote = '';
 

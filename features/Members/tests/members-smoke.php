@@ -2733,6 +2733,10 @@ function membersDeviceChecks( array &$appData, array &$told ): void {
 		$memberPost === null && $setPost === [] && $memberEndpoint === null && $setEndpoint === [] && $memberJson === null && $setJson === [] && in_array( hash( 'sha256', $newToken ), array_column( membersDevices( $appData, $eveId ), 'hash' ), true ) === true );
 	unset( $appData['/nino/http/routes']['GET://club/data.json'] );
 
+	// A HEAD is folded to a GET by the kernel before the feature looks: a monitor or a prefetch must not sign in nor replace the token
+	[ , $setHead, $memberHead ] = membersVisitWith( $appData, $cookie, '/club/news', 'HEAD' );
+	check( 'a HEAD with a good cookie signs nobody in, sets no cookie and leaves the token as it is', $memberHead === null && $setHead === [] && in_array( hash( 'sha256', $newToken ), array_column( membersDevices( $appData, $eveId ), 'hash' ), true ) === true );
+
 	// A member who is signed in is no business of the cookie: the token stays and no cookie is set
 	membersVisitor();
 	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );

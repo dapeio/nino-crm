@@ -1662,7 +1662,7 @@ namespace Nino\Modules {
 
 			$uri = (string) ( $request['/nino/http/request']['uri'] ?? '' );
 
-			if( ( $request['/nino/http/request']['method'] ?? '' ) !== 'GET' || ( $link === false && str_starts_with( $uri, '/.members' ) === true ) || str_starts_with( $uri, '/_' ) === true
+			if( ( $request['/nino/http/request']['rawMethod'] ?? '' ) !== 'GET' || ( $link === false && str_starts_with( $uri, '/.members' ) === true ) || str_starts_with( $uri, '/_' ) === true
 				|| \Nino\Http::answersHtml( (array) ( $request['/nino/http/response'] ?? [] ) ) === false || self::current( $appData ) !== null )
 				return;
 

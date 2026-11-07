@@ -497,11 +497,9 @@ check( 'add() makes a draft: no number, today, the due date by the term of payme
 	&& $bare['valid_until'] === null && $bare['vat_mode'] === 'small_business' && $bare['lines'] === [] && $bare['template_key'] === '' && $bare['inputs'] === [] && $bare['net'] === 0 && $bare['pdf_path'] === '' && $bare['finalised'] === null && $bare['parent'] === null && $bare['children'] === [] );
 $offer = Documents::add( $appData, 'offer', $first['id'], [ 'date' => '2026-03-10' ] );
 check( 'an offer has a validity date by the days of an offer and no due date', is_array( $offer ) && $offer['date'] === '2026-03-10' && $offer['valid_until'] === '2026-04-09' && $offer['due_date'] === null );
-$credit = Documents::add( $appData, 'credit', $first['id'] );
-check( 'a credit note has neither a due date nor a validity date: it returns money', is_array( $credit ) && $credit['due_date'] === null && $credit['valid_until'] === null && Documents::change( $appData, $credit['id'], [ 'due_date' => '2026-12-01' ] )['due_date'] === null );
 
 check( 'a category the plan does not name is refused', Documents::add( $appData, 'letter', $first['id'] ) === 'category' );
-check( 'a client nobody has is refused, an inactive one too, and nothing is stored', Documents::add( $appData, 'invoice', 999 ) === 'client' && Documents::add( $appData, 'invoice', $third['id'] ) === 'inactive' && count( Documents::list( $appData ) ) === 3 );
+check( 'a client nobody has is refused, an inactive one too, and nothing is stored', Documents::add( $appData, 'invoice', 999 ) === 'client' && Documents::add( $appData, 'invoice', $third['id'] ) === 'inactive' && count( Documents::list( $appData ) ) === 2 );
 check( 'the client cannot be smuggled in with the input', ( Documents::add( $appData, 'invoice', $first['id'], [ 'client_id' => $second['id'] ] )['client_id'] ?? 0 ) === $first['id'] );
 Documents::remove( $appData, (int) Db::row( $appData, 'SELECT MAX( id ) AS id FROM documents' )['id'] );
 
@@ -612,9 +610,9 @@ check( '...and without it the rates are the lines\' own again', is_array( $unrev
 echo "\nThe list\n";
 
 $ids = array_column( Documents::list( $appData ), 'id' );
-check( 'list() has every document, the latest date first', count( $ids ) === 5 && Documents::list( $appData )[count( $ids ) - 1]['id'] === $offer['id'] );
+check( 'list() has every document, the latest date first', count( $ids ) === 4 && Documents::list( $appData )[count( $ids ) - 1]['id'] === $offer['id'] );
 check( 'list() filters by category, by client, by year and by state', count( Documents::list( $appData, [ 'category' => 'invoice' ] ) ) === 3 && count( Documents::list( $appData, [ 'client_id' => $second['id'] ] ) ) === 0 && count( Documents::list( $appData, [ 'year' => 2026 ] ) ) >= 1
-	&& array_column( Documents::list( $appData, [ 'year' => 2026 ] ), 'id' ) === array_column( array_filter( Documents::list( $appData ), static fn( array $row ): bool => str_starts_with( $row['date'], '2026' ) ), 'id' ) && count( Documents::list( $appData, [ 'state' => 'draft' ] ) ) === 5 && Documents::list( $appData, [ 'state' => 'paid' ] ) === [] );
+	&& array_column( Documents::list( $appData, [ 'year' => 2026 ] ), 'id' ) === array_column( array_filter( Documents::list( $appData ), static fn( array $row ): bool => str_starts_with( $row['date'], '2026' ) ), 'id' ) && count( Documents::list( $appData, [ 'state' => 'draft' ] ) ) === 4 && Documents::list( $appData, [ 'state' => 'paid' ] ) === [] );
 check( 'a draft shows the live name of its client', Documents::list( $appData )[0]['client_title'] === 'Studio Nord GmbH' );
 
 echo "\nRemoving a draft\n";
@@ -730,8 +728,8 @@ check( 'the number is counted per year of the date of the document: an invoice o
 $offerDraft = Documents::add( $appData, 'offer', $first['id'], [ 'date' => '2026-03-10', 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'Angebot' ] ] );
 $offerFinal = Documents::finalise( $appData, $offerDraft['id'] );
 check( 'an offer has its own sequence: A-2026-0001', is_array( $offerFinal ) && $offerFinal['number'] === 'A-2026-0001' && $offerFinal['state'] === 'open' );
-check( '...and so has a credit note: G-<year>-0001', ( static function() use ( &$appData, $first, $lines, $year, $number ): bool {
-	$credit = Documents::add( $appData, 'credit', $first['id'], [ 'lines' => $lines, 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+check( '...and so has a credit note: G-<year>-0001', ( static function() use ( &$appData, $oldFinal, $year, $number ): bool {
+	$credit = documentsPartialCredit( $appData, $oldFinal['id'], 'Hosting', '-1', '12,00' );
 	$final = Documents::finalise( $appData, $credit['id'] );
 	return is_array( $final ) && $final['number'] === $number( 'G', $year, 1 );
 } )() );
@@ -904,10 +902,10 @@ $unsent = Documents::add( $appData, 'invoice', $first['id'] );
 check( 'a draft has no step: 409 state, whatever the step', Documents::setState( $appData, $unsent['id'], 'sent' ) === 'state' && Documents::setState( $appData, $unsent['id'], 'open' ) === 'state' );
 Documents::remove( $appData, $unsent['id'] );
 check( 'an invoice goes open to sent to paid and nowhere else: open to paid is 409', Documents::setState( $appData, $finalised['id'], 'paid' ) === 'state' && $state( $finalised['id'] ) === 'open' );
-check( 'sent takes the day it is given as sent_at', ( Documents::setState( $appData, $finalised['id'], 'sent', '2026-11-01' )['sent_at'] ?? '' ) === '2026-11-01T00:00:00Z' && $state( $finalised['id'] ) === 'sent' );
+check( 'sent takes the day it is given as sent_at', ( Documents::setState( $appData, $finalised['id'], 'sent', $today )['sent_at'] ?? '' ) === $today. 'T00:00:00Z' && $state( $finalised['id'] ) === 'sent' );
 check( 'sent after sent is 409, and so is a step back or to open', Documents::setState( $appData, $finalised['id'], 'sent' ) === 'state' && Documents::setState( $appData, $finalised['id'], 'open' ) === 'state' && Documents::setState( $appData, $finalised['id'], 'draft' ) === 'state' );
 check( 'a day that is none is refused and the state stays', Documents::setState( $appData, $finalised['id'], 'paid', '2026-13-01' ) === 'date:date' && Documents::setState( $appData, $finalised['id'], 'paid', 'heute' ) === 'date:date' && $state( $finalised['id'] ) === 'sent' );
-check( 'paid takes the day as paid_at', ( Documents::setState( $appData, $finalised['id'], 'paid', '2026-11-02' )['paid_at'] ?? '' ) === '2026-11-02T00:00:00Z' && $state( $finalised['id'] ) === 'paid' );
+check( 'paid takes the day as paid_at', ( Documents::setState( $appData, $finalised['id'], 'paid', $today )['paid_at'] ?? '' ) === $today. 'T00:00:00Z' && $state( $finalised['id'] ) === 'paid' );
 check( 'a paid invoice moves no more; cancelled is not a step; a state nobody has is none', Documents::setState( $appData, $finalised['id'], 'sent' ) === 'state' && Documents::setState( $appData, $finalised['id'], 'cancelled' ) === 'state' && Documents::setState( $appData, $finalised['id'], 'paid' ) === 'state' && Documents::setState( $appData, $finalised['id'], 'archived' ) === 'state' && Documents::setState( $appData, 999, 'sent' ) === 'unknown' );
 $sentNow = Documents::setState( $appData, $secondInvoice['id'], 'sent' );
 check( 'sent without a day is the time of the step', preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', (string) $sentNow['sent_at'] ) === 1 && $sentNow['paid_at'] === null );
@@ -917,7 +915,8 @@ $matrix = [];
 foreach( [ 'offer' => [ 'sent', 'accepted', 'declined', 'paid' ], 'credit' => [ 'sent', 'paid', 'accepted' ] ] as $category => $targets ) {
 
 	foreach( $targets as $target ) {
-		$d = Documents::add( $appData, $category, $first['id'], [ 'lines' => $lines, 'template_key' => $category === 'offer' ? 'angebot' : 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+		$d = $category === 'credit' ? documentsPartialCredit( $appData, $oldFinal['id'], 'Hosting', '-0,1', '12,00' )
+			: Documents::add( $appData, $category, $first['id'], [ 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
 		Documents::finalise( $appData, $d['id'] );
 		$matrix[$category. ' open to '. $target] = Documents::setState( $appData, $d['id'], $target ) === 'state' ? 'refused' : 'taken';
 	}
@@ -935,7 +934,7 @@ echo "\nAn offer past its validity\n";
 $lapsed = Documents::add( $appData, 'offer', $first['id'], [ 'date' => '2020-01-01', 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
 $lapsedFinal = Documents::finalise( $appData, $lapsed['id'] );
 check( 'an open offer whose validity lies in the past is shown as expired - and its state is still open', $lapsedFinal['number'] === 'A-2020-0001' && $lapsedFinal['valid_until'] === '2020-01-31' && $lapsedFinal['state'] === 'open' && $lapsedFinal['expired'] === true );
-$future = Documents::add( $appData, 'offer', $first['id'], [ 'date' => '2999-06-01', 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
+$future = Documents::add( $appData, 'offer', $first['id'], [ 'valid_until' => '2999-06-01', 'lines' => $lines, 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
 $futureFinal = Documents::finalise( $appData, $future['id'] );
 $expiredIds = array_map( 'intval', array_column( Db::rows( $appData, 'SELECT id FROM documents WHERE category = \'offer\' AND state IN ( \'open\', \'sent\' ) AND valid_until < :today ORDER BY id', [ 'today' => date( 'Y-m-d' ) ] ), 'id' ) );
 $listedIds = array_column( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['expired'] === true ), 'id' );
@@ -1034,6 +1033,7 @@ check( 'creditOf() makes a credit note draft with the lines of the invoice negat
 	&& array_column( $credit['lines'], 'price_net' ) === [ 9000, 1200 ] && array_column( $credit['lines'], 'amount_net' ) === [ -22500, -1200 ] && $credit['net'] === -23700 && $credit['gross'] === -23700 && $credit['vat_mode'] === $secondInvoice['vat_mode'] );
 check( '...it is listed under the invoice', array_column( Documents::get( $appData, $secondInvoice['id'] )['children'], 'id' ) === [ $credit['id'] ] );
 check( '...it has the period of the invoice and no due date', $credit['period_from'] === '2026-01-01' && $credit['period_to'] === '2026-01-31' && $credit['due_date'] === null );
+check( 'a credit note has neither a due date nor a validity date: it returns money', $credit['valid_until'] === null && Documents::change( $appData, $credit['id'], [ 'due_date' => '2026-12-01' ] )['due_date'] === null );
 check( 'a credit note of a credit note, of a draft invoice and of an offer is 409 state', Documents::creditOf( $appData, $credit['id'] ) === 'state' && Documents::creditOf( $appData, $offerFinal['id'] ) === 'state' && Documents::creditOf( $appData, Documents::add( $appData, 'invoice', $first['id'] )['id'] ) === 'state' );
 check( '...a document nobody has gives none', Documents::creditOf( $appData, 999 ) === 'unknown' );
 
@@ -1044,14 +1044,14 @@ $creditTokens = Render::data( $appData, $partialFinal, $partialFinal['lines'], $
 check( 'the tokens of a credit note: its title, the number of the invoice it refers to, no due date, the period of that invoice', $creditTokens['/document/title'] === 'Stornorechnung' && $creditTokens['/document/parent'] === $secondInvoice['number'] && $creditTokens['/invoice/due'] === '' && isset( $creditTokens['/offer/valid'] ) === false && $creditTokens['/invoice/period'] === '01.01.2026 - 31.01.2026' );
 check( '...and the sentence of the payment terms too, without a day (the README promises it): its own number, no day', ( $creditTokens['/invoice/due-sentence'] ?? null) === Render::text( 'due.sentence-none', $partialFinal['number'] ) );
 $over = Documents::creditOf( $appData, $secondInvoice['id'] );
-Documents::change( $appData, $over['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ], 'lines' => [ [ 'title' => 'Mehr', 'qty' => '-3', 'price' => '200', 'vat_rate' => 0 ] ] ] );
-Documents::finalise( $appData, $over['id'] );
-check( 'a credit note of more than the invoice does not cancel it', $state( $secondInvoice['id'] ) === 'sent' );
+Documents::change( $appData, $over['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+$before = $sequences();
+check( 'a credit note that takes back more than is left of the invoice (90 are taken back already) is refused when it is finalised: nothing is spent, it stays a draft, and the invoice keeps its state', Documents::finalise( $appData, $over['id'] ) === 'credit_over' && $sequences() === $before && $state( $over['id'] ) === 'draft' && $state( $secondInvoice['id'] ) === 'sent' );
 $full = Documents::creditOf( $appData, $secondInvoice['id'] );
-Documents::change( $appData, $full['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'Storno' ] ] );
+Documents::change( $appData, $full['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'Storno' ], 'lines' => [ [ 'title' => 'Webdesign', 'unit' => 'Std.', 'qty' => '-1,5', 'price' => '90', 'vat_rate' => 0 ], [ 'title' => 'Hosting', 'unit' => 'Monat', 'qty' => '-1', 'price' => '12,00', 'vat_rate' => 0 ] ] ] );
 $stateBefore = $state( $secondInvoice['id'] );
 $fullFinal = Documents::finalise( $appData, $full['id'] );
-check( 'a credit note of the whole invoice finalised cancels the invoice in the same step', $stateBefore === 'sent' && is_array( $fullFinal ) && $state( $secondInvoice['id'] ) === 'cancelled' );
+check( 'the credit notes that together take the whole of the invoice back cancel it in the step of the last one', $stateBefore === 'sent' && is_array( $fullFinal ) && $state( $secondInvoice['id'] ) === 'cancelled' );
 check( 'a cancelled invoice has no step and gives no credit note; it lists both of its credit notes', Documents::setState( $appData, $secondInvoice['id'], 'paid' ) === 'state' && Documents::creditOf( $appData, $secondInvoice['id'] ) === 'state' && count( Documents::get( $appData, $secondInvoice['id'] )['children'] ) === 3 );
 $dup = Documents::add( $appData, 'invoice', $first['id'], [ 'lines' => $lines, 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
 $dupFinal = Documents::finalise( $appData, $dup['id'] );
@@ -1445,8 +1445,8 @@ $nextNumber = Numbers::render( 'R-{YYYY}-{NNNN}', $futureYear, 1 + (int) Db::row
 check( 'finalise answers the document with its number, its state, its PDF address and the hash; the number was not spent by the failure before', $status === 200 && $body['document']['number'] === $nextNumber && $body['document']['state'] === 'open' && $body['document']['pdf_url'] === '/.crm/pdf/'. $fin['id'] && strlen( $body['document']['pdf_sha256'] ) === 64 );
 check( 'finalise of a finalised document is 409 crm_documents_fixed', ( $r = $post( 'crm-documents/finalise', [ 'id' => (string) $fin['id'] ] ) )[0] === 409 && $r[1]['code'] === 'crm_documents_fixed' );
 
-[ $status, $body ] = $post( 'crm-documents/state', [ 'id' => (string) $fin['id'], 'state' => 'sent', 'date' => '2026-11-02' ] );
-check( 'state moves the document and takes a day', $status === 200 && $body['document']['state'] === 'sent' && $body['document']['sent_at'] === '2026-11-02T00:00:00Z' );
+[ $status, $body ] = $post( 'crm-documents/state', [ 'id' => (string) $fin['id'], 'state' => 'sent', 'date' => $today ] );
+check( 'state moves the document and takes a day', $status === 200 && $body['document']['state'] === 'sent' && $body['document']['sent_at'] === $today. 'T00:00:00Z' );
 check( '...a step the state does not allow is 409 crm_documents_state; a day that is none 400 crm_documents_date; a document nobody has 404', ( $r = $post( 'crm-documents/state', [ 'id' => (string) $fin['id'], 'state' => 'sent' ] ) )[0] === 409 && $r[1]['code'] === 'crm_documents_state'
 	&& ( $r = $post( 'crm-documents/state', [ 'id' => (string) $fin['id'], 'state' => 'paid', 'date' => 'x' ] ) )[0] === 400 && $r[1]['code'] === 'crm_documents_date' && $r[1]['field'] === 'date' && $post( 'crm-documents/state', [ 'id' => '99999', 'state' => 'paid' ] )[0] === 404 && $state( $fin['id'] ) === 'sent' );
 check( '...paid without a day is the time of the step', ( $r = $post( 'crm-documents/state', [ 'id' => (string) $fin['id'], 'state' => 'paid' ] ) )[0] === 200 && $r[1]['document']['state'] === 'paid' && str_ends_with( (string) $r[1]['document']['paid_at'], 'Z' ) );
@@ -1553,8 +1553,8 @@ foreach( [ 'crm-documents/save', 'crm-documents/remove', 'crm-documents/finalise
 check( '...every writing action has a line, which holds no address, no amount and no name', array_filter( $logs, static fn( string $line ): bool => $line === '' ) === [] && array_filter( $logs, static fn( string $line ): bool => preg_match( '/[@€]|Hafen|\d,\d\d|Nord/', $line ) === 1 ) === [] );
 
 $called = [];
-$post( 'crm-documents/save', [ 'category' => 'credit', 'client_id' => (string) $first['id'] ] );
-$called['save'] = \Crm\Documents\Admin::log( 'crm-documents/save', [ 'category' => 'credit' ] );
+$post( 'crm-documents/save', [ 'category' => 'offer', 'client_id' => (string) $first['id'] ] );
+$called['save'] = \Crm\Documents\Admin::log( 'crm-documents/save', [ 'category' => 'offer' ] );
 $post( 'crm-documents/state', [ 'id' => (string) $secondInvoice['id'], 'state' => 'paid' ] );
 $post( 'crm-documents/finalise', [ 'id' => (string) $fin['id'] ] );
 check( 'a line of a finalised document names its number: "Finalised document R-..."', preg_match( '/^Added draft \d+$/D', $called['save'] ) === 1 && \Crm\Documents\Admin::log( 'crm-documents/save', [ 'id' => '3' ] ) !== '' );
@@ -2292,8 +2292,30 @@ check( '...its amounts are positive, though the document stores them negated: li
 	&& str_contains( implode( '', $all( $xc, '//ram:ChargeAmount | //ram:LineTotalAmount | //ram:BasisAmount | //ram:CalculatedAmount | //ram:TaxBasisTotalAmount | //ram:TaxTotalAmount | //ram:GrandTotalAmount | //ram:DuePayableAmount | //ram:BilledQuantity' ) ), '-' ) === false
 	&& $all( $xc, $li. '/ram:SpecifiedLineTradeDelivery/ram:BilledQuantity' ) === [ '3', '2', '1' ] && $all( $xc, $bg23. '/ram:BasisAmount' ) === $all( $xb, $bg23. '/ram:BasisAmount' ) && $all( $xc, $bg23. '/ram:CalculatedAmount' ) === $all( $xb, $bg23. '/ram:CalculatedAmount' )
 	&& $one( $xc, $sum. '/ram:GrandTotalAmount' ) === $one( $xb, $sum. '/ram:GrandTotalAmount' ) && $one( $xc, $sum. '/ram:TaxTotalAmount' ) === $one( $xb, $sum. '/ram:TaxTotalAmount' ) );
+check( '...the file and the database agree on the amount of a credit note: the grand total of the file is the stored gross with its sign taken off, to the cent', $c['gross'] < 0 && $cents( (string) $one( $xc, $sum. '/ram:GrandTotalAmount' ) ) === -$c['gross'] );
 check( '...a credit note has no due day, and BT-20 all the same (BR-CO-25)', $xc->query( $st. '/ram:SpecifiedTradePaymentTerms/ram:DueDateDateTime' )->length === 0 && $one( $xc, $st. '/ram:SpecifiedTradePaymentTerms/ram:Description' ) === Render::dueSentence( '', $c['number'] ) );
 $rules( $xc, 'fixture (c)' );
+
+// (d) the credit note that closes an invoice whose tax the lines alone would round the other way: the file and the view carry the tax of the document
+$pairLine = static fn( string $qty ): array => $line( [ 'title' => 'Paar', 'qty' => $qty, 'price' => '10,50', 'vat_rate' => 1900, 'unit_code' => 'H87' ] );
+$pairInvoice = $mk( 'invoice', $biz['id'], [ 'date' => '2026-04-03', 'lines' => [ $pairLine( '2' ) ], 'buyer_reference' => 'Bestellung 98' ] );
+$halves = [];
+
+foreach( [ 0, 1 ] as $round ) {
+	$halfDraft = (array) Documents::creditOf( $appData, $pairInvoice['id'] );
+	Documents::change( $appData, $halfDraft['id'], [ 'template_key' => 'erechnung', 'lines' => [ $pairLine( '-1' ) ] ] );
+	$halves[] = (array) Documents::finalise( $appData, $halfDraft['id'] );
+}
+
+$xd = $dom( $halves[1] );
+$pdfTotals = (string) Render::data( $appData, $halves[1], $halves[1]['lines'], $halves[1]['client_frozen'] )['slots']['totals'];
+$currency = Settings::get( $appData, 'currency' );
+check( '(d) the electronic invoice of the credit note that closes 2 x 10,50 at 19 % has the tax of the document: the total tax and the tax of the rate are 1,99 (the lines alone round to 2,00) and the grand total is the gross with its sign taken off', $halves[1]['vat'] === -199 && $halves[0]['vat'] === -200 && $cents( (string) $one( $xd, $sum. '/ram:TaxTotalAmount' ) ) === 199
+	&& array_map( $cents, $all( $xd, $bg23. '/ram:CalculatedAmount' ) ) === [ 199 ] && $cents( (string) $one( $xd, $sum. '/ram:GrandTotalAmount' ) ) === -$halves[1]['gross'] && $halves[1]['xml_path'] !== '' );
+check( '...so has the data the PDF is drawn from: the tax of the document, not the tax of its lines', str_contains( $pdfTotals, str_replace( "\u{00A0}", '&nbsp;', Money::format( $halves[1]['vat'], $currency ) ) ) === true && str_contains( $pdfTotals, str_replace( "\u{00A0}", '&nbsp;', Money::format( -200, $currency ) ) ) === false );
+$shownRates = Documents::get( $appData, $halves[1]['id'] )['rates'];
+check( '...and the document as get() has it: the rates carry the net and the tax of each rate and add up to the net and the tax of the document - a draft and what is no credit note have none', $shownRates === [ [ 'rate' => 1900, 'net' => -1050, 'vat' => -199 ] ] && array_sum( array_column( $shownRates, 'net' ) ) === $halves[1]['net'] && array_sum( array_column( $shownRates, 'vat' ) ) === $halves[1]['vat']
+	&& Documents::get( $appData, $pairInvoice['id'] )['rates'] === [] );
 
 // (f) a negative price: a discount line
 Settings::set( $appData, 'vat_mode', 'small_business' );
@@ -2742,6 +2764,8 @@ function documentsConsentChecks( array &$appData, \Closure $post, string $root )
 documentsConsentChecks( $appData, $post, $root );
 documentsFeatureUnitChecks( $appData, $post, $root );
 documentsTemplateKeyChecks( $appData, $post );
+documentsBooksChecks( $appData, $post, $first['id'] );
+documentsCreditRateChecks( $appData, $post, $first['id'] );
 documentsNoteChecks( $appData, $root );
 
 /**
@@ -2765,6 +2789,329 @@ function documentsNoteChecks( array &$appData, string $root ): void {
 }
 
 ninoDone( $appData );
+
+/**
+ *	The credit notes of an invoice together, in every rate: what they may take back, how the last one closes the invoice to the cent, and the days a document may carry
+ *
+ *	@param		array 		&$appData
+ *	@param		\Closure	$post						Runs an action of the panel
+ *	@param		int				$clientId				A client that is ready for invoices
+ *
+ *	@return 	void
+ */
+function documentsCreditRateChecks( array &$appData, \Closure $post, int $clientId ): void {
+
+	echo "\nCredit notes together, and the days\n";
+
+	$line = static fn( string $qty, string $price, int $rate = 0, string $title = 'Posten' ): array => [ 'title' => $title, 'unit' => 'Std.', 'qty' => $qty, 'price' => $price, 'vat_rate' => $rate ];
+	$invoice = static function( array $lines, array $extra = [] ) use ( &$appData, $clientId ): array {
+		$draft = (array) Documents::add( $appData, 'invoice', $clientId, [ 'lines' => $lines, 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] + $extra );
+
+		return (array) Documents::finalise( $appData, $draft['id'] );
+	};
+	$state = static fn( int $id ): string => (string) Db::row( $appData, 'SELECT state FROM documents WHERE id = :id', [ 'id' => $id ] )['state'];
+	$day = static fn( int $offset ): string => date( 'Y-m-d', strtotime( sprintf( '%+d days', $offset ) ) );
+	$mode = Settings::get( $appData, 'vat_mode' );
+	Settings::set( $appData, 'vat_mode', 'regular' );
+
+	// The limit of a rate holds for all the credit notes of the invoice together, not for each of them
+	$two = $invoice( [ $line( '1', '100', 1900, 'Neunzehn' ), $line( '1', '100', 700, 'Sieben' ) ] );
+	$one = documentsPartialCredit( $appData, $two['id'], 'Neunzehn', '-1', '100', 1900 );
+	$more = documentsPartialCredit( $appData, $two['id'], 'Neunzehn', '-1', '89', 1900 );
+	$rest = documentsPartialCredit( $appData, $two['id'], 'Sieben', '-1', '1,02', 700 );
+	$first = Documents::finalise( $appData, $one['id'] );
+	[ $status, $body ] = $post( 'crm-documents/finalise', [ 'id' => (string) $more['id'] ] );
+	check( 'the credit notes of an invoice together take back no more of a rate than the invoice charged: 100 of 100 at 19 %, then 89 more at 19 % is 409 crm_documents_credit_over at the field lines, however small the third at 7 % is', is_array( $first ) && $status === 409 && $body['code'] === 'crm_documents_credit_over' && $body['field'] === 'lines'
+		&& Documents::finalise( $appData, $more['id'] ) === 'credit_over' && is_array( Documents::finalise( $appData, $rest['id'] ) ) && $state( $two['id'] ) === 'open' && $state( $more['id'] ) === 'draft' );
+	$gone = documentsPartialCredit( $appData, $two['id'], 'Sieben', '-1', '98,98', 700 );
+	check( '...what is left of the rate is taken, and the invoice is cancelled once every rate is back in full', is_array( Documents::finalise( $appData, $gone['id'] ) ) && $state( $two['id'] ) === 'cancelled' );
+
+	// Net, per rate: a credit note may not take back a rate from the charge of another
+	$mixed = $invoice( [ $line( '1', '100', 1900, 'Neunzehn' ), $line( '1', '-20', 1900, 'Rabatt' ) ] );
+	$wholeCharge = (array) Documents::creditOf( $appData, $mixed['id'] );
+	$taken = Documents::change( $appData, $wholeCharge['id'], [ 'lines' => [ $line( '-1', '100', 1900, 'Neunzehn' ) ] ] );
+	check( 'a rate whose charge is 100 and whose discount is 20 is taken back by 80 net at most: a credit note of the whole charge alone is credit_lines', $taken === 'credit_lines' && count( Documents::get( $appData, $wholeCharge['id'] )['lines'] ) === 2 );
+
+	// The tax of each rate is rounded on what the invoice has given back so far: 2 x 10,50 at 19 % is 24,99, and two credit notes of one piece each are 12,50 and 12,49
+	$pair = $invoice( [ $line( '2', '10,50', 1900, 'Paar' ) ] );
+	$halfA = documentsPartialCredit( $appData, $pair['id'], 'Paar', '-1', '10,50', 1900 );
+	$halfB = documentsPartialCredit( $appData, $pair['id'], 'Paar', '-1', '10,50', 1900 );
+	$doneA = (array) Documents::finalise( $appData, $halfA['id'] );
+	$stateBetween = $state( $pair['id'] );
+	$doneB = (array) Documents::finalise( $appData, $halfB['id'] );
+	$pdf = (string) file_get_contents( \Nino\Filesystem::path( $appData, $doneB['pdf_path'] ) );
+	check( '2 x 10,50 at 19 % (24,99 gross) taken back by two credit notes of one piece: the first is 12,50 and leaves the invoice, the second is 12,49 and cancels it', $pair['gross'] === 2499 && $doneA['gross'] === -1250 && $stateBetween === 'open' && $doneB['gross'] === -1249
+		&& $doneB['net'] + $doneB['vat'] === $doneB['gross'] && $state( $pair['id'] ) === 'cancelled' && str_starts_with( $pdf, '%PDF' ) === true );
+	$together = $doneA['gross'] + $doneB['gross'];
+	check( '...the two come to the gross of the invoice to the cent', $together === -$pair['gross'] );
+	$ratesOf = static fn( array $done ): array => array_map( static fn( array $part ): int => $part['vat'], Money::totals( $done['lines'], $done['vat_mode'], $done['reverse_charge'], Documents::creditVat( $appData, $done, $done['lines'], array_column( $done['lines'], 'amount_net' ) ) )['rates'] );
+	check( '...the totals the file is drawn from carry the tax of the document, not the tax of its lines taken alone: the tax of each rate adds up to the tax stored, and the lines alone would round the second the same way as the first', $ratesOf( $doneB ) === [ 1900 => -199 ] && array_sum( $ratesOf( $doneB ) ) === $doneB['vat']
+		&& Money::totals( $doneB['lines'], $doneB['vat_mode'], false )['vat'] === -200 );
+
+	// Two rates: the cent of one rate stays in that rate
+	$mixedPair = $invoice( [ $line( '2', '10,50', 1900, 'Neunzehn' ), $line( '2', '10,50', 700, 'Sieben' ) ] );
+	$notes = [];
+
+	for( $round = 0; $round < 2; $round++ ) {
+		$draft = (array) Documents::creditOf( $appData, $mixedPair['id'] );
+		Documents::change( $appData, $draft['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ], 'lines' => [ $line( '-1', '10,50', 1900, 'Neunzehn' ), $line( '-1', '10,50', 700, 'Sieben' ) ] ] );
+		$notes[] = (array) Documents::finalise( $appData, $draft['id'] );
+	}
+
+	check( '2 x 10,50 at 19 % and at 7 % taken back twice, one piece of each: the second credit note has 1,99 at 19 % and 0,73 at 7 % - a cent does not move from one rate to the other - and the two come to the gross of the invoice', $mixedPair['gross'] === 4746 && $ratesOf( $notes[0] ) === [ 1900 => -200, 700 => -74 ] && $ratesOf( $notes[1] ) === [ 1900 => -199, 700 => -73 ]
+		&& $notes[0]['gross'] + $notes[1]['gross'] === -4746 && $state( $mixedPair['id'] ) === 'cancelled' );
+
+	// Two credit notes finalised in the same second: the one that was finalised first has the first number, whatever its id is
+	$tied = $invoice( [ $line( '2', '10,50', 1900, 'Paar' ) ] );
+	$lowId = documentsPartialCredit( $appData, $tied['id'], 'Paar', '-1', '10,50', 1900 );
+	$highId = documentsPartialCredit( $appData, $tied['id'], 'Paar', '-1', '10,50', 1900 );
+	$firstDone = (array) Documents::finalise( $appData, $highId['id'] );
+	$secondDone = (array) Documents::finalise( $appData, $lowId['id'] );
+	Db::exec( $appData, 'UPDATE documents SET finalised = :at WHERE id IN ( :one, :two )', [ 'at' => $firstDone['finalised'], 'one' => $lowId['id'], 'two' => $highId['id'] ] );
+	$ratesFirst = Documents::get( $appData, $highId['id'] )['rates'];
+	$ratesSecond = Documents::get( $appData, $lowId['id'] )['rates'];
+	check( 'two credit notes finalised in the same second are taken in the order of their numbers, not of their ids: the one finalised first (the higher id) has the tax -2,00, the other -1,99, and what get() shows is what each was finalised with', $lowId['id'] < $highId['id'] && $firstDone['vat'] === -200 && $secondDone['vat'] === -199 && $ratesFirst[0]['vat'] === -200 && $ratesSecond[0]['vat'] === -199 );
+
+	// Four pieces, four credit notes: each is within a cent of its own net times the rate, and the four come to the tax of the invoice
+	$four = $invoice( [ $line( '4', '10,50', 1900, 'Vier' ) ] );
+	$sum = 0;
+	$near = true;
+
+	for( $round = 0; $round < 4; $round++ ) {
+		$note = (array) Documents::finalise( $appData, documentsPartialCredit( $appData, $four['id'], 'Vier', '-1', '10,50', 1900 )['id'] );
+		$sum += $note['vat'];
+		$near = $near && abs( $note['vat'] + 199.5 ) <= 1;
+	}
+
+	check( '4 x 10,50 at 19 % taken back by four credit notes of one piece: each has its tax within a cent of its net times the rate, the four together the tax of the invoice, and the invoice is cancelled', $near === true && $sum === -$four['vat'] && $state( $four['id'] ) === 'cancelled' );
+
+	// The limit of a kind holds for the credit notes together: a discount given back twice
+	$discounted = $invoice( [ $line( '1', '100', 0, 'Posten' ), $line( '1', '-20', 0, 'Rabatt' ) ] );
+	$twice = [];
+
+	foreach( [ '60', '40' ] as $charge ) {
+		$draft = (array) Documents::creditOf( $appData, $discounted['id'] );
+		Documents::change( $appData, $draft['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ], 'lines' => [ $line( '-1', $charge, 0, 'Posten' ), $line( '1', '20', 0, 'Rabatt' ) ] ] );
+		$twice[] = $draft['id'];
+	}
+
+	check( 'a discount of the invoice is given back once: the first credit note of 60 and the discount is taken, the second of 40 and the same discount again is credit_over, and the invoice is open', is_array( Documents::finalise( $appData, $twice[0] ) ) && Documents::finalise( $appData, $twice[1] ) === 'credit_over' && $state( $discounted['id'] ) === 'open' );
+
+	// A credit note is dated no earlier than its invoice
+	$dated = $invoice( [ $line( '1', '10' ) ], [ 'date' => $day( -3 ) ] );
+	$early = (array) Documents::creditOf( $appData, $dated['id'] );
+	Documents::change( $appData, $early['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+	$earlier = Documents::change( $appData, $early['id'], [ 'date' => $day( -4 ) ] );
+	[ $status, $body ] = $post( 'crm-documents/save', [ 'id' => (string) $early['id'], 'date' => $day( -4 ) ] );
+	Db::exec( $appData, 'UPDATE documents SET date = :date WHERE id = :id', [ 'date' => $day( -4 ), 'id' => $early['id'] ] );
+	check( 'a credit note dated before its invoice is refused: date:date, and 400 crm_documents_date at the field date - and when it is finalised, if it was dated so behind the model\'s back', $earlier === 'date:date' && $status === 400 && $body['code'] === 'crm_documents_date' && $body['field'] === 'date' && Documents::finalise( $appData, $early['id'] ) === 'date:date' && $state( $early['id'] ) === 'draft' );
+	Documents::remove( $appData, $early['id'] );
+
+	// A document carries no day after today
+	$late = (array) Documents::add( $appData, 'invoice', $clientId, [ 'date' => $day( 1 ), 'lines' => [ $line( '1', '10' ) ], 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+	$lateOffer = (array) Documents::add( $appData, 'offer', $clientId, [ 'date' => $day( 1 ), 'lines' => [ $line( '1', '10' ) ], 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
+	$lateCredit = documentsPartialCredit( $appData, $dated['id'], 'Posten', '-1', '5' );
+	Db::exec( $appData, 'UPDATE documents SET date = :date WHERE id = :id', [ 'date' => $day( 1 ), 'id' => $lateCredit['id'] ] );
+	[ $status, $body ] = $post( 'crm-documents/finalise', [ 'id' => (string) $late['id'] ] );
+	check( 'an invoice, an offer and a credit note dated after today are not finalised, tomorrow included: 400 crm_documents_date at the field date, no number spent, still drafts', Documents::finalise( $appData, $late['id'] ) === 'date:date' && Documents::finalise( $appData, $lateOffer['id'] ) === 'date:date' && Documents::finalise( $appData, $lateCredit['id'] ) === 'date:date'
+		&& $status === 400 && $body['code'] === 'crm_documents_date' && $body['field'] === 'date' && $state( $late['id'] ) === 'draft' && $state( $lateOffer['id'] ) === 'draft' && $state( $lateCredit['id'] ) === 'draft' );
+	Documents::remove( $appData, $lateCredit['id'] );
+	Documents::remove( $appData, $lateOffer['id'] );
+	Documents::change( $appData, $late['id'], [ 'date' => $day( 0 ) ] );
+	$today = (array) Documents::finalise( $appData, $late['id'] );
+	check( '...today is the last day: the invoice is finalised, and a day to come is no day of sending or payment', Documents::setState( $appData, $today['id'], 'sent', $day( 1 ) ) === 'daterange' && $state( $today['id'] ) === 'open' && ( Documents::setState( $appData, $today['id'], 'sent' )['state'] ?? '' ) === 'sent'
+		&& Documents::setState( $appData, $today['id'], 'paid', $day( 1 ) ) === 'daterange' && is_array( Documents::setState( $appData, $today['id'], 'paid', $day( 0 ) ) ) );
+	$behind = $invoice( [ $line( '1', '10' ) ], [ 'date' => $day( 0 ) ] );
+	Db::exec( $appData, 'UPDATE documents SET date = :date WHERE id = :id', [ 'date' => $day( 1 ), 'id' => $behind['id'] ] );
+	check( '...a day that is left out is today, and today is held to the day of the document as a given day is: a document dated later (behind the model\'s back) is not sent', Documents::setState( $appData, $behind['id'], 'sent' ) === 'daterange' && $state( $behind['id'] ) === 'open' );
+
+	// An offer is no claim below 0
+	$below = (array) Documents::add( $appData, 'offer', $clientId, [ 'lines' => [ $line( '1', '-5' ) ], 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
+	$null = (array) Documents::add( $appData, 'offer', $clientId, [ 'lines' => [ $line( '1', '0' ) ], 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] );
+	check( 'an offer below 0 is not finalised (409 gross), an offer of 0 is', Documents::finalise( $appData, $below['id'] ) === 'gross' && is_array( Documents::finalise( $appData, $null['id'] ) ) && $state( $below['id'] ) === 'draft' );
+	Documents::remove( $appData, $below['id'] );
+
+	// Smaller lines, one for each position
+	$sixty = $invoice( [ $line( '1', '60', 0, 'A' ), $line( '1', '40', 0, 'B' ) ] );
+	$wide = (array) Documents::creditOf( $appData, $sixty['id'] );
+	$lone = Documents::change( $appData, $wide['id'], [ 'lines' => [ $line( '-1', '70', 0, 'Beide' ) ] ] );
+	$cut = Documents::change( $appData, $wide['id'], [ 'lines' => [ $line( '-1', '60', 0, 'A' ), $line( '-1', '40', 0, 'B' ) ] ] );
+	check( 'a line is no more than the largest line of the invoice in its rate: 70 on an invoice of 60 and 40 is credit_lines, the two lines of the invoice are taken, one for each position', $lone === 'credit_lines' && is_array( $cut ) );
+	$reverse = Documents::change( $appData, $wide['id'], [ 'reverse_charge' => true ] );
+	[ $status, $body ] = $post( 'crm-documents/save', [ 'id' => (string) $wide['id'], 'reverse_charge' => true ] );
+	check( 'a credit note takes the reverse charge of its invoice and no other: switching it on for the credit note of an invoice that has none is credit_lines, 400 crm_documents_credit_lines at the field lines, and the draft is as it was', $reverse === 'credit_lines' && $status === 400 && $body['code'] === 'crm_documents_credit_lines' && $body['field'] === 'lines' && Documents::get( $appData, $wide['id'] )['reverse_charge'] === false );
+	Settings::set( $appData, 'vat_mode', $mode );
+}
+
+/**
+ *	A credit note draft for a part of an invoice: one line of the invoice's, taken back by the quantity given
+ *
+ *	@param		array 		&$appData
+ *	@param		int				$invoiceId
+ *	@param		string		$title
+ *	@param		string		$qty
+ *	@param		string		$price
+ *	@param		int				$rate
+ *
+ *	@return 	array											The draft, with the template of invoices
+ */
+function documentsPartialCredit( array &$appData, int $invoiceId, string $title, string $qty, string $price, int $rate = 0 ): array {
+
+	$draft = (array) Documents::creditOf( $appData, $invoiceId );
+
+	return (array) Documents::change( $appData, $draft['id'], [ 'lines' => [ [ 'title' => $title, 'unit' => 'Monat', 'qty' => $qty, 'price' => $price, 'vat_rate' => $rate ] ], 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+}
+
+/**
+ *	The books hold: the rules a credit note, a date, an amount and a reminder keep whatever is posted
+ *
+ *	@param		array 		&$appData
+ *	@param		\Closure	$post						Runs an action of the panel
+ *	@param		int				$clientId				A client that is ready for invoices
+ *
+ *	@return 	void
+ */
+function documentsBooksChecks( array &$appData, \Closure $post, int $clientId ): void {
+
+	echo "\nThe books hold\n";
+
+	$today = date( 'Y-m-d' );
+	$line = static fn( string $qty, string $price, int $rate = 0, string $title = 'Posten' ): array => [ 'title' => $title, 'unit' => 'Std.', 'qty' => $qty, 'price' => $price, 'vat_rate' => $rate ];
+	$invoice = static function( array $lines, array $extra = [] ) use ( &$appData, $clientId ): array {
+		$draft = (array) Documents::add( $appData, 'invoice', $clientId, [ 'lines' => $lines, 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] + $extra );
+
+		return (array) Documents::finalise( $appData, $draft['id'] );
+	};
+	$sequences = static fn(): array => Db::rows( $appData, 'SELECT category, year, next FROM sequences ORDER BY category, year' );
+	$state = static fn( int $id ): string => (string) Db::row( $appData, 'SELECT state FROM documents WHERE id = :id', [ 'id' => $id ] )['state'];
+
+	// a credit note comes from an invoice
+	$hundred = $invoice( [ $line( '1', '100' ) ] );
+	[ $status, $body ] = $post( 'crm-documents/save', [ 'category' => 'credit', 'client_id' => (string) $clientId, 'template_key' => 'stornorechnung', 'lines' => [ $line( '1', '-50' ) ] ] );
+	check( 'a credit note cannot be saved on its own: add() says category, the action 400 crm_documents_category at the field category, and nothing is stored', Documents::add( $appData, 'credit', $clientId ) === 'category' && $status === 400 && $body['code'] === 'crm_documents_category' && $body['field'] === 'category'
+		&& (int) Db::row( $appData, 'SELECT COUNT(*) AS n FROM documents WHERE category = \'credit\' AND parent_id IS NULL' )['n'] === 0 );
+	$orphan = (array) Documents::creditOf( $appData, $hundred['id'] );
+	Documents::change( $appData, $orphan['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+	Db::exec( $appData, 'UPDATE documents SET parent_id = NULL WHERE id = :id', [ 'id' => $orphan['id'] ] );
+	$before = $sequences();
+	[ $status, $body ] = $post( 'crm-documents/finalise', [ 'id' => (string) $orphan['id'] ] );
+	check( 'a credit note draft with no invoice is not finalised: 409 crm_documents_credit_parent, no number spent, still a draft - and it is not saved either', Documents::finalise( $appData, $orphan['id'] ) === 'credit_parent' && $status === 409 && $body['code'] === 'crm_documents_credit_parent'
+		&& $sequences() === $before && $state( $orphan['id'] ) === 'draft' && Documents::change( $appData, $orphan['id'], [ 'notes' => 'x' ] ) === 'credit_parent' );
+	Documents::remove( $appData, $orphan['id'] );
+
+	// the lines of a credit note give back what the invoice charged
+	$draft = (array) Documents::creditOf( $appData, $hundred['id'] );
+	$wrong = [ 'positive' => [ $line( '1', '10' ) ], 'larger than the line' => [ $line( '-2', '100' ) ], 'a line more than the invoice has' => [ $line( '-1', '60' ), $line( '-1', '60' ) ] ];
+	$answers = [];
+
+	foreach( $wrong as $what => $lines )
+		$answers[$what] = Documents::change( $appData, $draft['id'], [ 'lines' => $lines ] );
+
+	[ $status, $body ] = $post( 'crm-documents/save', [ 'id' => (string) $draft['id'], 'lines' => $wrong['positive'] ] );
+	check( 'the lines of a credit note are refused when they are positive, larger than the line of the invoice, or together more than the invoice in their rate: credit_lines, and 400 crm_documents_credit_lines at the field lines', array_values( $answers ) === [ 'credit_lines', 'credit_lines', 'credit_lines' ] && $status === 400 && $body['code'] === 'crm_documents_credit_lines' && $body['field'] === 'lines'
+		&& array_column( Documents::get( $appData, $draft['id'] )['lines'], 'qty' ) === [ -1000 ] );
+	check( '...a line that gives back a part is taken, at the price of the invoice or at a smaller one', is_array( Documents::change( $appData, $draft['id'], [ 'lines' => [ $line( '-1', '40', 0, 'Teil' ) ] ] ) ) && Documents::change( $appData, $draft['id'], [ 'lines' => [ $line( '-0,5', '100' ) ] ] )['gross'] === -5000 );
+
+	$mode = Settings::get( $appData, 'vat_mode' );
+	Settings::set( $appData, 'vat_mode', 'regular' );
+	$taxed = $invoice( [ $line( '1', '100', 1900 ) ] );
+	$taxedCredit = (array) Documents::creditOf( $appData, $taxed['id'] );
+	$otherRate = Documents::change( $appData, $taxedCredit['id'], [ 'lines' => [ $line( '-1', '100', 700 ) ] ] );
+	$zeroRate = Documents::change( $appData, $taxedCredit['id'], [ 'lines' => [ $line( '-1', '100', 1900 ), $line( '-1', '0', 700, 'Null' ) ] ] );
+	$sameRate = Documents::change( $appData, $taxedCredit['id'], [ 'lines' => [ $line( '-1', '100', 1900 ) ], 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+	$cancelsAll = Documents::finalise( $appData, $taxedCredit['id'] );
+	Settings::set( $appData, 'vat_mode', $mode );
+	check( 'a credit note is held to the rates of its invoice: 700 on an invoice of 1900 is credit_lines, also on a line of 0, 1900 is taken and, taking all of the invoice, cancels it', $otherRate === 'credit_lines' && $zeroRate === 'credit_lines' && is_array( $sameRate ) && is_array( $cancelsAll ) && $cancelsAll['gross'] === -$taxed['gross'] && $state( $taxed['id'] ) === 'cancelled' );
+
+	// what is finalised is held to the invoice, and the credit notes together to its gross
+	$base = $invoice( [ $line( '1', '100' ) ] );
+	$first = (array) documentsPartialCredit( $appData, $base['id'], 'Teil', '-1', '60' );
+	$second = (array) documentsPartialCredit( $appData, $base['id'], 'Teil', '-1', '60' );
+	$firstDone = Documents::finalise( $appData, $first['id'] );
+	$before = $sequences();
+	[ $status, $body ] = $post( 'crm-documents/finalise', [ 'id' => (string) $second['id'] ] );
+	check( 'two credit notes of 60 on an invoice of 100: the first is finalised and leaves the invoice as it is, the second is 409 crm_documents_credit_over at the field lines, spends no number and stays a draft', is_array( $firstDone ) && $state( $base['id'] ) === 'open' && $status === 409 && $body['code'] === 'crm_documents_credit_over' && $body['field'] === 'lines'
+		&& Documents::finalise( $appData, $second['id'] ) === 'credit_over' && $sequences() === $before && $state( $second['id'] ) === 'draft' );
+	$tail = documentsPartialCredit( $appData, $base['id'], 'Rest', '-1', '40' );
+	check( '...a credit note of the 40 that are left is taken, and then the invoice is cancelled: the credit notes together took all of it back', is_array( Documents::finalise( $appData, $tail['id'] ) ) && $state( $base['id'] ) === 'cancelled' );
+	$fifty = $invoice( [ $line( '1', '100' ) ] );
+	$halves = [ documentsPartialCredit( $appData, $fifty['id'], 'Hälfte', '-1', '50' ), documentsPartialCredit( $appData, $fifty['id'], 'Hälfte', '-1', '50' ) ];
+	Documents::finalise( $appData, $halves[0]['id'] );
+	$afterFirst = $state( $fifty['id'] );
+	Documents::finalise( $appData, $halves[1]['id'] );
+	check( 'two credit notes of 50 on an invoice of 100 cancel it with the second, not with the first; a cancelled invoice is neither sent nor paid', $afterFirst === 'open' && $state( $fifty['id'] ) === 'cancelled' && Documents::setState( $appData, $fifty['id'], 'sent' ) === 'state' && Documents::setState( $appData, $fifty['id'], 'paid' ) === 'state' );
+
+	// A credit note that is positive when it is finalised (a draft saved under another rule) is no credit note
+	$positive = (array) Documents::creditOf( $appData, $hundred['id'] );
+	Documents::change( $appData, $positive['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+	Db::exec( $appData, 'UPDATE document_lines SET qty = 1000 WHERE document_id = :id', [ 'id' => $positive['id'] ] );
+	check( '...and one whose stored lines are positive is refused when it is finalised, whatever was saved: credit_lines', Documents::finalise( $appData, $positive['id'] ) === 'credit_lines' && $state( $positive['id'] ) === 'draft' );
+	Documents::remove( $appData, $positive['id'] );
+	$discounted = $invoice( [ $line( '1', '100' ), $line( '1', '-20', 0, 'Rabatt' ) ] );
+	$discountOnly = (array) Documents::creditOf( $appData, $discounted['id'] );
+	$giveBack = Documents::change( $appData, $discountOnly['id'], [ 'lines' => [ $line( '1', '20', 0, 'Rabatt' ) ], 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+	check( '...a discount of the invoice can be given back as a positive line, but a credit note that comes to 0 or more is no credit note: credit_lines when it is finalised', is_array( $giveBack ) && Documents::finalise( $appData, $discountOnly['id'] ) === 'credit_lines' && $state( $discountOnly['id'] ) === 'draft' );
+	Documents::remove( $appData, $discountOnly['id'] );
+
+	// the client of a credit note is its invoice's
+	$other = \Crm\Clients::add( $appData, [ 'company' => 'Andere GmbH', 'name' => 'Ana Andere', 'street' => 'Weg 1', 'zip' => '20095', 'city' => 'Hamburg', 'email' => 'ana@books.example' ] );
+	$bound = (array) Documents::creditOf( $appData, $hundred['id'] );
+	Documents::change( $appData, $bound['id'], [ 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+	[ $status, $body ] = $post( 'crm-documents/save', [ 'id' => (string) $bound['id'], 'client_id' => (string) $other['id'] ] );
+	check( 'a credit note draft cannot be moved to another client: client, the action 400 crm_documents_client at the field client_id; its own client is accepted', Documents::change( $appData, $bound['id'], [ 'client_id' => $other['id'] ] ) === 'client' && $status === 400 && $body['code'] === 'crm_documents_client' && $body['field'] === 'client_id'
+		&& Documents::get( $appData, $bound['id'] )['client_id'] === $clientId && is_array( Documents::change( $appData, $bound['id'], [ 'client_id' => $clientId ] ) ) );
+	Db::exec( $appData, 'UPDATE documents SET client_id = :client WHERE id = :id', [ 'client' => $other['id'], 'id' => $bound['id'] ] );
+	check( '...and one that was moved behind the model\'s back is not finalised: credit_parent', Documents::finalise( $appData, $bound['id'] ) === 'credit_parent' );
+	Documents::remove( $appData, $bound['id'] );
+
+	// a date is a date, to the last byte
+	$dates = [];
+
+	foreach( [ 'date', 'due_date', 'valid_until', 'period_from', 'period_to' ] as $field )
+		foreach( [ "2026-01-01\0", "\0", "2026-01-01 ", "2026-01-011", "2026-1-01", "２０２６-01-01" ] as $text )
+			$dates[] = $post( 'crm-documents/save', [ 'category' => 'invoice', 'client_id' => (string) $clientId, $field => $text ] )[0] === 400;
+
+	check( 'a date with a null byte, a stray byte or a different shape is 400 in each of the five date fields, not a failure of the server: '. count( $dates ). ' posts', array_unique( $dates ) === [ true ] && Documents::validDate( "2026-01-01\0" ) === false && Documents::validDate( "2026-01-01\n" ) === false && Documents::validDate( '2026-01-01' ) === true );
+	check( '...and the days of the transition still hold: the years 2000 to 2999 and no 30th of February', Documents::validDate( '2000-01-01' ) === true && Documents::validDate( '2999-12-31' ) === true && Documents::validDate( '3000-01-01' ) === false && Documents::validDate( '2026-02-30' ) === false );
+
+	// the days of sending and payment
+	$sheet = $invoice( [ $line( '1', '10' ) ], [ 'date' => date( 'Y-m-d', strtotime( '-10 days' ) ) ] );
+	$day = static fn( int $offset ): string => date( 'Y-m-d', strtotime( sprintf( '%+d days', $offset ) ) );
+	[ $status, $body ] = $post( 'crm-documents/state', [ 'id' => (string) $sheet['id'], 'state' => 'sent', 'date' => $day( -11 ) ] );
+	check( 'the day of sending is not before the document, not to come: 400 crm_documents_date_range at the field date, and the state stays', $status === 400 && $body['code'] === 'crm_documents_date_range' && $body['field'] === 'date' && Documents::setState( $appData, $sheet['id'], 'sent', $day( 2 ) ) === 'daterange'
+		&& Documents::setState( $appData, $sheet['id'], 'sent', '2999-01-01' ) === 'daterange' && $state( $sheet['id'] ) === 'open' );
+	Documents::setState( $appData, $sheet['id'], 'sent', $day( -5 ) );
+	check( 'the day of payment is not before the day of sending, not before the document, not to come; a good day is taken', Documents::setState( $appData, $sheet['id'], 'paid', $day( -6 ) ) === 'daterange' && Documents::setState( $appData, $sheet['id'], 'paid', $day( -11 ) ) === 'daterange'
+		&& Documents::setState( $appData, $sheet['id'], 'paid', '2999-12-31' ) === 'daterange' && $state( $sheet['id'] ) === 'sent' && ( Documents::setState( $appData, $sheet['id'], 'paid', $day( -5 ) )['paid_at'] ?? '' ) === $day( -5 ). 'T00:00:00Z' );
+
+	// an invoice claims something
+	$negative = (array) Documents::add( $appData, 'invoice', $clientId, [ 'lines' => [ $line( '1', '-100' ) ], 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+	$zero = (array) Documents::add( $appData, 'invoice', $clientId, [ 'lines' => [ $line( '1', '0' ) ], 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] );
+	$before = $sequences();
+	[ $status, $body ] = $post( 'crm-documents/finalise', [ 'id' => (string) $negative['id'] ] );
+	check( 'an invoice below 0 and one of 0 are not finalised: 409 crm_documents_gross at the field lines, no number spent, both stay drafts', Documents::finalise( $appData, $negative['id'] ) === 'gross' && Documents::finalise( $appData, $zero['id'] ) === 'gross' && $status === 409 && $body['code'] === 'crm_documents_gross' && $body['field'] === 'lines'
+		&& $sequences() === $before && $state( $negative['id'] ) === 'draft' && $state( $zero['id'] ) === 'draft' );
+	check( '...an offer of 0 is none of that business', is_array( Documents::finalise( $appData, (int) Documents::add( $appData, 'offer', $clientId, [ 'lines' => [ $line( '1', '0' ) ], 'template_key' => 'angebot', 'inputs' => [ 'intro' => 'x' ] ] )['id'] ) ) );
+	Documents::remove( $appData, $negative['id'] );
+	Documents::remove( $appData, $zero['id'] );
+
+	// the export in the order of the numbers within a day
+	$drafts = [ (array) Documents::add( $appData, 'invoice', $clientId, [ 'date' => '2025-06-15', 'lines' => [ $line( '1', '5' ) ], 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] ), (array) Documents::add( $appData, 'invoice', $clientId, [ 'date' => '2025-06-15', 'lines' => [ $line( '1', '5' ) ], 'template_key' => 'rechnung', 'inputs' => [ 'intro' => 'x' ] ] ) ];
+	$later = (array) Documents::finalise( $appData, $drafts[1]['id'] );
+	$earlier = (array) Documents::finalise( $appData, $drafts[0]['id'] );
+	$ledger = array_column( array_filter( Documents::ledger( $appData, 2025 ), static fn( array $row ): bool => $row['date'] === '2025-06-15' ), 'number' );
+	check( 'the ledger of a year is by day and, within a day, by number, not by the order the drafts were made in: the draft made first has the higher number here and comes second', $drafts[0]['id'] < $drafts[1]['id'] && $later['number'] < $earlier['number'] && array_slice( $ledger, -2 ) === [ $later['number'], $earlier['number'] ] );
+
+	// a day whose due day is past the years there are
+	$settingDays = Settings::get( $appData, 'payment_days' );
+	[ $status, $body ] = $post( 'crm-documents/save', [ 'category' => 'invoice', 'client_id' => (string) $clientId, 'date' => '2999-12-31' ] );
+	check( 'a document dated 2999-12-31 is refused at the date, not at a due day nobody typed: 400 crm_documents_date at the field date - and with a due day typed it is taken', $status === 400 && $body['code'] === 'crm_documents_date' && $body['field'] === 'date' && Documents::add( $appData, 'invoice', $clientId, [ 'date' => '2999-12-31' ] ) === 'date:date'
+		&& is_array( Documents::add( $appData, 'invoice', $clientId, [ 'date' => '2999-12-31', 'due_date' => '2999-12-31' ] ) ) && Settings::get( $appData, 'payment_days' ) === $settingDays );
+	Db::exec( $appData, 'DELETE FROM documents WHERE date = \'2999-12-31\'' );
+
+	// A copy of a credit note would hang on no invoice
+	check( 'a credit note is copied to nothing: state', Documents::copy( $appData, $first['id'] ) === 'state' );
+}
 
 /**
  *	The rows of the list carry the key of the PDF template a document was made with - the editor starts a new draft with the one the newest document of its client used - and ''

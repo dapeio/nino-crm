@@ -25,7 +25,7 @@ In both cases the setup wizard converts a fresh checkout into a valid project st
 
 The entry point of the public website is `index.php`. The workbench `/_admin` has its own (`_admin/index.php`), which serves the setup wizard until the project exists; `/_admin/recovery.php` is a third. The web server must deliver existing static files directly and forward all other website requests to Nino.
 
-For local development, `router.php` takes over this behavior when PHP's built-in server runs (see the [Quick Start](../README.md#quick-start)). It is a development server, not a production configuration.
+For local development, `router.php` takes over this behavior when PHP's built-in server runs (see the [Quick Start](../README.md#quick-start)). `router.php` also refuses a `data/` directory in the project root (404), as it refuses `private/`. It is a development server, not a production configuration.
 
 ### Apache
 

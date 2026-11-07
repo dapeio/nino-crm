@@ -73,7 +73,7 @@
 		Object.keys( state ).forEach( function( key ) { delete state[key] } );
 
 		Object.assign( state, {
-			base : '', csrf : '', perm : '', perms : { crm : true, pdf : false, elements : false, text : false, files : false, members : false, sign : false }, user : '', texts : {}, links : {},
+			base : '', day : '', csrf : '', perm : '', perms : { crm : true, pdf : false, elements : false, text : false, files : false, members : false, sign : false }, user : '', texts : {}, links : {},
 			settings : { currency : '', vat_mode : 'small_business', rates : [], payment_days : '14', offer_days : '30' },
 			clients : [], items : [], offers : [], years : [], docs : [], summary : null, people : [], owed : {},
 			filter : { chip : 'all', q : '', sort : 'date', dir : -1, year : 0, page : 1 },
@@ -201,9 +201,13 @@
 	/**
 	 *	@param		{Date}		[date]
 	 *
-	 *	@return		{string}									Y-m-d, in the browser's own time
+	 *	@return		{string}									Y-m-d; without a date the day of the server that made the page (a clock that is ahead or behind does not make a day the server refuses), else the browser's own time
 	 */
 	const today = function( date ) {
+
+		if( date === undefined && typeof state.day === 'string' && state.day !== '' )
+			return state.day;
+
 		const at = date || new Date();
 		return at.getFullYear()+ '-'+ pad( at.getMonth()+ 1 )+ '-'+ pad( at.getDate() );
 	};
@@ -1928,10 +1932,10 @@
 			state.main.appendChild( head( t( 'overview.title' ), el( 'span', { class: 'sub', text: new Date().toLocaleDateString( 'de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' } ) } ), el( 'span', { class: 'grow' } ), find, newMenu( t( 'new.label' ) ) ) );
 
 			state.main.appendChild( el( 'div', { class: 'tiles' },
-				tile( t( 'tile.open' ), cash( sum.gross ), plural( sum.count, 'tile.docs-one', 'tile.docs-many' ), '' ),
+				tile( t( 'tile.open' ), cash( sum.gross ), plural( sum.count, 'tile.docs-one', 'tile.docs-many' )+ ', '+ t( 'tile.all-years' ), '' ),
 				tile( t( 'tile.overdue' ), cash( sum.overdue_gross ), sum.overdue_count === 0 ? t( 'tile.overdue-none' ) : plural( sum.overdue_count, 'tile.overdue-one', 'tile.overdue-many' )+ ', '+ t( 'tile.oldest', dmy( sum.overdue_oldest ) ), sum.overdue_count > 0 ? 'bad' : '' ),
 				tile( t( 'tile.offers' ), cash( sum.offers_gross ), plural( sum.offers_count, 'tile.offers-one', 'tile.offers-many' ), '' ),
-				tile( t( 'tile.paid', sum.paid_year ), cash( sum.paid_gross ), t( 'tile.paid-'+ state.settings.vat_mode ), 'good' ),
+				tile( t( 'tile.paid', sum.paid_year ), cash( sum.paid_gross ), t( 'tile.paid-'+ state.settings.vat_mode )+ ', '+ t( 'tile.paid-state' ), 'good' ),
 				tile( t( 'tile.drafts' ), String( sum.drafts_count ), sum.drafts_count > 0 ? t( 'tile.drafts-last', dmy( sum.drafts_last ) ) : t( 'tile.drafts-none' ), '' ),
 				dates === null ? null : eventTile( dates.upcoming[0] ) ) );
 
@@ -2909,7 +2913,9 @@
 		if( doc.category === 'invoice' && [ 'open', 'sent', 'paid' ].includes( doc.state ) === true )
 			items.push( { label : t( 'menu.credit' ), run : function() { derive( 'crm-documents/credit', view, 'error.credit', 'credit.done' ) } } );
 
-		items.push( { label : t( 'menu.copy' ), run : function() { derive( 'crm-documents/copy', view, 'error.copy', 'copy.done' ) } } );
+		// A credit note takes back an invoice: there is no copy of it
+		if( doc.category !== 'credit' )
+			items.push( { label : t( 'menu.copy' ), run : function() { derive( 'crm-documents/copy', view, 'error.copy', 'copy.done' ) } } );
 
 		if( doc.category === 'invoice' && [ 'open', 'sent' ].includes( doc.state ) === true && doc.released === true )
 			items.push( { label : t( 'menu.remind' ), run : function() { remind( view ) } } );
@@ -3030,7 +3036,7 @@
 
 		return el( 'div', { class: 'card totals' },
 			el( 'div', { class: 'row' }, el( 'span', { text: t( 'totals.net' ) } ), el( 'span', { class: 'num', text: cash( doc.net ) } ) ),
-			regular && doc.reverse_charge === false ? totals.rates.map( function( entry ) {
+			regular && doc.reverse_charge === false ? ( Array.isArray( doc.rates ) === true && doc.rates.length > 0 ? doc.rates : totals.rates ).map( function( entry ) {
 				return el( 'div', { class: 'row' }, el( 'span', { text: t( 'totals.vat', money().formatRate( entry.rate ), cash( entry.net ) ) } ), el( 'span', { class: 'num', text: cash( entry.vat ) } ) );
 			} ) : null,
 			el( 'div', { class: 'row sum' }, el( 'span', { text: t( 'totals.gross' ) } ), el( 'span', { class: 'num', text: cash( doc.gross ) } ) ),
@@ -3984,7 +3990,9 @@
 
 		const rows = [
 			[ t( 'document.kind' ), t( 'category.'+ draft.category ) ],
-			draft.category === 'contract' ? [ t( 'field.offer' ), el( 'span', {}, offerSelect, el( 'span', { class: 'state-note', text: t( 'field.offer-follow' ) } ) ) ] : [ t( 'field.client' ), clientSelect ],
+			draft.category === 'contract' ? [ t( 'field.offer' ), el( 'span', {}, offerSelect, el( 'span', { class: 'state-note', text: t( 'field.offer-follow' ) } ) ) ]
+				// A credit note is the client's of its invoice: the client is told, not chosen
+				: ( draft.category === 'credit' ? [ t( 'field.client' ), el( 'span', { id: 'f-client_text', text: clientOptions.filter( function( one ) { return String( one.id ) === draft.client_id } ).map( function( one ) { return one.number+ ' · '+ one.title } ).join( '' ) } ) ] : [ t( 'field.client' ), clientSelect ] ),
 			[ t( 'field.project' ), projectSelect ],
 		];
 
@@ -4022,7 +4030,7 @@
 		dl.appendChild( el( 'dt', {}, el( 'label', { for: 'f-template_key', text: t( 'field.template' ) } ) ) );
 		dl.appendChild( el( 'dd', {}, templateSelect ) );
 
-		const reverse = plain === false && regular === true
+		const reverse = plain === false && regular === true && draft.category !== 'credit'
 			? el( 'label', { class: 'check' }, el( 'input', { type: 'checkbox', id: 'f-reverse_charge', checked: draft.reverse_charge, on: { change: function( event ) {
 				draft.reverse_charge = event.target.checked;
 				touch();
@@ -11637,6 +11645,7 @@
 
 		state.base = data.base;
 		state.csrf = data.csrf;
+		state.day = data.today ?? '';
 		state.perm = data.perm;
 		state.perms = Object.assign( { crm : true, pdf : false, elements : false, text : false, files : false, members : false, sign : false }, data.perms );
 		state.pdfAvailable = data.pdf_available !== false;

@@ -550,6 +550,40 @@ check( 'the csp is composed ahead of everything that can end a request', $jstext
 	'[[/feature/newsletter/info/success]]'	=> 'Eingetragen',
 	'[[/template/common/label/phone]]'	=> 'Telefon',
 ], '*' );
+/**
+ *	What router.php does with a request for a file below data/ in the project root: a directory that is there is refused with 404 whatever its files are, and without
+ *	the directory the address is a route like any other. It is run, as php's development server runs it, in a root of its own
+ *
+ *	@param		string		$router					The router.php of the checkout
+ *
+ *	@return 	void
+ */
+function routerDataChecks( string $router ): void {
+
+	$root = sys_get_temp_dir(). '/nino-router-'. uniqid();
+	mkdir( $root. '/data', 0755, true );
+	copy( $router, $root. '/router.php' );
+	file_put_contents( $root. '/index.php', "<?php echo 'ROUTE';" );
+	file_put_contents( $root. '/data/secret.txt', 'secret' );
+	file_put_contents( $root. '/plain.txt', 'plain' );
+	file_put_contents( $root. '/driver.php', "<?php \$_SERVER['REQUEST_URI'] = \$argv[1]; ob_start(); \$taken = include __DIR__. '/router.php'; \$out = ob_get_clean(); echo json_encode( [ \$taken, http_response_code(), \$out ] );" );
+	$run = static fn( string $uri ): array => (array) json_decode( (string) shell_exec( escapeshellarg( PHP_BINARY ). ' '. escapeshellarg( $root. '/driver.php' ). ' '. escapeshellarg( $uri ). ' 2>/dev/null' ), true );
+
+	$secret = $run( '/data/secret.txt' );
+	$plain = $run( '/plain.txt' );
+	check( 'router.php answers 404 for a file below a data/ directory in the project root, and for the directory itself; a plain file of the root is left to the server', $secret[0] === true && $secret[1] === 404 && $secret[2] === '' && ( $run( '/data' )[1] ?? 0 ) === 404 && $plain[0] === false );
+
+	unlink( $root. '/data/secret.txt' );
+	rmdir( $root. '/data' );
+	$route = $run( '/data/secret.txt' );
+	check( '...without the directory the address is a route: index.php answers it', $route[0] === true && $route[2] === 'ROUTE' && $route[1] !== 404 );
+
+	foreach( [ 'router.php', 'index.php', 'plain.txt', 'driver.php' ] as $file )
+		unlink( $root. '/'. $file );
+
+	rmdir( $root );
+}
+
 /** The block's own table, read back the way the browser reads it */
 function jstextTable( array &$appData ): array {
 	$block = \Nino\Modules\Jstext::doShortcode( $appData, [] );
@@ -1730,6 +1764,8 @@ $routerSource = file_get_contents( __DIR__. '/../router.php' );
 
 check( 'router.php refuses the private root', str_contains( $routerSource, '#^/private(?:/|$)#' ) === true );
 check( '...before it ever looks for a static file', strpos( $routerSource, '/private' ) < strpos( $routerSource, 'is_file( __DIR__. $uri )' ) );
+
+routerDataChecks( __DIR__. '/../router.php' );
 
 // The library used to have one deliberately public file, the theme picker's
 // preview image; since 1.2 it has none, and the router says so without an

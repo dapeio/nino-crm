@@ -137,9 +137,14 @@ $appData['/nino/modules'] = [ '\\Nino\\Modules\\Components', '\\Nino\\Modules\\C
 
 $mails = new \ArrayObject();
 $delivery = true;
-\Nino\Callbacks::registerCallback( $appData, \Nino\Mail::TRANSPORT, static function( array &$appData, array &$mail ) use ( &$mails, &$delivery ): void {
+// What a test wants done while a mail is on its way (the transport is called there)
+$whileMailing = new \ArrayObject();
+\Nino\Callbacks::registerCallback( $appData, \Nino\Mail::TRANSPORT, static function( array &$appData, array &$mail ) use ( &$mails, &$delivery, $whileMailing ): void {
 	$mails->append( $mail );
 	$mail['sent'] = $delivery;
+
+	foreach( $whileMailing as $hook )
+		$hook();
 } );
 $reset = static function() use ( &$appData ): void {
 	\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
@@ -231,6 +236,7 @@ $asCrm();
 $page = surfaceServe( $appData, 'GET', '/crm' );
 $html = (string) $page['body'];
 $data = surfaceData( $html );
+surfaceDayChecks( $data );
 check( 'an account with the permission gets 200 and the document: a standalone page in German whose title is CRM', $page['statusCode'] === 200 && str_starts_with( $html, '<!doctype html>' ) === true && str_contains( $html, '<html lang="de">' ) === true && str_contains( $html, '<title>CRM</title>' ) === true
 	&& str_contains( $html, 'id="main"' ) === true );
 check( '...headers: never cached, never framed, nothing shared with another origin', $page['header']['Cache-Control'] === 'private, no-store' && $page['header']['X-Frame-Options'] === 'DENY' && $page['header']['Referrer-Policy'] === 'same-origin' && $page['header']['Content-Type'] === 'text/html; charset=utf-8' );
@@ -408,9 +414,9 @@ $fresh = $final( 'invoice', $a['id'], [ 'date' => $day( -2 ), 'due_date' => $day
 $duetoday = $final( 'invoice', $a['id'], [ 'date' => $day( -14 ), 'due_date' => $today, 'lines' => [ $line( 'Heute' ) ], 'template_key' => 'rechnung' ] );
 $paidThisYear = $final( 'invoice', $b['id'], [ 'date' => date( 'Y' ). '-01-05', 'due_date' => date( 'Y' ). '-01-19', 'lines' => [ $line( 'Bezahlt', '300' ) ], 'template_key' => 'rechnung' ] );
 $paidLastYear = $final( 'invoice', $b['id'], [ 'date' => ( (int) date( 'Y' ) - 1 ). '-12-05', 'due_date' => ( (int) date( 'Y' ) - 1 ). '-12-19', 'lines' => [ $line( 'Alt bezahlt', '70' ) ], 'template_key' => 'rechnung' ] );
-Documents::setState( $appData, $paidThisYear['id'], 'sent' );
+Documents::setState( $appData, $paidThisYear['id'], 'sent', date( 'Y' ). '-01-06' );
 Documents::setState( $appData, $paidThisYear['id'], 'paid', date( 'Y' ). '-01-20' );
-Documents::setState( $appData, $paidLastYear['id'], 'sent' );
+Documents::setState( $appData, $paidLastYear['id'], 'sent', ( (int) date( 'Y' ) - 1 ). '-12-06' );
 Documents::setState( $appData, $paidLastYear['id'], 'paid', ( (int) date( 'Y' ) - 1 ). '-12-20' );
 $sentLate = $final( 'invoice', $c['id'], [ 'date' => $day( -40 ), 'due_date' => $day( -26 ), 'lines' => [ $line( 'Versendet' ) ], 'template_key' => 'rechnung' ] );
 Documents::setState( $appData, $sentLate['id'], 'sent' );
@@ -581,7 +587,7 @@ check( 'in small business mode every rate of the copy is 0 and the reverse charg
 
 $credit = Documents::creditOf( $appData, $duetoday['id'] );
 $creditCopy = Documents::copy( $appData, $credit['id'] );
-check( 'a credit note is copied to a credit note, its lines as negative as they are', is_array( $creditCopy ) && $creditCopy['category'] === 'credit' && $creditCopy['lines'][0]['qty'] === -2000 && $creditCopy['parent_id'] === null && $creditCopy['gross'] === $credit['gross'] );
+check( 'a credit note is copied to nothing: it takes back an invoice, a copy would hang on none (state)', is_array( $credit ) && $creditCopy === 'state' );
 
 // remind()
 echo "\nremind()\n";
@@ -632,6 +638,8 @@ check( '...it still asks what a reminder asks: a paid invoice is state, one that
 Db::exec( $appData, 'UPDATE documents SET state = \'open\' WHERE id = :id', [ 'id' => $late2['id'] ] );
 $loud = Documents::remind( $appData, $late1['id'] );
 check( '...and one with the mail notes it as sent by mail', is_array( $loud ) && $loud['mailed'] === 2 && $loud['document']['reminded_mail'] === true && count( $mails ) === $before + 2 );
+$reset();
+surfaceReminderRaceChecks( $appData, $mails, $late1['id'], $whileMailing );
 $reset();
 
 for( $n = 0; $n < 4; $n++ )
@@ -1498,8 +1506,9 @@ check( 'a refusal of the panel comes through with its code, its params and the f
 check( '...and the same account changes the title: the scoped permission is the panel\'s', surfaceApi( $appData, 'elements/save', [ 'type' => 'positionen', 'uri' => 'mixing', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'title' => 'Mixing Pro' ] ] )[0] === 200 && Positionen::get( $appData, 'mixing' )['title'] === 'Mixing Pro' );
 $asItems();
 [ $status, $answer ] = surfaceApi( $appData, 'elements/save', [ 'type' => 'positionen', 'uri' => 'ohne-titel', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'price' => 1 ] ] );
-check( '...a title that is missing is the panel\'s 400 with the kernel\'s message and no code: the page says it at the field before it posts', $status === 400 && str_contains( $answer['error'], 'title' ) === true && isset( $answer['code'] ) === false && Positionen::get( $appData, 'ohne-titel' ) === null );
-check( '...a name the panel refuses (a space in it) and one that is taken are 400 with no code as well, and the item that was there is as it was', surfaceApi( $appData, 'elements/save', [ 'uri' => 'mit leerzeichen' ] + $mixing )[0] === 400 && ( $taken = surfaceApi( $appData, 'elements/save', $mixing ) )[0] === 400 && isset( $taken[1]['code'] ) === false && Positionen::get( $appData, 'mixing' )['title'] === 'Mixing Pro' );
+check( '...a title that is missing is the panel\'s 400 with the kernel\'s message, and the code crm_elements_value at the field title', $status === 400 && str_contains( $answer['error'], 'title' ) === true && $answer['code'] === 'crm_elements_value' && $answer['field'] === 'title' && Positionen::get( $appData, 'ohne-titel' ) === null );
+check( '...a name the panel refuses (a space in it) is 400 crm_elements_uri at the field uri, one that is taken 400 crm_elements_exists, and the item that was there is as it was', ( $spaced = surfaceApi( $appData, 'elements/save', [ 'uri' => 'mit leerzeichen' ] + $mixing ) )[0] === 400 && $spaced[1]['code'] === 'crm_elements_uri' && $spaced[1]['field'] === 'uri' && ( $taken = surfaceApi( $appData, 'elements/save', $mixing ) )[0] === 400 && $taken[1]['code'] === 'crm_elements_exists' && Positionen::get( $appData, 'mixing' )['title'] === 'Mixing Pro' );
+surfaceElementCodeChecks( $appData );
 $texts = Surface::texts();
 check( 'the sentences are the page\'s: the code of the restriction has its own, and the codes of the Elements panel come from its text file - so does the one with a place for the fields', ( $texts['error.crm_positionen_type'] ?? '' ) !== '' && str_contains( $texts['error.elements_fields_not_allowed'] ?? '', '%s' ) === true
 	&& Surface\Elements::textFile() !== '' && str_ends_with( Surface\Elements::textFile(), '/Elements/text/de_DE.php' ) === true );
@@ -2325,6 +2334,8 @@ check( '...it is in the text files, and the fills the PDFs, the mails and the br
 check( '...and text/keys reads them back', array_column( $again['keys'], 'values', 'key' )[$companyKeys[4]] === [ 'de_DE' => 'Ein Tonstudio.', 'en_US' => 'A recording studio.' ] && array_column( $again['keys'], 'values', 'key' )[$companyKeys[5]] === [ '*' => 'Studio Nordlicht' ] );
 check( '...the activity log has the panel\'s line for the saves - by the account that did it, naming the group of the keys - and none for the refusals or the reads', $itemsLines( 'Edit Text /project/company' ) === 2 && count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ), static fn( string $entry ): bool => str_contains( $entry, 'Edit Text /project/company' ) && str_contains( $entry, 'texts@example.com' ) ) ) === 2 );
 
+surfaceTextValueChecks( $appData, $companyKeys[5], $textFiles );
+
 // The brand of the page is the company's name, read when the page is made
 $brandPage = (string) surfaceServe( $appData, 'GET', '/crm' )['body'];
 check( 'the brand of the page is the saved name on the next load', str_contains( $brandPage, 'Studio Nordlicht' ) === true );
@@ -3120,7 +3131,7 @@ function surfaceExportChecks( array &$appData, \Closure $final, \Closure $line, 
 	foreach( $clients as $at => $client )
 		$docs[$at] = $make( 'invoice', $client['id'], '2020-0'. ( $at + 1 ). '-05', (string) ( 600 + $at * 1111 ), 'rechnung' );
 
-	Documents::setState( $appData, $docs[0]['id'], 'sent' );
+	Documents::setState( $appData, $docs[0]['id'], 'sent', '2020-01-06' );
 	Documents::setState( $appData, $docs[0]['id'], 'paid', '2020-02-17' );
 	$creditDraft = Documents::creditOf( $appData, $docs[1]['id'] );
 	Documents::change( $appData, $creditDraft['id'], [ 'template_key' => 'rechnung', 'date' => '2020-02-20' ] );
@@ -3588,6 +3599,133 @@ function surfaceOwnerMailChecks( array &$appData, \Closure $asItems, array $song
 	\Nino\Modules\Files\Store::deleteFile( $appData, 'eeeeeeeeeeee' );
 	surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'folder' => '', 'title' => 'Album 2027' ] ] + $project );
 	\Nino\Features::saveSettings( $appData, 'review', [ 'notifyOwner' => false ] );
+}
+
+/**
+ *	The page carries the day of the server, which the dialogs of the steps start with
+ *
+ *	@param		array 		$data						The JSON block of the page
+ *
+ *	@return 	void
+ */
+function surfaceDayChecks( array $data ): void {
+
+	check( 'the data of the page hold the day of the server as Y-m-d (today), for the dialogs that ask for a day', preg_match( '/^\d{4}-\d{2}-\d{2}$/D', (string) ( $data['today'] ?? '' ) ) === 1 && $data['today'] === date( 'Y-m-d' ) );
+}
+
+/**
+ *	A reminder is noted and mailed only for an invoice that is still open or sent when the note is written: one that was paid since the invoice was read is neither
+ *
+ *	@param		array 		&$appData
+ *	@param		\ArrayObject	$mails				The mails the transport took
+ *	@param		int				$id						An invoice that is released and open or sent
+ *	@param		\ArrayObject	$whileMailing	The closures the transport calls while it has a mail
+ *
+ *	@return 	void
+ */
+function surfaceReminderRaceChecks( array &$appData, \ArrayObject $mails, int $id, \ArrayObject $whileMailing ): void {
+
+	echo "\nA reminder against a payment\n";
+
+	$stale = (array) Documents::get( $appData, $id );
+	$was = $stale['state'];
+	Db::exec( $appData, 'UPDATE documents SET state = \'paid\', reminded_at = NULL, reminded_mail = 0 WHERE id = :id', [ 'id' => $id ] );
+	$before = count( $mails );
+	$reminded = ( new \ReflectionMethod( Documents::class, 'reminded' ) )->invokeArgs( null, [ &$appData, $stale, true ] );
+	$row = Db::row( $appData, 'SELECT state, reminded_at FROM documents WHERE id = :id', [ 'id' => $id ] );
+
+	check( 'an invoice that was paid after it was read is refused when the reminder is written (state): reminded_at stays empty, no mail goes out, and it stays paid', $reminded === 'state' && $row['state'] === 'paid' && ( $row['reminded_at'] ?? '' ) === '' && count( $mails ) === $before );
+
+	Db::exec( $appData, 'UPDATE documents SET state = :state WHERE id = :id', [ 'state' => $was, 'id' => $id ] );
+	$noted = ( new \ReflectionMethod( Documents::class, 'reminded' ) )->invokeArgs( null, [ &$appData, $stale, true ] );
+
+	check( '...the same call on an invoice that is still open or sent notes it and mails the accounts once the note is written', is_array( $noted ) && $noted['mailed'] === 2 && count( $mails ) === $before + 2 && $noted['document']['reminded_at'] !== '' );
+
+	// The mail goes while nobody holds the database: a second connection writes in the middle of it
+	Db::exec( $appData, 'UPDATE documents SET reminded_at = NULL, reminded_mail = 0 WHERE id = :id', [ 'id' => $id ] );
+	$free = null;
+	$whileMailing->append( static function() use ( &$free, &$appData ): void {
+		try {
+			$other = new \PDO( 'sqlite:'. \Nino\Filesystem::path( $appData, Db::FILE ) );
+			$other->exec( 'PRAGMA busy_timeout = 0' );
+			$other->exec( 'BEGIN IMMEDIATE' );
+			$other->exec( 'ROLLBACK' );
+			$free = true;
+		}
+		catch( \Throwable $e ) {
+			$free = false;
+		}
+	} );
+	( new \ReflectionMethod( Documents::class, 'reminded' ) )->invokeArgs( null, [ &$appData, (array) Documents::get( $appData, $id ), true ] );
+	$whileMailing->exchangeArray( [] );
+	check( '...and while the mail is on its way the database is free to another writer: the note is not held in a transaction that waits for the transport', $free === true );
+
+	// A mail that is refused takes the note back
+	Db::exec( $appData, 'UPDATE documents SET reminded_at = NULL, reminded_mail = 0 WHERE id = :id', [ 'id' => $id ] );
+	$bare = $appData;
+	\Nino\Html::addFills( $bare, [ '[[/project/website/general/url]]' => '' ], '*' );
+	$refused = ( new \ReflectionMethod( Documents::class, 'reminded' ) )->invokeArgs( null, [ &$bare, (array) Documents::get( $appData, $id ), true ] );
+	$row = Db::row( $appData, 'SELECT reminded_at, reminded_mail FROM documents WHERE id = :id', [ 'id' => $id ] );
+	check( 'a reminder whose mail is refused (the site has no address to link to) is answered with the reason and leaves no note: reminded_at is empty and reminded_mail 0', is_string( $refused ) === true && ( $row['reminded_at'] ?? '' ) === '' && (int) $row['reminded_mail'] === 0 );
+}
+
+/**
+ *	A batch of texts holds texts: an item whose value or language is a list, an object, a number or nothing is refused whole, before the panel reads it
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$key					A key of the company
+ *	@param		\Closure	$textFiles		The bytes of the text files of the site
+ *
+ *	@return 	void
+ */
+function surfaceTextValueChecks( array &$appData, string $key, \Closure $textFiles ): void {
+
+	echo "\nText values\n";
+
+	$before = $textFiles();
+	$bad = [];
+	$items = [ [ 'key' => $key, 'locale' => '*', 'value' => [ [ 'title' => 'x' ] ] ], [ 'key' => $key, 'locale' => '*', 'value' => 5 ], [ 'key' => $key, 'locale' => '*', 'value' => null ], [ 'key' => $key, 'locale' => [ 'de_DE' ], 'value' => 'x' ] ];
+
+	foreach( $items as $at => $item ) {
+		[ $status, $answer ] = surfaceApi( $appData, 'text/savebatch', [ 'items' => [ [ 'key' => $key, 'locale' => '*', 'value' => 'Gut' ], $item ] ] );
+
+		if( $status !== 400 || ( $answer['code'] ?? '' ) !== 'crm_texts_value' || ( $answer['field'] ?? '' ) !== 'items' )
+			$bad[] = $at;
+	}
+
+	check( 'an item whose value is a list, a number or nothing, or whose language is a list, is 400 crm_texts_value at the field items, and nothing of the batch is written - the good item before it included', $bad === [] && $textFiles() === $before );
+}
+
+/**
+ *	The refusals of the Elements panel that came without a code have one, and the field they are about
+ *
+ *	@param		array 		&$appData
+ *
+ *	@return 	void
+ */
+function surfaceElementCodeChecks( array &$appData ): void {
+
+	echo "\nCodes of the Elements refusals\n";
+
+	$save = [ 'type' => 'positionen', 'uri' => 'codes', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Codes' ] ];
+	$cases = [
+		'a language nobody serves' => [ 'elements/save', [ 'locale' => 'xx_XX' ] + $save, 'crm_elements_locale', 'locale' ],
+		'a name with a slash' => [ 'elements/save', [ 'uri' => 'a/b' ] + $save, 'crm_elements_uri', 'uri' ],
+		'a change of an item nobody has' => [ 'elements/save', [ 'isNew' => false, 'uri' => 'gibtsnicht' ] + $save, 'crm_elements_unknown', 'uri' ],
+		'a field with a wrong type' => [ 'elements/save', [ 'fields' => [ 'title' => [ 'x' ] ] ] + $save, 'crm_elements_value', 'title' ],
+		'a delete with a slash' => [ 'elements/delete', [ 'type' => 'positionen', 'uri' => 'a/b' ], 'crm_elements_uri', 'uri' ],
+	];
+	$bad = [];
+
+	foreach( $cases as $what => [ $action, $data, $code, $field ] ) {
+		[ $status, $answer ] = surfaceApi( $appData, $action, $data );
+
+		if( $status !== 400 || ( $answer['code'] ?? '' ) !== $code || ( $answer['field'] ?? '' ) !== $field || is_string( $answer['error'] ?? null ) === false )
+			$bad[$what] = [ $status, $answer ];
+	}
+
+	check( 'the refusals of the panel come with a code and a field, and the sentence of the panel besides: a language nobody serves, a name with a slash, a change of an item nobody has, a field with a wrong type and a delete with a slash', $bad === [] );
+	check( '...every code has its sentence among the page\'s', array_filter( array_unique( array_column( $cases, 2 ) ), static fn( string $code ): bool => ( Surface::texts()['error.'. $code] ?? '' ) === '' ) === [] && Positionen::get( $appData, 'codes' ) === null );
 }
 
 /**

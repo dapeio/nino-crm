@@ -6,7 +6,8 @@ declare(strict_types=1);
  *											permission for each key), and the sentences it has are the panel's own. One thing only the surface adds: every one of
  *											them is for the keys below /project/company/ and for no other. A batch that names another key is refused before the
  *											panel is asked - 404 crm_texts_key, nothing written, nothing delegated -, and the list of the keys is the panel's, cut down
- *											to the company's, so that the endpoint never becomes an editor for the texts of the site.
+ *											to the company's, so that the endpoint never becomes an editor for the texts of the site. An item whose value or language is no text
+ *											is refused with 400 crm_texts_value at the field items, before the panel reads it.
  *
  *											The panel is used as it is: what a save posts (items of key, locale and value - one language to the batch, since the panel
  *											answers one result to each key), what it answers and the line of the activity log are its.
@@ -167,6 +168,15 @@ class Texts {
 			if( preg_match( self::KEY, $key ) !== 1 ) {
 				\Nino\Http::fail( $request, 404, 'these actions are for the keys below '. self::PREFIX, 'crm_texts_key' );
 				return;
+			}
+
+			// The panel reads a value and a language as text: a list or an object in their place is refused here, with nothing written
+			foreach( [ 'value', 'locale' ] as $field ) {
+
+				if( array_key_exists( $field, $item ) === true && is_string( $item[$field] ) === false ) {
+					\Nino\Http::fail( $request, 400, 'the '. $field. ' of an item is text', 'crm_texts_value', [], 'items' );
+					return;
+				}
 			}
 		}
 

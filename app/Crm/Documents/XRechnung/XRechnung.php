@@ -237,7 +237,7 @@ class XRechnung {
 		$sign = $credit === true ? -1 : 1;
 		$small = $document['vat_mode'] !== 'regular';
 		$lines = array_values( (array) $document['lines'] );
-		$totals = Money::totals( $lines, (string) $document['vat_mode'], (bool) $document['reverse_charge'] );
+		$totals = Money::totals( $lines, (string) $document['vat_mode'], (bool) $document['reverse_charge'], $credit === true ? \Crm\Documents::creditVat( $appData, $document, $lines, array_map( static fn( array $line ): int => Money::lineAmount( (int) $line['qty'], (int) $line['price_net'] ), $lines ) ) : null );
 		$currency = self::CURRENCIES[$set['currency']];
 		$number = (string) $document['number'];
 		$reference = trim( (string) ( $document['buyer_reference'] ?? '' ) ) !== '' ? trim( (string) $document['buyer_reference'] ) : $client['buyer_reference'];

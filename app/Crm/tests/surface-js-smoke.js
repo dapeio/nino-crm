@@ -199,7 +199,7 @@ function world( options ) {
 
 	const block = element('script');
 	block.id = 'crm-data';
-	block.textContent = JSON.stringify( { base : '', csrf : 'token-1', user : { name : 'crm@example.com' }, perm : '/_admin/crm/manage', perms : opts.perms === undefined ? { crm : true, members : true, sign : true } : opts.perms, pdf_available : opts.pdfAvailable, texts : texts, links : { workbench : '/_admin/', site : '/', items : '/_admin/#elements/positionen', projects : '/_admin/#elements/projekte', files : '/_admin/#files', pdf : '/_admin/#pdf', members : '/_admin/#members', users : '/_admin/#users' } } );
+	block.textContent = JSON.stringify( { base : '', csrf : 'token-1', today : opts.today, user : { name : 'crm@example.com' }, perm : '/_admin/crm/manage', perms : opts.perms === undefined ? { crm : true, members : true, sign : true } : opts.perms, pdf_available : opts.pdfAvailable, texts : texts, links : { workbench : '/_admin/', site : '/', items : '/_admin/#elements/positionen', projects : '/_admin/#elements/projekte', files : '/_admin/#files', pdf : '/_admin/#pdf', members : '/_admin/#members', users : '/_admin/#users' } } );
 	mount.appendChild( block );
 
 	const page = documentOf( mount );
@@ -563,6 +563,7 @@ function press( w, key, target, mods ) {
 	check( '...with the sums by the currency of the settings, in German form, and the counts', textOf( tiles[0] ).indexOf( '1.500,00'+ NBSP+ '€' ) !== -1 && textOf( tiles[0] ).indexOf( '3 Belege' ) !== -1 && textOf( tiles[1] ).indexOf( '900,00'+ NBSP+ '€' ) !== -1 && textOf( tiles[1] ).indexOf( '2 Rechnungen, älteste seit 15.03.2026' ) !== -1
 		&& textOf( tiles[2] ).indexOf( '2.142,00'+ NBSP+ '€' ) !== -1 && textOf( tiles[2] ).indexOf( '1 Angebot' ) !== -1 && textOf( tiles[3] ).indexOf( '20.300,00'+ NBSP+ '€' ) !== -1 && textOf( tiles[4] ).indexOf( 'zuletzt 03.11.2026' ) !== -1 );
 	check( '...the overdue tile is red when there is something overdue, the paid tile says the VAT mode in a sentence', tiles[1].children[1].classList.contains( 'bad' ) === true && textOf( tiles[3] ).indexOf( 'nach § 19 UStG ohne USt' ) !== -1 );
+	check( '...the tile of the open invoices says that it counts the invoices of all years, and the paid tile that it counts the invoices in the state paid - the two rules of the Übersicht, said where the numbers stand', textOf( all( tiles[0], '.h' )[0] ).indexOf( texts['tile.all-years'] ) !== -1 && textOf( all( tiles[3], '.h' )[0] ).indexOf( texts['tile.paid-state'] ) !== -1 && texts['tile.all-years'] !== '' && texts['tile.paid-state'] !== '' );
 	const lists = all( overview.main, '.list-mini' );
 	const needLines = lists[0].children;
 
@@ -730,6 +731,10 @@ function press( w, key, target, mods ) {
 		return w;
 	}
 
+	const creditBox = await opened( { id : 17, category : 'credit', state : 'sent', due_date : null, parent_id : 11, net : -100000, vat : -18999, gross : -118999, rates : [ { rate : 1900, net : -100000, vat : -18999 } ] } );
+	const boxRows = all( all( creditBox.main, '.totals' )[0], '.row' ).map( textOf );
+	check( 'the box of the totals of a finalised credit note shows the tax it was finalised with, per rate, so that its net and its tax come to its gross: 1.000,00 and 189,99 are 1.189,99, not the 190,00 its lines alone would give', boxRows.length === 3 && boxRows[0].indexOf( '1.000,00' ) !== -1 && boxRows[1].indexOf( '189,99' ) !== -1 && boxRows[1].indexOf( '190,00' ) === -1 && boxRows[2].indexOf( '1.189,99' ) !== -1 );
+
 	const primaryOf = function( w ) { const b = all( w.main, '#primary' )[0]; return b === undefined ? '' : textOf( b ) };
 	const menuOf = function( w ) { return all( all( w.main, '.menu' )[0], '[role="menuitem"]' ).map( textOf ) };
 	const cases = [
@@ -761,7 +766,7 @@ function press( w, key, target, mods ) {
 		[ 'a cancelled invoice', { state : 'cancelled' }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 		[ 'an open offer', { id : 13, category : 'offer', state : 'open', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als angenommen markieren|Als abgelehnt markieren|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
 		[ 'an accepted offer', { id : 13, category : 'offer', state : 'accepted', due_date : null }, 'PDF ansehen|PDF herunterladen|Rechnung erstellen|Vertrag erstellen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
-		[ 'a credit note', { id : 17, category : 'credit', state : 'sent', due_date : null }, 'PDF ansehen|PDF herunterladen|Als Entwurf kopieren|Projekt ändern|Notizen' ],
+		[ 'a credit note', { id : 17, category : 'credit', state : 'sent', due_date : null }, 'PDF ansehen|PDF herunterladen|Projekt ändern|Notizen' ],
 		[ 'a contract that waits for a signature', { id : 18, category : 'contract', state : 'open', sign_state : 'viewed', lines : [], title : 'V', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Erinnern|Anfrage zurückziehen|Projekt ändern|Notizen' ],
 		[ 'a contract with no request', { id : 18, category : 'contract', state : 'open', released : true, lines : [], title : 'V', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Unterschrift anfordern|Kunden hierher einladen|Freigabe zurücknehmen|Projekt ändern|Notizen' ],
 		[ 'an information document', { id : 20, category : 'information', state : 'open', lines : [], title : 'Z', number : '', due_date : null }, 'PDF ansehen|PDF herunterladen|Als versendet markieren|Als Entwurf kopieren|Projekt ändern|Notizen' ],
@@ -993,6 +998,11 @@ function press( w, key, target, mods ) {
 	step = await stepper( { state : 'open' } );
 	menuClick( step, 'Als versendet markieren' );
 	check( 'Als versendet markieren asks for the day first, in a dialog with a date field: nothing is posted yet', step.dialogs.length === 1 && step.dialogs[0].tagName === 'DIALOG' && step.steps.length === 0 && all( step.dialogs[0], 'input' )[0].type === 'date' && all( step.dialogs[0], 'input' )[0].value.length === 10 );
+	const dayWorld = world( { today : '2031-05-17', hash : '#beleg-11', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] }, 'crm-documents/get' : function() { return [ 200, view( { state : 'open' } ) ] } } } );
+	dayWorld.boot();
+	await settle();
+	menuClick( dayWorld, 'Als versendet markieren' );
+	check( '...the day it starts with is the day of the server that made the page (a clock of the browser that is ahead or behind does not make a day the server refuses); without one it is the browser\'s own', all( dayWorld.dialogs[0], 'input' )[0].value === '2031-05-17' && all( step.dialogs[0], 'input' )[0].value !== '2031-05-17' );
 	all( step.dialogs[0], 'input' )[0].value = '2026-10-31';
 	click( step, all( step.dialogs[0], 'button' ).pop() );
 	await settle();
@@ -1210,6 +1220,9 @@ function press( w, key, target, mods ) {
 	const parts = all( edit.main, '.head' )[0];
 	check( 'the editor: the title, the badge Entwurf, when it was saved (the local time of the stamp), the gross live, Speichern, Festschreiben and the menu', textOf( parts.children[0] ) === 'Entwurf · Rechnung' && textOf( parts ).indexOf( 'Entwurf' ) !== -1 && textOf( field( edit, 'saved' ) ).indexOf( 'Gespeichert um ' ) === 0 && /\d\d:\d\d$/.test( textOf( field( edit, 'saved' ) ) )
 		&& textOf( field( edit, 'gross' ) ) === '1.067,10'+ NBSP+ '€' && textOf( field( edit, 'save' ) ) === 'Speichern' && textOf( field( edit, 'finalise' ) ) === 'Festschreiben' && edit.app.state.draft.id === 16 );
+	const creditEdit = await editing( { category : 'credit', parent_id : 11, reverse_charge : false, due_date : null } );
+	check( 'the editor of a credit note names the client as text and offers no choice of it and no box for the reverse charge: it is the client of its invoice', field( creditEdit, 'f-client_id' ) === undefined && field( creditEdit, 'f-client_text' ) !== undefined && textOf( field( creditEdit, 'f-client_text' ) ).indexOf( 'K-' ) === 0 && field( creditEdit, 'f-reverse_charge' ) === undefined
+		&& field( edit, 'f-client_id' ) !== undefined && field( edit, 'f-client_text' ) === undefined );
 	check( '...the menu has the preview and the delete', all( all( edit.main, '.menu' )[0], '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'PDF-Vorschau|Entwurf löschen' );
 	check( 'the block Beleg: the kind (fixed), the client of the active clients, the day, the due day, the period, the template; the template\'s own fields below', textOf( all( edit.main, 'dl' )[0] ).indexOf( 'ArtRechnung' ) === 0 && all( field( edit, 'f-client_id' ), 'option' ).map( textOf ).join( '|' ) === 'Kunde wählen|K-0001 · Nordlicht Records GmbH|K-0002 · Jonas Richter' && field( edit, 'f-client_id' ).value === '1'
 		&& field( edit, 'f-date' ).value === '2026-11-03' && field( edit, 'f-due_date' ).value === '2026-11-17' && field( edit, 'f-period_from' ).type === 'date' && field( edit, 'f-template_key' ).value === 'rechnung' && field( edit, 'f-inputs.intro' ).value === 'Vielen Dank.' );
