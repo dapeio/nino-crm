@@ -89,6 +89,12 @@ class Documents {
 	// The categories that have a buyer reference of their own: those that can be an electronic invoice
 	public const array REFERENCING = [ 'invoice', 'credit' ];
 
+	// The longest sentence the owner adds to the mail of a release
+	public const int MAX_NOTE = 500;
+
+	// How many orders of the portal the first screen names one by one
+	public const int NEEDS_ORDERS = 10;
+
 	/**
 	 *	The documents, the newest first
 	 *
@@ -141,7 +147,7 @@ class Documents {
 
 		$titles = Projekte::titles( $appData );
 
-		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.parent_id, d.project, d.template_key, d.client_json, d.released, d.sign_id, d.sign_state, c.company AS live_company, c.name AS live_name, c.email AS live_email
+		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.parent_id, d.project, d.template_key, d.client_json, d.released, d.reminded_at, d.reminded_mail, d.sign_id, d.sign_state, c.company AS live_company, c.name AS live_name, c.email AS live_email
 			FROM documents d JOIN clients c ON c.id = d.client_id'. ( $where === [] ? '' : ' WHERE '. implode( ' AND ', $where ) ). ' ORDER BY d.date DESC, d.id DESC', $params );
 
 		return array_map( static function( array $row ) use ( $today, $titles ): array {
@@ -157,6 +163,8 @@ class Documents {
 				'title'        => (string) $row['title'],
 				'state'        => $row['state'],
 				'released'     => (int) $row['released'] === 1,
+				'reminded_at'  => (string) ( $row['reminded_at'] ?? '' ),
+				'reminded_mail' => (int) ( $row['reminded_mail'] ?? 0 ) === 1,
 				'sign_state'   => (string) $row['sign_state'],
 				'expired'      => self::expired( $row, $today ),
 				'overdue'      => self::overdue( $row, $today ),
@@ -786,13 +794,13 @@ class Documents {
 
 	/**
 	 *	What needs the owner: the invoices that are overdue (the oldest due first), the orders of the portal of the last ORDER_DAYS days that no invoice has followed (one
-	 *	entry, kind orders, with how many and the sum), the projects the customer approved in the last APPROVAL_DAYS days that no invoice names (one entry, kind approved, with how many), the offers that run out within the next seven days, the contracts and privacy documents whose signature was
+	 *	entry, kind orders, with how many and the sum, and items: the newest NEEDS_ORDERS of them, each with id, number, title, client_title, project, project_title and gross), the projects the customer approved in the last APPROVAL_DAYS days that no invoice names (one entry, kind approved, with how many), the offers that run out within the next seven days, the contracts and privacy documents whose signature was
 	 *	looked at and not given or ran out of time, and the active clients that have no account
 	 *
 	 *	@param		array 		&$appData
 	 *
 	 *	@return 	array											A list in that order; each has kind (overdue, orders, approved, expiring, sign, account), id (the document, 0 for a client), client_id, client_title, number, title,
-	 *																		date (the due date, the day the offer runs out, the day the state last changed, ''), gross and sign_state ('' unless it is a signature)
+	 *																		date (the due date, the day the offer runs out, the day the state last changed, ''), gross, sign_state ('' unless it is a signature) and reminded_at (the time of the last payment reminder, '' for none)
 	 */
 	public static function needs( array &$appData ): array {
 
@@ -800,7 +808,7 @@ class Documents {
 
 		$today = date( 'Y-m-d' );
 		$until = self::addDays( $today, 7 );
-		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.client_json, d.sign_state, d.updated
+		$rows = Db::rows( $appData, 'SELECT d.id, d.category, d.number, d.title, d.state, d.date, d.due_date, d.valid_until, d.gross, d.client_id, d.client_json, d.sign_state, d.updated, d.reminded_at
 			FROM documents d WHERE d.state IN ( \'open\', \'sent\' ) ORDER BY d.date, d.id' );
 		$groups = [ 'overdue' => [], 'expiring' => [], 'sign' => [] ];
 
@@ -810,7 +818,7 @@ class Documents {
 			$frozen = is_array( $frozen ) === true ? $frozen : [];
 			$entry = [
 				'kind' => '', 'id' => (int) $row['id'], 'client_id' => (int) $row['client_id'], 'client_title' => Clients::title( $frozen ), 'number' => (string) ( $row['number'] ?? '' ),
-				'title' => (string) $row['title'], 'date' => '', 'gross' => (int) $row['gross'], 'sign_state' => '',
+				'title' => (string) $row['title'], 'date' => '', 'gross' => (int) $row['gross'], 'sign_state' => '', 'reminded_at' => (string) ( $row['reminded_at'] ?? '' ),
 			];
 
 			if( self::overdue( $row, $today ) === true )
@@ -831,10 +839,20 @@ class Documents {
 			if( $client['active'] === true && $client['accounts'] === 0 )
 				$accounts[] = [ 'kind' => 'account', 'id' => 0, 'client_id' => $client['id'], 'client_title' => $client['title'], 'number' => (string) $client['number'], 'title' => '', 'date' => '', 'gross' => 0, 'sign_state' => '' ];
 
-		// The orders of the portal of the last ORDER_DAYS days that no invoice has followed: one line with how many and what they come to
-		$orders = Db::row( $appData, 'SELECT COUNT( DISTINCT d.id ) AS n, COALESCE( SUM( d.gross ), 0 ) AS gross FROM records r JOIN documents d ON d.id = r.document_id
-			WHERE r.kind = \'order\' AND d.state = \'accepted\' AND r.at >= :since AND NOT EXISTS ( SELECT 1 FROM documents c WHERE c.parent_id = d.id AND c.category = \'invoice\' )', [ 'since' => gmdate( self::TIME, time() - self::ORDER_DAYS * 86400 ) ] );
-		$ordered = (int) ( $orders['n'] ?? 0 ) === 0 ? [] : [ [ 'kind' => 'orders', 'id' => 0, 'client_id' => 0, 'client_title' => '', 'number' => '', 'title' => '', 'date' => '', 'gross' => (int) $orders['gross'], 'sign_state' => '', 'count' => (int) $orders['n'] ] ];
+		// The orders of the portal of the last ORDER_DAYS days that no invoice has followed: one line with how many and what they come to, and the first of them one by one
+		$orders = Db::rows( $appData, 'SELECT d.id, d.number, d.title, d.gross, d.project, d.client_json FROM records r JOIN documents d ON d.id = r.document_id
+			WHERE r.kind = \'order\' AND d.state = \'accepted\' AND r.at >= :since AND NOT EXISTS ( SELECT 1 FROM documents c WHERE c.parent_id = d.id AND c.category = \'invoice\' ) GROUP BY d.id ORDER BY MAX( r.at ) DESC, d.id DESC', [ 'since' => gmdate( self::TIME, time() - self::ORDER_DAYS * 86400 ) ] );
+		$titles = $orders === [] ? [] : Projekte::titles( $appData );
+		$each = [];
+
+		foreach( array_slice( $orders, 0, self::NEEDS_ORDERS ) as $order ) {
+
+			$frozen = json_decode( (string) $order['client_json'], true );
+			$each[] = [ 'id' => (int) $order['id'], 'number' => (string) ( $order['number'] ?? '' ), 'title' => (string) $order['title'], 'client_title' => Clients::title( is_array( $frozen ) === true ? $frozen : [] ),
+				'project' => (string) $order['project'], 'project_title' => (string) ( $titles[(string) $order['project']] ?? '' ), 'gross' => (int) $order['gross'] ];
+		}
+
+		$ordered = $orders === [] ? [] : [ [ 'kind' => 'orders', 'id' => 0, 'client_id' => 0, 'client_title' => '', 'number' => '', 'title' => '', 'date' => '', 'gross' => array_sum( array_column( $orders, 'gross' ) ), 'sign_state' => '', 'count' => count( $orders ), 'items' => $each ] ];
 
 		// The projects approved in the portal of the last APPROVAL_DAYS days that no invoice names (a project that is gone does not count): one line with how many
 		$approved = [];
@@ -1017,12 +1035,21 @@ class Documents {
 	 *	@param		bool			$mail
 	 *	@param		bool			$download			Switch the download of the files of the project on
 	 *	@param		string		$by						The account of the workbench that asks, kept with the switch
+	 *	@param		string		$note					A sentence of the owner to the customer, which the mail carries (see cleanNote()); it needs the mail, and the document keeps it where at least one mail was delivered
 	 *
-	 *	@return 	array|string							document (as get() has it), mailed (how many mails were delivered) and download (whether it was switched on); or why not
+	 *	@return 	array|string							document (as get() has it), mailed (how many mails were delivered) and download (whether it was switched on); or why not - note (the sentence is none) and note_mail (there is a sentence and no mail)
 	 */
-	public static function release( array &$appData, int $id, bool $mail, bool $download = false, string $by = '' ): array|string {
+	public static function release( array &$appData, int $id, bool $mail, bool $download = false, string $by = '', string $note = '' ): array|string {
 
 		Projekte::forget( $appData );
+
+		$note = self::cleanNote( $note );
+
+		if( $note === null )
+			return 'note';
+
+		if( $note !== '' && $mail === false )
+			return 'note_mail';
 
 		$document = self::get( $appData, $id );
 
@@ -1039,7 +1066,7 @@ class Documents {
 
 		if( $mail === true ) {
 
-			$sent = Mail::release( $appData, $document, $download );
+			$sent = Mail::release( $appData, $document, $download, $note );
 
 			if( is_string( $sent ) === true )
 				return $sent;
@@ -1068,6 +1095,10 @@ class Documents {
 			if( $sends === true && $state === 'open' )
 				$pdo->prepare( 'UPDATE documents SET state = \'sent\', sent_at = :now WHERE id = :id AND state = \'open\'' )->execute( [ 'now' => $now, 'id' => $id ] );
 
+			// What the owner told the customer stays with the document
+			if( $mailed > 0 && $note !== '' )
+				$pdo->prepare( 'UPDATE documents SET release_note = :note, release_note_at = :now WHERE id = :id' )->execute( [ 'note' => $note, 'now' => $now, 'id' => $id ] );
+
 			// The files of the project are opened with the invoice, in the same transaction
 			if( $download === true && is_string( Projekte::setDownload( $appData, $document['project'], true, $by ) ) === true ) {
 				$pdo->exec( 'ROLLBACK' );
@@ -1082,6 +1113,23 @@ class Documents {
 		}
 
 		return [ 'document' => (array) self::get( $appData, $id ), 'mailed' => $mailed, 'download' => $download ];
+	}
+
+	/**
+	 *	The sentence of the owner to the customer in the mail of a release: line breaks kept as \n, at most MAX_NOTE characters, no control character but the line break and the tab, no character that turns the direction of the text
+	 *
+	 *	@param		string		$text
+	 *
+	 *	@return 	string|null								The text to keep, '' for none; null for a text that is none
+	 */
+	public static function cleanNote( string $text ): ?string {
+
+		$text = trim( str_replace( [ "\r\n", "\r" ], "\n", $text ) );
+
+		if( mb_strlen( $text, 'UTF-8' ) > self::MAX_NOTE || preg_match( '/[^\P{Cc}\n\t]|[\x{202A}-\x{202E}\x{2066}-\x{2069}]/u', $text ) !== 0 )
+			return null;
+
+		return $text;
 	}
 
 	/**
@@ -2029,6 +2077,8 @@ class Documents {
 		$row['released'] = (int) $row['released'] === 1;
 		$row['reminded_at'] = (string) ( $row['reminded_at'] ?? '' );
 		$row['reminded_mail'] = (int) ( $row['reminded_mail'] ?? 0 ) === 1;
+		$row['release_note'] = (string) ( $row['release_note'] ?? '' );
+		$row['release_note_at'] = (string) ( $row['release_note_at'] ?? '' );
 		$row['number'] = (string) ( $row['number'] ?? '' );
 		$lacks = json_decode( (string) $row['xml_lacks'], true );
 		$row['xml_lacks'] = is_array( $lacks ) === true ? array_values( array_filter( $lacks, 'is_string' ) ) : [];

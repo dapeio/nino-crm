@@ -70,6 +70,8 @@ return [
 	'[[/_admin/error/crm_documents_sign_write]]' => 'The request could not be stored. Nothing was asked for.',
 	'[[/_admin/error/crm_documents_released]]' => 'Release the document to the portal first, or your client cannot find it there.',
 	'[[/_admin/error/crm_documents_download]]' => 'The download of the project files can only be switched on with an invoice that belongs to a project.',
+	'[[/_admin/error/crm_documents_note]]' => 'The message may have 500 characters at most and no control characters, line breaks apart.',
+	'[[/_admin/error/crm_documents_note_mail]]' => 'A message to the customer goes with the mail: tick the mail or leave the message out.',
 	'[[/_admin/error/crm_documents_sign_mail]]' => 'The mail was not delivered. The link is as it was.',
 	'[[/_admin/error/crm_project]]' => 'There is no such project.',
 	'[[/_admin/error/crm_project_client]]' => 'The project belongs to another client. Choose a project of this client, or none.',

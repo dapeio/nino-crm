@@ -155,6 +155,8 @@ function world( options ) {
 	const hashListeners = [];
 	const documentListeners = {};
 	const windowListeners = {};
+	const scrolled = [];
+	const scrolls = [];
 	const dialogs = [];
 	const opened = [];
 	const downloads = [];
@@ -213,6 +215,9 @@ function world( options ) {
 			el.click = function() { downloads.push( el.getAttribute( 'href' ) ); return press === undefined ? undefined : press.call( el ) };
 		}
 
+		// A node that is scrolled to says so; the browser's own box of a node is none here
+		el.scrollIntoView = function( options ) { scrolled.push( [ el.id, options ] ) };
+
 		if( tag === 'dialog' ) {
 			el.open = false;
 			el.showModal = function() { el.open = true; dialogs.push( el ) };
@@ -228,6 +233,7 @@ function world( options ) {
 	};
 
 	page.addEventListener = function( name, fn ) { ( documentListeners[name] = documentListeners[name] || [] ).push( fn ) };
+	page.removeEventListener = function( name, fn ) { documentListeners[name] = ( documentListeners[name] || [] ).filter( function( one ) { return one !== fn } ) };
 
 	const location = {
 		_hash : opts.hash,
@@ -248,6 +254,9 @@ function world( options ) {
 			else
 				( windowListeners[name] = windowListeners[name] || [] ).push( fn );
 		},
+		removeEventListener : function( name, fn ) { windowListeners[name] = ( windowListeners[name] || [] ).filter( function( one ) { return one !== fn } ) },
+		scrollY : 0,
+		scrollTo : function( x, y ) { scrolls.push( [ x, y ] ) },
 		setTimeout : function( fn, ms ) { timers.push( { fn : fn, ms : ms } ); return timers.length },
 		clearTimeout : function( id ) { if( id > 0 && timers[id - 1] ) timers[id - 1].cleared = true },
 		sessionStorage : { getItem : function( key ) { return storage[key] ?? null }, setItem : function( key, value ) { storage[key] = value }, removeItem : function( key ) { delete storage[key] } },
@@ -286,7 +295,7 @@ function world( options ) {
 
 	return {
 		app : app, win : win, page : page, calls : calls, tabs : tabs, main : main, toast : toast, dialogRoot : dialogRoot, count : count, clientCount : clientCount, nav : nav, timers : timers, dialogs : dialogs, opened : opened, downloads : downloads, reloads : reloads, storage : storage, answers : opts.answers,
-		location : location, documentListeners : documentListeners, windowListeners : windowListeners,
+		location : location, documentListeners : documentListeners, windowListeners : windowListeners, scrolled : scrolled, scrolls : scrolls,
 		boot : function() { app.boot( block ) },
 		last : function( action ) { return calls.filter( function( call ) { return call.action === action } ).pop() },
 		all : function( action ) { return calls.filter( function( call ) { return call.action === action } ) },
@@ -774,6 +783,8 @@ function press( w, key, target, mods ) {
 	check( 'a document without VAT shows no rate column and no VAT row, and says why', all( body( small ), 'thead th' ).map( textOf ).join( '|' ) === '#|Bezeichnung|Menge|Einheit|Einzelpreis|Betrag' && textOf( body( small ) ).indexOf( 'USt. auf' ) === -1 && textOf( body( small ) ).indexOf( 'Kleinunternehmer (§ 19 UStG)' ) !== -1 );
 
 	const tabClick = async function( w, name ) { click( w, all( w.main, '[role="tab"]' ).find( function( t ) { return textOf( t ) === name } ) ); await settle(); };
+	// Versenden and Freigeben ask first, always: the yes of the dialog is the last of its buttons
+	const sendYes = async function( w ) { click( w, all( w.dialogs[0], 'button' ).pop() ); await settle(); };
 	await tabClick( invoice, 'Verlauf' );
 	check( 'Verlauf lists the dates of the document: created, finalised under its number, released... in the order they happened', all( body( invoice ), 'li' ).map( function( li ) { return textOf( li.children[1] ) } ).join( '|' ) === 'Als Entwurf angelegt|Festgeschrieben als R-2026-0007, PDF erzeugt' );
 	const reminded = await opened( { reminded_at : '2026-11-03T09:00:00Z', reminded_mail : false } );
@@ -810,7 +821,7 @@ function press( w, key, target, mods ) {
 
 	let step = await stepper( { state : 'open' } );
 	click( step, all( step.main, '#primary' )[0] );
-	await settle();
+	await sendYes( step );
 	check( 'Versenden releases the document with the mail: crm-documents/release { id: "11", mail: true }, says how many accounts were mailed, and reads the document again', step.steps[0][0] === 'release' && JSON.stringify( step.steps[0][1] ) === '{"id":"11","mail":true}' && step.toast.textContent === 'Versendet: freigegeben und 2 E-Mail(s) an die Konten des Kunden.'
 		&& step.all( 'crm-documents/get' ).length === 2 );
 	step = await stepper( { state : 'sent' } );
@@ -1033,7 +1044,7 @@ function press( w, key, target, mods ) {
 	all( body( portal ), '#release-mail' )[0].checked = false;
 	portal.answers['crm-documents/release'] = function() { return [ 200, { document : full( { released : true } ), mailed : 0, mail : false } ] };
 	click( portal, all( body( portal ), '#release' )[0] );
-	await settle();
+	await sendYes( portal );
 	check( '...Freigeben without the tick posts mail: false and says it was released without a mail', JSON.stringify( portal.last( 'crm-documents/release' ).data ) === '{"id":"11","mail":false}' && portal.toast.textContent === 'Freigegeben, ohne E-Mail.' );
 
 	// The release of an invoice of a project whose download is off: a dialog with the box that switches it on, ticked
@@ -1052,7 +1063,7 @@ function press( w, key, target, mods ) {
 	click( lockedStep, all( lockedStep.main, '#primary' )[0] );
 	await settle();
 	check( 'Versenden of an invoice whose project has the download off asks first: a dialog with the box "Download der Projektdateien freischalten", ticked - and nothing is posted before the answer', lockedStep.dialogs.length === 1 && lockedStep.steps.length === 0
-		&& all( lockedStep.dialogs[0], '#dlg-download' ).length === 1 && all( lockedStep.dialogs[0], '#dlg-download' )[0].type === 'checkbox' && all( lockedStep.dialogs[0], '#dlg-download' )[0].checked === true && textOf( all( lockedStep.dialogs[0], 'label' )[0] ).trim() === texts['release.download'] );
+		&& all( lockedStep.dialogs[0], '#dlg-download' ).length === 1 && all( lockedStep.dialogs[0], '#dlg-download' )[0].type === 'checkbox' && all( lockedStep.dialogs[0], '#dlg-download' )[0].checked === true && textOf( all( lockedStep.dialogs[0], 'label' ).find( function( one ) { return all( one, '#dlg-download' ).length === 1 } ) ).trim() === texts['release.download'] && all( lockedStep.dialogs[0], '#dlg-mail' )[0].checked === true );
 	click( lockedStep, all( lockedStep.dialogs[0], 'button' ).pop() );
 	await settle();
 	check( '...the yes posts the release with the mail and download true, in one action, and the toast says that the download is on', lockedStep.steps.length === 1 && JSON.stringify( lockedStep.steps[0][1] ) === '{"id":"11","mail":true,"download":true}' && lockedStep.toast.textContent === releaseT( 'send.done', 2 ) + ' ' + texts['release.download-on'] );
@@ -1076,8 +1087,9 @@ function press( w, key, target, mods ) {
 	for( const [ why, over, projects ] of noBox ) {
 		const plainStep = await stepperWith( over, projects );
 		click( plainStep, all( plainStep.main, '#primary' )[0] );
-		await settle();
-		check( 'Versenden of '+ why +' asks nothing: the release is posted at once, with the mail and no download', plainStep.dialogs.length === 0 && plainStep.steps.length === 1 && JSON.stringify( plainStep.steps[0][1] ) === JSON.stringify( { id : String( over.id ?? 11 ), mail : true } ) );
+		check( 'Versenden of '+ why +' asks too, with the box of the mail and the sentence to the customer and no box of the download - nothing is posted before the answer', plainStep.dialogs.length === 1 && plainStep.steps.length === 0 && all( plainStep.dialogs[0], '#dlg-mail' ).length === 1 && all( plainStep.dialogs[0], '#dlg-note' ).length === 1 && all( plainStep.dialogs[0], '#dlg-download' ).length === 0 );
+		await sendYes( plainStep );
+		check( '...and its yes posts the release with the mail and no download, and no word of a note', plainStep.steps.length === 1 && JSON.stringify( plainStep.steps[0][1] ) === JSON.stringify( { id : String( over.id ?? 11 ), mail : true } ) );
 	}
 
 	// ...and the tab Portal & Versand, for a document that is not released yet
@@ -1086,13 +1098,14 @@ function press( w, key, target, mods ) {
 	check( 'the tab Portal & Versand has the same box beside the tick of the mail, ticked, for an invoice of a project whose download is off - and none for a project whose download is on, an offer or an invoice without a project', all( body( lockedPortal ), '#release-download' ).length === 1 && all( body( lockedPortal ), '#release-download' )[0].checked === true && all( body( lockedPortal ), '#release-download' )[0].type === 'checkbox'
 		&& all( body( await stepperWith( { state : 'open', project : '00001' }, openProject ) ), '#release-download' ).length === 0 && all( body( await stepperWith( { state : 'open', project : '' }, lockedProject ) ), '#release-download' ).length === 0 );
 	click( lockedPortal, all( body( lockedPortal ), '#release' )[0] );
-	await settle();
+	await sendYes( lockedPortal );
 	check( '...Freigeben posts mail and download true; with the box unticked the word is not posted', JSON.stringify( lockedPortal.steps[0][1] ) === '{"id":"11","mail":true,"download":true}' && lockedPortal.toast.textContent.indexOf( texts['release.download-on'] ) !== -1 );
 	const unticked = await stepperWith( { state : 'open', project : '00001' }, lockedProject );
 	await tabClick( unticked, 'Portal & Versand' );
 	all( body( unticked ), '#release-download' )[0].checked = false;
 	click( unticked, all( body( unticked ), '#release' )[0] );
-	await settle();
+	check( '...and the dialog it opens starts with the boxes of the tab: the download unticked here is unticked there', all( unticked.dialogs[0], '#dlg-download' )[0].checked === false && all( unticked.dialogs[0], '#dlg-mail' )[0].checked === true );
+	await sendYes( unticked );
 	check( '...unticked', JSON.stringify( unticked.steps[0][1] ) === '{"id":"11","mail":true}' );
 
 	// Dokument and Unterschrift
@@ -1605,12 +1618,12 @@ function press( w, key, target, mods ) {
 
 	const nobodyReached = await stepper( { state : 'open' }, { 'crm-documents/release' : function() { return [ 200, { document : full( { state : 'open', released : true } ), mailed : 0, mail : true } ] } } );
 	click( nobodyReached, all( nobodyReached.main, '#primary' )[0] );
-	await settle();
+	await sendYes( nobodyReached );
 	check( 'Versenden for a client with no account releases and says there was no mail - it does not claim one: the sentence of send.no-account, as a plain toast', nobodyReached.toast.textContent === texts['send.no-account'] && nobodyReached.toast.classList.contains( 'bad' ) === false && nobodyReached.toast.textContent !== texts['send.done'].replace( '%s', '0' ) );
 
 	const withAccount = await opened( { state : 'open' }, { accounts : [ reach[0] ] }, { 'crm-documents/release' : function() { return [ 200, { document : full( { state : 'open', released : true } ), mailed : 0, mail : true } ] } } );
 	click( withAccount, all( withAccount.main, '#primary' )[0] );
-	await settle();
+	await sendYes( withAccount );
 	check( '...where an account is on and no mail arrived it says that instead: the mail did not come, and the account is not blamed', withAccount.toast.textContent === texts['release.mailed-none'] && withAccount.toast.textContent !== texts['send.no-account'] );
 
 	const marking = await opened( { state : 'open', released : true }, { accounts : [] }, { 'crm-documents/state' : function() { return [ 200, { document : full( { state : 'sent' } ) } ] } } );
@@ -1630,7 +1643,7 @@ function press( w, key, target, mods ) {
 
 	const releasedSilent = await opened( { state : 'open' }, { accounts : [ reach[0] ] }, { 'crm-documents/release' : function() { return [ 200, { document : full( { released : true } ), mailed : 3, mail : true } ] } } );
 	click( releasedSilent, all( releasedSilent.main, '#primary' )[0] );
-	await settle();
+	await sendYes( releasedSilent );
 	check( '...and Versenden with three mails delivered counts three', releasedSilent.toast.textContent === texts['send.done'].replace( '%s', '3' ) );
 
 	// === fix round 1: the menu by state, released or not
@@ -2165,7 +2178,7 @@ function press( w, key, target, mods ) {
 	const kempty = await kopen( '#kunde-1' );
 	const kemptyBlock = all( kempty.main, '#client-message' )[0];
 	const kemptyOrder = Array.from( kempty.main.children );
-	check( 'the card has the block Nachricht im Portal under the head and before the columns of the card: with no message the sentence that the client reads it on every page until it is removed, and a button that writes one - nothing to remove', kemptyBlock !== undefined && textOf( all( kemptyBlock, 'h3' )[0] ) === texts['message.title'] && textOf( all( kempty.main, '#client-message-empty' )[0] ) === texts['message.empty']
+	check( 'the card has the block Nachricht im Portal under the head and before the columns of the card: with no message it is one line - a sentence that there is none and the button that writes one, no card and no heading - and nothing to remove', kemptyBlock !== undefined && all( kemptyBlock, 'h3' ).length === 0 && kemptyBlock.classList.contains( 'card' ) === false && kemptyBlock.classList.contains( 'msg-line' ) === true && textOf( all( kempty.main, '#client-message-empty' )[0] ) === texts['message.empty']
 		&& textOf( all( kempty.main, '#message-edit' )[0] ) === texts['message.write'] && all( kempty.main, '#message-remove' ).length === 0 && all( kempty.main, '#client-message-text' ).length === 0
 		&& kemptyOrder.indexOf( kemptyBlock ) > kemptyOrder.indexOf( all( kempty.main, '.head' )[0] ) && kemptyOrder.indexOf( kemptyBlock ) < kemptyOrder.indexOf( all( kempty.main, '.cols-3' )[0] ) );
 
@@ -2609,10 +2622,12 @@ function press( w, key, target, mods ) {
 	const nform = all( knewc.main, '#new-client-form' )[0];
 	const nfield = function( name ) { return all( nform, '#f-'+ name )[0] };
 	check( 'Neuer Kunde draws the form without asking for anything: the Stammdaten with their words and the first account, the country DE and a list of countries to choose from, the rail marks Kunden', nform !== undefined && knewc.all( 'crm-clients/save' ).length === 0
-		&& all( nform, 'input' ).map( function( i ) { return i.id.slice( 2 ) } ).join() === 'company,name,street,zip,city,country,email,phone,vat_id,buyer_reference,business,account_email,account_name,account_notify' && nfield( 'account_notify' ).type === 'checkbox' && nfield( 'account_notify' ).checked === true && nfield( 'country' ).value === 'DE' && all( nform, 'option' ).map( function( o ) { return o.value } ).join() === 'DE,AT,CH'
-		&& nfield( 'account_email' ).type === 'email' && all( nform, 'h3' ).map( textOf ).join( '|' ) === 'Stammdaten|Erstes Portal-Konto' && all( knewc.nav, '[data-r]' ).find( function( a ) { return a.getAttribute( 'data-r' ) === 'kunden' } ).classList.contains( 'on' ) === true );
-	check( '...the Stammdaten say in a sentence that the client may enter company and name in the portal itself and that an address for the first account is enough - the sentence of the surface, under the heading of the block and before the fields', all( nform, '#newclient-master-text' ).length === 1 && textOf( all( nform, '#newclient-master-text' )[0] ) === texts['newclient.master-text'] && all( nform, '#newclient-master-text' )[0].parentNode === all( nform, 'h3' )[0].parentNode && texts['newclient.master-text'] !== '' );
-	check( '...the fields that may stay empty say so, and the button says Anlegen until an address for the first account is typed, then Anlegen und einladen - and Anlegen again when it is cleared', all( nform, '.state-note' ).map( textOf ).filter( function( t ) { return t === 'optional' } ).length === 4 && textOf( all( nform, '#client-create' )[0] ) === 'Anlegen'
+		&& all( nform, 'input' ).map( function( i ) { return i.id.slice( 2 ) } ).join() === 'account_email,account_name,account_notify,company,name,street,zip,city,country,email,phone,vat_id,buyer_reference,business' && nfield( 'account_notify' ).type === 'checkbox' && nfield( 'account_notify' ).checked === true && nfield( 'country' ).value === 'DE' && all( nform, 'option' ).map( function( o ) { return o.value } ).join() === 'DE,AT,CH'
+		&& nfield( 'account_email' ).type === 'email' && all( nform, 'h3' ).map( textOf ).join( '|' ) === 'Erstes Portal-Konto|Stammdaten' && all( knewc.nav, '[data-r]' ).find( function( a ) { return a.getAttribute( 'data-r' ) === 'kunden' } ).classList.contains( 'on' ) === true );
+	check( '...the Stammdaten say in a sentence that the client may enter company and name in the portal itself and that an address for the first account is enough - the sentence of the surface, under the heading of the block and before the fields', all( nform, '#newclient-master-text' ).length === 1 && textOf( all( nform, '#newclient-master-text' )[0] ) === texts['newclient.master-text'] && all( nform, '#newclient-master-text' )[0].parentNode === all( nform, 'h3' )[1].parentNode && texts['newclient.master-text'] !== '' );
+	const ncols = all( nform, '.cols' )[0].children;
+	check( '...the block of the first account comes first - the left card on the desktop, the top one on the phone - with its sentence under the heading, and the cursor starts in its field', ncols[0].id === 'newclient-first' && ncols[1].id === 'newclient-master' && all( ncols[0], '#f-account_email' ).length === 1 && all( ncols[1], '#f-company' ).length === 1 && all( ncols[1], '#f-account_email' ).length === 0 && textOf( all( nform, '#newclient-first-text' )[0] ) === texts['newclient.first-text'] && all( nform, '#newclient-first-text' )[0].parentNode === ncols[0] && nfield( 'account_email' ).focused === true );
+	check( '...that the fields may stay empty is said once, in a sentence over the form, and not under some of the fields; the button says Anlegen until an address for the first account is typed, then Anlegen und einladen - and Anlegen again when it is cleared', textOf( all( nform, '#newclient-optional' )[0] ) === texts['newclient.optional'] && Array.from( nform.children ).indexOf( all( nform, '#newclient-optional' )[0] ) < Array.from( nform.children ).indexOf( all( nform, '.cols' )[0] ) && all( nform, '.state-note' ).filter( function( n ) { return textOf( n ) === texts['form.optional'] } ).length === 0 && nfield( 'account_name' ).getAttribute( 'placeholder' ) === null && textOf( all( nform, '#client-create' )[0] ) === 'Anlegen'
 		&& ( type( nfield( 'account_email' ), 'nina@example.org', false ), textOf( all( nform, '#client-create' )[0] ) === 'Anlegen und einladen' ) && ( type( nfield( 'account_email' ), '  ', false ), textOf( all( nform, '#client-create' )[0] ) === 'Anlegen' ) );
 	check( '...what is typed is unsaved input, and a link away asks first', knewc.app.state.draft.dirty === true && click( knewc, all( knewc.main, '#client-abort' )[0] ) === true && knewc.dialogs.length === 1 );
 	no( knewc, 0 );
@@ -2620,7 +2635,7 @@ function press( w, key, target, mods ) {
 	type( nfield( 'account_email' ), '', false );
 	submit( knewc, nform );
 	await settle();
-	check( 'a client without a company and a name is refused beside the field the answer names - the company - with its sentence, the cursor in it; the form stays, nothing opens', nfield( 'company' ).classList.contains( 'err' ) === true && nfield( 'company' ).focused === true && textOf( all( nform, '.state-note' ).find( function( n ) { return textOf( n ) !== '' && textOf( n ) !== 'optional' && n.id !== 'newclient-master-text' } ) ) === texts['error.crm_clients_empty']
+	check( 'a client without a company and a name is refused beside the field the answer names - the company - with its sentence, the cursor in it; the form stays, nothing opens', nfield( 'company' ).classList.contains( 'err' ) === true && nfield( 'company' ).focused === true && textOf( all( nform, '.state-note' ).find( function( n ) { return textOf( n ) !== '' && [ 'newclient-master-text', 'newclient-first-text', 'newclient-optional' ].indexOf( n.id ) === -1 } ) ) === texts['error.crm_clients_empty']
 		&& knewc.location.hash === '#kunde-neu' && knewc.toast.classList.contains( 'bad' ) === true );
 	type( nfield( 'company' ), 'Neu GmbH', false );
 	type( nfield( 'name' ), 'Nina Neu', false );
@@ -2726,11 +2741,11 @@ function press( w, key, target, mods ) {
 	check( '...the templates of the feature PDF by tag, read only, with the way to the panel of Pdf; with no template the word keine', all( all( es.main, '#templates' )[0], 'dt' ).map( textOf ).join( '|' ) === 'Angebot|Rechnung|Vertrag|Datenschutz|Information' && all( all( es.main, '#templates' )[0], 'dd' ).map( textOf ).join( '|' ) === 'Angebot Standard|Rechnung Standard · Rechnung Englisch|Dienstleistungsvertrag|keine|keine'
 		&& all( all( es.main, '#templates' )[0], 'a' )[0].getAttribute( 'href' ) === '/_admin/#pdf' && all( all( es.main, '#templates' )[0], 'input' ).length === 0 );
 	check( '...the portal, read only: the address, the pages with the ones the site has no route for marked, the settings of Members and the cap of mails of the kernel', all( all( es.main, '#portal' )[0], 'dt' ).map( textOf ).join( '|' ) === 'Adresse|Seiten|Mitglieder|Mail-Deckel' && all( all( es.main, '#portal' )[0], 'dd' ).map( textOf ).join( '|' ) === 'https://studio.example/portal|/portal · /portal/dokumente (fehlt)|Geschützte Pfade: /portalLogin-Link gültig für: 15 MinutenEinladung gültig für: 7 TageAnforderungen: 5 je Stunde|'+ texts['settings.portal-cap-value'].replace( '%s', '50' )+ ' '+ texts['settings.portal-cap-link']
-		&& all( all( es.main, '#portal' )[0], 'input' ).length === 0 );
+		&& all( all( es.main, '#portal' )[0], 'input' ).map( function( i ) { return i.id } ).join() === 'settings-notify-files' );
 	check( '...the two settings of days say beside their field that 0 enters no date - the hint is under both', findAll( es.main, function( node ) { return node.tagName === 'SPAN' && textOf( node ) === texts['settings.days-hint'] } ).length === 2
 		&& textOf( efield( es, 'payment_days' ).parentNode ).indexOf( texts['settings.days-hint'] ) !== -1 && textOf( efield( es, 'offer_days' ).parentNode ).indexOf( texts['settings.days-hint'] ) !== -1 );
 	check( '...the cap is shown with the way to the Config panel of the workbench, where it is changed (a link of its own, in a new tab), and the sentence under the block says that it is changed there and what the setup does', all( all( es.main, '#portal-cap' )[0], 'a' ).length === 1 && all( all( es.main, '#portal-cap' )[0], 'a' )[0].getAttribute( 'href' ) === '/_admin/#config' && all( all( es.main, '#portal-cap' )[0], 'a' )[0].getAttribute( 'target' ) === '_blank'
-		&& textOf( all( es.main, '#portal-cap-note' )[0] ) === texts['settings.portal-cap-note'] && texts['settings.portal-cap-note'] !== '' && all( all( es.main, '#portal' )[0], 'input' ).length === 0 );
+		&& textOf( all( es.main, '#portal-cap-note' )[0] ) === texts['settings.portal-cap-note'] && texts['settings.portal-cap-note'] !== '' && all( all( es.main, '#portal' )[0], 'input' ).map( function( i ) { return i.id } ).join() === 'settings-notify-files' );
 	check( '...the status of the module says that all is well and the button that sets the portal up is hidden; the access block names the permission and links the panel of the users', textOf( all( es.main, '#status-ok' )[0] ) === 'Alles ist bereit: Das Portal ist eingerichtet und die Features laufen.' && all( es.main, '#portal-setup' )[0].hidden === true
 		&& textOf( all( es.main, '#access' )[0] ).indexOf( 'Die Oberfläche braucht die Berechtigung /_admin/crm/manage.' ) !== -1 && all( all( es.main, '#access' )[0], 'a' )[0].getAttribute( 'href' ) === '/_admin/#users' );
 	const ecapless = await eopen( { portal : Object.assign( {}, eview.portal, { address : '', mail_cap : 0, members : [] } ), pdf : false } );
@@ -2804,14 +2819,19 @@ function press( w, key, target, mods ) {
 	submit( privacyRun, all( privacyRun.main, '#privacy' )[0] );
 	await settle();
 	check( '...and a save posts that text and not the empty one', privacyRun.all( 'crm-documents/settings-save' ).length > 0 && privacyRun.all( 'crm-documents/settings-save' ).every( function( post ) { return post.data.privacy_text !== '' } ) );
+	entered = false;
 	const typedPrivacy = await eopen( {}, eok.concat( [ { key : 'pdf-templates', state : 'none', lacks : [ 'rechnung' ] } ] ), {
 		'crm/setup' : function() { entered = true; return [ 200, { added : { privacy : true }, existed : {} } ] },
-		'crm-documents/settings-get' : function() { return [ 200, Object.assign( {}, eview, { settings : Object.assign( {}, eview.settings, { privacy_text : 'Der Text des Moduls', privacy_changed : '2026-11-05' } ) } ) ] },
+		'crm-documents/settings-get' : function() { return [ 200, entered === false ? eview : Object.assign( {}, eview, { settings : Object.assign( {}, eview.settings, { privacy_text : 'Der Text des Moduls', privacy_changed : '2026-11-05' } ), templates : Object.assign( {}, eview.templates, { offer : [ 'Angebot Neu' ] } ) } ) ] },
 	} );
-	type( efield( typedPrivacy, 'privacy_text' ), 'Mein eigener Text', false );
+		check( 'before the run the note under the field of the Datenschutzerklärung is hidden', all( typedPrivacy.main, '#privacy-setup-note' )[0].hidden === true && all( all( typedPrivacy.main, '#templates' )[0], 'dd' ).map( textOf )[0] === 'Angebot Standard' );
+	type( efield( typedPrivacy, 'privacy_text', 'privacy_text' ), 'Mein eigener Text', false );
 	click( typedPrivacy, all( typedPrivacy.main, '#portal-setup' )[0] );
 	await settle();
 	check( '...a field the person is typing in is left as it is', efield( typedPrivacy, 'privacy_text' ).value === 'Mein eigener Text' );
+	check( '...and a line under it says that the run entered a text and that the typed one is not saved yet - it goes when the text is back at what is stored', textOf( all( typedPrivacy.main, '#privacy-setup-note' )[0] ) === texts['privacy.setup-note'] && all( typedPrivacy.main, '#privacy-setup-note' )[0].hidden === false
+		&& ( type( efield( typedPrivacy, 'privacy_text' ), efield( typedPrivacy, 'privacy_text' ).value === '' ? '' : '', false ), all( typedPrivacy.main, '#privacy-setup-note' )[0].hidden === true ) );
+	check( 'the card Vorlagen shows what the run brought, from the answer of the same read: the row of the offer names the new template', all( all( typedPrivacy.main, '#templates' )[0], 'dd' ).map( textOf )[0] === 'Angebot Neu' && all( typedPrivacy.main, '#templates' ).length === 1 );
 	const eown = await eopen( {}, eok.concat( [ { key : 'pdf-templates', state : 'ok' }, { key : 'home', state : 'own' } ] ) );
 	check( 'a start page of the owner\'s is no line of what is missing in the card of the portal: all is well, and the button is hidden', all( eown.main, '#status-ok' ).length === 1 && all( eown.main, '#status-missing' ).length === 0 && all( eown.main, '#portal-setup' )[0].hidden === true );
 	const emembers = await eopen( {}, pitemsStatus, { 'crm/setup' : function() { return [ 409, { error : 'x', code : 'crm_setup_feature', params : [ 'Mitglieder' ] } ] } } );
@@ -4372,7 +4392,7 @@ function press( w, key, target, mods ) {
 
 	{
 	const jperms = { crm : true, pdf : false, elements : true, text : false, files : true };
-	const jclient1 = { id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true, active_accounts : 2 };
+	const jclient1 = { id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true, active_accounts : 2, signed_accounts : 1 };
 	const jrow = function( over ) {
 		return Object.assign( { id : '00001', title : 'Album 2027', client : 'K-0001', description : 'Aufnahme\nund Mix', started : '2026-10-01', done : false, folder : 'f00000000001', documents : 3, open : 1, client_id : 1, client_title : 'Nordlicht Records GmbH', client_active : true, files : 1, download : false, download_at : '', approval : null }, over || {} );
 	};
@@ -4447,12 +4467,12 @@ function press( w, key, target, mods ) {
 	// --- the list
 	check( 'the list asks crm-projekte/list once and nothing else; the head says Projekte, how many of how many, the search, the switch and Neues Projekt', jr.all( 'crm-projekte/list' ).length === 1 && JSON.stringify( jr.last( 'crm-projekte/list' ).data ) === '{}' && textOf( all( jr.main, 'h1' )[0] ) === 'Projekte' && textOf( all( jr.main, '.sub' )[0] ) === '2 von 3'
 		&& jf( jr, 'q' ) !== undefined && jf( jr, 'p-all' ).type === 'checkbox' && jf( jr, 'p-all' ).getAttribute( 'role' ) === 'switch' && jf( jr, 'p-all' ).checked === false && textOf( jf( jr, 'projects-new' ) ) === texts['projects.new'] && jf( jr, 'projects-new' ).getAttribute( 'href' ) === '#projekte-neu' && jf( jr, 'projects-new' ).classList.contains( 'primary' ) === true );
-	check( '...the table has the columns Projekt, Kunde, Beginn, Belege, Dateien and Status; the done projects are not in it unless the switch is on - the newest first', all( jf( jr, 'projects' ), 'thead th' ).map( textOf ).join( '|' ) === [ texts['projects.column-project'], texts['column.client'], texts['projects.column-started'], texts['projects.column-documents'], texts['projects.column-files'], texts['column.state'] ].join( '|' ) && jrows( jr ).map( function( tr ) { return tr.dataset.id } ).join() === '00003,00001' );
+	check( '...the table has the columns Projekt, Kunde, Beginn, Belege, Dateien, Kommentare offen and Status; the done projects are not in it unless the switch is on - the newest first', all( jf( jr, 'projects' ), 'thead th' ).map( textOf ).join( '|' ) === [ texts['projects.column-project'], texts['column.client'], texts['projects.column-started'], texts['projects.column-documents'], texts['projects.column-files'], texts['projects.column-comments'], texts['column.state'] ].join( '|' ) && jrows( jr ).map( function( tr ) { return tr.dataset.id } ).join() === '00003,00001' );
 	const j1 = jrows( jr )[1];
 	check( '...a row has the title as the link to the card, the client as the link to its card, the day, the documents with the offers that wait, the files and the state', all( j1, 'a' )[0].getAttribute( 'href' ) === '#projekt-00001' && textOf( all( j1, 'a' )[0] ) === 'Album 2027' && all( j1, 'a' )[1].getAttribute( 'href' ) === '#kunde-1' && textOf( all( j1, 'a' )[1] ) === 'Nordlicht Records GmbH'
-		&& j1.children.map( textOf ).slice( 2 ).join( '|' ) === '01.10.2026|3 · '+ texts['projects.open-offers'].replace( '%s', '1' )+ '|1|'+ texts['projects.running'] && textOf( jrows( jr )[0].children[3] ) === '–' && textOf( jrows( jr )[0].children[2] ) === '' );
+		&& j1.children.map( textOf ).slice( 2 ).join( '|' ) === '01.10.2026|3 · '+ texts['projects.open-offers'].replace( '%s', '1' )+ '|1|–|'+ texts['projects.running'] && textOf( jrows( jr )[0].children[3] ) === '–' && textOf( jrows( jr )[0].children[2] ) === '' );
 	jtoggle( jf( jr, 'p-all' ), true );
-	check( '...the switch Abgeschlossene zeigen draws the done ones too - greyed, with their state - without asking the server again', jrows( jr ).map( function( tr ) { return tr.dataset.id } ).join() === '00003,00002,00001' && jrows( jr )[1].classList.contains( 'dim' ) === true && textOf( jrows( jr )[1].children[5] ) === texts['projects.done'] && jr.all( 'crm-projekte/list' ).length === 1 && textOf( all( jr.main, '.sub' )[0] ) === '3 von 3' );
+	check( '...the switch Abgeschlossene zeigen draws the done ones too - greyed, with their state - without asking the server again', jrows( jr ).map( function( tr ) { return tr.dataset.id } ).join() === '00003,00002,00001' && jrows( jr )[1].classList.contains( 'dim' ) === true && textOf( jrows( jr )[1].children[6] ) === texts['projects.done'] && jr.all( 'crm-projekte/list' ).length === 1 && textOf( all( jr.main, '.sub' )[0] ) === '3 von 3' );
 	type( jf( jr, 'q' ), 'richter', false );
 	check( '...the search finds by the title, the client and its number, and says so when nothing is found', jrows( jr ).map( function( tr ) { return tr.dataset.id } ).join() === '00003' && ( type( jf( jr, 'q' ), 'K-0001', false ), jrows( jr ).length === 2 ) && ( type( jf( jr, 'q' ), 'zzz', false ), textOf( jrows( jr )[0] ) === texts['projects.none'] ) );
 	type( jf( jr, 'q' ), '', false );
@@ -4588,7 +4608,7 @@ function press( w, key, target, mods ) {
 	const jdlList = await jopen( '#projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [ jrow( { id : '00005', title: 'Offen', download : true } ), jrow( { id : '00004', title : 'Zu', download : false } ) ] } ) ] } } );
 	const jdlRows = jrows( jdlList );
 	check( 'the list marks a project whose download is on with an arrow beside its state - with its words as the title and for a reader - and a locked one with nothing', all( jdlRows[0], '.dl-mark' ).length === 1 && all( jdlRows[0], '.dl-mark' )[0].title === texts['projects.download-on-title'] && all( jdlRows[0], '.dl-mark' )[0].getAttribute( 'aria-label' ) === texts['projects.download-on-title'] && all( jdlRows[0], '.dl-mark' )[0].getAttribute( 'role' ) === 'img'
-		&& all( jdlRows[1], '.dl-mark' ).length === 0 && textOf( jdlRows[0].children[5] ).indexOf( texts['projects.running'] ) === 0 );
+		&& all( jdlRows[1], '.dl-mark' ).length === 0 && textOf( jdlRows[0].children[6] ).indexOf( texts['projects.running'] ) === 0 );
 	const jdlSearch = await jopen( '#projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [ jrow( { id : '00005', title: 'Offen', download : true } ) ] } ) ] } } );
 	const jdlFind = function( text ) {
 		jf( jdlSearch, 'q' ).value = text;
@@ -4620,8 +4640,8 @@ function press( w, key, target, mods ) {
 	check( '...a project that is done says abgeschlossen and not abgenommen - the line stays, it is the record', textOf( all( jappDone.main, '.head .badge' )[0] ) === texts['projects.done'] && jf( jappDone, 'project-approval' ) !== undefined );
 	const jappList = await jopen( '#projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [ jrow( { id : '00005', title : 'Abgenommen', approval : { id : 7, client_id : 1, project : '00005', at : '2026-11-03T10:15:00Z', member_email : 'lena@nordlicht.example', member_name : 'Lena Brandt', sha256 : 'c'.repeat( 64 ) } } ), jrow( { id : '00004', title : 'Läuft' } ), jrow( { id : '00003', title : 'Fertig', done : true, approval : { id : 8, client_id : 1, project : '00003', at : '2026-11-01T10:15:00Z', member_email : 'lena@nordlicht.example', member_name : '', sha256 : 'd'.repeat( 64 ) } } ) ] } ) ] } } );
 	const jappRows = jrows( jappList );
-	check( 'the list says abgenommen for a project the customer approved while it is not done - with the day and the name as the title - running for one nobody approved, and done for one that is done', textOf( jappRows[0].children[5] ) === '✓ '+ texts['projects.approved'] && all( jappRows[0].children[5], '.badge' )[0].classList.contains( 'b-paid' ) === true
-		&& all( jappRows[0].children[5], '.badge' )[0].title === texts['approval.head'].replace( '%s', '03.11.2026' ).replace( '%s', 'Lena Brandt' ) && textOf( jappRows[1].children[5] ) === texts['projects.running'] );
+	check( 'the list says abgenommen for a project the customer approved while it is not done - with the day and the name as the title - running for one nobody approved, and done for one that is done', textOf( jappRows[0].children[6] ) === '✓ '+ texts['projects.approved'] && all( jappRows[0].children[6], '.badge' )[0].classList.contains( 'b-paid' ) === true
+		&& all( jappRows[0].children[6], '.badge' )[0].title === texts['approval.head'].replace( '%s', '03.11.2026' ).replace( '%s', 'Lena Brandt' ) && textOf( jappRows[1].children[6] ) === texts['projects.running'] );
 	check( '...and the done project is not among the rows until the switch for the done ones is on', jappRows.length === 2 );
 
 	// --- Einwilligungen: the lines on the card of a project, the mark in the list, the records of the client, the sentences in the settings
@@ -4654,7 +4674,7 @@ function press( w, key, target, mods ) {
 	const c14_rows = jrows( c14_list );
 	const c14_marks = c14_rows.map( function( row ) { return all( row, '.mega-icon' ) } );
 	check( 'the list marks a project whose client consented to the social use with a megaphone in the column of the state: an image with the words "Referenznutzung eingewilligt" as its title and its name, and nothing for the others - the word is not the mark', c14_marks.map( function( marks ) { return marks.length } ).join() === '1,0,0' && c14_marks[0][0].title === texts['consent.mark-title'] && c14_marks[0][0].getAttribute( 'aria-label' ) === texts['consent.mark-title']
-		&& c14_marks[0][0].getAttribute( 'role' ) === 'img' && c14_marks[0][0].dataset.icon === 'megaphone' && c14_marks[0][0].parentNode === c14_rows[0].children[5] && textOf( c14_rows[0].children[5] ).indexOf( texts['consent.mark-title'] ) === -1 );
+		&& c14_marks[0][0].getAttribute( 'role' ) === 'img' && c14_marks[0][0].dataset.icon === 'megaphone' && c14_marks[0][0].parentNode === c14_rows[0].children[6] && textOf( c14_rows[0].children[6] ).indexOf( texts['consent.mark-title'] ) === -1 );
 	const c14_find = function( text ) {
 		jf( c14_list, 'q' ).value = text;
 		fire( jf( c14_list, 'q' ), 'input', { target : jf( c14_list, 'q' ) } );
@@ -4992,7 +5012,7 @@ function press( w, key, target, mods ) {
 		&& textOf( urowsOf( uw )[1].children[1] ) === 'Nordlicht Records GmbH K-0001' && all( urowsOf( uw )[1], 'a' )[0].getAttribute( 'href' ) === '#kunde-1' && textOf( urowsOf( uw )[1].children[3] ) === 'Lena Brandt' && textOf( urowsOf( uw )[2].children[3] ) === texts['projects.by-owner'] && textOf( urowsOf( uw )[3].children[3] ) === texts['projects.by-member']
 		&& textOf( urowsOf( uw )[1].children[4] ) === '4,8 MB' && textOf( urowsOf( uw )[1].children[5] ) === '20.09.2026' && findAll( uf( uw, 'uploads' ), function( n ) { return n.tagName === 'I' || n.tagName === 'B' } ).length === 0 );
 	check( '...above the table one line says how many files there are, what they take and how many of them are older than 30 days - the sums of the answer, not a count of the rows - and the row that was removed has no box to tick',
-		textOf( uf( uw, 'uploads-sum' ) ) === fillT( 'uploads.sum', 3, '6,7 MB', 30, 1, '4,8 MB' ) && all( urowsOf( uw )[0], 'input' )[0].disabled === true && all( urowsOf( uw )[1], 'input' )[0].disabled === false && urowsOf( uw )[0].classList.contains( 'dim' ) === true );
+		textOf( uf( uw, 'uploads-sum' ) ) === fillT( 'uploads.sum', fillT( 'uploads.files-many', 3 ), '6,7 MB', 30, fillT( 'uploads.files-one', 1 ), '4,8 MB' ) && all( urowsOf( uw )[0], 'input' )[0].disabled === true && all( urowsOf( uw )[1], 'input' )[0].disabled === false && urowsOf( uw )[0].classList.contains( 'dim' ) === true );
 
 	// search, sort, pages
 	const usearch = function( w, text ) { const field = uf( w, 'q' ); field.value = text; fire( field, 'input', { target : field } ) };
@@ -5145,14 +5165,14 @@ function press( w, key, target, mods ) {
 	click( jinf, jf( jinf, 'up-send' ) );
 	await settle();
 	check( 'with the box ticked the chunks post notify false and one files/notify at the end mails the upload - the id of the file and the page of the project with the tab Dateien, so that the mail leads there and not to the start page - and the toast says that the accounts of the customer are informed', jinf.all( 'files/upload' ).length === 1 && jinf.all( 'files/upload' )[0].data.notify === false
-		&& jinf.all( 'files/notify' ).length === 1 && JSON.stringify( jinf.all( 'files/notify' )[0].data ) === JSON.stringify( { ids : [ 'b00000000001' ], notify : true, page : '/portal/projekte?projekt=00001&tab=dateien' } ) && jinf.toast.textContent === texts['projects.uploaded-one']+ ' '+ texts['projects.informed'] );
+		&& jinf.all( 'files/notify' ).length === 1 && JSON.stringify( jinf.all( 'files/notify' )[0].data ) === JSON.stringify( { ids : [ 'b00000000001' ], notify : true, page : '/portal/projekte?projekt=00001&tab=dateien' } ) && jinf.toast.textContent === texts['projects.uploaded-one']+ ' '+ texts['projects.informed-many'].replace( '%s', '2' ) );
 	const jmany = await jopen( '#projekt-00001-dateien', { 'files/upload' : function( data ) { return data.name === 'leer.txt' ? [ 400, { error : 'x', code : 'files_quota', params : [ 10 ] } ] : [ 200, { id : 'c'+ data.name.charCodeAt( 0 ).toString().padStart( 11, '0' ), name : data.name, size : data.size } ] } } );
 	jf( jmany, 'project-notify' ).checked = true;
 	jf( jmany, 'up-input' ).files = [ jfile( 'a.txt', 10 ), jfile( 'leer.txt', 10 ), jfile( 'b.txt', 10 ), jfile( 'c.txt', 10 ) ];
 	click( jmany, jf( jmany, 'up-send' ) );
 	await settle();
 	check( 'several files are one mail: after the last one a single files/notify names the ids of the files that went in, in the order they were sent - the one the panel refused is not among them - and the toast counts them', jmany.all( 'files/upload' ).length === 4 && jmany.all( 'files/upload' ).every( function( call ) { return call.data.notify === false } ) && jmany.all( 'files/notify' ).length === 1
-		&& JSON.stringify( jmany.all( 'files/notify' )[0].data.ids ) === JSON.stringify( [ 'c00000000097', 'c00000000098', 'c00000000099' ] ) && jmany.all( 'files/notify' )[0].data.notify === true && jmany.toast.textContent === texts['projects.uploaded'].replace( '%s', '3' )+ ' '+ texts['projects.informed'] );
+		&& JSON.stringify( jmany.all( 'files/notify' )[0].data.ids ) === JSON.stringify( [ 'c00000000097', 'c00000000098', 'c00000000099' ] ) && jmany.all( 'files/notify' )[0].data.notify === true && jmany.toast.textContent === texts['projects.uploaded'].replace( '%s', '3' )+ ' '+ texts['projects.informed-many'].replace( '%s', '2' ) );
 	const jlone = await jopen( '#projekt-00001-dateien', { 'files/upload' : function() { return [ 400, { error : 'x', code : 'files_quota', params : [ 10 ] } ] } } );
 	jf( jlone, 'project-notify' ).checked = true;
 	jf( jlone, 'up-input' ).files = [ jfile( 'a.txt', 10 ) ];
@@ -5164,7 +5184,7 @@ function press( w, key, target, mods ) {
 	jf( jnone, 'up-input' ).files = [ { name : 'Nobody.txt', size : 300, slice : function( from, to ) { return { size : to - from, from : from, to : to } } } ];
 	click( jnone, jf( jnone, 'up-send' ) );
 	await settle();
-	check( 'the toast of an upload says what the server says: with the box ticked and no mail delivered (a client without an account, a refused mail) the members are not said to be informed', jnone.all( 'files/notify' ).length === 1 && jnone.toast.textContent === texts['projects.uploaded-one']+ ' '+ texts['projects.not-informed'] );
+	check( 'the toast of an upload says what the server says: with the box ticked and no mail delivered (a client without an account, a refused mail) the members are not said to be informed', jnone.all( 'files/notify' ).length === 1 && jnone.toast.textContent === texts['projects.uploaded-one']+ ' '+ texts['projects.informed-failed'] );
 	jtoggle( all( jfrows( jnone )[1], 'input' )[0], true );
 	await settle();
 	check( '...and so does the toast of a switch to visible', jnone.toast.textContent === texts['projects.shown-not-informed'] );
@@ -5245,6 +5265,64 @@ function press( w, key, target, mods ) {
 		click( jplain, jf( jplain, 'up-send' ) );
 		await settle();
 		check( 'a '+ refusal[0]+ ' is not a sign of a web server limit: one request, the file fails, and the line does not say the parts were made smaller', jplain.all( 'files/upload' ).length === 1 && all( jf( jplain, 'up-list' ), 'li' )[0].dataset.state === 'failed' && jsay( jplain, 0 ) !== texts['projects.up-smaller'] );
+
+	// === /crm im Alltag, the screens of the projects and the uploads
+	await everydayProjectChecks();
+
+	/**
+	 *	The upload with its drop area and the sentence about the mail, the uploads in the singular, the column of the open comments and the filter by client of the projects
+	 *
+	 *	@return		{Promise}
+	 */
+	async function everydayProjectChecks() {
+
+		const fill = function( key, ...values ) { let at = 0; return texts[key].replace( /%s/g, function() { return String( values[at++] ?? '' ) } ) };
+		const fireOn = function( node, name, extra ) { let prevented = false; fire( node, name, Object.assign( { type : name, target : node, preventDefault : function() { prevented = true }, stopPropagation : function() {} }, extra || {} ) ); return prevented; };
+
+		// --- the upload: a drop area, the sentence about the mail
+		const dropper = await jopen( '#projekt-00001-dateien' );
+		const zone = jf( dropper, 'up-drop' );
+		check( 'the upload has an area to drop files on, with the field and the button inside it: dragging over it marks it, and the drop keeps the browser from opening the file', zone !== undefined && jf( dropper, 'up-input' ).parentNode.parentNode === zone && jf( dropper, 'up-send' ).parentNode.parentNode === zone && fireOn( zone, 'dragover' ) === true && zone.classList.contains( 'over' ) === true && ( fireOn( zone, 'dragleave' ), zone.classList.contains( 'over' ) === false ) );
+		fireOn( zone, 'drop', { dataTransfer : { files : [ jfile( 'gezogen.wav', 400 ) ] } } );
+		await settle();
+		check( '...a drop uploads the files as the button does - the same chunks, the same toast - and the area is not marked any more', dropper.all( 'files/upload' ).map( function( c ) { return c.data.name } ).join() === 'gezogen.wav' && zone.classList.contains( 'over' ) === false && dropper.toast.textContent.indexOf( texts['projects.uploaded-one'] ) === 0 );
+		const empty = await jopen( '#projekt-00001-dateien' );
+		fireOn( jf( empty, 'up-drop' ), 'drop', { dataTransfer : { files : [] } } );
+		await settle();
+		check( '...a drop of nothing uploads nothing and says to choose the files first', empty.all( 'files/upload' ).length === 0 && empty.toast.textContent === texts['projects.up-none'] );
+		const sentenceOf = async function( client, mailed, ticked ) {
+			const w = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { client : client } ) ] }, 'files/notify' : function() { return [ 200, { mailed : mailed } ] } } );
+			jf( w, 'project-notify' ).checked = ticked;
+			jf( w, 'up-input' ).files = [ jfile( 'neu.txt', 100 ) ];
+			click( w, jf( w, 'up-send' ) );
+			await settle();
+			return w.toast.textContent.slice( texts['projects.uploaded-one'].length + 1 );
+		};
+		check( 'the toast of an upload names how many accounts the mail went to - one, or the number - and adds that the customer has not entered the portal yet where no account has', await sentenceOf( jclient1, 1, true ) === texts['projects.informed-one'] && await sentenceOf( jclient1, 2, true ) === fill( 'projects.informed-many', 2 )
+			&& await sentenceOf( Object.assign( {}, jclient1, { signed_accounts : 0 } ), 2, true ) === fill( 'projects.informed-many', 2 )+ ' '+ texts['projects.informed-unseen'] );
+		check( '...and why none went where none did: the box was not ticked, the customer has no account, the mail did not go out', await sentenceOf( jclient1, 0, false ) === texts['projects.not-informed'] && await sentenceOf( Object.assign( {}, jclient1, { active_accounts : 0, signed_accounts : 0 } ), 0, true ) === texts['projects.informed-none'] && await sentenceOf( jclient1, 0, true ) === texts['projects.informed-failed'] );
+		const preset = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { notify : true } ) ] } } );
+		const unticked = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { notify : false } ) ] } } );
+		check( 'the box of the upload starts at what the card says (the setting of the CRM): ticked for true, not for false', jf( preset, 'project-notify' ).checked === true && jf( unticked, 'project-notify' ).checked === false );
+
+		// --- the lists: files in the singular, the comments, the client
+		const one = await uopen( { summary : { count : 1, bytes : 1200, old_count : 0, old_bytes : 0 } } );
+		check( 'the head of the uploads says 1 Datei, not 1 Dateien - and keeps the plural for the others', textOf( uf( one, 'uploads-sum' ) ) === fill( 'uploads.sum', fill( 'uploads.files-one', 1 ), '1,2 KB', 30, fill( 'uploads.files-many', 0 ), '0 B' ) && fill( 'uploads.files-one', 1 ) === '1 Datei' && fill( 'uploads.files-many', 3 ) === '3 Dateien' );
+		const commented = await jopen( '#projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { projects: [ jrow( { id : '00003', comments : 3, comment_files : 2 } ), jrow( { id : '00001', comments : 1, comment_files : 1 } ), jrow( { id : '00004', comments : 0, comment_files : 0 } ), jrow( { id : '00005', comments : null, comment_files : null } ), jrow( { id : '00006', comments : 2, comment_files : 1 } ) ] } ) ] } } );
+		const commentCells = jrows( commented ).map( function( tr ) { return tr.children[5] } );
+		check( 'the list of the projects has the column Kommentare offen: the number, in the warning colour where there are some, with the count of files in its title - a stroke where Review does not run', all( jf( commented, 'projects' ), 'thead th' ).map( textOf )[5] === texts['projects.column-comments'] && commentCells.map( textOf ).join( '|' ) === '3|1|0|–|2'
+			&& commentCells[0].title === fill( 'projects.open-comments-many', 3, 2 ) && commentCells[4].title === fill( 'projects.open-comments-few', 2 ) && commentCells[1].title === texts['projects.open-comments-one'] && commentCells[2].title === texts['projects.open-comments-none'] && all( commentCells[0], '.open' ).length === 1 && all( commentCells[2], '.open' ).length === 0 );
+		const filtered = await jopen( '#projekte' );
+		const clientSelect = jf( filtered, 'p-client' );
+		check( 'the list has a filter by client, the clients of the list of the clients as options with All first', clientSelect !== undefined && clientSelect.tagName === 'SELECT' && all( clientSelect, 'option' )[0].value === '' && all( clientSelect, 'option' ).length === kclients.length + 1 && filtered.all( 'crm-clients/list' ).length === 1 );
+		const allIds = jrows( filtered ).map( function( tr ) { return tr.dataset.id } ).join();
+		clientSelect.value = '2';
+		fireOn( clientSelect, 'change', { target : clientSelect } );
+		check( '...a client shows its projects alone, without asking the server again, and All shows them all again', jrows( filtered ).every( function( tr ) { return jprojects.find( function( one ) { return one.id === tr.dataset.id } ).client_id === 2 } ) && jrows( filtered ).length < allIds.split( ',' ).length && filtered.all( 'crm-projekte/list' ).length === 1
+			&& ( clientSelect.value = '', fireOn( clientSelect, 'change', { target : clientSelect } ), jrows( filtered ).map( function( tr ) { return tr.dataset.id } ).join() === allIds ) );
+		const nofilter = await jopen( '#projekte', { 'crm-clients/list' : function() { return [ 500, { error : 'x' } ] } } );
+		check( '...a list of clients that cannot be read leaves the filter out and the list stays', jf( nofilter, 'p-client' ) === undefined && jrows( nofilter ).length > 0 );
+	}
 	}
 
 	// a dropped connection is not a 413
@@ -5778,6 +5856,336 @@ function press( w, key, target, mods ) {
 	click( x13_krecords, all( x13_row, 'button' )[0] );
 	check( '...Anzeigen opens the dialog with the title of an approval', x13_krecords.dialogs[0].getAttribute( 'aria-label' ) === texts['record.title-approval'] && textOf( all( x13_krecords.dialogs[0], 'pre' )[0] ) === x13_approval.shown );
 	check( 'the script keeps to its rules for the new screens: the texts are asked for as texts, and every new key is a word of the page', [ 'privacy.title', 'privacy.note', 'privacy.label', 'privacy.hint', 'privacy.never', 'privacy.changed', 'privacy.save', 'privacy.saved', 'privacy.head-agreed', 'privacy.head-open', 'record.document', 'record.show', 'record.hash', 'order.badge', 'order.head', 'order.title', 'order.at', 'order.by', 'order.ip', 'order.agent', 'order.hash', 'order.show', 'cportal.records', 'cportal.records-none', 'history.ordered', 'needs.orders-one', 'needs.orders-many', 'dialog.close' ].every( function( key ) { return typeof texts[key] === 'string' && texts[key] !== '' && script.indexOf( "'"+ key+ "'" ) !== -1 } ) && [ 'record.kind-', 'record.title-' ].every( function( stem ) { return script.indexOf( "'"+ stem+ "'" ) !== -1 && [ 'privacy', 'order' ].every( function( kind ) { return typeof texts[stem+ kind] === 'string' } ) } ) && typeof texts['chip.accepted'] === 'string' );
+
+	// === /crm im Alltag
+	await everydayChecks();
+
+	/**
+	 *	The small things of every day: the Enter of the catalogue, the phone's rail and tiles, the Einstellungen (read again after the setup, the bar that jumps, a sentence at each save,
+	 *	the box of the mail for new files), the buttons that say what the box makes of them, Neuer Kunde with its first account first and the invitation that did not go out, the
+	 *	Kundenkarte (what is owed, a message as one line, mail and phone as links), the upload with its drop area and the sentence about the mail, what Braucht Dich names, the search of the
+	 *	Übersicht, the dialog of every release with its sentence to the customer, the reminder in sight, the unit of the electronic invoice, the files of the Uploads in the singular and the
+	 *	projects of a client
+	 *
+	 *	@return		{Promise}
+	 */
+	async function everydayChecks() {
+
+		const model = ( await kopen( '#kunden' ) ).app.model;
+		const fill = function( key, ...values ) { let at = 0; return texts[key].replace( /%s/g, function() { return String( values[at++] ?? '' ) } ) };
+		const fireOn = function( node, name, extra ) { let prevented = false; fire( node, name, Object.assign( { type : name, target : node, preventDefault : function() { prevented = true }, stopPropagation : function() {} }, extra || {} ) ); return prevented; };
+
+		// --- the model: what the pure functions answer
+		const catalogue = [ { title : 'Aufnahme Studio 1' }, { title : 'Auf' }, { title : 'Mastering' }, { title : 'Re-Mastering' } ];
+		check( 'the item the Enter of the catalogue takes: the one with the title as typed, else the first whose title begins with the text, else the first that holds it - and none for an empty text or a text nothing holds', model.firstItem( catalogue, 'Auf' ).title === 'Auf' && model.firstItem( catalogue, 'auf' ).title === 'Auf' && model.firstItem( catalogue, 'Aufn' ).title === 'Aufnahme Studio 1'
+			&& model.firstItem( catalogue, 'master' ).title === 'Mastering' && model.firstItem( [ { title : 'Re-Mastering' }, { title : 'Mastering' } ], 'mas' ).title === 'Mastering' && model.firstItem( catalogue, 'stering' ).title === 'Mastering' && model.firstItem( catalogue, '  ' ) === undefined && model.firstItem( catalogue, 'zzz' ) === undefined );
+		check( 'the owed of a client counts the invoices that are open or sent - their sum, how many, how many of those are late - and nothing else', JSON.stringify( model.owedOf( [ row( { state : 'sent', gross : 1000 } ), row( { state : 'open', gross : 500, overdue : true } ), row( { state : 'paid', gross : 700 } ), row( { category : 'offer', state : 'open', gross : 900 } ), row( { state : 'draft', gross : 400 } ) ] ) ) === '{"cents":1500,"count":2,"late":1}' && model.owedOf( [] ).count === 0 );
+		check( 'a link is made of an address or a number that has the plain shape and of nothing else: no second address, no query, no scheme, no script - an address with a ? or a & or a % or a comma is text', model.mailtoOf( 'lena@nordlicht.example' ) === 'mailto:lena@nordlicht.example' && model.mailtoOf( 'a.b+c@sub.example.org' ) === 'mailto:a.b+c@sub.example.org'
+			&& [ "o'hara?subject=x@b.de", 'a&b=c@d.de', 'a@b.de?bcc=x@y.de', 'a@b.de,c@d.de', 'a%40b@c.de', 'javascript:alert(1)', '<a@b.de>', 'a@b', 'a b@c.de', '', null, 7 ].every( function( bad ) { return model.mailtoOf( bad ) === '' } )
+			&& model.telOf( '+49 40 123456' ) === 'tel:+4940123456' && model.telOf( '+49 (0) 40 123456' ) === 'tel:+4940123456' && model.telOf( '040 (0) 12345' ) === 'tel:040012345' && model.telOf( '040/123-456' ) === 'tel:040123456' && [ 'javascript:1', '+49;ATD', '12', 'abc', '', '+49 (0) 40 <b>', null ].every( function( bad ) { return model.telOf( bad ) === '' } ) );
+		const pool = { clients : Array.from( { length : 7 }, function( unused, index ) { return { id : index + 1, number : 'K-000'+ ( index + 1 ), title : 'Test '+ ( index + 1 ), company : 'Test '+ ( index + 1 ), name : '', email : '', city : '' } } ),
+			projects : [ { id : '00001', title : 'Test Album', client : 'K-0001', client_title : 'Test 1' }, { id : '00002', title : 'Anders', client : 'K-0002', client_title : 'Test 2' } ], documents : [ row( { id : 5, number : 'R-2026-0005', client_title : 'Test 1' } ), row( { id : 6, category : 'offer', number : 'A-2026-0006', client_title : 'Test 3' } ), row( { id : 7, state : 'draft', number : '', title : '', client_title : 'Anders' } ) ] };
+		const found = model.hitsOf( pool, 'test' );
+		check( 'the hits of a text are the clients, the projects and the documents in this order, at most five of each, each with the address of its screen - a client its card, a project its card, a document its screen, a draft its editor', found.map( function( hit ) { return hit.kind } ).join() === 'client,client,client,client,client,project,project,document,document'
+			&& found[0].href === '#kunde-1' && found[5].href === '#projekt-00001' && found[7].href === '#beleg-5' && model.hitsOf( pool, 'anders' ).map( function( hit ) { return hit.href } ).join() === '#projekt-00002,#entwurf-7' && model.hitsOf( pool, '   ' ).length === 0 );
+
+		// --- the catalogue: Enter takes the first hit, and a refused line is marked
+		let edit = await editing();
+		const adder = field( edit, 'additem' );
+		adder.value = 'Mas';
+		const kept = fireOn( adder, 'keydown', { key : 'Enter' } );
+		check( 'Enter in the search of the catalogue takes the first item the text finds: Mas becomes the line Mastering with its unit and its price from the catalogue, the field is empty and keeps the cursor - and the Enter is kept from the form', kept === true && lineRows( edit ).length === 3 && all( lineRows( edit )[2], 'input' )[0].value === 'Mastering' && all( lineRows( edit )[2], 'input' )[3].value === '110,00' && field( edit, 'additem' ).value === '' && field( edit, 'additem' ).focused === true );
+		const adderAgain = field( edit, 'additem' );
+		adderAgain.value = 'xyz';
+		fireOn( adderAgain, 'keydown', { key : 'Enter' } );
+		check( '...a text no title holds is a line of its own as it was: the text as its title, one piece, no price, and the cursor goes to the price', lineRows( edit ).length === 4 && all( lineRows( edit )[3], 'input' )[0].value === 'xyz' && all( lineRows( edit )[3], 'input' )[3].value === '' && all( lineRows( edit )[3], 'input' )[3].focused === true );
+		const refusing = await editing( {}, { 'crm-documents/save' : function() { return [ 400, { error : 'x', code : 'crm_documents_line_amount', params : [ 1 ], field : 'lines.0.price' } ] } } );
+		click( refusing, field( refusing, 'save' ) );
+		await settle();
+		const priceOne = all( lineRows( refusing )[0], 'input' )[3];
+		check( 'a line the server refuses is marked at the field it names - aria-invalid, the mark of the error, the cursor in it - and the sentence stands over the editor as it did', priceOne.getAttribute( 'aria-invalid' ) === 'true' && priceOne.classList.contains( 'err' ) === true && priceOne.focused === true && textOf( field( refusing, 'message' ) ).indexOf( 'Position 1' ) !== -1 );
+		const unnamed = await editing( {}, { 'crm-documents/save' : function() { return [ 400, { error : 'x', code : 'crm_documents_line_format', params : [ 2 ], field : 'lines.1' } ] } } );
+		click( unnamed, field( unnamed, 'save' ) );
+		await settle();
+		check( '...a line refused for something no field of it holds is marked at its title', all( lineRows( unnamed )[1], 'input' )[0].getAttribute( 'aria-invalid' ) === 'true' && all( lineRows( unnamed )[1], 'input' )[0].focused === true );
+
+		// --- the unit of the electronic invoice is for a business client
+		const unitSelects = function( w ) { return all( w.main, 'select' ).filter( function( one ) { return one.classList.contains( 'unit-code' ) } ); };
+		const privateClients = clients.map( function( one ) { return one.id === 1 ? Object.assign( {}, one, { business : false } ) : one } );
+		const privateDraft = await editing( {}, { 'crm-documents/get' : function() { return [ 200, view( draftDoc, { clients : privateClients } ) ] } } );
+		check( 'the second unit - the one of the electronic invoice - is not shown for a client who is no business: the lines have the unit as text only', unitSelects( privateDraft ).length === 0 && unitSelects( edit ).length === 4 );
+		click( privateDraft, field( privateDraft, 'save' ) );
+		await settle();
+		check( '...and the line keeps the code of its position: it is posted as it was', privateDraft.saves[0].lines[0].unit_code === 'HUR' && privateDraft.saves[0].lines[1].unit_code === '' );
+		type( field( privateDraft, 'f-client_id' ), '2' );
+		await settle();
+		check( '...another client who is a business gives each line the second unit', unitSelects( privateDraft ).length === 2 );
+
+		// --- the phone: one row of the rail that scrolls, the tiles flat
+		const rail = world( { hash : '#einstellungen', answers : kanswers( { 'crm-documents/settings-get' : function() { return [ 200, Object.assign( {}, eview ) ] }, 'crm/status' : function() { return [ 200, { items : eok } ] } } ) } );
+		rail.nav.scrollLeft = 0;
+		rail.nav.getBoundingClientRect = function() { return { left : 0, right : 300 } };
+		all( rail.nav, '[data-r]' ).forEach( function( anchor, index ) { anchor.getBoundingClientRect = function() { return { left : index * 110 - rail.nav.scrollLeft, right : index * 110 + 100 - rail.nav.scrollLeft } } } );
+		rail.boot();
+		await settle();
+		check( 'the rail is brought to the open entry: Einstellungen, the last, is beyond the right edge of a row that scrolls, so the row scrolls by the part that was out of sight - and the page does not', rail.nav.scrollLeft === 7 * 110 + 100 - 300 && rail.scrolls.length === 0 );
+		const css = source( OWN+ 'assets/crm.css' );
+		const phone = css.slice( css.lastIndexOf( '@media (max-width: 760px)' ) );
+		check( 'on the phone the rail is one row that scrolls and does not wrap, the tiles are a grid of two columns of equal width - minmax(0, 1fr), so that no long word widens one - with the number above its word and no line that cannot wrap, and the entries are 44px high', /\.rail \{[^}]*flex-wrap: nowrap/.test( phone ) && /\.nav \{[^}]*overflow-x: auto/.test( phone ) && /\.nav \{[^}]*flex-wrap: nowrap/.test( phone ) && /\.tiles \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test( phone ) && /\.tile \{[^}]*min-width: 0/.test( phone ) && /\.tile \{[^}]*flex-direction: column/.test( phone ) && /nowrap/.test( phone.slice( phone.indexOf( '.tile ' ), phone.indexOf( '.head .search-box' ) ) ) === false && css.indexOf( '.tiles, .tiles' ) === -1 && /\.tile \.v \{[^}]*order: -1/.test( phone ) && /\.nav a \{[^}]*min-height: 44px/.test( phone ) );
+		const start = await kopen( '#uebersicht', { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [ { kind : 'overdue', id : 5, client_id : 1, client_title : 'Nordlicht', number : 'R-1', title : '', date : '2026-10-01', gross : 100, sign_state : '', reminded_at : '' } ], recent : [ { id : 1, category : 'invoice', number : 'R-2', title : '', state : 'open', client_title : 'N', date : '2026-10-02' } ], settings : settings } ] } } );
+		const startCards = all( start.main, '.cols' )[0].children;
+		check( 'the Übersicht has five tiles, each the number and its word, and "Braucht Dich" before "Zuletzt"', all( start.main, '.tile' ).length === 5 && all( start.main, '.tile' ).every( function( tile ) { return all( tile, '.v' ).length === 1 && all( tile, '.l' ).length === 1 } ) && textOf( all( startCards[0], 'h3' )[0] ) === texts['needs.title'] && textOf( all( startCards[1], 'h3' )[0] ) === texts['recent.title'] );
+
+		// --- Einstellungen
+		const setting = await eopen();
+		await settle();
+		const jump = all( setting.main, '#settings-jump' )[0];
+		check( 'a bar over the Einstellungen jumps to each block - Umsatzsteuer, Nummern, Rechnungsangaben, Aussteller, Datenschutz, Einwilligungen, Nachricht, Firma, Portal - as buttons, so that the address still names the screen, and every block it names is on the screen', jump !== undefined && all( jump, 'button' ).map( function( button ) { return button.dataset.block } ).join() === 'vat,numbers,particulars,seller,privacy,consents,message-all,firma-holder,portal'
+			&& all( jump, 'button' ).length === 9 && all( jump, 'a' ).length === 0 && all( jump, 'button' ).every( function( button ) { return findAll( setting.main, function( node ) { return node.id === button.dataset.block } ).length === 1 } ) && Array.from( setting.main.children ).indexOf( jump ) < Array.from( setting.main.children ).indexOf( all( setting.main, '#settings-form' )[0] ) );
+		click( setting, all( jump, 'button' )[4] );
+		check( '...a button brings its block into view and is marked as the open one', setting.scrolled.pop()[0] === 'privacy' && all( jump, '.on' ).map( function( b ) { return b.dataset.block } ).join() === 'privacy' && all( jump, 'button' )[4].getAttribute( 'aria-current' ) === 'true' );
+		jump.scrollLeft = 0;
+		jump.getBoundingClientRect = function() { return { left : 0, right : 300 } };
+		all( jump, 'button' ).forEach( function( button, index ) { button.getBoundingClientRect = function() { return { left : index * 110 - jump.scrollLeft, right : index * 110 + 100 - jump.scrollLeft } } } );
+		click( setting, all( jump, 'button' )[8] );
+		check( '...the bar scrolls sideways on the phone, so the button of the block that is open is brought into it - the bar scrolls, the page does not', jump.scrollLeft === 8 * 110 + 100 - 300 && all( jump, '.on' )[0].dataset.block === 'portal' );
+		all( jump, 'button' ).forEach( function( button, index ) { const target = findAll( setting.main, function( node ) { return node.id === button.dataset.block } )[0]; target.getBoundingClientRect = function() { return { top : index < 6 ? index * 10 - 200 : 500 + index } } } );
+		( setting.windowListeners.scroll || [] ).forEach( function( fn ) { fn() } );
+		check( '...a choice made with a click stands while the page scrolls by itself: the scroll the click made does not mark another block', all( jump, '.on' ).map( function( b ) { return b.dataset.block } ).join() === 'portal' );
+		( setting.windowListeners.wheel || [] ).forEach( function( fn ) { fn() } );
+		( setting.windowListeners.scroll || [] ).forEach( function( fn ) { fn() } );
+		check( '...and the block that is in view marks itself while the page scrolls: the last whose top has passed the bar', all( jump, '.on' ).map( function( b ) { return b.dataset.block } ).join() === 'consents' && ( setting.windowListeners.scroll || [] ).length === 1 );
+		const rects = function( tops ) { all( jump, 'button' ).forEach( function( button, index ) { findAll( setting.main, function( node ) { return node.id === button.dataset.block } )[0].getBoundingClientRect = function() { return { top : tops[index] } } } ); };
+		rects( [ -300, -300, 400, 500, 600, 700, 800, 900, 1000 ] );
+		( setting.windowListeners.wheel || [] ).forEach( function( fn ) { fn() } );
+		( setting.windowListeners.scroll || [] ).forEach( function( fn ) { fn() } );
+		check( 'two blocks side by side share a top: the first of them is the one in view - Umsatzsteuer, not Nummern', all( jump, '.on' ).map( function( b ) { return b.dataset.block } ).join() === 'vat' );
+		setting.page.documentElement = { scrollHeight : 2000 };
+		setting.win.scrollY = 1200;
+		setting.win.innerHeight = 800;
+		rects( [ -1100, -1100, -900, -700, -500, -300, -100, 300, 700 ] );
+		( setting.windowListeners.scroll || [] ).forEach( function( fn ) { fn() } );
+		check( 'at the foot of the page the last block that is in the picture is the one in view, though its top never passes the bar', all( jump, '.on' ).map( function( b ) { return b.dataset.block } ).join() === 'portal' );
+		setting.win.scrollY = 0;
+		setting.win.innerHeight = undefined;
+		const saveNotes = [ 'settings-form', 'privacy', 'consents', 'message-all' ].map( function( id ) { return all( all( setting.main, '#'+ id )[0], '.save-what' ).length } );
+		check( 'every Speichern says in a sentence beside it what it saves: the settings, the Datenschutz, the Einwilligungen, the message to all (the Firmendaten have theirs for an account that may write them)', saveNotes.join() === '1,1,1,1' && textOf( all( setting.main, '#settings-what' )[0] ) === texts['settings.saves'] && texts['settings.saves'] !== texts['privacy.saves'] );
+		const notifyBox = all( setting.main, '#settings-notify-files' )[0];
+		check( 'the block Portal has the box Kunden bei neuen Dateien informieren: ticked at the default, which the settings say with "1"', notifyBox !== undefined && notifyBox.checked === true && all( all( setting.main, '#portal' )[0], 'label' ).some( function( label ) { return textOf( label ).trim() === texts['settings.notify-files'] } ) );
+		const notifyPosts = [];
+		const off = await eopen( { settings : Object.assign( {}, esettings, { notify_files : '0' } ) }, undefined, { 'crm-documents/settings-save' : function( data ) { notifyPosts.push( data ); return [ 200, { settings : Object.assign( {}, esettings, { vat_rates : '1900,700,550,0', notify_files : data.notify_files } ) } ] } } );
+		check( '...a setting of "0" leaves it unticked', all( off.main, '#settings-notify-files' )[0].checked === false );
+		all( off.main, '#settings-notify-files' )[0].checked = true;
+		fireOn( all( off.main, '#settings-notify-files' )[0], 'change' );
+		await settle();
+		check( '...a change of the box is saved at once and alone: crm-documents/settings-save { notify_files: "1" }, and the toast says what it means', JSON.stringify( notifyPosts ) === JSON.stringify( [ { notify_files : '1' } ] ) && off.toast.textContent === texts['settings.notify-files-on'] );
+		const offPosts = [];
+		const unticking = await eopen( {}, undefined, { 'crm-documents/settings-save' : function( data ) { offPosts.push( data ); return [ 200, { settings : Object.assign( {}, esettings, { vat_rates : '1900,700,550,0', notify_files : data.notify_files } ) } ]; } } );
+		all( unticking.main, '#settings-notify-files' )[0].checked = false;
+		fireOn( all( unticking.main, '#settings-notify-files' )[0], 'change' );
+		await settle();
+		check( '...and taking the tick away posts "0" and says so', JSON.stringify( offPosts ) === JSON.stringify( [ { notify_files : '0' } ] ) && unticking.toast.textContent === texts['settings.notify-files-off'] );
+		const refusedOff = await eopen( { settings : Object.assign( {}, esettings, { notify_files : '0' } ) }, undefined, { 'crm-documents/settings-save' : function() { return [ 400, { error : 'x', code : 'crm_documents_setting', params : [], field : 'notify_files' } ] } } );
+		all( refusedOff.main, '#settings-notify-files' )[0].checked = true;
+		fireOn( all( refusedOff.main, '#settings-notify-files' )[0], 'change' );
+		await settle();
+		check( '...a refusal puts the box back as it was', all( refusedOff.main, '#settings-notify-files' )[0].checked === false && all( refusedOff.main, '#settings-notify-files' )[0].disabled === false );
+
+		// --- the buttons say what the box makes of them
+		const kc = await kopen( '#kunde-1' );
+		const accountMenu = function( row ) { return all( row, '.menu' )[0]; };
+		const invitedRow = all( kc.main, '.acc' ).find( function( one ) { return one.dataset.id === 'bbbbbbbbbbbb' } );
+		click( kc, all( accountMenu( invitedRow ), 'button' )[0] );
+		click( kc, all( accountMenu( invitedRow ), '[role="menuitem"]' ).find( function( item ) { return textOf( item ) === texts['acc.resend-invite'] } ) );
+		const resend = kc.dialogs[kc.dialogs.length - 1];
+		const resendYes = function() { return all( resend, 'button' ).pop(); };
+		check( 'the dialog that sends an invitation again says Einladung senden on its button while the box of the mail is ticked, and Link anzeigen when it is not - and the mail again when it is ticked again', textOf( resendYes() ) === texts['acc.resend-yes-invite'] && ( all( resend, '#dlg-notify' )[0].checked = false, fireOn( all( resend, '#dlg-notify' )[0], 'change' ), textOf( resendYes() ) === texts['acc.resend-show'] )
+			&& ( all( resend, '#dlg-notify' )[0].checked = true, fireOn( all( resend, '#dlg-notify' )[0], 'change' ), textOf( resendYes() ) === texts['acc.resend-yes-invite'] ) );
+		const signedRow = all( kc.main, '.acc' ).find( function( one ) { return one.dataset.id === 'aaaaaaaaaaaa' } );
+		click( kc, all( accountMenu( signedRow ), 'button' )[0] );
+		click( kc, all( accountMenu( signedRow ), '[role="menuitem"]' ).find( function( item ) { return textOf( item ) === texts['acc.resend-login'] } ) );
+		check( '...for an account that has signed in it is the sign-in link: Anmeldelink senden', textOf( all( kc.dialogs[kc.dialogs.length - 1], 'button' ).pop() ) === texts['acc.resend-yes-login'] );
+		click( kc, all( kc.main, '#invite-open' )[0] );
+		const inviting = await kopen( '#kunde-1', { 'crm-clients/invite' : function( data ) { return [ 200, { account : { id : data.email === 'ok@example.org' ? 'ffffffffffff' : 'gggggggggggg', gone : false, state : 'invited', email : data.email, name : '', active : true, login : null }, mailed : data.email === 'ok@example.org' } ]; } } );
+		click( inviting, all( inviting.main, '#invite-open' )[0] );
+		type( all( inviting.main, '#f-invite-email' )[0], 'ok@example.org', false );
+		fire( all( inviting.main, '#invite' )[0], 'submit', { target : all( inviting.main, '#invite' )[0], preventDefault : function() {} } );
+		await settle();
+		const sentOk = all( inviting.main, '#unsent-ffffffffffff' ).length;
+		click( inviting, all( inviting.main, '#invite-open' )[0] );
+		type( all( inviting.main, '#f-invite-email' )[0], 'fail@example.org', false );
+		fire( all( inviting.main, '#invite' )[0], 'submit', { target : all( inviting.main, '#invite' )[0], preventDefault : function() {} } );
+		await settle();
+		check( 'an invitation sent from the form of the card that did not go out stays said in red at its account, with the button; one that went out has no such line', sentOk === 0 && all( inviting.main, '#unsent-gggggggggggg' ).length === 1 && all( inviting.main, '#unsent-ffffffffffff' ).length === 0 );
+		const inviteNow = function() { return all( kc.main, '#invite-send' )[0]; };
+		check( 'the form that invites a new account has the same button: Einladung senden with the box, Link anzeigen without it', textOf( inviteNow() ) === texts['invite.send'] && ( all( kc.main, '#f-invite-notify' )[0].checked = false, fireOn( all( kc.main, '#f-invite-notify' )[0], 'change' ), textOf( inviteNow() ) === texts['invite.show'] ) );
+		const linked = await kopen( '#kunde-1', { 'crm-clients/accounts' : function() { return [ 200, { accounts : kaccounts } ] } } );
+		click( linked, all( all( linked.main, '.menu' ).find( function( one ) { return all( one, '[role="menuitem"]' ).some( function( item ) { return textOf( item ) === texts['plink.menu-data'] } ) } ), 'button' )[0] );
+		click( linked, all( linked.main, '[role="menuitem"]' ).find( function( item ) { return textOf( item ) === texts['plink.menu-data'] } ) );
+		await settle();
+		const linkDialog = linked.dialogs[linked.dialogs.length - 1];
+		check( 'the dialog of the link for the customer makes the link while the box of the mail is off - Link erzeugen - and sends it when the box is ticked - Link senden', textOf( all( linkDialog, 'button' ).pop() ) === texts['plink.make'] && ( all( linkDialog, '#dlg-mail' )[0].checked = true, fireOn( all( linkDialog, '#dlg-mail' )[0], 'change' ), textOf( all( linkDialog, 'button' ).pop() ) === texts['plink.send'] ) );
+
+		// --- Neuer Kunde: the invitation that did not go out stays said at the account
+		const neu = await kopen( '#kunde-neu', { 'crm-clients/save' : function( data ) {
+			return [ 200, { client : Object.assign( {}, kclient, { id : 9, number : 'K-0009' } ), first : { account : { id : 'eeeeeeeeeeee', gone : false, state : 'invited', email : data.account_email, name : '', active : true, login : null }, mailed : false, refused : null } } ];
+		}, 'crm-clients/get' : function( data ) { return [ 200, { client : Object.assign( {}, kclient, { id : Number( data.id ) } ), accounts : [ { id : 'eeeeeeeeeeee', gone : false, state : 'invited', email : 'neu@example.org', name : '', active : true, login : null } ] } ] } } );
+		const newForm = all( neu.main, '#new-client-form' )[0];
+		type( all( newForm, '#f-account_email' )[0], 'neu@example.org', false );
+		all( newForm, '#f-account_notify' )[0].checked = false;
+		fireOn( all( newForm, '#f-account_notify' )[0], 'change' );
+		check( 'the button of Neuer Kunde follows the box too: Anlegen und einladen with it, Anlegen und Link anzeigen without it', textOf( all( newForm, '#client-create' )[0] ) === texts['newclient.create-link'] && ( all( newForm, '#f-account_notify' )[0].checked = true, fireOn( all( newForm, '#f-account_notify' )[0], 'change' ), textOf( all( newForm, '#client-create' )[0] ) === texts['newclient.create-invite'] ) );
+		fire( newForm, 'submit', { target : newForm, preventDefault : function() {} } );
+		await settle();
+		neu.location.hash = '#kunde-9';
+		await settle();
+		const unsent = all( neu.main, '#unsent-eeeeeeeeeeee' )[0];
+		check( 'a customer made with an invitation that did not go out has the account on its card with a red line - the invitation has not gone out - and the button Noch einmal senden, which stays on the screen and not in a toast', unsent !== undefined && unsent.getAttribute( 'role' ) === 'alert' && textOf( all( unsent, 'span' )[0] ) === texts['acc.unsent'] && textOf( all( unsent, 'button' )[0] ) === texts['acc.unsent-again'] );
+		neu.answers['crm-clients/account-resend'] = function() { return [ 500, { error : 'x', code : 'crm_clients_mail' } ]; };
+		click( neu, all( unsent, 'button' )[0] );
+		await settle();
+		check( '...a mail that does not go out again leaves the line and the button where they are, with the sentence of the refusal as a toast', all( neu.main, '#unsent-eeeeeeeeeeee' ).length === 1 && neu.toast.classList.contains( 'bad' ) === true && all( unsent, 'button' )[0].disabled === false );
+		neu.answers['crm-clients/account-resend'] = function() { return [ 200, { sent : true, kind : 'invite' } ]; };
+		click( neu, all( all( neu.main, '#unsent-eeeeeeeeeeee' )[0], 'button' )[0] );
+		await settle();
+		check( '...a mail that goes out posts crm-clients/account-resend { id, account, notify: true }, takes the line away and says the invitation is on its way', JSON.stringify( neu.last( 'crm-clients/account-resend' ).data ) === '{"id":"9","account":"eeeeeeeeeeee","notify":true}' && all( neu.main, '#unsent-eeeeeeeeeeee' ).length === 0 && neu.toast.textContent === texts['acc.resent-invite'] );
+
+		// --- the Kundenkarte: what is owed in the head, the message as one line, mail and phone as links
+		const ownDocs = kdocs.filter( function( doc ) { return doc.client_id === 1 } );
+		const ownList = function( docs ) { return function() { return [ 200, { documents : docs, years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } };
+		const own = await kopen( '#kunde-1', { 'crm-documents/list' : ownList( ownDocs ) } );
+		const owed = all( own.main, '#client-owed' )[0];
+		check( 'the head of the card says what the client owes - the open and sent invoices -, and how many of them are overdue where any is', owed !== undefined && textOf( owed ) === fill( 'card.owed', '1.690,00'+ NBSP+ '€' ) && owed.classList.contains( 'bad' ) === false );
+		const late = await kopen( '#kunde-1', { 'crm-documents/list' : ownList( ownDocs.map( function( doc ) { return doc.id === 12 ? Object.assign( {}, doc, { overdue : true } ) : doc } ) ) } );
+		check( '...with one overdue the line says so and is red', textOf( all( late.main, '#client-owed' )[0] ) === fill( 'card.owed-late', '1.690,00'+ NBSP+ '€', 1 ) && all( late.main, '#client-owed' )[0].classList.contains( 'bad' ) === true );
+		const nothing = await kopen( '#kunde-1', { 'crm-documents/list' : ownList( ownDocs.filter( function( doc ) { return doc.state === 'paid' } ) ) } );
+		check( '...and a client who owes nothing has no such line', all( nothing.main, '#client-owed' ).length === 0 );
+		check( 'the address is a mailto: link and the phone a tel: link, with the number cut down to its digits - the text is as the client has it', all( kc.main, '#client-mail' )[0].getAttribute( 'href' ) === 'mailto:lena@nordlicht.example' && textOf( all( kc.main, '#client-mail' )[0] ) === 'lena@nordlicht.example' && all( kc.main, '#client-tel' )[0].getAttribute( 'href' ) === 'tel:+4940123456' && textOf( all( kc.main, '#client-tel' )[0] ) === '+49 40 123456' );
+		const hostile = await kopen( '#kunde-1', { 'crm-clients/get' : function() { return [ 200, { client : Object.assign( {}, kclient, { email : 'a@b.de?bcc=x@y.de', phone : 'javascript:alert(1)' } ), accounts : kaccounts } ] } } );
+		check( '...an address or a number that is not of the plain shape is text and no link - nothing a person typed reaches an href', all( hostile.main, '#client-mail' ).length === 0 && all( hostile.main, '#client-tel' ).length === 0 && textOf( all( hostile.main, '#master' )[0] ).indexOf( 'a@b.de?bcc=x@y.de' ) !== -1 && findAll( hostile.main, function( node ) { return node.tagName === 'A' && /^(mailto|tel|javascript):/.test( node.getAttribute( 'href' ) ?? '' ) } ).length === 0 );
+		const lineMessage = all( kc.main, '#client-message' )[0];
+		const withText = await kopen( '#kunde-1', { 'crm-clients/get' : function() { return [ 200, { client : Object.assign( {}, kclient, { message : 'Bis Montag.', message_at : '2026-11-02T10:00:00Z' } ), accounts : kaccounts } ] } } );
+		check( 'the block of the message is one line with the button as long as there is no text and the card with the heading and the buttons Bearbeiten and Entfernen once there is', lineMessage.classList.contains( 'msg-line' ) === true && all( lineMessage, 'button' ).length === 1 && all( all( withText.main, '#client-message' )[0], 'h3' ).length === 1 && all( withText.main, '#message-remove' ).length === 1 );
+
+		// --- Braucht Dich: a line for each order and each file with comments
+		const needing = await kopen( '#uebersicht', { 'crm-documents/overview' : function() { return [ 200, { summary : summary, recent : [], settings : settings, needs : [
+			{ kind : 'overdue', id : 21, client_id : 1, client_title : 'Nordlicht', number : 'R-2026-0021', title : '', date : '2026-10-01', gross : 5000, sign_state : '', reminded_at : '2026-11-05T09:00:00Z' },
+			{ kind : 'overdue', id : 22, client_id : 1, client_title : 'Nordlicht', number : 'R-2026-0022', title : '', date : '2026-10-02', gross : 5000, sign_state : '', reminded_at : '' },
+			{ kind : 'orders', id : 0, client_id : 0, client_title : '', number : '', title : '', date : '', gross : 23800, sign_state : '', count : 2, items : [
+				{ id : 31, number : 'A-2026-0031', title : '', client_title : 'Carla <b>Neu</b>', project : '00007', project_title : 'EP Neuklang', gross : 11900 }, { id : 32, number : '', title : 'Angebot ohne Nummer', client_title : 'Ben', project : '', project_title : '', gross : 11900 } ] } ],
+			review : { count : 3, files : 2, list : [ { file : 'a00000000001', name : 'Intro.mp3', count : 2, project : '00007', project_title : 'EP Neuklang' }, { file : 'a00000000002', name : 'Outro.mp3', count : 1, project : '', project_title : '' } ] } } ] } } );
+		const subs = all( needing.main, 'li.sub' );
+		check( 'under the line that counts the orders there is a line for each, the number, the customer and the project and the way on - and the link leads to the offer, where the button is; the counting line stays as the heading', textOf( all( needing.main, '#needs-orders' )[0] ) === fill( 'needs.orders-many', 2 ) && subs.length === 4
+			&& all( subs[0], 'a' )[0].getAttribute( 'href' ) === '#beleg-31' && textOf( subs[0] ) === fill( 'needs.order-line-project', 'A-2026-0031', 'Carla <b>Neu</b>', 'EP Neuklang' )+ '119,00'+ NBSP+ '€' && all( subs[1], 'a' )[0].getAttribute( 'href' ) === '#beleg-32' && textOf( all( subs[1], 'a' )[0] ) === fill( 'needs.order-line', 'Angebot ohne Nummer', 'Ben' )
+			&& findAll( needing.main, function( node ) { return node.tagName === 'B' } ).length === 0 );
+		check( '...a file with open comments has a line too, with its project, the count, and a link to the tab Dateien of the project - or to the projects where it lies in no project', textOf( all( needing.main, '#needs-review' )[0] ) === fill( 'needs.review-many', 3, 2 ) && subs[2].dataset.file === 'a00000000001' && textOf( subs[2] ) === fill( 'needs.file-many', 'Intro.mp3 · EP Neuklang', 2 ) && all( subs[2], 'a' )[0].getAttribute( 'href' ) === '#projekt-00007-dateien'
+			&& textOf( subs[3] ) === fill( 'needs.file-one', 'Outro.mp3', 1 ) && all( subs[3], 'a' )[0].getAttribute( 'href' ) === '#projekte' );
+		const clocks = all( needing.main, '.clock' );
+		check( 'an overdue invoice that was reminded has the small clock with the day as its title and its name; one that was not has none', clocks.length === 1 && clocks[0].title === fill( 'reminded.title', '05.11.2026' ) && clocks[0].getAttribute( 'aria-label' ) === fill( 'reminded.title', '05.11.2026' ) && clocks[0].getAttribute( 'role' ) === 'img' && all( all( needing.main, '.list-mini li' )[1], '.clock' ).length === 0 );
+
+		// --- the search of the Übersicht
+		const finder = await kopen( '#uebersicht', { 'crm-projekte/list' : function() { return [ 200, { missing : false, projects : [ { id : '00007', title : 'EP Neuklang', client : 'K-0003', client_id : 3, client_title : 'Ohne Konto AG' }, { id : '00008', title : 'Carla-Cover', client : 'K-0001', client_id : 1, client_title : 'Nordlicht' } ] } ] } } );
+		const q = all( finder.main, '#q' )[0];
+		check( 'the search has no list before anything is typed, and asks for no list', all( finder.main, '#search-results' )[0].hidden === true && finder.all( 'crm-clients/list' ).length === 0 && q.getAttribute( 'role' ) === 'combobox' && q.getAttribute( 'aria-expanded' ) === 'false' );
+		type( q, 'o', false );
+		await settle();
+		const results = all( finder.main, '#search-results' )[0];
+		check( 'a text gives a list of what the pages hold: the clients, the projects and the documents in groups of their own, each hit a link to its screen - the list is a listbox with an option for each hit, the first one marked', results.hidden === false && results.getAttribute( 'role' ) === 'listbox' && all( results, '[role="group"]' ).map( function( group ) { return group.dataset.kind } ).join() === 'client,project,document'
+			&& all( results, '[role="option"]' ).length === all( results, 'a' ).length && all( results, '[role="option"]' )[0].getAttribute( 'aria-selected' ) === 'true' && q.getAttribute( 'aria-activedescendant' ) === 'hit-0' && q.getAttribute( 'aria-expanded' ) === 'true' );
+		type( q, 'carla', false );
+		await settle();
+		const groupsNow = all( results, '[role="group"]' ).map( function( group ) { return group.dataset.kind+ ':'+ all( group, 'a' ).map( function( a ) { return a.getAttribute( 'href' ) } ).join( '+' ) } ).join( ' ' );
+		check( '...Carla finds the client by her name and the project by its title: the card of the client, the card of the project - and nothing is asked of the server for a text, the lists are loaded once', groupsNow === 'client:#kunde-3 project:#projekt-00008' && finder.all( 'crm-clients/list' ).length === 1 && finder.all( 'crm-projekte/list' ).length === 1 && finder.all( 'crm-documents/list' ).length === 1 );
+		fireOn( q, 'keydown', { key : 'Enter' } );
+		check( '...Enter takes the first hit', finder.location.hash === '#kunde-3' );
+		type( q, 'o', false );
+		await settle();
+		const total = all( results, 'a' ).length;
+		fireOn( q, 'keydown', { key : 'ArrowDown' } );
+		check( 'the arrows move the mark through all the hits and round again: down marks the second, up the first and then the last', all( results, '[role="option"]' )[1].getAttribute( 'aria-selected' ) === 'true' && all( results, '[role="option"]' )[0].getAttribute( 'aria-selected' ) === 'false' && q.getAttribute( 'aria-activedescendant' ) === 'hit-1'
+			&& ( fireOn( q, 'keydown', { key : 'ArrowUp' } ), q.getAttribute( 'aria-activedescendant' ) === 'hit-0' ) && ( fireOn( q, 'keydown', { key : 'ArrowUp' } ), q.getAttribute( 'aria-activedescendant' ) === 'hit-'+ ( total - 1 ) ) );
+		fireOn( q, 'keydown', { key : 'ArrowUp' } );
+		fireOn( q, 'keydown', { key : 'Enter' } );
+		check( '...and Enter takes the one that is marked', finder.location.hash === all( results, 'a' )[total - 2].getAttribute( 'href' ) );
+		const quick = await kopen( '#uebersicht' );
+		type( all( quick.main, '#q' )[0], 'o', false );
+		type( all( quick.main, '#q' )[0], '', false );
+		await settle();
+		check( 'a text that was typed and taken away before the lists came does not bring the list back over the empty field', all( quick.main, '#search-results' )[0].hidden === true && all( all( quick.main, '#search-results' )[0], 'a' ).length === 0 && quick.all( 'crm-clients/list' ).length === 1 );
+		const closing = await kopen( '#uebersicht' );
+		type( all( closing.main, '#q' )[0], 'o', false );
+		await settle();
+		check( 'a list that is open is there to be closed', all( closing.main, '#search-results' )[0].hidden === false );
+		fireOn( all( closing.main, '#q' )[0], 'keydown', { key : 'Escape' } );
+		check( 'Escape closes the list', all( closing.main, '#search-results' )[0].hidden === true && all( closing.main, '#q' )[0].getAttribute( 'aria-expanded' ) === 'false' && all( all( closing.main, '#search-results' )[0], 'a' ).length === 0 );
+		const nothing2 = await kopen( '#uebersicht' );
+		type( all( nothing2.main, '#q' )[0], 'zzz-nothing', false );
+		await settle();
+		const noList = all( nothing2.main, '#search-results' )[0].hidden === true;
+		fireOn( all( nothing2.main, '#q' )[0], 'keydown', { key : 'Enter' } );
+		check( 'a text nothing holds has no list, and Enter shows the documents with it as their filter', noList === true && nothing2.location.hash === '#belege' && nothing2.app.state.filter.q === 'zzz-nothing' );
+		const crowd = await kopen( '#uebersicht', { 'crm-clients/list' : function() { return [ 200, { clients : Array.from( { length : 9 }, function( unused, index ) { return Object.assign( {}, kclient, { id : 40 + index, number : 'K-01'+ index, company : index === 0 ? '<img src=x onerror=alert(1)> Test' : 'Test '+ index, name : '', email : '' } ) } ) } ] } } );
+		type( all( crowd.main, '#q' )[0], 'test', false );
+		await settle();
+		check( 'at most five hits of a kind are listed, and a name with markup in it is text', all( all( crowd.main, '#search-results' )[0], 'a' ).length === 5 && findAll( crowd.main, function( node ) { return node.tagName === 'IMG' } ).length === 0 && textOf( all( crowd.main, '#search-results' )[0] ).indexOf( '<img src=x onerror=alert(1)> Test' ) !== -1 );
+		click( crowd, all( crowd.main, '.tile' )[0] );
+		check( 'a click elsewhere closes the list', all( crowd.main, '#search-results' )[0].hidden === true );
+
+		// --- the release asks first, and may carry a sentence to the customer
+		const releasing = await stepper( { state : 'open' } );
+		click( releasing, all( releasing.main, '#primary' )[0] );
+		const releaseBox = releasing.dialogs[0];
+		const releaseNote = all( releaseBox, '#dlg-note' )[0];
+		check( 'Versenden opens a dialog before anything is posted, always: the box of the mail ticked, and a field for a sentence to the customer - text, five hundred characters at most, empty at first', releasing.dialogs.length === 1 && releasing.steps.length === 0 && all( releaseBox, '#dlg-mail' )[0].checked === true && releaseNote.tagName === 'TEXTAREA' && releaseNote.getAttribute( 'maxlength' ) === '500' && releaseNote.value === '' && releaseNote.disabled === false );
+		const releaseYes = function() { return all( releaseBox, 'button' ).pop(); };
+		check( '...the button says Versenden while the mail is ticked and Freigeben when it is not, and the field of the sentence is off then - the sentence goes with the mail', textOf( releaseYes() ) === texts['primary.send'] && ( all( releaseBox, '#dlg-mail' )[0].checked = false, fireOn( all( releaseBox, '#dlg-mail' )[0], 'change' ), textOf( releaseYes() ) === texts['release.do'] && releaseNote.disabled === true )
+			&& ( all( releaseBox, '#dlg-mail' )[0].checked = true, fireOn( all( releaseBox, '#dlg-mail' )[0], 'change' ), textOf( releaseYes() ) === texts['primary.send'] && releaseNote.disabled === false ) );
+		releaseNote.value = '  Hallo Carla,\nwie besprochen: <b>hier</b> ist es.  ';
+		click( releasing, releaseYes() );
+		await settle();
+		check( '...the yes posts the release with the mail and the sentence, trimmed - as the text it is, not as markup', JSON.stringify( releasing.steps[0][1] ) === JSON.stringify( { id : '11', mail : true, note : 'Hallo Carla,\nwie besprochen: <b>hier</b> ist es.' } ) );
+		const silent = await stepper( { state : 'open' } );
+		silent.answers['crm-documents/release'] = function( data ) { silent.steps.push( [ 'release', data ] ); return [ 200, { document : full( { state : 'open' } ), mailed : 0, mail : data.mail === true } ] };
+		click( silent, all( silent.main, '#primary' )[0] );
+		all( silent.dialogs[0], '#dlg-note' )[0].value = 'wird nicht gesendet';
+		all( silent.dialogs[0], '#dlg-mail' )[0].checked = false;
+		fireOn( all( silent.dialogs[0], '#dlg-mail' )[0], 'change' );
+		click( silent, all( silent.dialogs[0], 'button' ).pop() );
+		await settle();
+		check( '...without the mail the release is posted without the sentence, whatever stands in the field, and the toast says it was released without a mail', JSON.stringify( silent.steps[0][1] ) === '{"id":"11","mail":false}' && silent.toast.textContent === texts['release.silent'] );
+		const refusedNote = await stepper( { state : 'open' }, { 'crm-documents/release' : function() { return [ 400, { error : 'x', code : 'crm_documents_note', params : [], field : 'note' } ] } } );
+		click( refusedNote, all( refusedNote.main, '#primary' )[0] );
+		all( refusedNote.dialogs[0], '#dlg-note' )[0].value = 'Mit Satz';
+		click( refusedNote, all( refusedNote.dialogs[0], 'button' ).pop() );
+		await settle();
+		check( '...a refusal of the server is said in the dialog, which stays open with the sentence that was typed - nothing is drawn again and no toast says it', refusedNote.dialogs[0].open === true && textOf( all( refusedNote.dialogs[0], '#dlg-problem' )[0] ) === texts['error.crm_documents_note'] && all( refusedNote.dialogs[0], '#dlg-problem' )[0].hidden === false && all( refusedNote.dialogs[0], '#dlg-note' )[0].value === 'Mit Satz' && refusedNote.all( 'crm-documents/get' ).length === 1 && refusedNote.toast.classList.contains( 'bad' ) === false );
+		refusedNote.answers['crm-documents/release'] = function() { return [ 200, { document : full( { state : 'open', released : true } ), mailed : 2, mail : true } ]; };
+		click( refusedNote, all( refusedNote.dialogs[0], 'button' ).pop() );
+		await settle();
+		check( '...and the yes that follows posts it again from the same dialog, which closes and says what was done', refusedNote.dialogs[0].open === false && refusedNote.last( 'crm-documents/release' ).data.note === 'Mit Satz' && refusedNote.toast.textContent === fill( 'send.done', 2 ) && refusedNote.all( 'crm-documents/get' ).length === 2 );
+		const again = await stepper( { state : 'sent', released : true } );
+		await tabClick( again, 'Portal & Versand' );
+		click( again, all( body( again ), '#mail-again' )[0] );
+		check( 'E-Mail erneut senden asks the same: the dialog, with the sentence', again.dialogs.length === 1 && all( again.dialogs[0], '#dlg-note' ).length === 1 && again.steps.length === 0 );
+		const noted = await opened( { state : 'sent', released : true, release_note : 'Hallo <b>Carla</b>', release_note_at : '2026-11-06T10:15:00Z' } );
+		await tabClick( noted, 'Verlauf' );
+		const noteLine = all( body( noted ), 'li' ).find( function( li ) { return textOf( li ).indexOf( 'Hallo' ) !== -1 } );
+		check( 'the history of the document keeps what the customer was told: the time and the sentence, as text', noteLine !== undefined && textOf( noteLine.children[1] ) === fill( 'history.note', 'Hallo <b>Carla</b>' ) && findAll( body( noted ), function( node ) { return node.tagName === 'B' } ).length === 0 );
+
+		// --- the reminder in sight
+		const reminded = await opened( { state : 'sent', released : true, reminded_at : '2026-11-06T09:30:00Z', reminded_mail : true } );
+		const headLine = all( reminded.main, '#reminded-head' )[0];
+		check( 'the head of an invoice that was reminded says it - the day and that it went by mail - with the clock', headLine !== undefined && textOf( headLine ) === ' '+ fill( 'reminded.head-mail', '06.11.2026' ) && all( headLine, '.clock' ).length === 1 );
+		const quiet = await opened( { state : 'open', reminded_at : '2026-11-06T09:30:00Z', reminded_mail : false } );
+		check( '...one noted without a mail says so, and an invoice that is paid, an offer or one that was never reminded has no such line', textOf( all( quiet.main, '#reminded-head' )[0] ) === ' '+ fill( 'reminded.head-quiet', '06.11.2026' ) && all( ( await opened( { state : 'paid', reminded_at : '2026-11-06T09:30:00Z' } ) ).main, '#reminded-head' ).length === 0
+			&& all( ( await opened( { state : 'sent', reminded_at : '' } ) ).main, '#reminded-head' ).length === 0 && all( ( await opened( { id : 13, category : 'offer', state : 'sent', reminded_at : '2026-11-06T09:30:00Z' } ) ).main, '#reminded-head' ).length === 0 );
+		const listed = world( { hash : '#belege', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+			'crm-documents/list' : function() { return [ 200, { documents : [ row( { id : 1, state : 'sent', reminded_at : '2026-11-06T09:30:00Z' } ), row( { id : 2, number : 'R-2026-0002', state : 'sent' } ), row( { id : 3, number : 'R-2026-0003', state : 'paid', reminded_at : '2026-11-01T09:30:00Z' } ) ], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+		listed.boot();
+		await settle();
+		const listClocks = all( listed.main, 'tbody .clock' );
+		check( 'the list of the documents has the clock with the day beside the state of an invoice that was reminded and is still asked for - and none beside the others', listClocks.length === 1 && listClocks[0].title === fill( 'reminded.title', '06.11.2026' ) && listClocks[0].parentNode.parentNode.dataset.id === '1' );
+	}
 
 
 	done();

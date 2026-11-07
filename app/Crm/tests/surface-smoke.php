@@ -1637,7 +1637,7 @@ check( '...the filters: a client\'s projects by its id, the open ones, a search 
 	&& array_column( surfaceApi( $appData, 'crm-projekte/list', [ 'open' => true ] )[1]['projects'], 'title' ) === [ 'Podcast', 'Album 2027 neu' ] && array_column( surfaceApi( $appData, 'crm-projekte/list', [ 'q' => 'fert' ] )[1]['projects'], 'title' ) === [ 'Fertig' ]
 	&& surfaceApi( $appData, 'crm-projekte/list', [ 'client' => '99999' ] )[1]['projects'] === [] && surfaceApi( $appData, 'crm-projekte/list', [ 'client' => 'x' ] )[0] === 400 && array_column( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'], 'id' ) === [ '00004', '00003', '00001' ] );
 [ $status, $got ] = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] );
-check( 'get answers one project the same way, with its client, the language, whether Files is on, no folder and no list of files where it has no folder', $status === 200 && $got['project']['id'] === '00001' && $got['project']['documents'] === 3 && $got['project']['open'] === 1 && $got['client'] === [ 'id' => $a['id'], 'number' => $a['number'], 'title' => 'Studio Nord GmbH', 'active' => true, 'active_accounts' => 2 ]
+check( 'get answers one project the same way, with its client, the language, whether Files is on, no folder and no list of files where it has no folder', $status === 200 && $got['project']['id'] === '00001' && $got['project']['documents'] === 3 && $got['project']['open'] === 1 && $got['client'] === [ 'id' => $a['id'], 'number' => $a['number'], 'title' => 'Studio Nord GmbH', 'active' => true, 'active_accounts' => 2, 'signed_accounts' => 1 ]
 	&& $got['native'] === 'de_DE' && $got['files'] === true && $got['folder'] === null && $got['list'] === [] && isset( $got['project']['file_list'] ) === false );
 check( '...a project nobody has is 404 crm_projekte_unknown at the field id; an id that is no id as well', ( $r = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00099' ] ) )[0] === 404 && $r[1]['code'] === 'crm_projekte_unknown' && $r[1]['field'] === 'id' && surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '../x' ] )[1]['code'] === 'crm_projekte_unknown' );
 
@@ -1834,10 +1834,12 @@ check( '...a file nobody has is the panel\'s own 404 files_unknown, which touche
 $asItems();
 surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'folder' => $folderId ] ] + $project );
 $asCrm();
-\Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => true ] );
-$notifyOn = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['notify'] ?? null;
 \Nino\Features::saveSettings( $appData, 'files', [ 'notifyMembers' => false ] );
-check( 'the card of a project says the setting of Dateien that mails the members as notify, for the box of the tab to start from', $notifyOn === true && ( surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['notify'] ?? null ) === false );
+$notifyOn = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['notify'] ?? null;
+surfaceApi( $appData, 'crm-documents/settings-save', [ 'notify_files' => '0' ] );
+$notifyOff = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['notify'] ?? null;
+surfaceApi( $appData, 'crm-documents/settings-save', [ 'notify_files' => '1' ] );
+check( 'the card of a project says the setting of the CRM that mails the customers for new files as notify, for the box of the tab to start from: on at first whatever the setting of Dateien says, off once the owner switched it off', $notifyOn === true && $notifyOff === false && ( surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['notify'] ?? null ) === true );
 [ , $list ] = surfaceApi( $appData, 'crm-projekte/list' );
 check( 'with a folder the list counts the files of the project and the card lists them with the address each is downloaded at, who put it there and whether the members see it - for the account of the CRM alone', array_column( $list['projects'], 'files', 'id' )['00001'] === 1 && array_column( $list['projects'], 'files', 'id' )['00003'] === 0
 	&& ( $got = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1] )['folder'] === [ 'id' => $folderId, 'name' => 'Album 2027' ] && count( $got['list'] ) === 1 && $got['list'][0] === [ 'id' => $fileId, 'name' => 'Notizen.txt', 'ext' => 'txt', 'size' => $total, 'mime' => 'text/plain', 'created' => $stored[0]['created'], 'visible' => false, 'gone' => '', 'by' => [ 'kind' => 'owner', 'label' => '' ], 'url' => '/.files/'. $fileId, 'title' => 'Notizen', 'version' => '', 'versions' => 1, 'group' => 0, 'comments' => null ] );
@@ -1982,7 +1984,7 @@ $offAnswer = array_map( static fn( string $action ): array => surfaceApi( $appDa
 check( 'where the feature Review is not active both actions are 409 review_off, with the permission of the panel, as files_off is for the Files panel',
 	array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $offAnswer ) === [ '409 review_off', '409 review_off' ] && ( Surface::texts()['error.review_off'] ?? '' ) !== '' );
 check( '...the Review panel\'s own class is not asked: nothing is changed, nothing is made, no line of the log', \Nino\Modules\Review\Store::read( $appData ) === $reviewBefore && $lines( 'Marked comment' ) === 0 );
-check( '...the first screen counts nothing, the card has no counts and says the feature is off, and the data block has no permission of the panel to give', ( $offOverview = surfaceApi( $appData, 'crm-documents/overview' )[1] ) !== [] && $offOverview['review'] === [ 'count' => 0, 'files' => 0 ]
+check( '...the first screen counts nothing, the card has no counts and says the feature is off, and the data block has no permission of the panel to give', ( $offOverview = surfaceApi( $appData, 'crm-documents/overview' )[1] ) !== [] && $offOverview['review'] === [ 'count' => 0, 'files' => 0, 'list' => [] ]
 	&& surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['review'] === false && Surface\Review::allowed( $appData ) === false );
 
 \Nino\Features::activate( $appData, 'review' );
@@ -2061,9 +2063,10 @@ check( '...and the sentences are the page\'s: the codes of the Review panel come
 
 // The Übersicht: the comments nobody has settled, on the files of the clients' folders
 $asReview();
-$openOf = static function() use ( &$appData ): array { return surfaceApi( $appData, 'crm-documents/overview' )[1]['review'] ?? []; };
+$openOf = static function() use ( &$appData ): array { return array_diff_key( surfaceApi( $appData, 'crm-documents/overview' )[1]['review'] ?? [], [ 'list' => 0 ] ); };
 check( 'the overview counts the comments of members that nobody has settled on files of the folders of the clients, and the files they are on: three comments on two files - the owner\'s answer is no task and a comment in another group\'s folder is none of it',
 	$openOf() === [ 'count' => 3, 'files' => 2 ] );
+surfaceReviewListChecks( $appData, $song1, $song2, $folderK, $project, $audio, $byMember, $asItems, $asReview, $asCrm );
 surfaceApi( $appData, 'review/done', [ 'file' => $song2['id'], 'id' => $comment3['id'] ] );
 check( '...a comment settled is not counted, and a file whose comments are all settled is not counted as a file', $openOf() === [ 'count' => 2, 'files' => 1 ] );
 surfaceApi( $appData, 'review/done', [ 'file' => $song2['id'], 'id' => $comment3['id'] ] );
@@ -2072,7 +2075,7 @@ check( '...a file that was removed from the server keeps its open comments in th
 \Nino\Modules\Files\Store::deleteFile( $appData, $song2['id'] );
 check( '...and a file that is deleted takes its comments with it: Files tells Review, and the count follows', $openOf() === [ 'count' => 2, 'files' => 1 ] );
 $asCrm();
-check( '...the count is read under the permission of the CRM alone, as the rest of the overview is', surfaceApi( $appData, 'crm-documents/overview' )[1]['review'] === [ 'count' => 2, 'files' => 1 ] );
+check( '...the count is read under the permission of the CRM alone, as the rest of the overview is', array_diff_key( surfaceApi( $appData, 'crm-documents/overview' )[1]['review'], [ 'list' => 0 ] ) === [ 'count' => 2, 'files' => 1 ] );
 
 // The card: the files in the order of their titles, each with its numbers
 $song2 = $audio( $folderK['id'], 'Song.02.wav', '2026-10-02T10:00:00Z' );
@@ -2539,6 +2542,211 @@ function surfaceConsentChecks( array &$appData, array $a, array $b, array $proje
 
 surfaceConsentChecks( $appData, $a, $b, $project, $asCrm, $asItems );
 surfaceLinkChecks( $appData, $a, $accounts, $asLinker, $asCrm, $reset );
+surfaceEverydayChecks( $appData, $a, $c, $final, $line, $day, $reset, $asCrm );
+
+// --- /crm im Alltag: what the first screen and the lists name, the sentence to the customer, the setting of the mail for new files ---------------------------------
+
+/**
+ *	The comments nobody has settled, named one by one on the first screen and counted by project in the list: the files with the most first, each with its project, and the project's
+ *	number of open comments and of files - a stroke (null) where Review does not run
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$song1				A file of the folder of project 00001 with two open comments
+ *	@param		array 		$song2				A file of the same folder with one
+ *	@param		array 		$folderK			The folder of the two files, which the project 00001 is given for the time of the checks
+ *	@param		array 		$project			The fields an element of the type projekte is saved with
+ *	@param		\Closure	$audio				Puts a file of a name and a day into a folder
+ *	@param		array 		$byMember			The author of a comment
+ *	@param		\Closure	$asItems
+ *	@param		\Closure	$asReview
+ *	@param		\Closure	$asCrm
+ *
+ *	@return 	void
+ */
+function surfaceReviewListChecks( array &$appData, array $song1, array $song2, array $folderK, array $project, \Closure $audio, array $byMember, \Closure $asItems, \Closure $asReview, \Closure $asCrm ): void {
+
+	$own = (string) \Crm\Projekte::get( $appData, '00001' )['folder'];
+	$asItems();
+	surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'folder' => $folderK['id'] ] ] + $project );
+	$asReview();
+	$review = surfaceApi( $appData, 'crm-documents/overview' )[1]['review'];
+	$names = array_map( static fn( array $file ): string => (string) \Nino\Modules\Files::file( $appData, $file['id'] )['name'], [ $song1, $song2 ] );
+
+	check( 'the overview names the files that carry open comments, the one with the most first: the file, its name, how many comments, and the project whose folder it lies in', array_column( $review['list'], 'file' ) === [ $song1['id'], $song2['id'] ] && array_column( $review['list'], 'name' ) === $names
+		&& array_column( $review['list'], 'count' ) === [ 2, 1 ] && array_column( $review['list'], 'project' ) === [ '00001', '00001' ] && array_column( $review['list'], 'project_title' ) === [ \Crm\Projekte::get( $appData, '00001' )['title'], \Crm\Projekte::get( $appData, '00001' )['title'] ]
+		&& $review['count'] === 3 && $review['files'] === 2 );
+	$extra = [];
+
+	for( $n = 1; $n <= Surface\Review::LIST_MAX; $n++ ) {
+		$extra[$n] = $audio( $folderK['id'], 'Mehr.'. str_pad( (string) $n, 2, '0', STR_PAD_LEFT ). '.wav', '2026-10-03T10:00:00Z' );
+		\Nino\Modules\Review::add( $appData, $extra[$n]['id'], $byMember, null, 'Auch offen' );
+	}
+
+	$crowded = surfaceApi( $appData, 'crm-documents/overview' )[1]['review'];
+	check( '...no more of them than the screen has room for: with twelve files the list has ten, the two with the most comments first, and the count and the files are of all twelve', count( $crowded['list'] ) === Surface\Review::LIST_MAX && $crowded['files'] === 12 && $crowded['count'] === 13 && array_column( $crowded['list'], 'count' ) === [ 2, 1, 1, 1, 1, 1, 1, 1, 1, 1 ] );
+
+	foreach( $extra as $file )
+		\Nino\Modules\Files\Store::deleteFile( $appData, $file['id'] );
+	$listed = array_column( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'], null, 'id' );
+	check( 'the list of the projects counts the open comments by project - how many and on how many files - and a project whose folder has none says 0', $listed['00001']['comments'] === 3 && $listed['00001']['comment_files'] === 2 && $listed['00003']['comments'] === 0 && $listed['00003']['comment_files'] === 0 );
+	check( '...the card of the project carries the same two numbers', surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['project']['comments'] === 3 );
+	\Nino\Features::deactivate( $appData, 'review' );
+	$off = array_column( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'], null, 'id' );
+	\Nino\Features::activate( $appData, 'review' );
+	check( '...and with Review off it is null for every project: the screen shows a stroke, not a nought it cannot know', $off['00001']['comments'] === null && $off['00001']['comment_files'] === null );
+	$asItems();
+	surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'folder' => $own ] ] + $project );
+	$asReview();
+}
+
+/**
+ *	The sentence of the owner to the customer in the release mail, the order and the reminder in the first screen, the day of a reminder in the lists, and the setting of the mail for new files
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$a						The client of the invoices, with two accounts that are on
+ *	@param		array 		$c						A client with no account
+ *	@param		\Closure	$final				Makes a document of a category for a client from the fields given, and finalises it
+ *	@param		\Closure	$line					A line of a document, by its title and its price
+ *	@param		\Closure	$day					A day by its distance from today
+ *	@param		\Closure	$reset				Gives the cap of mails back
+ *	@param		\Closure	$asCrm
+ *
+ *	@return 	void
+ */
+function surfaceEverydayChecks( array &$appData, array $a, array $c, \Closure $final, \Closure $line, \Closure $day, \Closure $reset, \Closure $asCrm ): void {
+
+	global $mails;
+
+	$invoice = static fn( int $client, string $title ): array => $final( 'invoice', $client, [ 'date' => $day( -60 ), 'due_date' => $day( -46 ), 'lines' => [ $line( $title ) ], 'template_key' => 'rechnung' ] );
+	$late1 = $invoice( $a['id'], 'Mit Satz' );
+	$late2 = $invoice( $a['id'], 'Ohne Mail' );
+	$sentLate = $invoice( $c['id'], 'Für niemanden' );
+	$neverReminded = $invoice( $a['id'], 'Nie erinnert' );
+
+	$asCrm();
+	$reset();
+	$note = "Hallo Anna,\nwie besprochen: <b>hier</b> ist [[heading]] es.";
+	$plainBefore = count( $mails );
+	Documents::release( $appData, $late1['id'], true );
+	$plain = surfaceMailsFrom( $plainBefore );
+	$reset();
+	$before = count( $mails );
+	$released = Documents::release( $appData, $late1['id'], true, false, '', '  '. $note. "\n" );
+	$sent = surfaceMailsFrom( $before );
+	$body = (string) ( $sent[0]['body'] ?? '' );
+	$kept = (array) Documents::get( $appData, $late1['id'] );
+
+	check( 'a release with a sentence of the owner mails it to each account: the sentence stands in a paragraph of its own under the introduction and above the document, its line break is a break', is_array( $released ) && $released['mailed'] === 2 && count( $sent ) === 2 && str_contains( $body, 'wie besprochen' ) === true && str_contains( $body, 'Hallo Anna,<br>wie besprochen' ) === true
+		&& strpos( $body, 'im Kundenportal liegt ein neues Dokument' ) < strpos( $body, 'Hallo Anna,<br>' ) && strpos( $body, 'Hallo Anna,<br>' ) < strpos( $body, 'Rechnung: '. $late1['number'] ) );
+	check( '...it is text: markup in it is escaped and a placeholder in it is no placeholder - the heading stands once, in the heading, and the words of the sentence are there as typed', str_contains( $body, '&lt;b&gt;hier&lt;/b&gt;' ) === true && str_contains( $body, '<b>hier' ) === false && str_contains( $body, 'ist &#91;&#91;heading]] es.' ) === true && str_contains( $body, 'ist [[heading]] es.' ) === false && substr_count( $body, 'Ein Dokument liegt für Dich bereit' ) === 1 );
+	check( '...a release without one has no paragraph for it and no slot left over: one paragraph fewer, nothing in square brackets', substr_count( $body, '<p ' ) === substr_count( (string) $plain[0]['body'], '<p ' ) + 1 && str_contains( (string) $plain[0]['body'], '[[' ) === false && str_contains( $body, '[[note' ) === false );
+	check( '...the document keeps what the customer was told - the sentence trimmed, and the time of the release - and the history of the screen can read it', $kept['release_note'] === $note && preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $kept['release_note_at'] ) === 1 );
+	$cleanups = [ [ 'a sentence of 501 characters', str_repeat( 'x', 501 ) ], [ 'a control character', "a\x07b" ], [ 'a null byte', "a\x00b" ], [ 'bytes that are no text', "a\xff\xfeb" ] ];
+	$refused = [];
+
+	foreach( $cleanups as [ $why, $text ] )
+		$refused[$why] = Documents::release( $appData, $late2['id'], true, false, '', $text );
+
+	check( 'a sentence that is none is refused as "note" - too long, a control character, a null byte, bytes that are no text - and nothing is written: the invoice is not released, nobody is mailed', array_unique( array_values( $refused ) ) === [ 'note' ] && ( $row = Documents::get( $appData, $late2['id'] ) ) !== null && $row['released'] === false && $row['release_note'] === '' && count( $mails ) === $before + 2 );
+	check( '...500 characters pass, in a language of two bytes as well, and so do a tab and a line break; the sentence is counted in characters', Documents::cleanNote( str_repeat( 'ä', 500 ) ) === str_repeat( 'ä', 500 ) && Documents::cleanNote( "a\tb\nc" ) === "a\tb\nc" && Documents::cleanNote( "  \n " ) === '' && Documents::cleanNote( str_repeat( 'ä', 501 ) ) === null );
+	check( '...a sentence needs the mail: without it the release is refused as "note_mail" and the invoice is not released', Documents::release( $appData, $late2['id'], false, false, '', 'Hallo' ) === 'note_mail' && Documents::get( $appData, $late2['id'] )['released'] === false );
+	$none = Documents::release( $appData, $sentLate['id'], true, false, '', 'Für niemanden' );
+	check( '...where no mail reaches anyone the sentence is not kept: it is a record of what the customer was told', is_array( $none ) && $none['mailed'] === 0 && Documents::get( $appData, $sentLate['id'] )['release_note'] === '' && Documents::get( $appData, $sentLate['id'] )['release_note_at'] === '' );
+	Documents::release( $appData, $late1['id'], true );
+	check( '...and a release again without a sentence leaves the one that was kept', Documents::get( $appData, $late1['id'] )['release_note'] === $note );
+	$reminder = \Crm\Documents\Mail::compose( $appData, (array) Documents::get( $appData, $late1['id'] ), 'remind', false, $note );
+	check( 'a reminder never carries the sentence of a release', count( $reminder ) === 2 && str_contains( (string) $reminder[0]['body'], 'wie besprochen' ) === false && str_contains( (string) $reminder[0]['body'], '[[note' ) === false );
+
+	// the panel's action
+	$reset();
+	[ $status, $answer ] = surfaceApi( $appData, 'crm-documents/release', [ 'id' => (string) $late1['id'], 'mail' => true, 'note' => 'Zweite Nachricht' ] );
+	check( 'crm-documents/release takes note: 200, the mails that went out, and the document with the sentence it keeps', $status === 200 && $answer['mailed'] === 2 && $answer['document']['release_note'] === 'Zweite Nachricht' );
+	$logged = \Crm\Documents\Admin::log( 'crm-documents/release', [ 'id' => (string) $late1['id'], 'mail' => true, 'note' => 'Zweite Nachricht' ] );
+	check( '...the line of the activity log names the document and never the sentence', str_contains( $logged, 'Released document' ) === true && str_contains( $logged, 'Zweite' ) === false && str_contains( $logged, 'Nachricht' ) === false );
+	$codes = [
+		'a sentence that is too long' => [ [ 'mail' => true, 'note' => str_repeat( 'x', 501 ) ], 400, 'crm_documents_note' ],
+		'a sentence with a control character' => [ [ 'mail' => true, 'note' => "a\x01b" ], 400, 'crm_documents_note' ],
+		'a sentence that is a list' => [ [ 'mail' => true, 'note' => [ 'x' ] ], 400, 'crm_documents_note' ],
+		'a sentence without the mail' => [ [ 'mail' => false, 'note' => 'Hallo' ], 409, 'crm_documents_note_mail' ],
+	];
+	$answers = [];
+
+	foreach( $codes as $why => [ $input, $expectedStatus, $code ] ) {
+		[ $status, $answer ] = surfaceApi( $appData, 'crm-documents/release', [ 'id' => (string) $late2['id'] ] + $input );
+		$answers[$why] = $status === $expectedStatus && ( $answer['code'] ?? '' ) === $code && ( $answer['field'] ?? '' ) === 'note';
+	}
+
+	check( '...a sentence that is none is refused with a code of its own at the field note - 400 for text that is wrong, 409 for a sentence without the mail - and the invoice stays unreleased', array_filter( $answers, static fn( bool $ok ): bool => $ok === false ) === [] && Documents::get( $appData, $late2['id'] )['released'] === false );
+	check( '...each code has a sentence in both languages', array_filter( [ 'de_DE', 'en_US' ], static function( string $locale ): bool {
+		$texts = (array) require dirname( __DIR__ ). '/Documents/Admin/text/'. $locale. '.php';
+
+		return trim( (string) ( $texts['[[/_admin/error/crm_documents_note]]'] ?? '' ) ) === '' || trim( (string) ( $texts['[[/_admin/error/crm_documents_note_mail]]'] ?? '' ) ) === '';
+	} ) === [] && trim( (string) ( Surface::texts()['error.crm_documents_note'] ?? '' ) ) !== '' && trim( (string) ( Surface::texts()['error.crm_documents_note_mail'] ?? '' ) ) !== '' );
+
+	// the reminder in sight
+	$reset();
+	Documents::release( $appData, $late2['id'], false );
+	Documents::release( $appData, $neverReminded['id'], false );
+	Db::exec( $appData, 'UPDATE documents SET state = \'sent\' WHERE id IN ( :a, :b )', [ 'a' => $late2['id'], 'b' => $neverReminded['id'] ] );
+	Documents::remind( $appData, $late2['id'], false );
+	$reminded = array_column( surfaceApi( $appData, 'crm-documents/list' )[1]['documents'], null, 'id' );
+	check( 'the list of the documents says when the invoice was reminded and whether by mail, and has the two fields empty for one that never was', preg_match( '/^\d{4}-\d{2}-\d{2}T/', $reminded[$late2['id']]['reminded_at'] ) === 1 && $reminded[$late2['id']]['reminded_mail'] === false && $reminded[$neverReminded['id']]['reminded_at'] === '' && $reminded[$neverReminded['id']]['reminded_mail'] === false );
+	$needsNow = array_column( surfaceApi( $appData, 'crm-documents/overview' )[1]['needs'], null, 'id' );
+	check( '...and so does a line of "Braucht Dich" for an overdue invoice: the time of the last reminder, empty for none', preg_match( '/^\d{4}-\d{2}-\d{2}T/', $needsNow[$late2['id']]['reminded_at'] ?? '' ) === 1 && ( $needsNow[$neverReminded['id']]['reminded_at'] ?? 'x' ) === '' );
+
+	// the orders, one by one
+	$offer = Documents::finalise( $appData, (int) Documents::add( $appData, 'offer', $a['id'], [ 'date' => date( 'Y-m-d' ), 'valid_until' => date( 'Y-m-d', time() + 20 * 86400 ), 'lines' => [ [ 'title' => 'Beauftragt', 'qty' => '1', 'price' => '100', 'unit' => 'Stk', 'vat_rate' => 0 ] ], 'template_key' => 'angebot' ] )['id'] );
+	Documents::setProject( $appData, $offer['id'], '00001' );
+	Documents::release( $appData, $offer['id'], false );
+	$order = Documents::order( $appData, $offer['id'], $a['id'], [ 'id' => 'aaaaaaaaaaaa', 'email' => 'anna@example.org', 'name' => 'Anna Nord' ], 'Ich beauftrage.', [ 'ip' => '203.0.113.5', 'agent' => 'Test' ] );
+	$orders = array_values( array_filter( surfaceApi( $appData, 'crm-documents/overview' )[1]['needs'], static fn( array $need ): bool => $need['kind'] === 'orders' ) );
+	check( 'the line of the orders carries the orders one by one - the document, its number, its client, its project and its sum - so that the screen can name them, and the count and the sum are the line\'s as they were', is_array( $order ) && count( $orders ) === 1 && $orders[0]['count'] === 1 && $orders[0]['gross'] === $offer['gross'] && count( $orders[0]['items'] ) === 1
+		&& $orders[0]['items'][0] === [ 'id' => $offer['id'], 'number' => $offer['number'], 'title' => '', 'client_title' => 'Studio Nord GmbH', 'project' => '00001', 'project_title' => \Crm\Projekte::get( $appData, '00001' )['title'], 'gross' => $offer['gross'] ] );
+	for( $n = 1; $n <= Documents::NEEDS_ORDERS; $n++ ) {
+		$more = $final( 'offer', $a['id'], [ 'date' => $day( -1 ), 'valid_until' => $day( 20 ), 'lines' => [ $line( 'Noch einer '. $n ) ], 'template_key' => 'angebot' ] );
+		Documents::release( $appData, $more['id'], false );
+		Documents::order( $appData, $more['id'], $a['id'], [ 'id' => 'aaaaaaaaaaaa', 'email' => 'anna@example.org', 'name' => 'Anna Nord' ], 'Ich beauftrage.', [ 'ip' => '203.0.113.5', 'agent' => 'Test' ] );
+	}
+
+	$crowded = array_values( array_filter( surfaceApi( $appData, 'crm-documents/overview' )[1]['needs'], static fn( array $need ): bool => $need['kind'] === 'orders' ) );
+	check( 'the line sums the orders it counts - eleven of them, each of the same sum - and not just the one it names first', $crowded[0]['gross'] === ( Documents::NEEDS_ORDERS + 1 ) * $offer['gross'] );
+	check( '...no more of them than the screen has room for: with eleven orders the line counts eleven and names ten, the newest first', count( $crowded ) === 1 && $crowded[0]['count'] === Documents::NEEDS_ORDERS + 1 && count( $crowded[0]['items'] ) === Documents::NEEDS_ORDERS && $crowded[0]['items'][0]['id'] > $crowded[0]['items'][9]['id'] );
+
+	// an offer with two records of an order is one order, named at the time of the later: it comes before an offer ordered between the two
+	$twice = $final( 'offer', $a['id'], [ 'date' => $day( -1 ), 'valid_until' => $day( 20 ), 'lines' => [ $line( 'Zweimal' ) ], 'template_key' => 'angebot' ] );
+	Documents::release( $appData, $twice['id'], false );
+	Documents::setState( $appData, $twice['id'], 'accepted' );
+	$ago = static fn( int $seconds ): string => gmdate( 'Y-m-d\TH:i:s\Z', time() - $seconds );
+	foreach( [ 5000, 0 ] as $seconds )
+		Db::exec( $appData, 'INSERT INTO records ( kind, client_id, member_id, document_id, sha256, shown, at ) VALUES ( \'order\', :c, \'x\', :d, \'h\', \'s\', :at )', [ 'c' => $a['id'], 'd' => $twice['id'], 'at' => $ago( $seconds ) ] );
+	$ids = array_column( array_values( array_filter( surfaceApi( $appData, 'crm-documents/overview' )[1]['needs'], static fn( array $need ): bool => $need['kind'] === 'orders' ) )[0]['items'], 'id' );
+	check( '...so the newest record of an offer decides its place: the offer with two records is named once, first', $ids[0] === $twice['id'] && count( array_keys( $ids, $twice['id'], true ) ) === 1 );
+
+	// the sentence keeps its line breaks as \n and refuses what turns the direction of the text
+	$reset();
+	$crlf = Documents::release( $appData, $late1['id'], true, false, '', "a\r\nb" );
+	$crlfMail = (string) ( surfaceMailsFrom( count( $mails ) - 2 )[0]['body'] ?? '' );
+	check( 'a sentence with a Windows line break is kept with the one of the system and mailed as a break: "a" and "b" with one <br> between them', is_array( $crlf ) && Documents::get( $appData, $late1['id'] )['release_note'] === "a\nb" && str_contains( $crlfMail, 'a<br>b' ) === true && str_contains( $crlfMail, '&#13;' ) === false );
+	$turning = [];
+	foreach( [ "a\u{202E}b", "a\u{2066}b", "a\u{202A}b", "a\u{2069}b" ] as $text )
+		$turning[] = Documents::cleanNote( $text ) === null && \Crm\Settings::clean( 'portal_message', $text ) === [ 'value:portal_message' ] && \Crm\Clients::setMessage( $appData, $a['id'], $text ) === 'format:message';
+	$sameCode = [];
+	foreach( [ "a\u{202E}b", "a\u{202A}b", "a\u{2069}b" ] as $text ) {
+		[ $status, $answer ] = surfaceApi( $appData, 'crm-clients/message', [ 'id' => (string) $a['id'], 'text' => $text ] );
+		$sameCode[] = $status. ' '. ( $answer['code'] ?? '' ). ' '. ( $answer['field'] ?? '' );
+	}
+	check( 'the message to one client refuses each character that turns the direction of the text with the same status, code and field', count( array_unique( $sameCode ) ) === 1 && $sameCode[0] === '400 crm_clients_format message' );
+	check( 'a sentence to the customer, the message to all and the message to one client refuse the characters that turn the direction of the text (U+202A to U+202E, U+2066 to U+2069) and keep the others - Arabic and Hebrew letters pass', $turning === [ true, true, true, true ] && Documents::cleanNote( "שלום مرحبا" ) === "שלום مرحبا" && \Crm\Settings::clean( 'portal_message', "שלום" ) === "שלום" );
+
+	// the setting of the mail for new files
+	check( 'the setting notify_files is a switch: "0" or "1", on at first', \Crm\Settings::get( $appData, 'notify_files' ) === '1' && \Crm\Settings::set( $appData, 'notify_files', '0' ) === true && \Crm\Settings::get( $appData, 'notify_files' ) === '0' && \Crm\Settings::set( $appData, 'notify_files', '1' ) === true );
+	$wrong = [];
+
+	foreach( [ 'yes' => 'yes', 'two' => '2', 'empty' => '', 'true' => true, 'list' => [ '1' ] ] as $why => $value )
+		$wrong[$why] = \Crm\Settings::clean( 'notify_files', $value ) === [ 'value:notify_files' ] && surfaceApi( $appData, 'crm-documents/settings-save', [ 'notify_files' => $value ] )[0] === 400;
+
+	check( '...anything else is refused at the field, and nothing of the request is written', array_filter( $wrong, static fn( bool $ok ): bool => $ok === false ) === [] && \Crm\Settings::get( $appData, 'notify_files' ) === '1' );
+}
 
 // --- The script of the surface ---------------------------------------------------------------------------------------
 

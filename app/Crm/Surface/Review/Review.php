@@ -20,6 +20,9 @@ class Review {
 	// The permission of the panel: the one the actions of review/* ask for
 	public const string PERM = '/_admin/review/manage';
 
+	// How many files the first screen names one by one
+	public const int LIST_MAX = 10;
+
 	// The actions of the panel that the surface offers, and the method of this class that answers each
 	private const array ACTIONS = [ 'review/comments' => 'apiComments', 'review/done' => 'apiDone' ];
 
@@ -132,21 +135,19 @@ class Review {
 	}
 
 	/**
-	 *	The comments of members that are open - not marked as done - on the files that lie in the folders of the clients, and on how many files: what the first screen
-	 *	says it needs. A file of the site's own folders and a file that is gone from Files are none of it
+	 *	The files of the clients' folders that carry comments of members that are open - not marked as done: a file of the site's own folders and a file that is gone from Files are none of it
 	 *
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	array											count and files; both 0 where the feature is off
+	 *	@return 	array											A list of file (its id), name, folder (its id) and count (the open comments); [] where the feature is off
 	 */
-	public static function open( array &$appData ): array {
-
-		$sum = [ 'count' => 0, 'files' => 0 ];
+	public static function scan( array &$appData ): array {
 
 		if( self::available() === false || \Crm\Crm::featureOn( $appData, 'review' ) === false || \Crm\Crm::featureOn( $appData, 'files' ) === false )
-			return $sum;
+			return [];
 
 		$clients = [];
+		$found = [];
 
 		foreach( \Nino\Modules\Review\Store::read( $appData ) as $id => $comments ) {
 
@@ -163,13 +164,62 @@ class Review {
 				$clients[$folder] = $known !== null && Files::clientOf( $appData, (string) $known['group'] ) !== null;
 			}
 
-			if( $clients[$folder] === true ) {
-				$sum['count'] += $open;
-				$sum['files']++;
-			}
+			if( $clients[$folder] === true )
+				$found[] = [ 'file' => (string) $id, 'name' => (string) $file['name'], 'folder' => $folder, 'count' => $open ];
 		}
 
+		return $found;
+	}
+
+	/**
+	 *	The comments of members that are open on the files of the clients' folders, and on how many files: what the first screen says it needs - and, for each of the first
+	 *	files, where it lies (the project whose folder it is in) and how many comments it carries, so that the screen can point at the file
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											count and files (both 0 where the feature is off) and list: file, name, count, project (its id; '' for a folder no project names) and project_title, the files with the most comments first, at most LIST_MAX
+	 */
+	public static function open( array &$appData ): array {
+
+		$found = self::scan( $appData );
+		$sum = [ 'count' => array_sum( array_column( $found, 'count' ) ), 'files' => count( $found ), 'list' => [] ];
+
+		if( $found === [] )
+			return $sum;
+
+		usort( $found, static fn( array $a, array $b ): int => [ $b['count'], $a['name'], $a['file'] ] <=> [ $a['count'], $b['name'], $b['file'] ] );
+
+		$projects = [];
+
+		if( \Crm\Projekte::missing( $appData ) === false )
+			foreach( \Crm\Projekte::list( $appData ) as $project )
+				if( $project['folder'] !== '' )
+					$projects[$project['folder']] = $project;
+
+		foreach( array_slice( $found, 0, self::LIST_MAX ) as $one )
+			$sum['list'][] = [ 'file' => $one['file'], 'name' => $one['name'], 'count' => $one['count'], 'project' => $projects[$one['folder']]['id'] ?? '', 'project_title' => $projects[$one['folder']]['title'] ?? '' ];
+
 		return $sum;
+	}
+
+	/**
+	 *	The open comments by folder
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											folder (its id) => [ count (the open comments), files ]; none for a folder with no open comment
+	 */
+	public static function folders( array &$appData ): array {
+
+		$folders = [];
+
+		foreach( self::scan( $appData ) as $one ) {
+			$folders[$one['folder']] ??= [ 'count' => 0, 'files' => 0 ];
+			$folders[$one['folder']]['count'] += $one['count'];
+			$folders[$one['folder']]['files']++;
+		}
+
+		return $folders;
 	}
 
 	/**

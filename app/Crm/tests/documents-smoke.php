@@ -101,7 +101,7 @@ echo "Migration 0002\n";
 $pdo = Db::pdo( $appData );
 $tables = array_column( Db::rows( $appData, 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' ORDER BY name' ), 'name' );
 check( 'the tables of C01 and of C02 are there - and the table of the items is not: migration 0005 dropped it', $tables === [ 'client_accounts', 'clients', 'dismissals', 'document_lines', 'documents', 'project_states', 'records', 'sequences', 'settings' ] );
-check( 'user_version is 13 and the first boot ran the thirteen migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 13 && Db::migrated() === 13 );
+check( 'user_version is 14 and the first boot ran the fourteen migrations', (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 14 && Db::migrated() === 14 );
 
 Db::close();
 Db::pdo( $appData );
@@ -110,10 +110,10 @@ check( 'a second boot runs no migration', Db::migrated() === 0 );
 $settings = Settings::all( $appData );
 check( 'the settings are written where they were missing: the defaults of the plan', $settings === [ 'vat_mode' => 'small_business', 'vat_rates' => '1900,700,0', 'payment_days' => '14', 'offer_days' => '30', 'currency' => '€',
 	'number_offer' => 'A-{YYYY}-{NNNN}', 'number_invoice' => 'R-{YYYY}-{NNNN}', 'number_credit' => 'G-{YYYY}-{NNNN}', 'tax_id' => '', 'bank_name' => '', 'iban' => '', 'bic' => '', 'paypal' => '', 'seller_name' => '', 'seller_street' => '', 'seller_zip' => '', 'seller_city' => '', 'seller_country' => 'DE', 'seller_contact' => '', 'seller_phone' => '',
-	'seller_email' => '', 'vat_id' => '', 'vat_exempt_text' => 'Kein Ausweis von Umsatzsteuer gemäß § 19 UStG', 'privacy_text' => '', 'privacy_changed' => '', 'portal_message' => '', 'portal_message_at' => '', 'consent_social' => '', 'consent_archive' => '' ]);
+	'seller_email' => '', 'vat_id' => '', 'vat_exempt_text' => 'Kein Ausweis von Umsatzsteuer gemäß § 19 UStG', 'privacy_text' => '', 'privacy_changed' => '', 'portal_message' => '', 'portal_message_at' => '', 'consent_social' => '', 'consent_archive' => '', 'notify_files' => '1' ]);
 check( 'the columns of documents are the ones of the plan', array_column( Db::rows( $appData, 'PRAGMA table_info( documents )' ), 'name' ) === [ 'id', 'category', 'client_id', 'parent_id', 'number', 'state', 'date', 'due_date', 'valid_until', 'period_from', 'period_to',
 	'vat_mode', 'reverse_charge', 'net', 'vat', 'gross', 'template_key', 'inputs_json', 'client_json', 'notes', 'pdf_path', 'pdf_sha256', 'finalised', 'sent_at', 'paid_at', 'created', 'updated',
-	'title', 'released', 'released_at', 'sign_id', 'sign_state', 'signed_at', 'project', 'reminded_at', 'reminded_mail', 'buyer_reference', 'xml_path', 'xml_sha256', 'xml_lacks' ] );
+	'title', 'released', 'released_at', 'sign_id', 'sign_state', 'signed_at', 'project', 'reminded_at', 'reminded_mail', 'buyer_reference', 'xml_path', 'xml_sha256', 'xml_lacks', 'release_note', 'release_note_at' ] );
 
 check( 'the table has no CHECK on category and state: the model lists them, a later patch adds to them', str_contains( (string) Db::row( $appData, 'SELECT sql FROM sqlite_master WHERE name = \'documents\'' )['sql'], 'CHECK' ) === false );
 
@@ -826,7 +826,7 @@ check( 'the inputs are the document\'s own', $data['inputs'] === $secondInvoice[
 // The particulars of the owner's invoices: the settings tax_id, bank_name, iban, bic, and the tokens a template reads them as
 check( 'the four particulars are tokens of every document, empty where the settings are not set: /site/tax, /site/bank, /site/iban, /site/bic', array_intersect_key( $tokens, array_flip( [ '/site/tax', '/site/bank', '/site/iban', '/site/bic' ] ) ) === [ '/site/tax' => '', '/site/bank' => '', '/site/iban' => '', '/site/bic' => '' ]
 	&& array_intersect_key( $offerTokens, array_flip( [ '/site/tax', '/site/iban' ] ) ) === [ '/site/tax' => '', '/site/iban' => '' ] );
-check( '...the settings are keys with an empty default: all() has them, get() reads them, and a key that is none is still refused', Settings::get( $appData, 'iban' ) === '' && array_slice( array_keys( Settings::all( $appData ) ), -21 ) === [ 'tax_id', 'bank_name', 'iban', 'bic', 'paypal', 'seller_name', 'seller_street', 'seller_zip', 'seller_city', 'seller_country', 'seller_contact', 'seller_phone', 'seller_email', 'vat_id', 'vat_exempt_text', 'privacy_text', 'privacy_changed', 'portal_message', 'portal_message_at', 'consent_social', 'consent_archive' ] && Settings::set( $appData, 'swift', 'x' ) === 'unknown' );
+check( '...the settings are keys with an empty default: all() has them, get() reads them, and a key that is none is still refused', Settings::get( $appData, 'iban' ) === '' && array_slice( array_keys( Settings::all( $appData ) ), -22 ) === [ 'tax_id', 'bank_name', 'iban', 'bic', 'paypal', 'seller_name', 'seller_street', 'seller_zip', 'seller_city', 'seller_country', 'seller_contact', 'seller_phone', 'seller_email', 'vat_id', 'vat_exempt_text', 'privacy_text', 'privacy_changed', 'portal_message', 'portal_message_at', 'consent_social', 'consent_archive', 'notify_files' ] && Settings::set( $appData, 'swift', 'x' ) === 'unknown' );
 $particulars = [ 'tax_id' => '12/345/67890', 'bank_name' => 'Sparkasse Hamburg', 'iban' => 'de89 3704 0044 0532 0130 00', 'bic' => 'cobadeffxxx' ];
 check( '...they are written where they pass their rule: an IBAN in capitals in groups of four, a BIC in capitals; set() answers true', array_filter( $particulars, static fn( string $value, string $key ): bool => Settings::set( $appData, $key, $value ) !== true, ARRAY_FILTER_USE_BOTH ) === []
 	&& Settings::get( $appData, 'iban' ) === 'DE89 3704 0044 0532 0130 00' && Settings::get( $appData, 'bic' ) === 'COBADEFFXXX' && Settings::get( $appData, 'tax_id' ) === '12/345/67890' && Settings::get( $appData, 'bank_name' ) === 'Sparkasse Hamburg' );
@@ -1632,7 +1632,7 @@ foreach( (array) include \Crm\Db::migrations()[1] as $statement )
 $file->exec( 'PRAGMA user_version = 1' );
 $file->exec( 'UPDATE settings SET value = \'regular\' WHERE key = \'vat_mode\'' );
 $file = null;
-check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 12 );
+check( 'migration 0002 on a database of the first schema leaves the setting that is there, and adds the ones that are not', Settings::get( $old, 'vat_mode' ) === 'regular' && Settings::get( $old, 'payment_days' ) === '14' && Db::migrated() === 13 );
 Db::close();
 \Nino\Filesystem::removeDir( ninoSandboxDir( $old ) );
 
@@ -1692,7 +1692,7 @@ $file->exec( 'INSERT INTO document_lines ( document_id, sort, title, qty, price_
 check( 'the database before has the table of the items with its rows', (int) $file->query( 'SELECT COUNT(*) FROM items' )->fetchColumn() === 2 );
 $file = null;
 $kept = Documents::get( $dropped, 1 );
-check( 'migrations 0005 to 0013 on a database of the fourth schema run once: version 13, the table of the items is gone', (int) Db::pdo( $dropped )->query( 'PRAGMA user_version' )->fetchColumn() === 13 && Db::migrated() === 9
+check( 'migrations 0005 to 0014 on a database of the fourth schema run once: version 14, the table of the items is gone', (int) Db::pdo( $dropped )->query( 'PRAGMA user_version' )->fetchColumn() === 14 && Db::migrated() === 10
 	&& Db::rows( $dropped, 'SELECT name FROM sqlite_master WHERE name = \'items\'' ) === [] && Db::rows( $dropped, 'SELECT name FROM sqlite_sequence WHERE name = \'items\'' ) === [] );
 check( '...the document and its line are as they were: the line has the words it copied', is_array( $kept ) && $kept['number'] === 'R-2025-0001' && count( $kept['lines'] ) === 1 && $kept['lines'][0]['title'] === 'Alt' && $kept['lines'][0]['price_net'] === 100 );
 check( '...it is one statement and nothing else, and document_lines is not in it', ( include $root. '/app/Crm/Db/migrations/0005-positionen.php' ) === [ 'DROP TABLE IF EXISTS items' ] && str_contains( implode( ' ', (array) include $root. '/app/Crm/Db/migrations/0005-positionen.php' ), 'document_lines' ) === false );
@@ -1719,7 +1719,7 @@ $file->exec( 'INSERT INTO clients ( id, number, company, created, updated ) VALU
 $file->exec( 'INSERT INTO documents ( category, client_id, number, state, date, vat_mode, template_key, created, updated ) VALUES ( \'invoice\', 1, \'R-2025-0001\', \'paid\', \'2025-05-05\', \'small_business\', \'rechnung\', \'x\', \'x\' )' );
 $file = null;
 $old = Documents::get( $upgraded, 1 );
-check( 'a database of the second schema with a document is migrated once: version 13, the eleven migrations that were missing', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 13 && Db::migrated() === 11 );
+check( 'a database of the second schema with a document is migrated once: version 14, the twelve migrations that were missing', (int) Db::pdo( $upgraded )->query( 'PRAGMA user_version' )->fetchColumn() === 14 && Db::migrated() === 12 );
 check( '...the document is as it was, with the new columns at their defaults: no title, not released, no request, no signing day', is_array( $old ) === false ? false : $old['number'] === 'R-2025-0001' && $old['state'] === 'paid' && $old['title'] === '' && $old['released'] === false && $old['released_at'] === null
 	&& $old['sign_id'] === '' && $old['sign_state'] === '' && $old['signed_at'] === null );
 Db::close();
@@ -1851,7 +1851,7 @@ check( '...the client is frozen in it: a change of the client does not reach the
 check( '...it is fixed: nothing but the notes changes, a finalised document is not deleted, and finalising again is refused', Documents::change( $appData, $contract['id'], [ 'title' => 'x' ] ) === 'fixed' && Documents::remove( $appData, $contract['id'] ) === 'fixed' && Documents::finalise( $appData, $contract['id'] ) === 'fixed'
 	&& is_array( Documents::setNotes( $appData, $contract['id'], 'neu' ) ) );
 check( '...and appears in the list under its title, with no amount worth a line', ( array_values( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['id'] === $contract['id'] ) )[0] ?? [] ) === [
-	'id' => $contract['id'], 'category' => 'contract', 'number' => '', 'title' => 'Vertrag neu', 'state' => 'open', 'released' => false, 'sign_state' => '', 'expired' => false, 'overdue' => false, 'date' => $today, 'due_date' => null, 'valid_until' => null, 'gross' => 0, 'client_id' => $first['id'], 'client_title' => 'Studio Nord GmbH', 'parent_id' => $offerFinal['id'], 'project' => '', 'project_title' => '', 'template_key' => 'dienstleistung' ] );
+	'id' => $contract['id'], 'category' => 'contract', 'number' => '', 'title' => 'Vertrag neu', 'state' => 'open', 'released' => false, 'reminded_at' => '', 'reminded_mail' => false, 'sign_state' => '', 'expired' => false, 'overdue' => false, 'date' => $today, 'due_date' => null, 'valid_until' => null, 'gross' => 0, 'client_id' => $first['id'], 'client_title' => 'Studio Nord GmbH', 'parent_id' => $offerFinal['id'], 'project' => '', 'project_title' => '', 'template_key' => 'dienstleistung' ] );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Neu GmbH' ] );
 check( '...the client it shows is the one frozen into it, not the one the client is now', array_column( array_filter( Documents::list( $appData ), static fn( array $row ): bool => $row['id'] === $contract['id'] ), 'client_title' ) === [ 'Studio Nord GmbH' ] );
 \Crm\Clients::change( $appData, $first['id'], [ 'company' => 'Studio Nord GmbH' ] );
@@ -2741,6 +2741,27 @@ function documentsConsentChecks( array &$appData, \Closure $post, string $root )
 documentsConsentChecks( $appData, $post, $root );
 documentsFeatureUnitChecks( $appData, $post, $root );
 documentsTemplateKeyChecks( $appData, $post );
+documentsNoteChecks( $appData, $root );
+
+/**
+ *	The columns that keep the sentence of a release: what migration 0014 adds, and what a document finalised before it has in them
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$root
+ *
+ *	@return 	void
+ */
+function documentsNoteChecks( array &$appData, string $root ): void {
+
+	echo "\nThe sentence of a release\n";
+
+	$statements = (array) include $root. '/app/Crm/Db/migrations/0014-release-note.php';
+	$columns = array_column( Db::rows( $appData, 'PRAGMA table_info( documents )' ), null, 'name' );
+
+	check( 'migration 0014 adds the two columns of the sentence and nothing else: the text, empty at first and not null, and the time, which a document that was never released with one does not have', count( $statements ) === 2 && str_contains( $statements[0], 'ADD COLUMN release_note ' ) === true && str_contains( $statements[1], 'ADD COLUMN release_note_at ' ) === true
+		&& (int) $columns['release_note']['notnull'] === 1 && $columns['release_note']['dflt_value'] === "''" && (int) $columns['release_note_at']['notnull'] === 0 );
+	check( '...a document that is there has them empty, and get() says so with texts', ( $row = Db::row( $appData, 'SELECT id FROM documents ORDER BY id LIMIT 1' ) ) !== null && ( $document = Documents::get( $appData, (int) $row['id'] ) ) !== null && $document['release_note'] === '' && $document['release_note_at'] === '' );
+}
 
 ninoDone( $appData );
 

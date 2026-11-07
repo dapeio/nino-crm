@@ -42,6 +42,7 @@ class Settings {
 		'portal_message_at' => '',
 		'consent_social' => '',
 		'consent_archive' => '',
+		'notify_files'   => '1',
 	];
 
 	// The keys the module keeps itself: a post of the surface never writes them. privacy_changed is the day privacy_text last changed, portal_message_at the time portal_message last changed
@@ -226,7 +227,11 @@ class Settings {
 			case 'consent_archive':
 				$value = trim( str_replace( [ "\r\n", "\r" ], "\n", $value ) );
 
-				return mb_strlen( $value, 'UTF-8' ) <= self::MAX_MESSAGE && preg_match( '/[^\P{Cc}\n\t]/u', $value ) === 0 ? $value : [ 'value:'. $key ];
+				return mb_strlen( $value, 'UTF-8' ) <= self::MAX_MESSAGE && preg_match( '/[^\P{Cc}\n\t]|[\x{202A}-\x{202E}\x{2066}-\x{2069}]/u', $value ) === 0 ? $value : [ 'value:'. $key ];
+
+			// Whether the customers are mailed for the files the owner uploads into a project: the box of the upload starts at it
+			case 'notify_files':
+				return in_array( $value, [ '0', '1' ], true ) === true ? $value : [ 'value:'. $key ];
 
 			// Set by the module when the text changes, never by a post
 			case 'privacy_changed':

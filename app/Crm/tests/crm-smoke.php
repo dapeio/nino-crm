@@ -122,7 +122,7 @@ $thirdFile->exec( 'INSERT INTO client_accounts ( client_id, member_id ) VALUES (
 $thirdFile = null;
 $migrated = \Crm\Db::pdo( $third );
 $rows = \Crm\Db::rows( $third, 'SELECT client_id, member_id FROM client_accounts ORDER BY rowid' );
-check( 'migrations 0004 to 0013 on a database of the third schema run once: version 13, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 10 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 13
+check( 'migrations 0004 to 0014 on a database of the third schema run once: version 14, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 11 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 14
 	&& array_map( 'json_encode', $rows ) === [ '{"client_id":2,"member_id":"aaaaaaaaaaaa"}', '{"client_id":1,"member_id":"bbbbbbbbbbbb"}' ] );
 check( '...migration 0006 gave the documents the column project, empty for every row there is, and the index on it', in_array( 'project', array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( documents )' ), 'name' ), true ) === true
 	&& (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'documents_project\' AND tbl_name = \'documents\'' )['n'] === 1 && \Crm\Db::rows( $third, 'SELECT id FROM documents WHERE project <> \'\'' ) === [] );
@@ -1741,7 +1741,7 @@ check( '...a save that leaves the text as it is does not move the day; a differe
 check( '...the rule of the text: tabs and line breaks pass, a control character, a text longer than '. \Crm\Settings::MAX_PRIVACY. ' characters and anything that is not text are refused; the empty text is a text (the portal asks for nothing again)', \Crm\Settings::set( $rec, 'privacy_text', "a\tb\nc" ) === true && \Crm\Settings::set( $rec, 'privacy_text', "a\x07b" ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', "a\x00b" ) === 'value:privacy_text'
 	&& \Crm\Settings::set( $rec, 'privacy_text', str_repeat( 'x', \Crm\Settings::MAX_PRIVACY + 1 ) ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', str_repeat( 'ä', \Crm\Settings::MAX_PRIVACY ) ) === true && \Crm\Settings::set( $rec, 'privacy_text', [ 'x' ] ) === 'value:privacy_text' && \Crm\Settings::set( $rec, 'privacy_text', "\xff\xfe" ) === 'value:privacy_text' );
 \Crm\Settings::set( $rec, 'privacy_text', $first );
-check( '...a text that is stored keeps the keys in order: the particulars, then the text and its day, then the message to the clients and its time, then the sentences of the consents', array_slice( array_keys( \Crm\Settings::all( $rec ) ), -6 ) === [ 'privacy_text', 'privacy_changed', 'portal_message', 'portal_message_at', 'consent_social', 'consent_archive' ] );
+check( '...a text that is stored keeps the keys in order: the particulars, then the text and its day, then the message to the clients and its time, then the sentences of the consents, then the choice to mail the customers for new files', array_slice( array_keys( \Crm\Settings::all( $rec ) ), -7 ) === [ 'privacy_text', 'privacy_changed', 'portal_message', 'portal_message_at', 'consent_social', 'consent_archive', 'notify_files' ] );
 $messageChecks = [];
 $messageChecks['none'] = \Crm\Settings::get( $rec, 'portal_message' ) === '' && \Crm\Settings::get( $rec, 'portal_message_at' ) === '';
 $messageChecks['set'] = \Crm\Settings::set( $rec, 'portal_message', "  Zu bis Montag.\r\nDanke!  " ) === true && \Crm\Settings::get( $rec, 'portal_message' ) === "Zu bis Montag.\nDanke!"

@@ -295,7 +295,7 @@ class Clients {
 			return 'long:message';
 
 		// A text that is no UTF-8 is none: preg_match() answers false for it
-		if( preg_match( '/[^\P{Cc}\n\t]/u', $text ) !== 0 )
+		if( preg_match( '/[^\P{Cc}\n\t]|[\x{202A}-\x{202E}\x{2066}-\x{2069}]/u', $text ) !== 0 )
 			return 'format:message';
 
 		Db::exec( $appData, 'UPDATE clients SET message = :message, message_at = :at WHERE id = :id', [ 'message' => $text, 'at' => $text === '' ? '' : gmdate( self::TIME ), 'id' => $id ] );
@@ -834,7 +834,7 @@ class Clients {
 	 *	@param		array 		$linked				The ids of the rows of the client
 	 *	@param		array 		$members			As members() has them
 	 *
-	 *	@return 	array										With accounts, how many are the client's, and active_accounts, how many of them are on; title, how the client is called; and ready, whether an invoice can name it
+	 *	@return 	array										With accounts, how many are the client's, and active_accounts, how many of them are on, and signed_accounts, how many of those have signed in; title, how the client is called; and ready, whether an invoice can name it
 	 */
 	private static function shape( array $row, array $linked, array $members ): array {
 
@@ -845,6 +845,7 @@ class Clients {
 		$row['business'] = (int) $row['business'] === 1;
 		$row['accounts'] = count( $ids );
 		$row['active_accounts'] = count( array_filter( $ids, static fn( string $id ): bool => ( $members[$id]['active'] ?? false ) === true ) );
+		$row['signed_accounts'] = count( array_filter( $ids, static fn( string $id ): bool => ( $members[$id]['active'] ?? false ) === true && ( $members[$id]['login'] ?? null ) !== null ) );
 		$row['group'] = self::group( (string) $row['number'] );
 		$row['ready'] = self::invoiceReady( $row );
 		$row['title'] = self::title( $row, (string) ( $members[$ids[0] ?? '']['email'] ?? '' ) );

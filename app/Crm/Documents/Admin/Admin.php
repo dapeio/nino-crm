@@ -49,6 +49,8 @@ class Admin {
 		'sign'     => [ 409, 'crm_documents_sign', '' ],
 		'released' => [ 409, 'crm_documents_released', '' ],
 		'download' => [ 409, 'crm_documents_download', '' ],
+		'note'     => [ 400, 'crm_documents_note', 'note' ],
+		'note_mail' => [ 409, 'crm_documents_note_mail', 'note' ],
 		'mail'     => [ 409, 'crm_documents_sign_mail', '' ],
 		'link_perm' => [ 403, 'crm_documents_link_perm', '' ],
 		'project'  => [ 400, 'crm_project', 'project' ],
@@ -512,6 +514,7 @@ class Admin {
 	/**
 	 *	Release a finalised document to the portal; mail true also mails the accounts of its client (and sends an offer, an invoice or a
 	 *	credit note that was open). With download true the release of an invoice of a project also switches the download of the project's files on (Documents::release()).
+	 *	note is a sentence of the owner to the customer (at most Documents::MAX_NOTE characters, text) that the mail carries and the document keeps; it needs mail true. The activity log names the document, never the sentence.
 	 *	Answers the document and how many mails were delivered
 	 */
 	public static function apiRelease( array &$appData, array &$request ): void {
@@ -529,7 +532,14 @@ class Admin {
 
 			$mail = ( $data['mail'] ?? false ) === true;
 			$user = \Nino\Auth::getCurrentUser( $appData );
-			$released = Documents::release( $appData, $document['id'], $mail, ( $data['download'] ?? false ) === true, $user === false ? '' : (string) $user['mail'] );
+
+			// The sentence to the customer is text; anything else is no sentence
+			if( array_key_exists( 'note', $data ) === true && is_string( $data['note'] ) === false ) {
+				self::_refused( $request, 'note' );
+				return;
+			}
+
+			$released = Documents::release( $appData, $document['id'], $mail, ( $data['download'] ?? false ) === true, $user === false ? '' : (string) $user['mail'], (string) ( $data['note'] ?? '' ) );
 
 			if( is_string( $released ) === true ) {
 				self::_refused( $request, $released );

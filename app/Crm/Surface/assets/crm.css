@@ -392,3 +392,62 @@ fieldset.choice .check { display: flex; min-height: 44px; align-items: center }
 dialog.dlg label.check { min-height: 44px }
 .head:has(> .link-btn) { column-gap: 8px }
 .head > .link-btn { padding: 0 8px; gap: 4px }
+
+/* /crm im Alltag: the search of the Übersicht with its hits, the line of a message, the clock of a reminder, the bar of the Einstellungen, the area for dropped files */
+.search-box { position: relative }
+.hits { position: absolute; left: 0; top: 34px; width: max(100%, 340px); max-width: calc(100vw - 32px); max-height: 70vh; overflow-y: auto; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); z-index: 8 }
+.hits .heading { padding: 6px 10px 2px; color: var(--fg-2); font-size: 11px; letter-spacing: .06em; text-transform: uppercase }
+.hits a.hit { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; padding: 6px 10px; border-radius: 4px; color: var(--fg) }
+.hits a.hit:hover, .hits a.hit.on { background: var(--accent-soft); text-decoration: none }
+.hits a.hit b { font-weight: 500; overflow-wrap: anywhere }
+.hits a.hit .muted { color: var(--fg-2); font-size: 12px; text-align: right }
+.msg-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 2px 0 }
+.msg-line .state-note { margin: 0 }
+.clock { display: inline-block; position: relative; width: 12px; height: 12px; margin-left: 6px; border: 1.5px solid var(--warn); border-radius: 50%; vertical-align: -2px }
+.clock::before { content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 1.5px; height: 4px; background: var(--warn) }
+.clock::after { content: ""; position: absolute; left: 4.5px; top: 5px; width: 3.5px; height: 1.5px; background: var(--warn) }
+.list-mini li.sub { padding: 3px 0 3px 22px; border-top: 0; font-size: 12.5px }
+.list-mini li.sub a { color: var(--accent) }
+.save-what { margin: 0 }
+.head .sub.bad { color: var(--bad) }
+.head select { height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: inherit; font: inherit }
+.jump { position: sticky; top: 0; z-index: 6; display: flex; gap: 6px; margin: 0 -20px 12px; padding: 6px 20px; overflow-x: auto; background: var(--bg); border-bottom: 1px solid var(--line); scrollbar-width: none }
+.jump::-webkit-scrollbar { display: none }
+.jump-to { flex: 0 0 auto; min-height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); cursor: pointer; white-space: nowrap }
+.jump-to:hover { background: var(--surface-2) }
+.jump-to.on { background: var(--fg); border-color: var(--fg); color: var(--bg) }
+#vat, #numbers, #particulars, #seller, #privacy, #consents, #message-all, #firma-holder, #portal { scroll-margin-top: 56px }
+.accounts .acc .failed { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 10px; border-radius: var(--radius); background: var(--bad-soft); color: var(--bad) }
+.drop { padding: 12px 14px; border: 2px dashed var(--fg-3); border-radius: var(--radius) }
+.drop.over { border-color: var(--accent); background: var(--accent-soft) }
+.drop > p { margin: 0 0 8px }
+#newclient-optional { margin: 0 0 12px }
+.tile .l { color: var(--fg-2) }
+.tbl td.cm .muted { color: var(--fg-2) }
+dialog.dlg .field > span { color: var(--fg-2) }
+
+/* The phone: the rail is one row that scrolls, the tiles a flat grid of two, and what a finger meets is 44px high */
+@media (max-width: 760px) {
+	.app { grid-template-columns: minmax(0, 1fr) }
+	.rail { flex-wrap: nowrap; gap: 4px; min-width: 0; padding-top: 4px; padding-bottom: 4px }
+	.brand { flex: 0 0 auto; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+	.brand span { display: none }
+	.nav { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none }
+	.nav::-webkit-scrollbar { display: none }
+	.nav a { flex: 0 0 auto; min-height: 44px; padding: 0 12px; white-space: nowrap }
+	.tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px }
+	.tile { display: flex; flex-direction: column; min-width: 0; padding: 8px 10px }
+	.tile .v { order: -1; margin: 0 }
+	.tile .l { font-size: 10.5px; letter-spacing: .03em }
+	.tile .h { margin: 0; font-size: 11.5px; line-height: 1.3; overflow-wrap: anywhere }
+	.head .search-box { flex: 1 1 100% }
+	.head .search-box .search { min-width: 0 }
+	.hits a.hit, .jump-to, .menu .list button, .menu .list a { min-height: 44px }
+	.jump { margin-inline: -16px; padding-inline: 16px }
+	#vat, #numbers, #particulars, #seller, #privacy, #consents, #message-all, #firma-holder, #portal { scroll-margin-top: 64px }
+	.btn, .field input, .field select, .kv input, .kv select, .toolbar select, .head select, .search input { min-height: 44px }
+	.search { height: 44px }
+	.drop .btn { min-width: 44px }
+	.drop input[type="file"], .check { min-height: 44px }
+	.drop input[type="file"] { max-width: 100% }
+}

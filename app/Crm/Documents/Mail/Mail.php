@@ -63,10 +63,11 @@ class Mail {
 	 *	@param		array 		$document			As Documents::get() has it
 	 *	@param		string		$kind					release (a document is there for the client) or remind (an invoice that is open or sent, released to the portal)
 	 *	@param		bool			$download			Whether the release also switches the download of the files of the document's project on: a second sentence says so, with the way to the files (release only)
+	 *	@param		string		$note					A sentence of the owner to the customer, in a paragraph of its own under the introduction: escaped, its line breaks kept (release only; '' for none)
 	 *
 	 *	@return 	array											[ { to, subject, body, replyTo }, ... ]; none for a client without an account that can be written to, or where the site has no address
 	 */
-	public static function compose( array &$appData, array $document, string $kind = 'release', bool $download = false ): array {
+	public static function compose( array &$appData, array $document, string $kind = 'release', bool $download = false, string $note = '' ): array {
 
 		$link = \Nino\Html::absoluteUrl( $appData, \Crm\Portal::documentHref( $document, $document['category'] === 'offer' ? 'angebot' : 'belege' ) );
 
@@ -81,6 +82,7 @@ class Mail {
 			$markup = \Nino\Html::renderHtml( $appData, self::template( 'release' ) );
 			$files = \Nino\Html::renderHtml( $appData, self::template( 'release-files' ) );
 			$detail = \Nino\Html::renderHtml( $appData, self::template( 'release-detail' ) );
+			$sentence = \Nino\Html::renderHtml( $appData, self::template( 'release-note' ) );
 			$replyTo = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ) );
 		}
 		finally {
@@ -95,6 +97,9 @@ class Mail {
 			[ $escape( self::text( 'files.text', $project['title'] !== '' ? $project['title'] : $project['id'] ) ), $escape( \Nino\Html::absoluteUrl( $appData, '/portal/projekte?projekt='. rawurlencode( $project['id'] ). '&tab=dateien' ) ), $escape( self::text( 'files.button' ) ) ],
 			$files
 		), $markup );
+
+		// The sentence of the owner stands in the place of its slot, or the slot goes: the text is escaped - so that nothing in it is a slot or a shortcode - and only then do its line breaks become breaks
+		$markup = str_replace( '[[note]]', $note === '' || $kind !== 'release' ? '' : str_replace( '[[note-text]]', str_replace( "\n", '<br>', $escape( $note ) ), $sentence ), $markup );
 
 		$replyTo = filter_var( $replyTo, FILTER_VALIDATE_EMAIL ) === false ? '' : $replyTo;
 		$name = (string) $document['title'] !== '' ? (string) $document['title'] : (string) $document['number'];
@@ -190,12 +195,13 @@ class Mail {
 	 *	@param		array 		&$appData
 	 *	@param		array 		$document			As Documents::get() has it
 	 *	@param		bool			$download			Whether the release switches the download of the project's files on, which the mail says
+	 *	@param		string		$note					The sentence of the owner to the customer, see compose()
 	 *
 	 *	@return 	int|string								How many mails were delivered; 'address' where the site has no address to link to, 'limit' where the cap of mails an hour refused them all
 	 */
-	public static function release( array &$appData, array $document, bool $download = false ): int|string {
+	public static function release( array &$appData, array $document, bool $download = false, string $note = '' ): int|string {
 
-		return self::send( $appData, $document, 'release', $download );
+		return self::send( $appData, $document, 'release', $download, $note );
 	}
 
 	/**
@@ -569,12 +575,12 @@ class Mail {
 	 *
 	 *	@return 	int|string
 	 */
-	private static function send( array &$appData, array $document, string $kind, bool $download = false ): int|string {
+	private static function send( array &$appData, array $document, string $kind, bool $download = false, string $note = '' ): int|string {
 
 		if( \Nino\Html::absoluteUrl( $appData, self::PAGE ) === '' )
 			return 'address';
 
-		$mails = self::compose( $appData, $document, $kind, $download );
+		$mails = self::compose( $appData, $document, $kind, $download, $note );
 
 		if( $mails === [] )
 			return 0;

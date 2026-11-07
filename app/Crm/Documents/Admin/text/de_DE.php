@@ -70,6 +70,8 @@ return [
 	'[[/_admin/error/crm_documents_sign_write]]' => 'Die Anfrage konnte nicht gespeichert werden. Es wurde nichts angefordert.',
 	'[[/_admin/error/crm_documents_released]]' => 'Gib den Beleg zuerst im Portal frei, sonst kann Dein Kunde ihn dort nicht finden.',
 	'[[/_admin/error/crm_documents_download]]' => 'Der Download der Projektdateien lässt sich nur mit einer Rechnung freischalten, die zu einem Projekt gehört.',
+	'[[/_admin/error/crm_documents_note]]' => 'Die Nachricht darf höchstens 500 Zeichen haben und keine Steuerzeichen enthalten, die Zeilenumbrüche ausgenommen.',
+	'[[/_admin/error/crm_documents_note_mail]]' => 'Eine Nachricht an den Kunden geht mit der E-Mail: Hake die E-Mail an oder lass die Nachricht weg.',
 	'[[/_admin/error/crm_documents_sign_mail]]' => 'Die Mail kam nicht an. Der Link ist so, wie er war.',
 	'[[/_admin/error/crm_project]]' => 'Dieses Projekt gibt es nicht.',
 	'[[/_admin/error/crm_project_client]]' => 'Das Projekt gehört zu einem anderen Kunden. Wähle ein Projekt dieses Kunden oder keins.',

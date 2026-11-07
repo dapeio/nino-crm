@@ -129,7 +129,7 @@ class Admin {
 
 	/**
 	 *	One project: id. Answers the project as list has it, its client, its folder (id and name; null where it has none or the folder is gone from Files) and
-	 *	its files with the address each is downloaded at - null where the feature Files is off - and notify, the setting of Files that mails the members of a file that is made visible
+	 *	its files with the address each is downloaded at - null where the feature Files is off - and notify, the setting of the CRM (notify_files) that starts the box which mails the members of a file that is made visible
 	 */
 	public static function apiGet( array &$appData, array &$request ): void {
 
@@ -175,14 +175,14 @@ class Admin {
 				'native'  => \Nino\Locales::getNativeLocale( $appData ),
 				'project' => $shown,
 				'waiting' => $waiting === null ? null : [ 'id' => $waiting['id'], 'number' => (string) $waiting['number'] ],
-				'client'  => $shown['client_id'] === 0 ? null : [ 'id' => $shown['client_id'], 'number' => $shown['client'], 'title' => $shown['client_title'], 'active' => $shown['client_active'], 'active_accounts' => $shown['client_accounts'] ],
+				'client'  => $shown['client_id'] === 0 ? null : [ 'id' => $shown['client_id'], 'number' => $shown['client'], 'title' => $shown['client_title'], 'active' => $shown['client_active'], 'active_accounts' => $shown['client_accounts'], 'signed_accounts' => $shown['client_signed'] ],
 				'files'   => self::filesOn( $appData ),
 				'allowed' => \Crm\Surface\Files::allowed( $appData ),
 				'review'  => self::filesOn( $appData ) === true && self::reviewOn( $appData ) === true,
 				'folder'  => $folder,
 				'list'    => $list,
 				// The setting of the feature Files that mails the members of a file made visible: what the box of the tab starts at
-				'notify'  => self::filesOn( $appData ) === true && \Nino\Features::setting( $appData, 'files', 'notifyMembers', false ) === true,
+				'notify'  => self::filesOn( $appData ) === true && \Crm\Settings::get( $appData, 'notify_files' ) === '1',
 			] );
 		} );
 	}
@@ -288,6 +288,9 @@ class Admin {
 		$shown = [];
 		$approvals = \Crm\Records::approvals( $appData );
 
+		// The comments of the members that no one has settled, by folder: null for a project where Review does not run
+		$commented = self::reviewOn( $appData ) === true && $on === true ? \Crm\Surface\Review::folders( $appData ) : null;
+
 		$consents = [];
 
 		// What the clients consented to, read in one query: the newest first, by project - '' is the consent that holds for every project of its client
@@ -329,6 +332,9 @@ class Admin {
 				'client_title'  => $client === null ? '' : $client['title'],
 				'client_active' => $client !== null && $client['active'] === true,
 				'client_accounts' => $client === null ? 0 : $client['active_accounts'],
+				'client_signed' => $client === null ? 0 : $client['signed_accounts'],
+				'comments'      => $commented === null ? null : ( $commented[(string) $project['folder']]['count'] ?? 0 ),
+				'comment_files' => $commented === null ? null : ( $commented[(string) $project['folder']]['files'] ?? 0 ),
 				'files'         => $files === null ? ( $on === true ? 0 : null ) : count( $files ),
 				'approval'      => isset( $approvals[$project['id']] ) === true && $client !== null && $approvals[$project['id']]['client_id'] === $client['id'] ? $approvals[$project['id']] : null,
 				'consent_social' => $client !== null && array_filter( $held( $project['id'] ), static fn( array $consent ): bool => $consent['client_id'] === $client['id'] && $consent['purpose'] === 'social' && $consent['revoked'] === null ) !== [],

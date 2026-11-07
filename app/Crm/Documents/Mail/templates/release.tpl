@@ -2,6 +2,7 @@
 	<h1 style="margin:0 0 [[/project/mail/spacing/medium]]; font-size:[[/project/mail/font/large]]; color:[[/project/mail/color/text]];">[[heading]]</h1>
 	<p style="margin:0 0 [[/project/mail/spacing/medium]];">[[greeting]]</p>
 	<p style="margin:0 0 [[/project/mail/spacing/medium]];">[[intro]]</p>
+	[[note]]
 	<p style="margin:0 0 [[/project/mail/spacing/medium]];"><strong>[[document]]</strong></p>
 	[[detail]]
 	<p style="margin:0 0 [[/project/mail/spacing/medium]]; text-align:center;">
