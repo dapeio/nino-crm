@@ -2241,4 +2241,23 @@ function privacyEmptiedChecks( array &$fresh, callable $run ): void {
 	check( '...and the word for the emptied field is in both languages', array_filter( $words, static fn( array $one ): bool => trim( (string) ( $one['[[/_admin/crm/status/privacy-empty]]'] ?? '' ) ) === '' ) === [] );
 }
 
+/**
+ *	The sentence of the door names the code: the template reads a key of its own, both languages deliver it, and the key it read before is still in the texts for a site installed with the older template
+ *
+ *	@param		string		$root
+ *
+ *	@return 	void
+ */
+function crmDoorCodeChecks( string $root ): void {
+
+	$template = (string) file_get_contents( $root. '/app/Crm/Crm/install/templates/page-door.tpl' );
+	$de = (array) require $root. '/app/Crm/Crm/install/text/de_DE.php';
+	$en = (array) require $root. '/app/Crm/Crm/install/text/en_US.php';
+	$key = '[[/template/page-door/intro/lead-code]]';
+	check( 'the door reads the sentence of the code from its own key - a text in both languages - and the sentence it read before stays in the unit', str_contains( $template, '[text /template/page-door/intro/lead-code]' ) === true
+		&& trim( (string) ( $de[$key] ?? '' ) ) !== '' && trim( (string) ( $en[$key] ?? '' ) ) !== '' && isset( $de['[[/template/page-door/intro/lead]]'], $en['[[/template/page-door/intro/lead]]'] ) === true );
+}
+
+crmDoorCodeChecks( $root );
+
 ninoDone( $appData );

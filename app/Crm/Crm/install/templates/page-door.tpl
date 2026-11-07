@@ -6,7 +6,7 @@
 	<div class="nino-grid-row">
 		<div class="nino-grid-100 crm-page__inner">
 			[title /template/page-door/intro/title tag="h2"]
-			[text /template/page-door/intro/lead]
+			[text /template/page-door/intro/lead-code]
 			[crm-portal-door]
 		</div>
 	</div>

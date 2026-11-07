@@ -5,8 +5,10 @@ declare(strict_types=1);
  *										POST /.crm/daten keeps what the member typed - through Clients::change(), with its validation - and tells the owner by mail
  *										what changed. Only the signed-in member of a client may post (a visitor and a member of no client are answered 404, as the feature
  *										Files answers a stranger). Every answer is a redirect to the page with a state in the query: saved, invalid (with the field
- *										that was refused) or expired (the token of the form was not the session's). What was typed is not kept, so the sentence names the
- *										field. The e-mail of the account is Members' and is shown, never posted; the e-mail of the client is not on the form. A finalised
+ *										that was refused) or expired (the token of the form was not the session's). What was typed under a refusal or an expired token is
+ *										kept once, in the session of the member alone (never in the address): the next drawing of the form puts it into the fields -
+ *										escaped, the text fields and the country code only - and drops it, and a page that is not that state drops it unseen. The sentence
+ *										names the field. The e-mail of the account is Members' and is shown, never posted; the e-mail of the client is not on the form. A finalised
  *										document keeps the client it was made with (its client_json): the next document carries the new data.
  *
  *										Under the form stands the block Anmeldeadresse: the address the account signs in with and a way to change it that needs
@@ -21,7 +23,9 @@ declare(strict_types=1);
  *										The form is the second step of the gate of the client (Portal::pending()): street, postal code, city and country are required, and a name
  *										or a company - the server asks for all of it, Clients::change() does not (the owner may keep a client without an address). The form carries
  *										the page to go on to (weiter, see Portal::onward()); saved, it goes on to the next step or to that page. A name the client gives is the name of the
- *										member's account too, where the account has none.
+ *										member's account too, where the account has none. A form that was the pending step (the Stammdaten were missing) and is saved
+ *										without a page to go on to leads the client to where something waits (Portal::landing(), else /portal), with ?state=saved,
+ *										which the pages there say once as a note (Portal::savedNote()); a form saved by a client whose data were complete stays on its page.
  *
  *										Under the block Datenschutzerklärung stands the block Einwilligungen (Portal\Consent) while the client holds a consent: each with a button that takes it back.
  *										A state in the query that comes with consent=1 is the block's (revoked, invalid, expired), not the form's.
@@ -77,6 +81,10 @@ class Data {
 		'login-expired' => [ 'error', 'circle-alert', 'alert' ],
 	];
 
+	// Where what was typed is kept for the next drawing of the form, and the most of a value it keeps (the longest field plus the room a "too long" needs to show)
+	private const string KEPT = './crm/portal/data-kept';
+	private const int KEPT_MAX = 400;
+
 	// The most of a name that the account of Members takes (Members keeps it private; the name of a client is held to the same length)
 	private const int ACCOUNT_NAME = 120;
 
@@ -123,10 +131,15 @@ class Data {
 
 		$fields = '';
 
+		// What was typed under a refusal stands in the fields once; any other state drops it
+		$typed = self::kept( $appData );
+		$kept = $state === 'invalid' || $state === 'expired' ? (array) ( $typed['form'] ?? [] ) : [];
+		$login = self::keptLogin( $query, (string) ( $typed['email'] ?? '' ) );
+
 		foreach( self::FIELDS as $name => $kind ) {
 
 			$invalid = $state === 'invalid' && $field === $name;
-			$value = (string) ( $client[$name] ?? '' );
+			$value = (string) ( $kept[$name] ?? $client[$name] ?? '' );
 			$described = ( $invalid === true ? ' aria-invalid="true" aria-describedby="crm-data-'. $name. '-error"' : '' ). ( $kind['required'] === true ? ' required aria-required="true"' : '' );
 
 			if( $kind['type'] === 'select' )
@@ -170,7 +183,7 @@ class Data {
 			'[[state]]'   => $note,
 			'[[fields]]'  => $fields,
 			'[[also]]'    => $client['email'] !== '' && mb_strtolower( $client['email'], 'UTF-8' ) !== $member['email'] ? Portal::render( 'data-login-also', [ '[[address]]' => \Nino\Modules\Components::escape( $client['email'] ) ] ) : '',
-			'[[login]]'   => self::loginBlock( $appData, $member, $dir, $query ),
+			'[[login]]'   => self::loginBlock( $appData, $member, $dir, $query, $login ),
 			'[[consents]]' => Consent::block( $appData, $client, $dir ),
 			'[[privacy]]' => $standing['asked'] === false ? '' : Portal::render( 'data-privacy', [
 				'[[agreed]]'   => $standing['agreed'] === true ? '1' : '0',
@@ -181,6 +194,76 @@ class Data {
 				'[[dir]]'      => $dir,
 			] ),
 		] );
+	}
+
+	/**
+	 *	Keep what the member typed into the form of the Stammdaten for the next drawing of the form: the text fields and the country code, as strings of at most KEPT_MAX
+	 *	characters without control characters, in the session of the member and nowhere else
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	void
+	 */
+	private static function keepForm( array &$appData ): void {
+
+		$form = [];
+
+		foreach( array_keys( self::FIELDS ) as $name )
+			if( is_string( $_POST[$name] ?? null ) === true )
+				$form[$name] = mb_substr( (string) preg_replace( '/[\x00-\x1F\x7F]+/', ' ', $_POST[$name] ), 0, self::KEPT_MAX, 'UTF-8' );
+
+		$kept = (array) \Nino\Runtime::getSessionValue( $appData, self::KEPT, [] );
+		$kept['form'] = $form;
+		\Nino\Runtime::setSessionValue( $appData, self::KEPT, $kept );
+	}
+
+	/**
+	 *	Keep the address the member typed into the field of the block Anmeldeadresse, the same way (an address is 254 characters at most)
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	void
+	 */
+	private static function keepEmail( array &$appData ): void {
+
+		if( is_string( $_POST['email'] ?? null ) === false )
+			return;
+
+		$kept = (array) \Nino\Runtime::getSessionValue( $appData, self::KEPT, [] );
+		$kept['email'] = mb_substr( (string) preg_replace( '/[\x00-\x1F\x7F]+/', ' ', $_POST['email'] ), 0, 254, 'UTF-8' );
+		\Nino\Runtime::setSessionValue( $appData, self::KEPT, $kept );
+	}
+
+	/**
+	 *	What was kept, taken out of the session: a drawing of the form reads it once, whether it puts it in the fields or not
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	array											form (name => value) and email, as far as they were kept; [] for none
+	 */
+	private static function kept( array &$appData ): array {
+
+		$kept = \Nino\Runtime::getSessionValue( $appData, self::KEPT );
+		\Nino\Runtime::unsetSessionValue( $appData, self::KEPT );
+
+		return is_array( $kept ) === true ? $kept : [];
+	}
+
+	/**
+	 *	The address kept for the field of the block Anmeldeadresse, where the query says the block was answered with a refusal that leaves the field to be typed again (invalid,
+	 *	same, limit, expired at the first step)
+	 *
+	 *	@param		array 		$query
+	 *	@param		string		$typed				What was kept
+	 *
+	 *	@return 	string										'' for none
+	 */
+	private static function keptLogin( array $query, string $typed ): string {
+
+		$state = is_string( $query['state'] ?? null ) === true ? $query['state'] : '';
+		$refused = ( $state === 'invalid' && ( $query['field'] ?? null ) === 'login' ) || in_array( $state, [ 'same', 'limit' ], true ) === true || ( $state === 'expired' && ( $query['login'] ?? null ) === 'change' );
+
+		return $refused === true ? $typed : '';
 	}
 
 	/**
@@ -239,6 +322,7 @@ class Data {
 		}
 
 		if( \Nino\Form::blocked( $request ) === true ) {
+			self::keepForm( $appData );
 			self::redirect( $appData, $request, 'expired', Portal::onward( $_POST['weiter'] ?? null ) );
 
 			return;
@@ -246,6 +330,7 @@ class Data {
 
 		$input = [];
 		$onward = Portal::onward( $_POST['weiter'] ?? null );
+		$wasPending = Portal::pending( $appData, $client ) === 'data';
 
 		// The Datenschutz comes first: nothing is saved, nobody is mailed and no account is named before it is confirmed
 		if( Portal::pending( $appData, $client ) === 'privacy' ) {
@@ -261,6 +346,7 @@ class Data {
 		foreach( [ 'name' => [ 'company', 'name' ], 'street' => [ 'street' ], 'zip' => [ 'zip' ], 'city' => [ 'city' ], 'country' => [ 'country' ] ] as $field => $names ) {
 
 			if( array_filter( $names, static fn( string $name ): bool => is_string( $input[$name] ) === true && trim( $input[$name] ) !== '' ) === [] ) {
+				self::keepForm( $appData );
 				self::redirect( $appData, $request, 'invalid', $onward, $field, '', $field === 'name' ? 'name' : 'required' );
 
 				return;
@@ -280,6 +366,7 @@ class Data {
 				return;
 			}
 
+			self::keepForm( $appData );
 			self::redirect( $appData, $request, 'invalid', $onward, $field, '', $changed === 'empty' ? 'name' : ( str_starts_with( $changed, 'long:' ) === true ? 'long' : 'format' ) );
 
 			return;
@@ -322,7 +409,13 @@ class Data {
 			}
 		}
 
-		self::redirect( $appData, $request, 'saved', $onward, '', Portal::proceed( $appData, $changed, $onward ) );
+		$next = Portal::proceed( $appData, $changed, $onward );
+
+		// The last step of the gate, with no page asked for: on to where something waits
+		if( $next === '' && $wasPending === true )
+			$next = Portal::saved( Portal::landing( $appData, $changed ) );
+
+		self::redirect( $appData, $request, 'saved', $onward, '', $next );
 	}
 
 	/**
@@ -336,10 +429,11 @@ class Data {
 	 *	@param		array 		$member				The account who is signed in
 	 *	@param		string		$dir					The escaped directory of the project
 	 *	@param		array 		$query				The query of the request
+	 *	@param		string		$typed				The address the member typed into the field under a refusal, as keptLogin() has it; '' for none
 	 *
 	 *	@return 	string										Markup
 	 */
-	private static function loginBlock( array &$appData, array $member, string $dir, array $query ): string {
+	private static function loginBlock( array &$appData, array $member, string $dir, array $query, string $typed ): string {
 
 		$state = is_string( $query['state'] ?? null ) === true ? $query['state'] : '';
 		$asked = in_array( $query['login'] ?? null, [ 'change', 'code' ], true ) === true ? $query['login'] : '';
@@ -360,7 +454,7 @@ class Data {
 		if( $new !== null )
 			$step = Portal::render( 'data-login-code', [ '[[dir]]' => $dir, '[[address]]' => \Nino\Modules\Components::escape( $new ) ] + $bad );
 		else
-			$step = Portal::render( 'data-login-change', [ '[[dir]]' => $dir, '[[open]]' => $asked === 'change' || ( $tone !== null && in_array( $key, [ 'login-changed', 'devices', 'devices-failed' ], true ) === false ) ? ' open' : '' ] + $bad );
+			$step = Portal::render( 'data-login-change', [ '[[dir]]' => $dir, '[[open]]' => $asked === 'change' || ( $tone !== null && in_array( $key, [ 'login-changed', 'devices', 'devices-failed' ], true ) === false ) ? ' open' : '', '[[typed]]' => $typed === '' ? '' : ' value="'. \Nino\Modules\Components::escape( $typed ). '"' ] + $bad );
 
 		return Portal::render( 'data-login', [
 			'[[address]]' => \Nino\Modules\Components::escape( (string) $member['email'] ),
@@ -392,12 +486,16 @@ class Data {
 		}
 
 		if( \Nino\Form::blocked( $request ) === true ) {
+			self::keepEmail( $appData );
 			self::redirect( $appData, $request, 'expired', '', '', '', '', 'change' );
 
 			return;
 		}
 
 		$status = \Nino\Modules\Members::askChange( $appData, $member, is_string( $_POST['email'] ?? null ) === true ? $_POST['email'] : '' );
+
+		if( $status !== 'sent' )
+			self::keepEmail( $appData );
 
 		match( $status ) {
 			'sent'    => self::redirect( $appData, $request, '', '', '', '', '', 'code' ),

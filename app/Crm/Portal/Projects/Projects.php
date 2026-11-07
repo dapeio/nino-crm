@@ -309,7 +309,7 @@ class Projects {
 			$html .= Portal::render( 'project-section', [ '[[name]]' => $name, '[[active]]' => $active, '[[content]]' => $section[0] ] );
 		}
 
-		return Portal::render( 'project', [
+		return Portal::savedNote( $appData ). Portal::render( 'project', [
 			'[[classes]]'  => $classes,
 			'[[id]]'       => \Nino\Modules\Components::escape( $project['id'] ),
 			'[[state]]'    => $project['done'] === true ? 'done' : 'open',

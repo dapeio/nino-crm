@@ -3,14 +3,14 @@ declare(strict_types=1);
 /**
  *	Crm\Portal\Start		The component [crm-portal-start] of the start page of the portal. Directly under the head of the page stands a section of its own with the two cards the
  *											client reaches for first: the files that came into the folders of the client's projects in the last NEW_DAYS days (the count for each project and
- *											the way to its page; the card is always there - with the sentence that no file came where none did - and carries the way to the projects) and, beside
+ *											the way to its page; the card is always there - with the sentence that no file came where none did - and carries the button to the projects only where more than PROJECTS_BUTTON projects have a row) and, beside
  *											it from 768px, the offers that wait for the order (each with its title - the number where it has none -, its gross amount, its number and the day it is
  *											valid until, the way to its card on the project page or in the list of documents; only where one waits). Under it stands "Was gerade ansteht": what
  *											waits for the client, as cards that stand there only when they apply: the Datenschutz that is not agreed to yet (the way to it), the documents released
  *											in the last NEW_DAYS days (each with its title, its amount, its kind, its number and the way to its row) and the dates of the next DATES_DAYS days of the
  *											member's group and for everyone (through the feature Events; where it is off, none). Over those cards stands a row of key figures, each tile a link:
  *											the offers that wait for the order with their gross sum, the invoices that are open or overdue with theirs, the files that are new and the number of
- *											projects they are in, and the next date with the days to it; the row stands only where one of the numbers is more than nothing. Where nothing applies
+ *											projects they are in, and the next date with the days to it (the tile of the date only where one comes); the row stands only where one of the numbers is more than nothing, and a tile that has nothing in it is left out. Where nothing applies
  *											it is one sentence. Nothing here is stored or sent, and every value enters the markup escaped. A visitor and a member of no client get nothing.
  */
 namespace Crm\Portal;
@@ -27,6 +27,9 @@ class Start {
 	public const int NEW_DAYS = 14;
 	public const int DATES_DAYS = 30;
 	public const int ROWS = 5;
+
+	// The most rows the card of the new files holds without the button to the projects: more than that many projects with new files and the button stands under it
+	public const int PROJECTS_BUTTON = 3;
 
 	// The icon of each card, and the tone of the one that asks for something
 	private const array ICONS = [ 'privacy' => 'shield-check', 'offers' => 'receipt', 'documents' => 'file-text', 'files' => 'music', 'dates' => 'calendar' ];
@@ -102,7 +105,7 @@ class Start {
 			$cards['dates'] = self::list( $dates );
 
 		// The two cards the client reaches for first stand in the section over the rest: the files always, the offers where one waits
-		$top = [ 'files' => ( $files === [] ? Portal::render( 'start-text', [ '[[text]]' => '[[/project/crm-portal/start/files-none]]' ] ) : self::list( $files ) ). self::projects( $dir ) ];
+		$top = [ 'files' => ( $files === [] ? Portal::render( 'start-text', [ '[[text]]' => '[[/project/crm-portal/start/files-none]]' ] ) : self::list( $files ) ). ( count( $files ) > self::PROJECTS_BUTTON ? self::projects( $dir ) : '' ) ];
 
 		if( $offers !== [] )
 			$top['offers'] = self::list( $offers );
@@ -117,7 +120,7 @@ class Start {
 		] );
 
 		// The row of key figures says what waits; with it and without a card the section has no grid, and with neither it says that nothing is up
-		return $section. Portal::render( 'start', [
+		return Portal::savedNote( $appData ). $section. Portal::render( 'start', [
 			'[[classes]]' => $classes,
 			'[[kpis]]'    => $kpis,
 			'[[grid]]'    => $html === '' && $kpis !== '' ? '' : Portal::render( 'start-grid', [ '[[cards]]' => $html !== '' ? $html : Portal::template( 'start-nothing' ) ] ),
@@ -174,15 +177,25 @@ class Start {
 		if( $figures['offers']['count'] === 0 && $figures['invoices']['count'] === 0 && $files === 0 )
 			return '';
 
-		$money = static fn( array $figure ): string => $figure['count'] === 0 ? '[[/project/crm-portal/start/kpi-open-none]]' : Portal::money( $appData, $figure['sum'] ). ' [[/project/crm-portal/start/kpi-gross]]';
+		$money = static fn( array $figure ): string => Portal::money( $appData, $figure['sum'] ). ' [[/project/crm-portal/start/kpi-gross]]';
 		$days = $next === null || $now === null ? null : max( 0, (int) $now->setTime( 0, 0 )->diff( $next['start']->setTime( 0, 0 ) )->format( '%r%a' ) );
 		$when = $days === null ? '' : ( $days === 0 ? '[[/project/crm-portal/start/kpi-today]]' : ( $days === 1 ? '[[/project/crm-portal/start/kpi-tomorrow]]' : \Nino\Modules\Components::escape( str_replace( '{days}', (string) $days, (string) \Nino\Html::resolveTextfill( $appData, '/project/crm-portal/start/kpi-days' ) ) ) ) );
-		$tiles = [
-			[ 'offers', $dir. Order::PAGE_DOCUMENTS, (string) $figures['offers']['count'], $money( $figures['offers'] ), $figures['offers']['count'] > 0 ],
-			[ 'invoices', $dir. Order::PAGE_DOCUMENTS, (string) $figures['invoices']['count'], $money( $figures['invoices'] ), false ],
-			[ 'files', $dir. Order::PAGE_PROJECTS, (string) $files, $files === 0 ? '[[/project/crm-portal/start/kpi-files-none]]' : count( $news ). ' [[/project/crm-portal/start/kpi-project-'. ( count( $news ) === 1 ? 'one' : 'many' ). ']]', false ],
-			[ 'date', $dir. '/portal/termine', $next === null ? '–' : $next['start']->format( 'd.m.' ), $next === null ? '[[/project/crm-portal/start/kpi-date-none]]' : $when, false ],
-		];
+
+		// A tile with nothing in it is left out: the row says what there is, not what there is not
+		$tiles = [];
+
+		if( $figures['offers']['count'] > 0 )
+			$tiles[] = [ 'offers', $dir. Order::PAGE_DOCUMENTS, (string) $figures['offers']['count'], $money( $figures['offers'] ), true ];
+
+		if( $figures['invoices']['count'] > 0 )
+			$tiles[] = [ 'invoices', $dir. Order::PAGE_DOCUMENTS, (string) $figures['invoices']['count'], $money( $figures['invoices'] ), false ];
+
+		if( $files > 0 )
+			$tiles[] = [ 'files', $dir. Order::PAGE_PROJECTS, (string) $files, count( $news ). ' [[/project/crm-portal/start/kpi-project-'. ( count( $news ) === 1 ? 'one' : 'many' ). ']]', false ];
+
+		if( $next !== null )
+			$tiles[] = [ 'date', $dir. '/portal/termine', $next['start']->format( 'd.m.' ), $when, false ];
+
 		$html = '';
 
 		foreach( $tiles as [ $name, $href, $value, $sub, $waits ] )

@@ -1097,11 +1097,25 @@ time.crm-table__cell {
 	}
 }
 
-/*	Without the script nothing scrolls the open tab into view: a row of tabs that is wider than a phone wraps	*/
-@media (scripting: none) and (max-width: 479.98px) {
+/*	Below 560px the row of tabs wraps onto a second line, with or without the script, so that no tab is cut off at the edge and none hides behind a scroll nobody
+	sees; the counts are smaller. A row that is wider than the window but not narrower than 560px scrolls inside its box (portal.js brings the open tab in)	*/
+@media (max-width: 559.98px) {
 
 	.crm-project__nav.nino-tabs-nav {
 		flex-wrap: wrap;
+		overflow-x: visible;
+	}
+
+	.crm-project__nav .crm-project__tab.nino-tabs-tab {
+		gap: var(--crm-1);
+		padding: 0 var(--crm-2);
+	}
+
+	.crm-project__count {
+		min-width: 1.25rem;
+		padding: 0 var(--crm-1);
+		font-size: var(--crm-text-xxs);
+		line-height: 1.25rem;
 	}
 }
 
@@ -1589,6 +1603,12 @@ time.crm-table__cell {
 	font-variant-numeric: tabular-nums;
 }
 
+/*	The dot between the kind and the number of a document is drawn, not written: the markup holds words alone	*/
+.crm-documents__category + .crm-documents__number::before {
+	content: "·";
+	margin: 0 var(--crm-2);
+}
+
 a.crm-documents__project {
 	display: inline-flex;
 	align-items: center;
@@ -1727,24 +1747,48 @@ body:has(.crm-bar) .crm-offer {
 	overflow-wrap: anywhere;
 }
 
-/*	The facts of a stacked line are one line of words; a dot stands behind a fact that another follows, so that a line that breaks never
-	begins with one	*/
+/*	The facts of a stacked line - project, day, amount, due day; for a file its version and format, size and day - are one line of words in a box of their own
+	(.crm-facts), a flex list that hangs the room for the dots out at its left (a negative margin) and clips it, so that the first fact of every line - the first of
+	the box and the one a break leaves at a line's start - has no dot, and no line ends with one. A dot stands in front of each fact, in the room that fact keeps
+	for it as a margin at its left; the clip leaves 4px of that room open, so that the ring of the focus of a link is whole. From 1024px the box is gone and its
+	facts are the columns of the line	*/
+.crm-facts {
+	display: contents;
+}
+
+.crm-files__meta:empty {
+	display: none;
+}
+
 @media (max-width: 1023.98px) {
 
-	a.crm-documents__project::after,
-	.crm-documents__date:has(~ .crm-documents__amount:not(:empty))::after,
-	.crm-documents__date:has(~ .crm-documents__due:not(:empty))::after,
-	.crm-documents__amount:has(~ .crm-documents__due:not(:empty))::after {
-		content: "·";
-		margin-left: var(--crm-3);
-		color: var(--crm-ink-3);
-		text-decoration: none;
+	.crm-facts {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		min-width: 0;
+		max-width: calc( 100% + var(--crm-4) );
+		margin-left: calc( -1 * var(--crm-4) );
+		clip-path: inset(-4px -4px -4px calc( var(--crm-4) - 4px ));
 	}
 
-	.crm-files__size::after {
+	.crm-facts > .crm-table__cell {
+		position: relative;
+		margin-left: var(--crm-4);
+	}
+
+	.crm-facts > .crm-table__cell:empty {
+		display: none;
+	}
+
+	.crm-facts > .crm-table__cell::before {
 		content: "·";
-		margin-left: var(--crm-3);
+		position: absolute;
+		top: 50%;
+		left: calc( -1 * var(--crm-4) / 2 - .15em );
+		transform: translateY(-50%);
 		color: var(--crm-ink-3);
+		line-height: 1;
 	}
 }
 
@@ -2209,11 +2253,35 @@ a.crm-files__name:hover {
 
 /*	11 Parts - the versions of a title: the pills in its row and the select over its player	*/
 
-.crm-files__version,
-.crm-files__ext,
-.crm-files__versions,
 .crm-files__open {
 	flex: 0 0 auto;
+}
+
+/*	The version, the format and the number of versions are quiet words in the line of the facts, set off by dots between them; the pills of the row are for its states.
+	From 1024px they stand under the name, in the column of the file	*/
+.crm-files__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0 var(--crm-2);
+	color: var(--crm-ink-2);
+	font-variant-numeric: tabular-nums;
+}
+
+.crm-files__meta > * + *::before {
+	content: "·";
+	margin-right: var(--crm-2);
+	color: var(--crm-ink-3);
+}
+
+@media (min-width: 1024px) {
+
+	.crm-files__meta {
+		grid-column: 1;
+		grid-row: 2;
+		margin-top: calc( -1 * var(--crm-2) );
+		padding-left: calc( 2rem + var(--crm-3) );
+		font-size: var(--crm-text-xs);
+	}
 }
 
 .crm-versions {
@@ -2851,10 +2919,39 @@ a.crm-files__name:hover {
 			justify-content: flex-start;
 		}
 
-		.crm-files .crm-files__size::after {
+		.crm-files .crm-facts {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			min-width: 0;
+			max-width: calc( 100% + var(--crm-4) );
+			margin-left: calc( -1 * var(--crm-4) );
+			clip-path: inset(-4px -4px -4px calc( var(--crm-4) - 4px ));
+		}
+
+		.crm-files .crm-facts > .crm-table__cell {
+			position: relative;
+			margin-left: var(--crm-4);
+		}
+
+		.crm-files .crm-facts > .crm-table__cell:empty {
+			display: none;
+		}
+
+		.crm-files .crm-facts > .crm-table__cell::before {
 			content: "·";
-			margin-left: var(--crm-3);
+			position: absolute;
+			top: 50%;
+			left: calc( -1 * var(--crm-4) / 2 - .15em );
+			transform: translateY(-50%);
 			color: var(--crm-ink-3);
+			line-height: 1;
+		}
+
+		.crm-files .crm-files__meta {
+			margin-top: 0;
+			padding-left: 0;
+			font-size: var(--crm-text-s);
 		}
 
 		.crm-files .crm-files__download > span:not(.nino-sr-only) {

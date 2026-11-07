@@ -1484,7 +1484,7 @@ $named = array_map( static fn( string $key ): string => '[[/feature/review/'. $k
 $composed = array_map( static fn( string $key ): string => '[[/feature/review/'. $key. ']]', [ 'state/sent', 'state/long', 'state/limit', 'state/expired', 'state/invalid', 'kind/audio', 'kind/video',
 	'mail/comment-subject', 'mail/comment-about-subject', 'mail/comment-button', 'mail/comment-button-card', 'mail/answer-subject', 'mail/note-subject', 'script/answering', 'script/cancel' ] );
 // The words a unit keeps for the sites that took them before: nothing asks for them any more, and a site that has them keeps them
-$retired = [ '[[/feature/review/mail/answer-notice]]' ];
+$retired = [ '[[/feature/review/mail/answer-notice]]', '[[/feature/review/form/follow]]' ];
 check( 'the unit brings the words of the site in both languages with the same keys; every word the class, the templates and the script name in full is among them, and so are the five states, the two kinds, the three subjects of the mails and the two words of the script',
 	$siteEn === $siteDe && count( $named ) > 20 && array_diff( array_merge( $named, $composed ), $siteEn ) === [] );
 check( '...and no word is in the unit that nothing asks for, but the ones it keeps for the sites that have them', array_diff( $siteEn, $named, $composed, $retired ) === [] && array_diff( $retired, $siteEn ) === [] );
@@ -2093,6 +2093,27 @@ else {
 
 echo "\n";
 
+
+// --- The word of the box that takes the time from the player -----------------------------------------------------------
+
+/**
+ *	The box of the form that follows the player has a word of its own - a key the install texts carry in both languages - and the word it had stays in them
+ *
+ *	@param		string		$root
+ *
+ *	@return 	void
+ */
+function reviewFollowWordChecks( string $root ): void {
+
+	$template = (string) file_get_contents( $root. '/features/Review/templates/review-form.tpl' );
+	$de = (array) include $root. '/features/Review/install/text/de_DE.php';
+	$en = (array) include $root. '/features/Review/install/text/en_US.php';
+	$key = '[[/feature/review/form/follow-player]]';
+	check( 'the box that takes the time from the player reads its own key, which both install texts have, filled; the key it read before stays in them', preg_match( '~class="review-form__follow-input" checked> \[\[/feature/review/form/follow-player\]\]</label>~', $template ) === 1
+		&& trim( (string) ( $de[$key] ?? '' ) ) !== '' && trim( (string) ( $en[$key] ?? '' ) ) !== '' && isset( $de['[[/feature/review/form/follow]]'], $en['[[/feature/review/form/follow]]'] ) === true );
+}
+
+reviewFollowWordChecks( $root );
 
 // --- The scripts, where node is on the path ---------------------------------------------
 //

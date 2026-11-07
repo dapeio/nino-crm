@@ -38,6 +38,7 @@ return [
 
 	// The portal's door - the site's start page, page-door.tpl
 	'[[/template/page-door/intro/title]]'               => 'Customer portal',
+	'[[/template/page-door/intro/lead-code]]'           => 'Your access comes from us by e-mail. If you have none, write to us. Enter the e-mail address of your account – we send you a code of six digits that signs you in, no password needed.',
 	'[[/template/page-door/intro/lead]]'                => 'Your access comes from us by e-mail. If you have none, write to us. Enter the e-mail address of your account – we send you a code that signs you in, no password needed.',
 
 	// The Elements panel's own words for the type Positionen - the workbench's, not the site's (listed in the unit's blacklist)

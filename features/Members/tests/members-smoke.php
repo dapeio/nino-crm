@@ -2972,6 +2972,37 @@ function membersDeviceChecks( array &$appData, array &$told ): void {
 membersDeviceChecks( $appData, $told );
 echo "\n";
 
+// --- The slot over the field of the login form -------------------------------------------
+
+/**
+ *	The callback '/members/login-form': what a feature puts into note stands over the field, as it is - and nothing stands there without one
+ *
+ *	@param		array 		&$appData
+ *
+ *	@return 	void
+ */
+function membersLoginSlotChecks( array &$appData ): void {
+
+	membersVisitor();
+	ninoVisit( $appData, '/join?x=1' );
+	$plain = \Nino\Html::renderHtml( $appData, '[members-login]' );
+	$seen = [];
+	\Nino\Callbacks::registerCallback( $appData, '/members/login-form', static function( array &$appData, array &$args ) use ( &$seen ): void {
+		$seen[] = $args;
+		$args['note'] = '<p class="slot-note">'. \Nino\Modules\Components::escape( (string) $args['return'] ). '</p>';
+	} );
+	ninoVisit( $appData, '/join?x=1' );
+	$filled = \Nino\Html::renderHtml( $appData, '[members-login]' );
+	\Nino\Callbacks::removeCallbacks( $appData, '/members/login-form' );
+	check( 'the form fires /members/login-form with the path of the page and an empty note; what a callback puts into note stands in the form, before the label, as it is',
+		count( $seen ) === 1 && $seen[0] === [ 'return' => '/join', 'note' => '' ] && count( membersFind( $filled, '//form/p[contains(@class, "slot-note")]/following-sibling::label' ) ) === 1
+		&& membersFind( $filled, '//form/p[contains(@class, "slot-note")]' )[0]->textContent === '/join' );
+	check( '...without a callback nothing stands there and no token of the slot is left; the form is the form it was', membersFind( $plain, '//form/p[contains(@class, "slot-note")]' ) === [] && str_contains( $plain, '[[note]]' ) === false && str_contains( $filled, '[[note]]' ) === false
+		&& count( membersFind( $plain, '//form//input' ) ) === count( membersFind( $filled, '//form//input' ) ) );
+}
+
+membersLoginSlotChecks( $appData );
+
 // --- The panel's script, where node is on the path -----------------------------------
 //
 // members-js-smoke.js beside this file draws the screen over the kernel's own

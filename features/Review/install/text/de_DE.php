@@ -27,6 +27,7 @@ return [
 	// Das Formular
 	'[[/feature/review/form/at]]'				=> 'Zeit im Stück (m:ss, darf leer bleiben)',
 	'[[/feature/review/form/follow]]'			=> 'Zeit aktualisieren',
+	'[[/feature/review/form/follow-player]]'	=> 'Zeit vom Player übernehmen',
 	'[[/feature/review/form/text]]'				=> 'Dein Kommentar',
 	'[[/feature/review/form/button]]'			=> 'Senden',
 

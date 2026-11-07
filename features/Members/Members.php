@@ -1203,7 +1203,11 @@ namespace Nino\Modules {
 		 *	names, of STATES and nothing else. inline puts the field and the button of
 		 *	the first step on one line, where the label is read by screen readers only;
 		 *	the second step is never inline. The words are the Text panel's
-		 *	/feature/members/ keys, left in the template for the kernel to resolve
+		 *	/feature/members/ keys, left in the template for the kernel to resolve.
+		 *	Over the label of the first step stands the slot note, which the callback
+		 *	'/members/login-form' may fill (it is fired with return, the path of the
+		 *	page, and note, empty): the markup is the callback's and is put in as it
+		 *	is, so a callback escapes whatever it took from the request
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array			$args					The resolved arguments (see \Nino\Modules\Components::dispatch())
@@ -1248,14 +1252,19 @@ namespace Nino\Modules {
 					\Nino\Feature::template( $appData, self::TEMPLATES, 'members-code' )
 				);
 
+			// The slot over the field: a feature that builds on the sign-in may put a sentence there (markup it has escaped itself); a callback that does not answer leaves it empty
+			$slot = [ 'return' => $request === false ? '' : (string) ( $request['/nino/http/request']['uri'] ?? '' ), 'note' => '' ];
+			\Nino\Callbacks::doCallbacks( $appData, '/members/login-form', $slot );
+
 			return str_replace(
-				[ '[[inline]]', '[[hidden]]', '[[id]]', '[[return]]', '[[classes]]', '[[state]]' ],
+				[ '[[inline]]', '[[hidden]]', '[[id]]', '[[return]]', '[[classes]]', '[[note]]', '[[state]]' ],
 				[
 					$inline === true ? ' nino-form--inline' : '',
 					$inline === true ? ' nino-sr-only' : '',
 					'members-login-'. ( $appData[self::FORMS] = (int) ( $appData[self::FORMS] ?? 0 ) + 1 ),
 					$return,
 					\Nino\Feature::classes( $args ),
+					is_array( $slot ) === true && is_string( $slot['note'] ?? null ) === true ? $slot['note'] : '',
 					self::_say( $appData, $state ),
 				],
 				\Nino\Feature::template( $appData, self::TEMPLATES, 'members-login' )

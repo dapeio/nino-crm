@@ -142,7 +142,40 @@ class Order {
 		if( $state === '' || Approval::asked( $appData ) === true || self::named( $appData ) !== $for || $overview !== ( $at === 'uebersicht' ) )
 			return '';
 
-		return Portal::render( 'order-state', [ '[[state]]' => $state, '[[tone]]' => self::STATES[$state][0], '[[icon]]' => self::STATES[$state][1], '[[role]]' => self::STATES[$state][2], '[[id]]' => (string) $for, '[[at]]' => $at === '' ? '' : '-'. $at ] );
+		return Portal::render( 'order-state', [
+			'[[state]]' => $state,
+			'[[tone]]'  => self::STATES[$state][0],
+			'[[icon]]'  => self::STATES[$state][1],
+			'[[role]]'  => self::STATES[$state][2],
+			'[[id]]'    => (string) $for,
+			'[[at]]'    => $at === '' ? '' : '-'. $at,
+			'[[more]]'  => in_array( $state, [ 'ordered', 'nomail' ], true ) === true ? self::filesFree( $appData, $for ) : '',
+		] );
+	}
+
+	/**
+	 *	The sentence after the note of an order that says what the order opened: the files of the project are free to listen to, as a link to the tab Dateien. Only where the offer is
+	 *	the client's, has a project of the client and the project has files for the member to see
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$for					The offer the query names
+	 *
+	 *	@return 	string										Markup, with the blank before it; '' for none
+	 */
+	private static function filesFree( array &$appData, int $for ): string {
+
+		$client = Portal::client( $appData );
+		$document = $for === 0 || $client === null ? null : Documents::get( $appData, $for );
+
+		if( $document === null || $document['client_id'] !== $client['id'] || preg_match( Projekte::ID, (string) $document['project'] ) !== 1 )
+			return '';
+
+		$project = Projekte::get( $appData, $document['project'] );
+
+		if( $project === null || $project['client'] !== $client['number'] || ( Projects::visibleOf( $appData, $project ) ?? [] ) === [] )
+			return '';
+
+		return ' '. Portal::render( 'order-files', [ '[[dir]]' => \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ) ), '[[project]]' => rawurlencode( $project['id'] ) ] );
 	}
 
 	/**

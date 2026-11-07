@@ -609,7 +609,7 @@ check( 'the reminder has three first sentences: a day that is past (was due), a 
 	&& str_contains( (string) $undatedRemind[0]['body'], 'Fällig ist sie' ) === false );
 $releaseMail = \Crm\Documents\Mail::compose( $appData, (array) Documents::get( $appData, $late1['id'] ) );
 check( 'the release mail is still the release mail: its words are not the reminder\'s, and its button has its words - a [[button]] in the template was read as the shortcode and left the text "[]"', str_contains( (string) $releaseMail[0]['body'], 'Ein Dokument liegt für Dich bereit' ) === true
-	&& str_contains( (string) $releaseMail[0]['body'], '>Belege ansehen</a>' ) === true && str_contains( (string) $remindedBody, '>Rechnung ansehen</a>' ) === true && str_contains( (string) $releaseMail[0]['body'], '[]' ) === false );
+	&& str_contains( (string) $releaseMail[0]['body'], '>'. \Crm\Documents\Mail::text( 'button.invoice' ). '</a>' ) === true && str_contains( (string) $remindedBody, '>'. \Crm\Documents\Mail::text( 'remind.button' ). '</a>' ) === true && str_contains( (string) $releaseMail[0]['body'], '[]' ) === false );
 
 check( 'an invoice that is paid is "state", and so are an offer and a draft', Documents::remind( $appData, $paidThisYear['id'] ) === 'state' && Documents::remind( $appData, $expiring['id'] ) === 'state' && Documents::remind( $appData, $copy['id'] ) === 'state' );
 Db::exec( $appData, 'UPDATE documents SET state = \'sent\' WHERE id = :id', [ 'id' => $late2['id'] ] );

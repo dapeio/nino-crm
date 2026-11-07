@@ -38,6 +38,7 @@ return [
 
 	// Das Tor des Portals - die Startseite der Website, page-door.tpl
 	'[[/template/page-door/intro/title]]'               => 'Kundenportal',
+	'[[/template/page-door/intro/lead-code]]'           => 'Dein Zugang kommt von uns per E-Mail. Hast Du keinen, schreib uns. Gib hier die E-Mail-Adresse Deines Kontos ein – wir schicken Dir einen Code aus sechs Ziffern, mit dem Du Dich ohne Passwort anmeldest.',
 	'[[/template/page-door/intro/lead]]'                => 'Dein Zugang kommt von uns per E-Mail. Hast Du keinen, schreib uns. Gib hier die E-Mail-Adresse Deines Kontos ein – wir schicken Dir einen Code, mit dem Du Dich ohne Passwort anmeldest.',
 
 	// Die Worte des Elemente-Panels für den Typ Positionen - die der Workbench, nicht der Website (in der Blacklist der Einheit)

@@ -4,7 +4,7 @@
 				[csrf]
 				<p class="crm-field[[invalid]]">
 					<label class="crm-field__label" for="crm-login-email">[[/project/crm-portal/data/login-new]]</label>
-					<input class="crm-data__input crm-field__input nino-form-input" type="email" id="crm-login-email" name="email" maxlength="254" autocomplete="email" required aria-describedby="crm-login-hint"[[described]]>
+					<input class="crm-data__input crm-field__input nino-form-input" type="email" id="crm-login-email" name="email" maxlength="254" autocomplete="email"[[typed]] required aria-describedby="crm-login-hint"[[described]]>
 					<span class="crm-field__hint" id="crm-login-hint">[[/project/crm-portal/data/login-hint]]</span>
 				</p>
 				<p class="crm-data__actions"><button type="submit" class="crm-btn crm-btn--primary">[[icon:mail]]<span>[[/project/crm-portal/data/login-request]]</span></button></p>

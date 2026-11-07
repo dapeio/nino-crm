@@ -3,7 +3,7 @@ declare(strict_types=1);
 /**
  *	Crm\Documents\Mail		The mail that tells the accounts of a client a document was released to the portal: one mail for each active
  *												account of the client, in German (a document is the owner's letter to his client, and an account of
- *												Members has no language of its own), with the absolute link to the document in the portal (Portal::documentHref(): its row in the list of documents, for a document of a project its card on the page of the project) and no attachment.
+ *												Members has no language of its own), with, for a release, a subject, a button and a sentence of the kind of the document (told()) and the absolute link to the document in the portal (Portal::documentHref(): its row in the list of documents, for a document of a project its card on the page of the project) and no attachment.
  *												All mails are one call of the kernel's mail, which counts a call against the cap of mails an hour and not
  *												a mail. The words are in text/de_DE.php, the markup in templates/release.tpl (changed.tpl for the mail to the owner about changed data, order-owner.tpl and order-confirm.tpl for the order of an offer, approval-owner.tpl for the approval of a project, order-consent.tpl for a sentence about a consent that was given with an order, revocation-owner.tpl for the revocation of a consent); a value enters the
  *												template after it was rendered, escaped, so that nothing in it is read as a fill or a shortcode. The same
@@ -80,6 +80,7 @@ class Mail {
 		try {
 			$markup = \Nino\Html::renderHtml( $appData, self::template( 'release' ) );
 			$files = \Nino\Html::renderHtml( $appData, self::template( 'release-files' ) );
+			$detail = \Nino\Html::renderHtml( $appData, self::template( 'release-detail' ) );
 			$replyTo = trim( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/contact/email' ) );
 		}
 		finally {
@@ -98,6 +99,10 @@ class Mail {
 		$replyTo = filter_var( $replyTo, FILTER_VALIDATE_EMAIL ) === false ? '' : $replyTo;
 		$name = (string) $document['title'] !== '' ? (string) $document['title'] : (string) $document['number'];
 		$about = self::text( 'line', self::text( 'kind.'. $document['category'] ), $name );
+		$told = $kind === 'release' ? self::told( $appData, $document ) : null;
+
+		// The sentence of the kind of the document stands in the place of the empty slot of the template, or the slot goes
+		$markup = str_replace( '[[detail]]', $told === null ? '' : str_replace( '[[detail-text]]', $escape( $told['detail'] ), $detail ), $markup );
 		$mails = [];
 		$prefix = $kind === 'remind' ? 'remind.' : '';
 		$due = $kind === 'remind' ? Render::day( (string) ( $document['due_date'] ?? '' ) ) : '';
@@ -115,20 +120,68 @@ class Mail {
 				'[[intro]]'    => $kind === 'remind' ? self::remindIntro( $document, $due ) : self::text( 'intro' ),
 				'[[document]]' => $about,
 				'[[link]]'     => $link,
-				'[[cta]]'      => self::text( $prefix. 'button' ),
+				'[[cta]]'      => $told === null ? self::text( $prefix. 'button' ) : $told['button'],
 				'[[notice]]'   => self::text( $prefix. 'notice' ),
 				'[[closing]]'  => self::text( 'closing' ),
 			];
 
 			$mails[] = [
 				'to'      => $account['email'],
-				'subject' => self::text( $prefix. 'subject', $about ),
+				'subject' => $told === null ? self::text( $prefix. 'subject', $about ) : $told['subject'],
 				'body'    => str_replace( array_keys( $values ), array_map( $escape, array_values( $values ) ), $markup ),
 				'replyTo' => $replyTo,
 			];
 		}
 
 		return $mails;
+	}
+
+	/**
+	 *	What the mail of a released document tells in its own words, by the kind of the document: the subject - the kind and its number, for an offer the project, the gross sum and the
+	 *	day it is valid until; for an invoice the sum and the day it is due ("zahlbar sofort" without one) -, the button, and one sentence for the body. The subject is one line (a title
+	 *	is typed by the owner, so every control character in it is a blank), and every sum is Money's
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		$document			category, number, title, project, gross, valid_until, due_date
+	 *
+	 *	@return 	array											subject (plain text), button and detail (plain text, to be escaped by the caller)
+	 */
+	private static function told( array &$appData, array $document ): array {
+
+		$one = static fn( string $value ): string => trim( (string) preg_replace( '/[\p{Cc}\p{Zl}\p{Zp}]+/u', ' ', $value ) );
+		$category = (string) $document['category'];
+		$kind = self::text( 'kind.'. $category );
+		$number = $one( (string) ( $document['number'] ?? '' ) );
+		$title = $one( (string) ( $document['title'] ?? '' ) );
+		$id = in_array( $category, [ 'contract', 'privacy', 'information' ], true ) === true ? ( $title !== '' ? $title : $number ) : ( $number !== '' ? $number : $title );
+		$head = $id === '' ? $kind : self::text( 'subject.head', $kind, $id );
+		$gross = is_int( $document['gross'] ?? null ) === true && in_array( $category, [ 'offer', 'invoice' ], true ) === true ? Money::format( $document['gross'], \Crm\Settings::get( $appData, 'currency' ) ) : '';
+		$day = Render::day( (string) ( $category === 'offer' ? ( $document['valid_until'] ?? '' ) : ( $document['due_date'] ?? '' ) ) );
+		$facts = [];
+
+		if( $category === 'offer' ) {
+			$project = $one( (string) ( $document['project_title'] ?? ( (string) ( $document['project'] ?? '' ) === '' ? '' : ( \Crm\Projekte::get( $appData, (string) $document['project'] )['title'] ?? '' ) ) ) );
+			$head = $project === '' ? $head : self::text( 'subject.project', $head, $project );
+			$facts = array_filter( [ $gross, $day === '' ? '' : self::text( 'subject.valid', $day ) ], static fn( string $fact ): bool => $fact !== '' );
+			$detail = self::text( 'detail.offer' ). ( $day === '' ? '' : ' '. self::text( 'detail.offer-valid', $day ) );
+			$button = self::text( 'button.offer' );
+		}
+		elseif( $category === 'invoice' ) {
+			$facts = array_filter( [ $gross, $day === '' ? self::text( 'subject.due-none' ) : self::text( 'subject.due', $day ) ], static fn( string $fact ): bool => $fact !== '' );
+			$ways = array_filter( [
+				\Crm\Settings::get( $appData, 'iban' ) !== '' || \Crm\Settings::get( $appData, 'bank_name' ) !== '' ? self::text( 'detail.pay-transfer' ) : '',
+				\Crm\Portal::paypalLink( $appData, $document ) !== '' ? self::text( 'detail.pay-paypal' ) : '',
+			], static fn( string $way ): bool => $way !== '' );
+			$detail = ( $gross === '' ? self::text( 'detail.invoice' ) : ( $day === '' ? self::text( 'detail.invoice-now', $gross ) : self::text( 'detail.invoice-due', $gross, $day ) ) )
+				. ( $ways === [] ? '' : ' '. self::text( 'detail.pay', implode( self::text( 'detail.pay-or' ), $ways ) ) );
+			$button = self::text( 'button.invoice' );
+		}
+		else {
+			$detail = self::text( 'detail.'. $category );
+			$button = self::text( 'button.kind', $kind );
+		}
+
+		return [ 'subject' => $facts === [] ? $head : self::text( 'subject.facts', $head, implode( ', ', $facts ) ), 'button' => $button, 'detail' => $detail ];
 	}
 
 	/**

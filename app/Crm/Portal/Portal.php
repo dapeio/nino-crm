@@ -279,12 +279,12 @@ class Portal {
 	 *	The page a member is sent on to, named in the words of the pages for the note of a step: the name of the page - and, for a project of the client, its title
 	 *
 	 *	@param		array 		&$appData
-	 *	@param		array 		$client
+	 *	@param		array|null	$client				null for a visitor: the name of the page alone, never the title of a project - a visitor is no one a title may be told to
 	 *	@param		string		$onward				As onward() has it
 	 *
 	 *	@return 	string										Markup (a fill, or the escaped title); '' for no page
 	 */
-	public static function onwardName( array &$appData, array $client, string $onward ): string {
+	public static function onwardName( array &$appData, ?array $client, string $onward ): string {
 
 		if( $onward === '' )
 			return '';
@@ -297,7 +297,7 @@ class Portal {
 
 		parse_str( $query, $asked );
 
-		if( $area === 'projekte' && is_string( $asked['projekt'] ?? null ) === true && preg_match( Projekte::ID, $asked['projekt'] ) === 1 ) {
+		if( $client !== null && $area === 'projekte' && is_string( $asked['projekt'] ?? null ) === true && preg_match( Projekte::ID, $asked['projekt'] ) === 1 ) {
 
 			$project = Projekte::get( $appData, $asked['projekt'] );
 
@@ -331,6 +331,57 @@ class Portal {
 			'[[icon]]'    => $step === 'privacy' ? 'shield-check' : 'id-card',
 			'[[text]]'    => '[[/project/crm-portal/gate/'. $step. ']]'. ( $name === '' ? '' : self::render( 'gate-next', [ '[[name]]' => $name ] ) ),
 		] );
+	}
+
+	/**
+	 *	An address of the portal with the state saved in its query: the pages a client is led to after the last step of the gate say it once as a note (savedNote()). The place on the page
+	 *	is left out - an anchor would scroll the note out of sight, and the tab of the query opens the card of the offer anyway
+	 *
+	 *	@param		string		$address			As landing() has it; '' for the start page
+	 *
+	 *	@return 	string										A path under /portal
+	 */
+	public static function saved( string $address ): string {
+
+		$page = explode( '#', $address === '' ? '/portal' : $address, 2 )[0];
+
+		return $page. ( str_contains( $page, '?' ) === true ? '&' : '?' ). 'state=saved';
+	}
+
+	/**
+	 *	The note that the data were saved, for the pages the last step of the gate leads to: there when the query says state=saved, else nothing
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	string										Markup; '' for none
+	 */
+	public static function savedNote( array &$appData ): string {
+
+		if( ( self::query( $appData )['state'] ?? null ) !== 'saved' )
+			return '';
+
+		return self::render( 'note', [ '[[classes]]' => 'crm-saved', '[[tone]]' => 'success', '[[role]]' => 'status', '[[icon]]' => 'circle-check', '[[text]]' => '[[/project/crm-portal/gate/saved]]' ] );
+	}
+
+	/**
+	 *	'/members/login-form': the form of the sign-in is drawn for a visitor, with the page it will lead back to (return) and the slot note: the sentence over the field that says where the
+	 *	sign-in goes on to - only for a page under /portal, and by the name of the page alone (the title of a project or the number of a document is the client's and a visitor has not
+	 *	earned it). Nothing where Members is off, and nothing for a request that names no page of the portal
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$args				return and note, as Members fires them
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackLoginForm( array &$appData, array &$args ): void {
+
+		$name = self::onwardName( $appData, null, self::onward( $args['return'] ?? null ) );
+
+		if( $name === '' || Crm::featureOn( $appData, 'members' ) === false )
+			return;
+
+		self::words( $appData );
+		$args['note'] = self::render( 'door-next', [ '[[name]]' => $name ] );
 	}
 
 	/**
@@ -839,6 +890,7 @@ class Portal {
 
 		return self::render( 'documents', [
 			'[[classes]]' => $classes,
+			'[[saved]]'   => $client === null ? '' : self::savedNote( $appData ),
 			'[[privacy]]' => $client !== null && $orderable === true && self::pending( $appData, $client ) === 'privacy' ? Portal\Order::privacyHint( $dir ) : '',
 			'[[filter]]'  => $withProject === true ? self::filter( $appData, array_keys( $kinds ), $due ) : '',
 			'[[state]]'   => $client === null ? '' : Portal\Order::state( $appData ),

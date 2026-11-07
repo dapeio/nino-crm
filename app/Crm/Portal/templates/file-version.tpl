@@ -1,1 +1,1 @@
- <span class="crm-files__version crm-pill crm-pill--muted">v[[number]]</span>
+<span class="crm-files__version">v[[number]]</span>

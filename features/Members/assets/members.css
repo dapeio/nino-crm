@@ -68,6 +68,12 @@
 	margin-bottom: var(--space-1);
 }
 
+/*	The sentence over the field that a feature puts into the slot - where the sign-in goes on to	*/
+.members-login__next {
+	margin: 0 0 var(--space-2);
+	overflow-wrap: anywhere;
+}
+
 /*	The second step of the form: the address the code went to, the field for the six digits - large, centred, with digits of one width - and the way
 	back to ask for a new one	*/
 .members-code__intro {
