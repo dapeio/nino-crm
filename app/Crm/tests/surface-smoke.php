@@ -795,8 +795,8 @@ foreach( [ 'not json', '[]', '{"action":["crm-documents/list"]}', '{"action":1}'
 	check( 'a body that is no action ('. $broken. ') is 404 action as well', $answer['statusCode'] === 404 && $answer['body']['code'] === 'action' );
 }
 
-check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects and the switch of their download, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the eight of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - the two of the Review panel that read and settle the comments on them, the list of the uploads and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get', 'crm-projekte/download' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/notify', 'files/delete', 'files/remove' ], [ 'review/comments', 'review/done' ], [ 'crm-uploads/list' ] )
-	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|notify|delete|remove)|review/(comments|done)|crm-uploads/list)$~D', $action ) !== 1 ) === []
+check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects and the switch of their download, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the eight of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - the three of the Review panel that read, answer and settle the comments on them, the list of the uploads and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get', 'crm-projekte/download' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/notify', 'files/delete', 'files/remove' ], [ 'review/comments', 'review/answer', 'review/done' ], [ 'crm-uploads/list' ] )
+	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|notify|delete|remove)|review/(comments|answer|done)|crm-uploads/list)$~D', $action ) !== 1 ) === []
 	&& in_array( 'crm-clients/setup', array_keys( Surface::actions() ), true ) === false && in_array( 'crm-clients/status', array_keys( Surface::actions() ), true ) === false );
 
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiList' ], [ 'year' => (string) date( 'Y' ) ], 'crm-documents/list' );
@@ -1978,17 +1978,17 @@ $readme = $audio( $folderK['id'], 'Lies mich.txt', '2026-09-01T10:00:00Z' );
 $foreign = $audio( $folderForeign['id'], 'Fremd.wav', '2026-10-03T10:00:00Z' );
 
 $asVisitor();
-$actions = [ 'review/comments' => [ 'file' => $song1['id'] ], 'review/done' => [ 'file' => $song1['id'], 'id' => 'bbbbbbbbbbbb' ] ];
-check( 'the two actions of the Review panel that the card needs are in the table by their names: 401 for nobody',
+$actions = [ 'review/comments' => [ 'file' => $song1['id'] ], 'review/answer' => [ 'file' => $song1['id'], 'parent' => 'bbbbbbbbbbbb', 'text' => 'x' ], 'review/done' => [ 'file' => $song1['id'], 'id' => 'bbbbbbbbbbbb' ] ];
+check( 'the three actions of the Review panel that the card needs are in the table by their names: 401 for nobody',
 	array_filter( $actions, static fn( array $data, string $action ): bool => surfaceApi( $appData, $action, $data )[0] !== 401, ARRAY_FILTER_USE_BOTH ) === [] && array_intersect( array_keys( $actions ), array_keys( Surface::actions() ) ) === array_keys( $actions )
-	&& array_intersect( [ 'review/list', 'review/answer', 'review/delete' ], array_keys( Surface::actions() ) ) === [] );
+	&& array_intersect( [ 'review/list', 'review/delete' ], array_keys( Surface::actions() ) ) === [] );
 
 // The feature is off: 409 review_off with every permission there is, as files_off is for the Files panel
 $asReview();
 $reviewBefore = \Nino\Modules\Review\Store::read( $appData );
 $offAnswer = array_map( static fn( string $action ): array => surfaceApi( $appData, $action, $actions[$action] ), array_keys( $actions ) );
 check( 'where the feature Review is not active both actions are 409 review_off, with the permission of the panel, as files_off is for the Files panel',
-	array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $offAnswer ) === [ '409 review_off', '409 review_off' ] && ( Surface::texts()['error.review_off'] ?? '' ) !== '' );
+	array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $offAnswer ) === [ '409 review_off', '409 review_off', '409 review_off' ] && ( Surface::texts()['error.review_off'] ?? '' ) !== '' );
 check( '...the Review panel\'s own class is not asked: nothing is changed, nothing is made, no line of the log', \Nino\Modules\Review\Store::read( $appData ) === $reviewBefore && $lines( 'Marked comment' ) === 0 );
 check( '...the first screen counts nothing, the card has no counts and says the feature is off, and the data block has no permission of the panel to give', ( $offOverview = surfaceApi( $appData, 'crm-documents/overview' )[1] ) !== [] && $offOverview['review'] === [ 'count' => 0, 'files' => 0, 'list' => [] ]
 	&& surfaceApi( $appData, 'crm-projekte/get', [ 'id' => '00001' ] )[1]['review'] === false && Surface\Review::allowed( $appData ) === false );
@@ -2013,7 +2013,7 @@ $reviewAlone = array_map( static fn( string $action ): int => surfaceApi( $appDa
 $asFiles();
 $filesOnly = array_map( static fn( string $action ): int => surfaceApi( $appData, $action, $actions[$action] )[0], array_keys( $actions ) );
 check( 'with the feature on both actions are 403 for the account of the CRM alone, for the one that holds the permission of the Files panel and for the one of the Review panel alone - the CRM\'s permission comes first - and nothing is read or changed',
-	$crmAlone === [ 403, 403 ] && $crmForeign === [ 403, 403 ] && $reviewAlone === [ 403, 403 ] && $filesOnly === [ 403, 403 ] && \Nino\Modules\Review::comments( $appData, $song1['id'] )[0]['done'] === false );
+	$crmAlone === [ 403, 403, 403 ] && $crmForeign === [ 403, 403, 403 ] && $reviewAlone === [ 403, 403, 403 ] && $filesOnly === [ 403, 403, 403 ] && \Nino\Modules\Review::comments( $appData, $song1['id'] )[0]['done'] === false );
 
 // review/comments
 $asReview();
@@ -2450,6 +2450,140 @@ function surfaceLinkChecks( array &$appData, array $a, array $accounts, \Closure
 }
 
 
+// --- Antworten auf Kommentare: review/answer through the endpoint, the mail to the member ----------------------------------------------------------
+
+/**
+ *	The checks of the owner's answer to a comment: the action, its permission, the files and comments it may name, what is stored, and the mail
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$a									A client with a group
+ *	@param		array 		$accounts						The accounts of the clients by name
+ *	@param		\Closure	$audio							Makes a file in a folder
+ *	@param		\Closure	$asReview						Signs in the account with the CRM's permission and the Review panel's
+ *	@param		\Closure	$asCrm
+ *	@param		\Closure	$asUser
+ *	@param		\Closure	$asVisitor
+ *	@param		\Closure	$reset							A new window for the caps
+ *
+ *	@return 	void
+ */
+function surfaceReplyChecks( array &$appData, array $a, array $accounts, \Closure $audio, \Closure $asReview, \Closure $asCrm, \Closure $asUser, \Closure $asVisitor, \Closure $reset ): void {
+
+	global $mails;
+
+	echo "\nAntworten auf Kommentare\n";
+
+	$folder = \Nino\Modules\Files\Store::addFolder( $appData, $a['group'], 'Antworten' );
+	$foreignFolder = \Nino\Modules\Files\Store::addFolder( $appData, 'allgemein', 'Antworten fremd' );
+	$song = $audio( $folder['id'], 'Antwort.01.wav', '2026-10-01T10:00:00Z' );
+	$other = $audio( $foreignFolder['id'], 'Antwort.02.wav', '2026-10-01T10:00:00Z' );
+	$byAnna = [ 'kind' => 'member', 'id' => $accounts['anna']['id'] ];
+	$gone = \Nino\Modules\Members::add( $appData, 'gone@example.org', 'Gone', $a['group'] );
+	$byGone = [ 'kind' => 'member', 'id' => $gone['id'] ];
+	$first = \Nino\Modules\Review::add( $appData, $song['id'], $byAnna, 3.0, 'Zu leise', '', '/portal/projekte' );
+	$second = \Nino\Modules\Review::add( $appData, $song['id'], $byAnna, null, 'Noch eins', '', '/portal/projekte' );
+	$orphan = \Nino\Modules\Review::add( $appData, $song['id'], $byGone, null, 'Von jemandem ohne Konto', '', '/portal/projekte' );
+	$foreign = \Nino\Modules\Review::add( $appData, $other['id'], $byAnna, null, 'Andere Gruppe', '', '/portal/projekte' );
+	\Nino\Modules\Members::remove( $appData, $gone['id'] );
+	$lines = static fn( string $needle ): int => count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 800 ), static fn( string $entry ): bool => str_contains( $entry, $needle ) === true ) );
+	$stored = static fn( string $file ): array => \Nino\Modules\Review::comments( $appData, $file );
+	$ask = static function( array $data ) use ( &$appData, $song, $first ): array {
+
+		return surfaceApi( $appData, 'review/answer', $data + [ 'file' => $song['id'], 'parent' => $first['id'], 'text' => 'Gemacht', 'notify' => false ] );
+	};
+	$since = static function( int $from ): array {
+
+		return surfaceMailsFrom( $from );
+	};
+
+	// The action is the panel's, behind the permission of the panel
+	\Nino\Features::activate( $appData, 'review' );
+	$asVisitor();
+	check( 'review/answer is an action of the surface, by the panel\'s name: 401 for nobody', array_key_exists( 'review/answer', Surface::actions() ) === true && $ask( [] )[0] === 401 );
+	$asCrm();
+	$crmAlone = $ask( [] )[0];
+	$asUser( 'reviewonly@example.com', 'reviewonly password' );
+	$reviewAlone = $ask( [] )[0];
+	$asUser( 'filesonly@example.com', 'filesonly password' );
+	$filesOnly = $ask( [] )[0];
+	check( '...403 for the account of the CRM alone, for the Review panel\'s alone and for the Files panel\'s - the permission of the panel is not enough - and nothing is stored', [ $crmAlone, $reviewAlone, $filesOnly ] === [ 403, 403, 403 ] && count( $stored( $song['id'] )[0]['answers'] ) === 0 );
+	\Nino\Features::deactivate( $appData, 'review' );
+	$asReview();
+	$off = $ask( [] );
+	\Nino\Features::activate( $appData, 'review' );
+	check( '...with the feature off 409 review_off, the panel is not asked', $off[0] === 409 && $off[1]['code'] === 'review_off' && count( $stored( $song['id'] )[0]['answers'] ) === 0 );
+
+	// What is stored, and the mail: only with the box
+	$asReview();
+	$reset();
+	$openBefore = Surface\Review::open( $appData );
+	$hostile = "Danke <b>Dir</b> [[link]] [review] \x00 \u{202E}x";
+	$mailsBefore = count( $mails );
+	$linesBefore = $lines( 'Wrote comment' );
+	[ $status, $made ] = $ask( [ 'text' => $hostile, 'notify' => true, 'at' => '1:00' ] );
+	$answers = $stored( $song['id'] )[0]['answers'];
+	check( 'an answer is stored as the owner\'s, under the comment it names, with the text as typed (the null byte dropped), no time whatever was posted, and not done - the comment it answers stays open; the answer is the panel\'s',
+		$status === 200 && array_keys( $made ) === [ 'comment' ] && count( $answers ) === 1 && $answers[0]['by'] === [ 'kind' => 'owner', 'id' => '' ] && $answers[0]['at'] === null && $answers[0]['done'] === false && $answers[0]['text'] === str_replace( "\x00", '', $hostile )
+		&& $stored( $song['id'] )[0]['done'] === false && $made['comment']['id'] === $answers[0]['id'] && $made['comment']['parent'] === $first['id'] );
+	check( '...it is in the log as the panel words it', $lines( 'Wrote comment' ) === $linesBefore + 1 );
+	$sent = $since( $mailsBefore );
+	$body = (string) ( $sent[0]['body'] ?? '' );
+	check( '...and with the box on the member is mailed once, at the address of the account, with the link to the page of the comment and the file, and the text as text: no tag, no placeholder opened',
+		count( $sent ) === 1 && ( $sent[0]['to'] ?? '' ) === $accounts['anna']['email'] && str_contains( $body, 'href="https://example.org/club/portal/projekte?review='. $song['id']. '"' ) === true && str_contains( $body, '<b>Dir</b>' ) === false && str_contains( $body, '&lt;b&gt;Dir&lt;/b&gt;' ) === true
+		&& str_contains( $body, '[[link]]' ) === false && str_contains( $body, '&#91;&#91;link]]' ) === true && str_contains( $body, "\x00" ) === false && substr_count( $body, 'href="' ) === 1 && str_contains( (string) ( $sent[0]['subject'] ?? '' ), '<' ) === false );
+
+	$mailsBefore = count( $mails );
+	$cases = [ 'off' => false, 'absent' => null, 'string' => 'true', 'one' => 1 ];
+	\Nino\Features::saveSettings( $appData, 'review', [ 'notifyMembers' => true ] );
+
+	foreach( $cases as $label => $value ) {
+		$data = [ 'text' => 'Ohne Mail '. $label ];
+
+		if( $value !== null )
+			$data['notify'] = $value;
+
+		$answer = surfaceApi( $appData, 'review/answer', $data + [ 'file' => $song['id'], 'parent' => $first['id'] ] );
+		$cases[$label] = $answer[0];
+	}
+
+	\Nino\Features::saveSettings( $appData, 'review', [ 'notifyMembers' => false ] );
+	check( 'no mail goes out unless the box says true - a false, none, a string and a number do not, even where the setting of the panel is on - and each answer is stored', array_values( array_unique( $cases ) ) === [ 200 ] && count( $mails ) === $mailsBefore && count( $stored( $song['id'] )[0]['answers'] ) === 5 );
+
+	$mailsBefore = count( $mails );
+	$ask( [ 'parent' => $orphan['id'], 'text' => 'An ein Mitglied ohne Konto', 'notify' => true ] );
+	$ownerOnly = $stored( $song['id'] )[0]['answers'][0]['id'];
+	$ask( [ 'parent' => $ownerOnly, 'text' => 'An den Betreiber', 'notify' => true ] );
+	check( 'a member whose account is gone is not mailed, nor is the owner\'s own answer, though the box says true; both answers are stored', count( $mails ) === $mailsBefore && count( $stored( $song['id'] ) ) === 3 && end( $stored( $song['id'] )[2]['answers'] )['text'] === 'An ein Mitglied ohne Konto' );
+
+	// Files and comments that are not to be named
+	$before = [ json_encode( $stored( $song['id'] ) ), json_encode( $stored( $other['id'] ) ), count( $mails ), $lines( 'Wrote comment' ) ];
+	$refused = [
+		'foreign group'		=> surfaceApi( $appData, 'review/answer', [ 'file' => $other['id'], 'parent' => $foreign['id'], 'text' => 'x', 'notify' => true ] ),
+		'file none'				=> surfaceApi( $appData, 'review/answer', [ 'file' => 'cccccccccccc', 'parent' => $first['id'], 'text' => 'x', 'notify' => true ] ),
+		'file shape'			=> surfaceApi( $appData, 'review/answer', [ 'file' => '../x', 'parent' => $first['id'], 'text' => 'x', 'notify' => true ] ),
+		'parent of other'	=> surfaceApi( $appData, 'review/answer', [ 'file' => $song['id'], 'parent' => $foreign['id'], 'text' => 'x', 'notify' => true ] ),
+		'parent none'			=> surfaceApi( $appData, 'review/answer', [ 'file' => $song['id'], 'parent' => 'dddddddddddd', 'text' => 'x', 'notify' => true ] ),
+		'parent shape'		=> surfaceApi( $appData, 'review/answer', [ 'file' => $song['id'], 'parent' => '<b>', 'text' => 'x', 'notify' => true ] ),
+		'no parent'				=> surfaceApi( $appData, 'review/answer', [ 'file' => $song['id'], 'text' => 'Kommentar an alle', 'notify' => true ] ),
+	];
+	check( 'an answer names a file of a client\'s folder and a comment of that file: another group\'s file is 404 crm_files_group, a file and a comment nobody has, a comment of another file and an id of the wrong shape are 404 review_unknown, and so is an answer with no comment - which would be a comment of the owner\'s own, mailed to the group',
+		array_map( static fn( array $answer ): string => $answer[0]. ' '. ( $answer[1]['code'] ?? '' ), $refused ) === [ 'foreign group' => '404 crm_files_group', 'file none' => '404 review_unknown', 'file shape' => '404 review_unknown', 'parent of other' => '404 review_unknown', 'parent none' => '404 review_unknown', 'parent shape' => '404 review_unknown', 'no parent' => '404 review_unknown' ] );
+	check( '...none of them stores a thing, mails anybody or writes a line to the log', $before === [ json_encode( $stored( $song['id'] ) ), json_encode( $stored( $other['id'] ) ), count( $mails ), $lines( 'Wrote comment' ) ] );
+
+	// The length of the panel, and the empty text
+	$long = surfaceApi( $appData, 'review/answer', [ 'file' => $song['id'], 'parent' => $second['id'], 'text' => str_repeat( 'ä', \Nino\Modules\Review::length( $appData ) + 1 ), 'notify' => true ] );
+	$edge = surfaceApi( $appData, 'review/answer', [ 'file' => $song['id'], 'parent' => $second['id'], 'text' => str_repeat( 'ä', \Nino\Modules\Review::length( $appData ) ), 'notify' => false ] );
+	$empty = surfaceApi( $appData, 'review/answer', [ 'file' => $song['id'], 'parent' => $second['id'], 'text' => " \n\x00 ", 'notify' => true ] );
+	check( 'the text is as long as the panel allows (2000 characters: one more is 400 review_long, the 2000th is stored) and not empty (400 review_empty) - and neither refusal mails',
+		\Nino\Modules\Review::length( $appData ) === 2000 && $long[0] === 400 && $long[1]['code'] === 'review_long' && $edge[0] === 200 && $empty[0] === 400 && $empty[1]['code'] === 'review_empty' && count( $stored( $song['id'] )[1]['answers'] ) === 1 && count( $mails ) === $before[2] );
+
+	// An answer settles nothing and counts as nothing: the comments nobody has settled stay what they were
+	check( 'an answer does not mark the comment as done, and the count of the first screen is the comments of members that are not done - the answers of the owner are none of them',
+		array_map( static fn( array $comment ): bool => $comment['done'], $stored( $song['id'] ) ) === [ false, false, false ] && $openBefore['count'] > 0 && Surface\Review::open( $appData ) === $openBefore );
+	$asCrm();
+}
+
+
 // --- Einwilligungen: the lines on the card of a project, the mark in the list, the records of the client, the veto --------------------------------
 
 /**
@@ -2823,6 +2957,8 @@ function surfaceEverydayChecks( array &$appData, array $a, array $c, \Closure $f
 
 	check( '...anything else is refused at the field, and nothing of the request is written', array_filter( $wrong, static fn( bool $ok ): bool => $ok === false ) === [] && \Crm\Settings::get( $appData, 'notify_files' ) === '1' );
 }
+
+surfaceReplyChecks( $appData, $a, $accounts, $audio, $asReview, $asCrm, $asUser, $asVisitor, $reset );
 
 // --- The script of the surface ---------------------------------------------------------------------------------------
 

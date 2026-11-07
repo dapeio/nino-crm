@@ -363,6 +363,9 @@ input[role="switch"]:focus-visible { outline: 2px solid var(--accent); outline-o
 .cm-head .check { margin: 0 0 0 auto; min-height: 24px }
 .cm-at { color: var(--accent); font-family: var(--mono); font-size: 12.5px }
 .cm-text { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere }
+.cm-reply { margin: 8px 0 0 12px; display: grid; gap: 6px }
+.cm-reply-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px }
+.cm-reply-bar .check { margin: 0; min-height: 24px }
 
 /* Uploads: the column of the boxes, the line of the choice beside the buttons */
 .tbl th.pick, .tbl td.pick { width: 36px; padding-right: 0 }

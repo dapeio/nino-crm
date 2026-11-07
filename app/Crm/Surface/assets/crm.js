@@ -7062,6 +7062,79 @@
 		};
 
 		/**
+		 *	The member a thread is answered to: the one who spoke last, the comment or its latest answer by a member - null where none of them is a member with an account (the address is
+		 *	the account's, and the panel mails nobody else)
+		 *
+		 *	@param		{Object}	comment					A comment with its answers
+		 *
+		 *	@return		{Object|null}
+		 */
+		const answeredTo = function( comment ) {
+
+			const members = [ comment ].concat( comment.answers ).filter( function( each ) { return each.by.kind === 'member' } );
+			const last = members.length === 0 ? null : members[members.length - 1];
+
+			return last !== null && last.by.label !== '' ? last : null;
+		};
+
+		/**
+		 *	One comment of the thread with its answers and the form that answers it: the text, the box that says whether the member is mailed (on) and the button. The panel
+		 *	answers the member who spoke last; the answer is put in the thread, which is drawn again for this comment alone, so that what is typed under the others stays
+		 *
+		 *	@param		{Object}	file
+		 *	@param		{Object}	comment
+		 *
+		 *	@return		{Object}
+		 */
+		const threadItem = function( file, comment ) {
+
+			const item = commentItem( file, comment );
+			const target = answeredTo( comment );
+			const area = el( 'textarea', { class: 'area', rows: 2, maxlength: file.length === undefined ? null : String( file.length ), 'aria-label': t( 'projects.reply-text' ), dataset: { reply: comment.id }, value: view.replies !== undefined && view.replies[comment.id] !== undefined ? view.replies[comment.id] : '', on: { input: function() {
+
+				// What is typed stays with the card while it is open: the card is drawn anew when files are put in, and a comment is not to lose its answer by it
+				view.replies = view.replies || {};
+				view.replies[comment.id] = area.value;
+			} } } );
+			const mail = el( 'input', { type: 'checkbox', checked: target !== null, disabled: target === null, dataset: { replyMail: comment.id } } );
+			const send = el( 'button', { type: 'button', class: 'btn sm primary', text: t( 'projects.reply-send' ), dataset: { replySend: comment.id }, on: { click: function() {
+
+				const text = area.value.trim();
+
+				if( text === '' ) {
+					area.focus();
+					return;
+				}
+
+				send.disabled = true;
+
+				call( 'review/answer', { file : file.id, parent : ( target === null ? comment : target ).id, text : text, notify : target !== null && mail.checked === true }, 'projects.error-reply' ).then( function( answer ) {
+
+					send.disabled = false;
+
+					if( answer.ok !== true || answer.body === null || typeof answer.body !== 'object' || answer.body.comment === undefined )
+						return;
+
+					if( view.replies !== undefined )
+						delete view.replies[comment.id];
+					comment.answers.push( answer.body.comment );
+					recount( file );
+					paint();
+					item.replaceWith( threadItem( file, comment ) );
+					toast( t( 'projects.reply-sent' ) );
+				} );
+			} } } );
+
+			item.appendChild( el( 'div', { class: 'cm-reply' },
+				area,
+				el( 'div', { class: 'cm-reply-bar' },
+					el( 'label', { class: 'check sf' }, mail, ' '+ t( 'projects.reply-mail' ) ),
+					send ) ) );
+
+			return item;
+		};
+
+		/**
 		 *	The cell of a file that holds its comments: the thread, or the line that there are none
 		 *
 		 *	@param		{Object}	file
@@ -7078,7 +7151,7 @@
 				return;
 			}
 
-			holder.appendChild( el( 'ul', { class: 'cm-list' }, file.thread.map( function( comment ) { return commentItem( file, comment ) } ) ) );
+			holder.appendChild( el( 'ul', { class: 'cm-list' }, file.thread.map( function( comment ) { return threadItem( file, comment ) } ) ) );
 		};
 
 		/**
@@ -7115,6 +7188,7 @@
 					}
 
 					file.thread = answer.body.comments;
+					file.length = answer.body.length;
 					recount( file );
 					paint();
 					drawThread( file, holder );

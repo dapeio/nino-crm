@@ -2,12 +2,16 @@
 declare(strict_types=1);
 /**
  *	Crm\Surface\Review		What the card of a project in the surface takes from the Review panel of the workbench: its actions review/comments (the comments on a
- *											file, with their answers) and review/done (a comment is done or open again) go through the endpoint as the panel has them, under the
+ *											file, with their answers), review/answer (the owner's answer to a comment) and review/done (a comment is done or open again) go through the endpoint as the panel has them, under the
  *											permission of the panel (\Nino\Modules\Review\Admin::MANAGE_PERM, besides the CRM's own) and only where the feature is on - 409 with the
  *											code review_off where it is not. One thing only the surface adds, as for the Files panel: both are for the files that lie in the folders of
  *											the clients and for no others. A file in a folder of a group that is no client's - or in no folder -  is refused before the panel is asked:
  *											404 crm_files_group, nothing delegated, so that the endpoint never reads or changes the comments of the files of the site. An id Files has no entry of is refused as the panel refuses it, 404
  *											review_unknown, and the panel is not asked: the comments left under it are not for this endpoint to switch.
+ *
+ *											An answer is the owner's answer to a comment of that file and nothing else: it names the comment it answers (an answer with no parent would be a
+ *											comment of the owner's own, which mails the whole group, and is refused as a comment nobody has), it carries no time, and the member is mailed only
+ *											where the posted notify is true - the setting of the panel does not decide here, and anything but a bool true is no.
  *
  *											The panel is used as it is: what it answers (and the name of the author of a comment - the account's name, else its address) and the line of
  *											the activity log are its, and so are the sentences of its codes. open() is the sum the first screen shows: the comments of members that no
@@ -24,7 +28,7 @@ class Review {
 	public const int LIST_MAX = 10;
 
 	// The actions of the panel that the surface offers, and the method of this class that answers each
-	private const array ACTIONS = [ 'review/comments' => 'apiComments', 'review/done' => 'apiDone' ];
+	private const array ACTIONS = [ 'review/comments' => 'apiComments', 'review/answer' => 'apiAnswer', 'review/done' => 'apiDone' ];
 
 	/**
 	 *	The callback '/review/owner-mail': a comment on a file of a project is told to the owner with the link of the card of that project and the client and the project named. A file
@@ -63,7 +67,7 @@ class Review {
 	}
 
 	/**
-	 *	The actions of the card: the panel's two, answered by the methods of this class
+	 *	The actions of the card: the panel's three, answered by the methods of this class
 	 *
 	 *	@return 	array											action => [ class, method ]
 	 */
@@ -237,6 +241,35 @@ class Review {
 	}
 
 	/**
+	 *	The owner's answer to a comment on a file of a client's folder: the panel's action with what the card sends made certain - a comment to answer, no time, and a notify that is a bool
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function apiAnswer( array &$appData, array &$request ): void {
+
+		if( self::fileIn( $appData, $request ) === false )
+			return;
+
+		$data = \Nino\Admin\Admin::postData();
+		$parent = \Nino\Admin\Admin::postString( $data, 'parent' );
+
+		// No parent is a comment of the owner's own on the file, which Review mails to the group of the folder: not what this answers
+		if( $parent === '' ) {
+			\Nino\Http::fail( $request, 404, 'unknown file or comment', 'review_unknown' );
+			return;
+		}
+
+		unset( $data['at'] );
+		$data['notify'] = ( $data['notify'] ?? null ) === true;
+		$_POST['data'] = (string) json_encode( $data );
+
+		\Nino\Modules\Review\Admin::apiAnswer( $appData, $request );
+	}
+
+	/**
 	 *	A comment on a file of a client's folder is done, or open again
 	 *
 	 *	@param		array 		&$appData
@@ -251,7 +284,7 @@ class Review {
 	}
 
 	/**
-	 *	The guard of both actions: the permission of the panel first (a 403 as the panel gives it), then the file the action names, which has to lie in the folder of a
+	 *	The guard of the actions: the permission of the panel first (a 403 as the panel gives it), then the file the action names, which has to lie in the folder of a
 	 *	client's group. A file nobody has is 404 review_unknown here, and nothing is touched by it
 	 *
 	 *	@param		array 		&$appData

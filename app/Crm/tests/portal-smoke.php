@@ -4280,6 +4280,7 @@ function portalApprovalChecks( array &$appData, array $a, array $b, array $accou
 portalApprovalChecks( $appData, $a, $b, $accounts, $stray, $owner, $invoiceA, $p1, $p4, $today, $store, $wordsDe, $wordsEn, $hold, $reset, $asAdmin, $asVisitor, $put, $made, $final, $line, $ago, $recordsOf, $location );
 portalOverviewChecks( $appData, $a, $accounts, $owner, $today, $store, $wordsDe, $wordsEn, $hold, $reset, $asAdmin, $put, $made, $final, $line, $ago, $recordsOf, $location );
 portalPlayerChecks( $appData, $a, $b, $accounts, $stray, $owner, $store, $today, $hold, $reset, $asAdmin, $asVisitor, $put, $made, $final, $line, $ago );
+portalOwnerAnswerChecks( $appData, $a, $accounts, $owner, $store, $today, $hold, $reset, $asAdmin, $put, $made, $ago );
 
 $resume();
 
@@ -6525,4 +6526,39 @@ function portalNotesChecks( array &$appData, array $client, \Closure $fields, \C
 	Db::exec( $appData, 'UPDATE clients SET notes = \'\' WHERE id = :id', [ 'id' => $client['id'] ] );
 	portalServe( $appData, '/.crm/daten', 'POST', $fields( [ 'street' => (string) $client['street'] ] ) );
 	$mails->exchangeArray( $mailsBefore );
+}
+
+/**
+ *	The checks of the owner's answer in the player of the customer: where it stands, whose line it is said to be, and that its text is text
+ */
+function portalOwnerAnswerChecks( array &$appData, array $a, array $accounts, array $owner, string $store, string $today, \Closure $hold, \Closure $reset, \Closure $asAdmin, \Closure $put, \Closure $made, \Closure $ago ): void {
+
+	echo "\nThe answer of the owner in the player\n";
+
+	$hold();
+	$reset();
+	$asAdmin();
+	$byAnna = [ 'kind' => 'member', 'id' => $accounts['anna']['id'] ];
+	$folder = $store::addFolder( $appData, $a['group'], 'Antwort des Betreibers' );
+	$song = $put( $folder, 'Antwort.01.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 500 ) );
+	$project = $made( 'Antwort des Betreibers', $a['number'], [ 'folder' => $folder['id'] ], false );
+	$hostile = "Danke <b>Dir</b> <script>x</script> [[/nino/dir]] [crm-projects] [review] \x00 \u{202E}x";
+	$comment = \Nino\Modules\Review::add( $appData, $song['id'], $byAnna, 4.0, 'Zu laut', '', '/portal/projekte' );
+	$answer = \Nino\Modules\Review::add( $appData, $song['id'], [ 'kind' => 'owner', 'id' => '' ], null, $hostile, $comment['id'] );
+	$token = static fn( string $name ): string => 'contains(concat(" ", normalize-space(@class), " "), " '. $name. ' ")';
+	portalSignIn( $appData, $accounts['anna'] );
+	$page = portalPage( $appData, '/portal/projekte?projekt='. $project. '&review='. $song['id'] )[1];
+	$line = portalFind( $page, '//li['. $token( 'review-comment' ). '][@data-review-id="'. $comment['id']. '"]/ul//li['. $token( 'review-answer' ). '][@data-review-id="'. $answer['id']. '"]' );
+	$ownerWord = (string) \Nino\Html::resolveTextfill( $appData, '/feature/review/comment/owner' );
+	$who = $line === [] ? [] : portalFind( $page, '//li[@data-review-id="'. $answer['id']. '"]/div/strong[' . $token( 'review-comment__who' ). ']' );
+	$memberWho = portalFind( $page, '//li[@data-review-id="'. $comment['id']. '"]/div/strong[' . $token( 'review-comment__who' ). ']' );
+
+	check( 'the answer of the owner stands under the comment of the member it answers, as a line of the answers in the player of the customer', count( $line ) === 1 );
+	check( '...its author is said by the word of the site for the owner - never the name or the address of an account -, which is not the word of the member it answers', $ownerWord !== '' && count( $who ) === 1 && trim( $who[0]->textContent ) === $ownerWord && count( $memberWho ) === 1 && trim( $memberWho[0]->textContent ) !== $ownerWord
+		&& str_contains( (string) ( $line[0]->textContent ?? '' ), '@' ) === false );
+	check( '...the text is text: the tags and the brackets are escaped, the null byte is gone, and nothing of it is a tag, a placeholder or a shortcode of the page',
+		str_contains( $page, '&lt;b&gt;Dir&lt;/b&gt; &lt;script&gt;x&lt;/script&gt;' ) === true && portalFind( $page, '//li[@data-review-id="'. $answer['id']. '"]//b | //li[@data-review-id="'. $answer['id']. '"]//script' ) === [] && str_contains( $page, "\x00" ) === false
+		&& str_contains( $page, '&#91;&#91;/nino/dir]]' ) === true && str_contains( $page, '&#91;crm-projects]' ) === true && str_contains( $page, '&#91;review]' ) === true && portalLeft( $page ) === false );
+	check( '...an answer of the owner has no form of its own and no box Erledigt in the player', portalFind( $page, '//li[@data-review-id="'. $answer['id']. '"]//form | //li[@data-review-id="'. $answer['id']. '"]//input' ) === [] );
+	$asAdmin();
 }

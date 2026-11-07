@@ -5052,7 +5052,7 @@ function press( w, key, target, mods ) {
 		&& findAll( rowOfThread( vw, 'v00000000003' ), function( n ) { return n.tagName === 'I' } ).length === 0 && textOf( all( vitems[1], 'strong' )[0] ) === texts['projects.by-owner'] && all( vitems[1].parentNode.parentNode, '.cm-text' )[0].textContent.indexOf( 'Zu laut' ) === 0 && vitems[1].parentNode.classList.contains( 'cm-answers' ) === true
 		&& textOf( all( vitems[2], '.cm-at' )[0] ) === '1:05' && textOf( all( vitems[2], 'strong' )[0] ) === texts['projects.by-member'] && all( vitems[1], '.cm-at' ).length === 0 );
 	check( '...and a box Erledigt for each comment of a member - not for the answer of the owner, which is never open - ticked for one that is done and not for one that is not',
-		all( rowOfThread( vw, 'v00000000003' ), 'input' ).map( function( n ) { return n.checked } ).join() === 'false,false' && textOf( all( vitems[0], 'label' )[0] ).trim() === texts['projects.comment-done'] && all( rowOfThread( vw, 'v00000000003' ), 'input' ).filter( function( n ) { return n.type === 'checkbox' } ).length === 2 && all( vitems[1], 'input' ).length === 0 && all( vitems[1], 'label' ).length === 0 );
+		all( rowOfThread( vw, 'v00000000003' ), '[data-done]' ).map( function( n ) { return n.checked } ).join() === 'false,false' && textOf( all( vitems[0], 'label' )[0] ).trim() === texts['projects.comment-done'] && all( rowOfThread( vw, 'v00000000003' ), '[data-done]' ).length === 2 && all( vitems[1], 'input' ).length === 0 && all( vitems[1], 'label' ).length === 0 );
 
 	vposts.length = 0;
 	jtoggle( all( vitems[0], 'input' )[0], true );
@@ -5926,6 +5926,136 @@ function press( w, key, target, mods ) {
 	check( 'the links of the menu of the card follow the accounts: with the last account that is on switched off the two entries are gone from the menu', x20_before === 4 && all( kmenu( x20_last, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'Stammdaten bearbeiten|Deaktivieren' );
 
 	check( 'every word the buttons and the dialog of Link für den Kunden ask for is a word of the page', [ ...script.matchAll( /'(plink\.[a-z-]+)'/g ) ].map( function( found ) { return found[1] } ).every( function( key ) { return typeof texts[key] === 'string' } ) && [ ...script.matchAll( /'(plink\.[a-z-]+)'/g ) ].length >= 15 );
+
+	/**
+	 *	The answer of the owner under a comment, from the card of a project: the field, the box for the mail, the call and the line that stands after it
+	 */
+	const replyChecks = async function() {
+
+		const rm = function( id, over ) { return Object.assign( { id : id, by : { kind : 'member', id : 'm00000000001', label : 'Lena Brandt' }, at : null, text : 'Text', parent : '', done : false, created : '2026-11-03T08:00:00Z', page : '', answers : [] }, over || {} ) };
+		const rfile = { id : 'r00000000001', name : 'Song.wav', ext : 'wav', size : 3000000, mime : 'audio/wav', created : '2026-10-02T10:00:00Z', visible : true, gone : '', by : { kind : 'owner', label : '' }, url : '/.files/r00000000001', title : 'Song', version : '', versions : 1, group : 0, comments : { total : 3, open : 2 } };
+		const rthread = [
+			rm( 'r0000000000a', { text: 'Erster' } ),
+			rm( 'r0000000000b', { text : 'Zweiter', by : { kind : 'member', id : 'm00000000002', label : '' } } ),
+			rm( 'r0000000000c', { text : 'Dritter', answers : [ rm( 'r0000000000d', { by : { kind : 'member', id : 'm00000000003', label : 'Karl <b>Weiß</b>' }, text : 'Antwort des Zweiten' } ) ] } ),
+		];
+		const rposts = [];
+		let rrefuse = null;
+		let rgate = null;
+		const ropen = async function( over ) {
+			rposts.length = 0;
+			rrefuse = null;
+			return jopen( '#projekt-00001-dateien', {
+				'crm-projekte/get' : function() { return [ 200, jget( { review : true, list : [ rfile ] } ) ] },
+				'review/comments' : function() { return [ 200, { file : { id : rfile.id, name : 'x', kind : 'audio', url : '/.files/'+ rfile.id, playable : true }, comments : JSON.parse( JSON.stringify( rthread ) ), length : 2000, notify : false, files : true } ] },
+				'review/answer' : function( data ) {
+					rposts.push( data );
+					if( rgate !== null )
+						return rgate.then( function() { return [ 200, { comment : { id : 'r0000000000f', file : rfile.id, by : { kind : 'owner', id : '' }, at : null, text : data.text, parent : data.parent, done : false, created : '2026-11-05T08:00:00Z', page : '' } } ] } );
+					return rrefuse !== null ? rrefuse : [ 200, { comment : { id : 'r0000000000e', file : rfile.id, by : { kind : 'owner', id : '' }, at : null, text : data.text, parent : data.parent, done : false, created : '2026-11-05T08:00:00Z', page : '' } } ];
+				},
+			}, Object.assign( {}, jperms, { review : true } ) );
+		};
+		const rw = await ropen();
+		const ropener = all( rw.main, '[data-comments="'+ rfile.id+ '"]' )[0];
+		click( rw, ropener );
+		await settle();
+		const rareas = function() { return all( rw.main, 'textarea[data-reply]' ) };
+		const rmail = function( id ) { return all( rw.main, '[data-reply-mail="'+ id+ '"]' )[0] };
+		const rsend = function( id ) { return all( rw.main, '[data-reply-send="'+ id+ '"]' )[0] };
+
+		check( 'each comment of a thread has a field for the answer, as long as the panel allows - the text, a box to inform the member (on) and the button - and a comment of a member whose account is gone has the box off and not to be ticked',
+			rareas().map( function( n ) { return n.dataset.reply } ).join() === 'r0000000000a,r0000000000b,r0000000000c' && rareas().every( function( n ) { return n.getAttribute( 'maxlength' ) === '2000' && n.getAttribute( 'aria-label' ) === texts['projects.reply-text'] } )
+			&& rmail( 'r0000000000a' ).checked === true && rmail( 'r0000000000a' ).disabled === false && rmail( 'r0000000000b' ).checked === false && rmail( 'r0000000000b' ).disabled === true
+			&& textOf( rsend( 'r0000000000a' ) ) === texts['projects.reply-send'] && textOf( rmail( 'r0000000000a' ).parentNode ).trim() === texts['projects.reply-mail'] );
+
+		rareas()[0].value = '   ';
+		click( rw, rsend( 'r0000000000a' ) );
+		await settle();
+		check( '...an empty text posts nothing', rposts.length === 0 );
+
+		rareas()[0].value = 'Danke <b>Dir</b> [[x]] [review]\u0000‮';
+		jtoggle( rmail( 'r0000000000a' ), false );
+		click( rw, rsend( 'r0000000000a' ) );
+		await settle();
+		check( 'the button posts review/answer with the file, the comment it answers, the text as typed and the box as a bool - off here - and nothing else: no time',
+			JSON.stringify( rposts ) === JSON.stringify( [ { file : rfile.id, parent : 'r0000000000a', text : 'Danke <b>Dir</b> [[x]] [review]\u0000‮', notify : false } ] ) );
+
+		const rafter = all( rw.main, '[data-comment="r0000000000e"]' )[0];
+		check( '...the answer stands under its comment as a line of the owner, with the text as text, the markup of it a text node; the counter says one more comment and the field is empty again, the box on',
+			rafter !== undefined && rafter.parentNode.classList.contains( 'cm-answers' ) === true && textOf( all( rafter, 'strong' )[0] ) === texts['projects.by-owner'] && all( rafter, '.cm-text' )[0].textContent === 'Danke <b>Dir</b> [[x]] [review]\u0000‮'
+			&& findAll( rw.main, function( n ) { return n.tagName === 'B' } ).length === 0 && all( rafter, 'input' ).length === 0 && rareas()[0].value === '' && rmail( 'r0000000000a' ).checked === true
+			&& textOf( all( rw.main, '[data-counter="'+ rfile.id+ '"]' )[0] ) === fillT( 'projects.comments-count', 4, 5 ) && rw.toast.textContent === texts['projects.reply-sent'] );
+
+		rposts.length = 0;
+		rareas()[2].value = 'An den Letzten';
+		click( rw, rsend( 'r0000000000c' ) );
+		await settle();
+		check( 'a thread is answered to the member who spoke last: the answer of a member under the third comment names that answer, with the box on', JSON.stringify( rposts ) === JSON.stringify( [ { file : rfile.id, parent : 'r0000000000d', text : 'An den Letzten', notify : true } ] ) );
+
+		rposts.length = 0;
+		rareas()[1].value = 'Ohne Konto';
+		jtoggle( rmail( 'r0000000000b' ), true );
+		click( rw, rsend( 'r0000000000b' ) );
+		await settle();
+		check( '...and for a member who has no account to mail the box cannot be on: the post says notify false whatever the box was made to say, and the comment it names is the one that stands there',
+			rposts.length === 1 && rposts[0].notify === false && rposts[0].parent === 'r0000000000b' );
+
+		const rno = await ropen();
+		click( rno, all( rno.main, '[data-comments="'+ rfile.id+ '"]' )[0] );
+		await settle();
+		rrefuse = [ 404, { error : 'x', code : 'review_unknown' } ];
+		all( rno.main, 'textarea[data-reply]' )[0].value = 'Bleibt stehen';
+		click( rno, all( rno.main, '[data-reply-send]' )[0] );
+		await settle();
+		check( 'a refusal says the sentence of its code, keeps the text that was typed and the button usable, and puts no line in the thread',
+			rno.toast.classList.contains( 'bad' ) === true && rno.toast.textContent === texts['error.review_unknown'] && all( rno.main, 'textarea[data-reply]' )[0].value === 'Bleibt stehen' && all( rno.main, '[data-reply-send]' )[0].disabled === false
+			&& all( rno.main, '.cm-answers .cm' ).length === 1 && textOf( all( rno.main, '[data-counter="'+ rfile.id+ '"]' )[0] ) === fillT( 'projects.comments-count', 4, 4 ) );
+
+		let rrelease = null;
+		rgate = new Promise( function( resolve ) { rrelease = resolve } );
+		const rslow = await ropen();
+		rgate = new Promise( function( resolve ) { rrelease = resolve } );
+		click( rslow, all( rslow.main, '[data-comments="'+ rfile.id+ '"]' )[0] );
+		await settle();
+		all( rslow.main, 'textarea[data-reply]' )[0].value = 'Langsam';
+		const rbutton = all( rslow.main, '[data-reply-send]' )[0];
+		click( rslow, rbutton );
+		const rduring = rbutton.disabled === true;
+		rrelease();
+		await settle();
+		check( 'while an answer is on its way the button is disabled; when it has arrived the new line stands and the button is free for the next',
+			rduring === true && rposts.length === 1 && all( rslow.main, '[data-reply-send]' )[0].disabled === false && all( rslow.main, '.cm-answers .cm' ).length === 2 );
+		rgate = null;
+
+		// A draft that is half typed stays with the card, whatever draws the card anew, and the text that is sent has no blanks around it
+		const rdraft = await ropen();
+		click( rdraft, all( rdraft.main, '[data-comments="'+ rfile.id+ '"]' )[0] );
+		await settle();
+		type( all( rdraft.main, 'textarea[data-reply]' )[0], 'Halb getippt', false );
+		type( all( rdraft.main, 'textarea[data-reply]' )[1], '', false );
+		jf( rdraft, 'up-input' ).files = [ jfile( 'neu.txt', 2500 ) ];
+		click( rdraft, jf( rdraft, 'up-send' ) );
+		await settle();
+		const rclosed = all( rdraft.main, '[data-comments="'+ rfile.id+ '"]' )[0];
+		const rrow = all( rdraft.main, '[data-thread="'+ rfile.id+ '"]' )[0];
+		check( 'the card is drawn anew when a file is put in: the comments are closed again', rclosed !== undefined && rclosed.getAttribute( 'aria-expanded' ) === 'false' && rrow.hidden === true && all( rdraft.main, 'textarea[data-reply]' ).length === 0 );
+		click( rdraft, rclosed );
+		await settle();
+		check( '...and the answer that was half typed is in its field again when they are opened, the others are empty', all( rdraft.main, 'textarea[data-reply]' )[0].value === 'Halb getippt' && all( rdraft.main, 'textarea[data-reply]' )[1].value === '' );
+		rposts.length = 0;
+		type( all( rdraft.main, 'textarea[data-reply]' )[0], '  \n Mit Rand \n ', false );
+		click( rdraft, all( rdraft.main, '[data-reply-send]' )[0] );
+		await settle();
+		check( 'the text that is sent is trimmed, and once it is sent the draft is gone: opened anew the field is empty', rposts.length === 1 && rposts[0].text === 'Mit Rand' && all( rdraft.main, 'textarea[data-reply]' )[0].value === '' );
+
+		const rlocked = await jopen( '#projekt-00001-dateien', { 'crm-projekte/get' : function() { return [ 200, jget( { review : true, list : [ rfile ] } ) ] } }, jperms );
+		check( 'without the permission of the Review panel there is no row for the comments and so no field to answer in', all( rlocked.main, 'textarea[data-reply]' ).length === 0 && all( rlocked.main, '[data-reply-send]' ).length === 0 );
+		check( 'the words of the answer are there, each a sentence of the page', [ 'projects.reply-text', 'projects.reply-mail', 'projects.reply-send', 'projects.reply-sent', 'projects.error-reply' ].every( function( key ) { return typeof texts[key] === 'string' && texts[key] !== '' } ) );
+	};
+
+	await replyChecks();
+
 
 	}
 
