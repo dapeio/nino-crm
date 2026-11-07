@@ -22,13 +22,14 @@ declare(strict_types=1);
  *								names it as a target() has it, and documentHref() is the address of a document in the portal. The messages the owner wrote - to every client, to this
  *								client - stand over the head of every page of the portal (messages()), once the gate is open; a member puts one away for itself (Portal\Message).
  *
- *								The look of all of it is the portal's own design, portal.css (its head comment says the system); the markup of every
+ *								The portal is also an app for the home screen (Portal\App: the manifest, the icon, the lines of the head, the card that says how). The look of all of it is the portal's own design, portal.css (its head comment says the system); the markup of every
  *								part is a template of templates/, read through template() and filled through render(), which also puts the icons in
  *								(Portal\Icons: a template asks for one with [[icon:<name>]]). The states a customer reads are the customer's words
  *								(customerState()): an invoice that is sent is open to the customer, one past its day is overdue.
  */
 namespace Crm;
 
+use Crm\Portal\App;
 use Crm\Portal\Icons;
 
 class Portal {
@@ -353,6 +354,10 @@ class Portal {
 		if( ( $route !== '/portal' && str_starts_with( $route, '/portal/' ) === false ) || ( $request['/nino/http/request']['method'] ?? '' ) !== 'GET' || ( $request['/nino/http/response']['statusCode'] ?? 200 ) !== 200 )
 			return;
 
+		// The manifest and the icons of the app are no page: they look at nobody, and a client with a step pending is not sent away from them
+		if( in_array( $route, [ App::MANIFEST, App::ICON, App::ICON_PNG ], true ) === true )
+			return;
+
 		if( Crm::featureOn( $appData, 'members' ) === false || \Nino\Modules\Members::current( $appData ) === null )
 			return;
 
@@ -482,7 +487,7 @@ class Portal {
 	/**
 	 *	[crm-portal-head] - the head of a portal page: the bar of the application (the name of the site, or its logo, as a link to the start page and
 	 *	the h1 of the page, the one the head of the site has; the account of the member as a chip that links to Meine Daten; Abmelden), the navigation of the portal (see
-	 *	componentCrmPortalNav()), then the title and the lead of the page (its name and description, as the head of the site reads them). The bar takes the
+	 *	componentCrmPortalNav()), then the messages of the owner and - on the start page and the list of projects - the card for the home screen (see App::note()), then the title and the lead of the page (its name and description, as the head of the site reads them). The bar takes the
 	 *	place of the head of the site on the page (the style sheet sets that head aside where the bar is). nav="0" leaves the bar and the navigation out,
 	 *	for a template that sets the navigation itself. On the page of a project (?projekt=<id>, or ?review=<file> of a
 	 *	file of one of the client's projects) the head is the breadcrumb Projekte › the project (and the project's title as a heading for a screen reader) - the tabs of the page stand directly under it, and
@@ -544,7 +549,11 @@ class Portal {
 			$navigation = self::componentCrmPortalNav( $appData, [] );
 		}
 
-		return $bar. $navigation. ( $client === null ? '' : self::messages( $appData, $client ) ). $head;
+		// A page that has the bar is the app's: its head gets the manifest and the icon of the portal (see App::callbackOutput())
+		if( $bar !== '' )
+			App::markBar( $appData );
+
+		return $bar. $navigation. ( $client === null ? '' : self::messages( $appData, $client ). App::note( $appData, $client, $project ) ). $head;
 	}
 
 	/**
@@ -554,7 +563,7 @@ class Portal {
 	 *
 	 *	@return 	string										Not escaped; '' where the site has none
 	 */
-	private static function siteName( array &$appData ): string {
+	public static function siteName( array &$appData ): string {
 
 		return str_replace( "\0", '', trim( html_entity_decode( (string) \Nino\Html::resolveTextfill( $appData, '/project/company/general/name' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
 	}

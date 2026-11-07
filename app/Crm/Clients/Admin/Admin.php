@@ -55,6 +55,7 @@ class Admin {
 			'crm-clients/account-active' => [ self::class, 'apiAccountActive' ],
 			'crm-clients/account-name'   => [ self::class, 'apiAccountName' ],
 			'crm-clients/account-email'  => [ self::class, 'apiAccountEmail' ],
+			'crm-clients/account-forget' => [ self::class, 'apiAccountForget' ],
 			'crm-clients/account-remove' => [ self::class, 'apiAccountRemove' ],
 			'crm-clients/portal'   => [ self::class, 'apiPortal' ],
 			'crm-clients/message'  => [ self::class, 'apiMessage' ],
@@ -85,6 +86,7 @@ class Admin {
 			'crm-clients/account-active' => 'Switched account'. $id. ' of client'. $of,
 			'crm-clients/account-name'   => 'Renamed account'. $id. ' of client'. $of,
 			'crm-clients/account-email'  => $of === '' ? '' : 'Changed the sign-in address of account'. $id. ' of client'. $of,
+			'crm-clients/account-forget' => 'Signed account'. $id. ' of client'. $of. ' out of all devices',
 			'crm-clients/account-remove' => 'Deleted account'. $id. ' of client'. $of,
 			'crm-clients/message'        => 'Changed the message of client'. $of,
 			default                      => '',
@@ -834,6 +836,35 @@ class Admin {
 			}
 
 			\Nino\Http::ok( $request, $answer );
+		} );
+	}
+
+	/**
+	 *	Sign an account out of every device: the devices that stay signed in are forgotten and the sessions of the account end (Members::forgetAll()). The owner's own session is not the
+	 *	account's and is left alone. The log line names the client and the account
+	 */
+	public static function apiAccountForget( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		self::_run( $request, static function() use ( &$appData, &$request ): void {
+
+			$target = self::_target( $appData, $request, \Nino\Admin\Admin::postData(), true, false );
+
+			if( $target === null )
+				return;
+
+			[ $client, $account ] = $target;
+
+			if( \Nino\Modules\Members::forgetAll( $appData, $account['id'] ) === false ) {
+				self::_refuse( $request, 'write' );
+				return;
+			}
+
+			self::$_made['crm-clients/account-forget'] = $client['number'];
+
+			\Nino\Http::ok( $request, [ 'forgotten' => true ] );
 		} );
 	}
 

@@ -37,8 +37,14 @@ namespace Nino\Modules {
 	 *										session, stamped with the session epoch of
 	 *										/data/members-session.php (see _openEpoch()): signOutAll() -
 	 *										the panel's button - writes a new one, and every session
-	 *										from before it reads signed out. No cookie of the
-	 *										feature's own.
+	 *										from before it reads signed out. The one cookie of the feature's
+	 *										own is nino_remember, for a member who ticked the box of the code
+	 *										form: its value is the id of the account and a token of 32 random bytes,
+	 *										of which the account keeps only the sha256 (the list remember, ten at most,
+	 *										the oldest one goes first). A visitor who has no session and brings a good one
+	 *										is signed in as after a code, and the token is replaced by a new one
+	 *										with every use (see _resume()); signing out takes the token of that
+	 *										device, forgetAll() those of all.
 	 *
 	 *										A path under one of the protected prefixes of the
 	 *										setting paths - or an address of a page whose uri lies under
@@ -134,6 +140,16 @@ namespace Nino\Modules {
 		private const int NAME_LENGTH = 120;
 		private const int CODE_TRIES = 5;
 		private const string TIME = 'Y-m-d\TH:i:s\Z';
+
+		// The cookie of a device that stays signed in, the tokens an account keeps of them, the longest user agent that is kept with one, the days it holds
+		// by default, the wrong cookies of an address that are counted in an hour and the seconds the token that was replaced still signs in
+		private const string REMEMBER = 'nino_remember';
+		private const int REMEMBER_MAX = 10;
+		private const int AGENT_LENGTH = 300;
+		private const int DEFAULT_REMEMBER = 90;
+		private const int REMEMBER_TRIES = 20;
+		private const int REMEMBER_GRACE = 30;
+		private const string REMEMBER_COUNTS = 'remember|';
 
 		// What the form may say besides nothing, the key of its words where that is
 		// not the state's own name, what a token may be for, and what of it a link
@@ -280,7 +296,7 @@ namespace Nino\Modules {
 
 		/**
 		 *	Whether $uri lies under one of the protected prefixes of the setting
-		 *	paths - the prefix itself and everything below it
+		 *	paths - the prefix itself and everything below it - and no feature has opened it (open())
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$uri					A request path without the directory
@@ -289,7 +305,26 @@ namespace Nino\Modules {
 		 */
 		public static function protects( array &$appData, string $uri ): bool {
 
-			return \Nino\Http::matchesPath( $uri, array_map( static fn( string $prefix ): string => $prefix. '/*', self::prefixes( $appData ) ) );
+			return \Nino\Http::matchesPath( $uri, array_map( static fn( string $prefix ): string => $prefix. '/*', self::prefixes( $appData ) ) ) === true
+				&& \Nino\Http::matchesPath( $uri, self::open( $appData ) ) === false;
+		}
+
+		/**
+		 *	The paths a feature has opened under a protected prefix: a file the browser fetches without a session - the manifest of a web app, its icon. The callback
+		 *	'/members/open' is handed a list and adds to it the uris of its routes, in the spelling Http::matchesPath() reads (a path, or a prefix with /*); anything that is
+		 *	no string, no path of this site or an endpoint of a module (/., /_) is dropped
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *
+		 *	@return 	array										Uris and patterns
+		 */
+		public static function open( array &$appData ): array {
+
+			$list = [];
+
+			\Nino\Callbacks::doCallbacks( $appData, '/members/open', $list );
+
+			return array_values( array_filter( is_array( $list ) === true ? $list : [], static fn( mixed $uri ): bool => is_string( $uri ) === true && preg_match( '~^/(?![._/])[^\s\x00-\x1f\x7f?#]*$~D', $uri ) === 1 ) );
 		}
 
 		/**
@@ -629,18 +664,83 @@ namespace Nino\Modules {
 
 		/**
 		 *	Sign every member out at once: write a new session epoch, which no
-		 *	session that signed in before it carries. The panel's 'Sign everybody
-		 *	out' ends here - a member who left must not stay in because the browser
-		 *	kept the session. Nobody is identified, so there is no one to name; the
-		 *	epoch is all there is to rotate.
+		 *	session that signed in before it carries, and take every token of a device
+		 *	that stays signed in (a cookie would sign the member in again). The panel's
+		 *	'Sign everybody out' ends here - a member who left must not stay in because
+		 *	the browser kept the session. Nobody is identified, so there is no one to
+		 *	name; the epoch is all there is to rotate.
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *
-		 *	@return 	bool										False where the file could not be written
+		 *	@return 	bool										False where a file could not be written
 		 */
 		public static function signOutAll( array &$appData ): bool {
 
-			return \Nino\Filesystem::mutate( $appData, self::EPOCH, static fn(): array => [ 'epoch' => bin2hex( random_bytes( 16 ) ) ], [] );
+			$written = \Nino\Filesystem::mutate( $appData, self::EPOCH, static fn(): array => [ 'epoch' => bin2hex( random_bytes( 16 ) ) ], [] );
+			$ran = false;
+			$dirty = false;
+
+			$cleared = \Nino\Filesystem::mutate( $appData, self::ACCOUNTS, static function( mixed $state ) use ( &$ran, &$dirty ): ?array {
+
+				$ran = true;
+				$accounts = self::_accountsOf( $state );
+
+				foreach( $accounts as $id => $record )
+					if( isset( $record['remember'] ) === true ) {
+						unset( $accounts[$id]['remember'] );
+						$dirty = true;
+					}
+
+				return $dirty === true ? [ 'accounts' => $accounts ] : null;
+			}, [] );
+
+			return $written === true && $ran === true && ( $dirty === false || $cleared === true );
+		}
+
+		/**
+		 *	Sign one account out of every device: the list of the tokens of devices that stay signed in is emptied
+		 *	and the account gets an epoch of its own, as a change of the address gives it, so that every session of it
+		 *	ends - and no token is left that would sign it in again. The session of the member who asks - where it is
+		 *	the account's own - stays: it is written again with the new epoch, and the cookie of this device is
+		 *	deleted. Anybody else's session, the owner's among them, is left alone
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$id						12 hex characters
+		 *
+		 *	@return 	bool										False for an id nobody has and where the file could not be written
+		 */
+		public static function forgetAll( array &$appData, string $id ): bool {
+
+			$mine = self::_own( $appData, [ 'id' => $id ] );
+			$epoch = bin2hex( random_bytes( 16 ) );
+			$found = false;
+
+			$written = \Nino\Filesystem::mutate( $appData, self::ACCOUNTS, static function( mixed $state ) use ( $id, $epoch, &$found ): ?array {
+
+				$accounts = self::_accountsOf( $state );
+
+				if( isset( $accounts[$id] ) === false )
+					return null;
+
+				$found = true;
+				unset( $accounts[$id]['remember'] );
+				$accounts[$id]['epoch'] = $epoch;
+
+				return [ 'accounts' => $accounts ];
+			}, [] );
+
+			if( $found === false || $written === false )
+				return false;
+
+			if( $mine === true ) {
+
+				$session = \Nino\Runtime::getSessionValue( $appData, self::SESSION_ACCOUNT );
+
+				\Nino\Runtime::setSessionValue( $appData, self::SESSION_ACCOUNT, [ 'id' => $id, 'epoch' => (string) ( is_array( $session ) === true ? ( $session['epoch'] ?? '' ) : '' ), 'own' => $epoch ] );
+				self::_cookie( $appData, '', 0 );
+			}
+
+			return true;
 		}
 
 		/**
@@ -661,6 +761,9 @@ namespace Nino\Modules {
 		 *	so the path joins its blacklist for this request, ahead of its own
 		 *	callback at priority 9
 		 *
+		 *	The gate is also where a device that stays signed in is signed in (see
+		 *	_resume()): before anything reads the member, once for a request
+		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		&$request			(reference) Current server request
 		 *
@@ -669,6 +772,8 @@ namespace Nino\Modules {
 		public static function callbackGate( array &$appData, array &$request ): void {
 
 			$uri = (string) ( $request['/nino/http/request']['uri'] ?? '' );
+
+			self::_resume( $appData, $request );
 
 			if( \Nino\Runtime::getSessionValue( $appData, self::SESSION_ACCOUNT ) !== null )
 				self::_keepOutOfCache( $appData, $uri );
@@ -835,7 +940,8 @@ namespace Nino\Modules {
 		 *	callback '/members/start' may name another page (see _arrival()); one that is
 		 *	good for an account that is gone or switched off ends the request with
 		 *	?members=gone. One that is not found is ?members=wrong - and, the fifth time,
-		 *	the end of the request and ?members=gone: a new code has to be asked for
+		 *	the end of the request and ?members=gone: a new code has to be asked for.
+		 *	With the box remember posted, a good code also makes the token of this device and sets the cookie (see _remember())
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		&$request			(reference) Current server request
@@ -890,6 +996,9 @@ namespace Nino\Modules {
 			}
 
 			\Nino\Callbacks::doCallbacks( $appData, '/members/login', $account );
+
+			if( self::_posted( 'remember' ) === '1' )
+				self::_remember( $appData, $account['id'] );
 
 			\Nino\Http::redirect( $appData, $request, self::_arrival( $appData, $account, $spent['target'] ), 303 );
 		}
@@ -983,7 +1092,8 @@ namespace Nino\Modules {
 		 *	GET /.members/logout: sign the member out and go to the start page with
 		 *	?members=out. A plain link rather than a form on purpose - it discloses
 		 *	nothing a visitor could not already tell from being on the page, so it
-		 *	needs no csrf token to be safe, as ProtectedArea's logout has none
+		 *	needs no csrf token to be safe, as ProtectedArea's logout has none. The token
+		 *	of this device goes with the session, and the cookie that carried it
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		&$request			(reference) Current server request
@@ -993,6 +1103,8 @@ namespace Nino\Modules {
 		public static function callbackLogout( array &$appData, array &$request ): void {
 
 			$account = self::current( $appData );
+
+			self::_dropDevice( $appData );
 
 			\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_ACCOUNT );
 			\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_CHANGE );
@@ -1074,12 +1186,13 @@ namespace Nino\Modules {
 			// after it would be looked for in it as well
 			if( $pending !== null )
 				return str_replace(
-					[ '[[id]]', '[[return]]', '[[email]]', '[[classes]]', '[[state]]' ],
+					[ '[[id]]', '[[return]]', '[[email]]', '[[classes]]', '[[remember]]', '[[state]]' ],
 					[
 						'members-code-'. ( $appData[self::FORMS] = (int) ( $appData[self::FORMS] ?? 0 ) + 1 ),
 						$return,
 						\Nino\Modules\Components::escape( $pending['email'] ),
 						\Nino\Feature::classes( $args ),
+						self::_box( $appData ),
 						self::_say( $appData, $state ),
 					],
 					\Nino\Feature::template( $appData, self::TEMPLATES, 'members-code' )
@@ -1241,6 +1354,10 @@ namespace Nino\Modules {
 				$before = $accounts[$id];
 				$accounts[$id] = array_merge( $before, array_filter( [ 'name' => $name, 'group' => $group, 'active' => $active ], static fn( mixed $value ): bool => $value !== null ) );
 
+				// An account that is switched off keeps no device that would sign it in again
+				if( $active === false )
+					unset( $accounts[$id]['remember'] );
+
 				if( $email !== null && $email !== $before['email'] ) {
 
 					foreach( $accounts as $other => $each )
@@ -1251,6 +1368,9 @@ namespace Nino\Modules {
 
 					$accounts[$id]['email'] = $email;
 					$accounts[$id]['epoch'] = bin2hex( random_bytes( 16 ) );
+
+					// The devices were signed in under the old address
+					unset( $accounts[$id]['remember'] );
 					$from = $before['email'];
 				}
 
@@ -1338,6 +1458,262 @@ namespace Nino\Modules {
 			\Nino\Runtime::setSessionValue( $appData, self::SESSION_ACCOUNT, [ 'id' => $id, 'epoch' => $epoch ] + ( $own !== '' ? [ 'own' => $own ] : [] ) );
 
 			return true;
+		}
+
+		/**
+		 *	The devices of an account that stay signed in, each read for what it has to be: the sha256 of its token (64 hex characters), the time it was made, the time
+		 *	it is good until (an integer) and the user agent it was made from (a string) - and, for thirty seconds after a use, the sha256 of the token it replaced and the time of the replacement. An entry that is none is left out, and so is one that has run out
+		 *
+		 *	@param		mixed			$list					As the account's record holds it
+		 *
+		 *	@return 	array										A list of hash, created, expires and agent, the oldest first; at most REMEMBER_MAX
+		 */
+		private static function _devicesOf( mixed $list ): array {
+
+			$devices = [];
+			$now = time();
+
+			foreach( is_array( $list ) === true ? $list : [] as $entry )
+				if( is_array( $entry ) === true && is_string( $entry['hash'] ?? null ) === true && preg_match( '/^[0-9a-f]{64}$/D', $entry['hash'] ) === 1
+					&& is_string( $entry['created'] ?? null ) === true && is_int( $entry['expires'] ?? null ) === true && $entry['expires'] > $now && is_string( $entry['agent'] ?? null ) === true )
+					$devices[] = [ 'hash' => $entry['hash'], 'created' => $entry['created'], 'expires' => $entry['expires'], 'agent' => mb_substr( $entry['agent'], 0, self::AGENT_LENGTH, 'UTF-8' ) ]
+						+ ( is_string( $entry['previous'] ?? null ) === true && preg_match( '/^[0-9a-f]{64}$/D', $entry['previous'] ) === 1 && is_int( $entry['rotated'] ?? null ) === true && $now - $entry['rotated'] <= self::REMEMBER_GRACE
+							? [ 'previous' => $entry['previous'], 'rotated' => $entry['rotated'] ] : [] );
+
+			return array_slice( $devices, -self::REMEMBER_MAX );
+		}
+
+		/**
+		 *	The user agent of the request, as it is kept with a device: control characters out, at most AGENT_LENGTH characters
+		 *
+		 *	@return 	string
+		 */
+		private static function _agent(): string {
+
+			$agent = is_string( $_SERVER['HTTP_USER_AGENT'] ?? null ) === true ? $_SERVER['HTTP_USER_AGENT'] : '';
+
+			return mb_substr( preg_replace( '/[\x00-\x1f\x7f]/', '', mb_scrub( $agent, 'UTF-8' ) ) ?? '', 0, self::AGENT_LENGTH, 'UTF-8' );
+		}
+
+		/**
+		 *	A token of 32 random bytes as base64url, 43 characters
+		 *
+		 *	@return 	string
+		 */
+		private static function _deviceToken(): string {
+
+			return rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
+		}
+
+		/**
+		 *	The cookie of this request taken apart: the id of an account and a token, in the form _remember() writes them
+		 *
+		 *	@return 	array|null								[ id, token ]; null for no cookie, and for one that is not of that form
+		 */
+		private static function _deviceCookie(): ?array {
+
+			$raw = is_string( $_COOKIE[self::REMEMBER] ?? null ) === true ? $_COOKIE[self::REMEMBER] : '';
+
+			return preg_match( '/^([0-9a-f]{12})\.([A-Za-z0-9_-]{43})$/D', $raw, $found ) === 1 ? [ $found[1], $found[2] ] : null;
+		}
+
+		/**
+		 *	Set the cookie of a device that stays signed in - or, with no seconds, delete it. HttpOnly, SameSite=Lax, Secure where the request is https (as the session cookie
+		 *	is), for the whole site. The line is kept in the app data for the request ('./members/cookies') and sent unless the headers have gone: a header added, never one that
+		 *	replaces another, since the session cookie is sent with it
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$value				The id of the account, a dot and the token; '' for a cookie that is deleted
+		 *	@param		int				$seconds			How long the browser keeps it; 0 deletes it
+		 *
+		 *	@return 	void
+		 */
+		private static function _cookie( array &$appData, string $value, int $seconds ): void {
+
+			$secure = ( $appData['/nino/session/force-secure-cookie'] ?? false ) === true || ( ( $_SERVER['HTTPS'] ?? '' ) !== '' && ( $_SERVER['HTTPS'] ?? '' ) !== 'off' );
+			$line = self::REMEMBER. '='. $value. '; Max-Age='. max( 0, $seconds ). '; Path=/'. ( $seconds <= 0 ? '; Expires=Thu, 01 Jan 1970 00:00:00 GMT' : '' ). '; HttpOnly'. ( $secure === true ? '; Secure' : '' ). '; SameSite=Lax';
+
+			$appData['./members/cookies'] = array_merge( (array) ( $appData['./members/cookies'] ?? [] ), [ $line ] );
+
+			if( headers_sent() === false )
+				header( 'Set-Cookie: '. $line, false );
+		}
+
+		/**
+		 *	Make the token of this device after a code that was given with the box ticked: 32 random bytes, of which the account keeps the sha256, the time, the end of its
+		 *	days (the setting rememberDays) and the user agent - in the list remember, with the entries that have run out gone and the oldest one going when there are
+		 *	more than ten. The token of this device from an earlier time, if the browser brings one, is replaced. The cookie is set; nothing is set where the account could not be written
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$id						The account that is signed in
+		 *
+		 *	@return 	bool											Whether the cookie was set
+		 */
+		private static function _remember( array &$appData, string $id ): bool {
+
+			$token = self::_deviceToken();
+			$days = self::_rememberDays( $appData );
+			$now = time();
+			$agent = self::_agent();
+			$stale = self::_deviceCookie();
+			$staleHash = $stale !== null && $stale[0] === $id ? hash( 'sha256', $stale[1] ) : '';
+			$found = false;
+
+			$written = \Nino\Filesystem::mutate( $appData, self::ACCOUNTS, static function( mixed $state ) use ( $id, $token, $days, $now, $agent, $staleHash, &$found ): ?array {
+
+				$accounts = self::_accountsOf( $state );
+
+				if( isset( $accounts[$id] ) === false || $accounts[$id]['active'] === false )
+					return null;
+
+				$found = true;
+				$devices = array_values( array_filter( $accounts[$id]['remember'] ?? [], static fn( array $entry ): bool => $staleHash === '' || hash_equals( $entry['hash'], $staleHash ) === false ) );
+				$devices[] = [ 'hash' => hash( 'sha256', $token ), 'created' => gmdate( self::TIME, $now ), 'expires' => $now + $days * 86400, 'agent' => $agent ];
+				$accounts[$id]['remember'] = array_slice( $devices, -self::REMEMBER_MAX );
+
+				return [ 'accounts' => $accounts ];
+			}, [] );
+
+			if( $found === false || $written === false )
+				return false;
+
+			self::_cookie( $appData, $id. '.'. $token, $days * 86400 );
+
+			return true;
+		}
+
+		/**
+		 *	Sign in a visitor who has no session and brings the cookie of a device that stays signed in. Only the request for a page that is read (a GET, no endpoint of this
+		 *	feature, no answer that is no html - the manifest and the icon of a portal look at nobody), once for a request, as the gate is. A good token - the account is
+		 *	there and active, the sha256 of the token is in its list, compared with hash_equals, and not run out - signs the member in as a code does (_signIn(), the callback
+		 *	'/members/login') and is replaced by a new one in the same write (the old one is dead from then on, the days start again) and in the cookie. A cookie that is no good - not of
+		 *	the form, an account that is gone, a token the account does not hold, one that has run out - is deleted and counts as a try of its address, as a wrong code does; an
+		 *	address that has brought REMEMBER_TRIES of them in an hour is no longer counted and no longer has its cookie deleted - the count never stands in the way of a good token. The token a use
+		 *	has just replaced signs in for REMEMBER_GRACE seconds more, with no new token, no cookie and no write: two tabs that open at once bring the same cookie. No token and no cookie is ever written down
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		&$request			(reference) Current server request, its response already routed
+		 *
+		 *	@return 	void
+		 */
+		private static function _resume( array &$appData, array &$request ): void {
+
+			if( is_string( $_COOKIE[self::REMEMBER] ?? null ) === false || $_COOKIE[self::REMEMBER] === '' )
+				return;
+
+			$uri = (string) ( $request['/nino/http/request']['uri'] ?? '' );
+
+			if( ( $request['/nino/http/request']['method'] ?? '' ) !== 'GET' || str_starts_with( $uri, '/.members' ) === true || str_starts_with( $uri, '/_' ) === true
+				|| \Nino\Http::answersHtml( (array) ( $request['/nino/http/response'] ?? [] ) ) === false || self::current( $appData ) !== null )
+				return;
+
+			$who = self::REMEMBER_COUNTS. \Nino\Http::getClientIp( $appData );
+			$device = self::_deviceCookie();
+			$next = self::_deviceToken();
+			$id = $device === null ? '' : $device[0];
+			$hash = $device === null ? '' : hash( 'sha256', $device[1] );
+			$days = self::_rememberDays( $appData );
+			$now = time();
+			$agent = self::_agent();
+			$rotated = false;
+			$grace = false;
+			$written = false;
+
+			if( $device !== null )
+				$written = \Nino\Filesystem::mutate( $appData, self::ACCOUNTS, static function( mixed $state ) use ( $id, $hash, $next, $days, $now, $agent, &$rotated, &$grace ): ?array {
+
+					$accounts = self::_accountsOf( $state );
+
+					if( isset( $accounts[$id] ) === false || $accounts[$id]['active'] === false )
+						return null;
+
+					// Every entry is compared, whichever one matches: the time it takes does not say which place it was
+					$at = null;
+					$before = false;
+
+					foreach( $accounts[$id]['remember'] ?? [] as $place => $entry ) {
+
+						if( hash_equals( $entry['hash'], $hash ) === true )
+							$at = $place;
+
+						if( hash_equals( $entry['previous'] ?? str_repeat( '0', 64 ), $hash ) === true && isset( $entry['previous'] ) === true )
+							$before = true;
+					}
+
+					if( $at === null ) {
+
+						// The token a use has just replaced: a second request that brought it - two tabs that opened at once - is signed in as well, and changes nothing
+						$grace = $before;
+
+						return null;
+					}
+
+					$accounts[$id]['remember'][$at] = [ 'hash' => hash( 'sha256', $next ), 'created' => $accounts[$id]['remember'][$at]['created'], 'expires' => $now + $days * 86400, 'agent' => $agent, 'previous' => $hash, 'rotated' => $now ];
+					$rotated = true;
+
+					return [ 'accounts' => $accounts ];
+				}, [] );
+
+			if( $grace === false && ( $rotated === false || $written === false ) ) {
+
+				// Not a way in: the cookie goes and the address has tried once - unless it has tried twenty times, when the count is left alone. The count never stands in the way of a good token
+				if( \Nino\Feature::spent( $appData, self::COUNTER, $who, self::REMEMBER_TRIES ) === false ) {
+					self::_cookie( $appData, '', 0 );
+					\Nino\Feature::count( $appData, self::COUNTER, $who, self::REMEMBER_TRIES, self::WINDOW );
+				}
+
+				return;
+			}
+
+			if( $rotated === true )
+				self::_cookie( $appData, $id. '.'. $next, $days * 86400 );
+
+			$account = self::account( $appData, $id );
+
+			if( $account === null || self::_signIn( $appData, $account ) === false )
+				return;
+
+			\Nino\Callbacks::doCallbacks( $appData, '/members/login', $account );
+		}
+
+		/**
+		 *	Take the token of this device out of its account - the one the cookie of the request names, where the account holds it - and delete the cookie. Whoever is
+		 *	signed in or not: the browser that signs out has no cookie left, and a token that is out of the list signs nobody in
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *
+		 *	@return 	void
+		 */
+		private static function _dropDevice( array &$appData ): void {
+
+			if( is_string( $_COOKIE[self::REMEMBER] ?? null ) === false || $_COOKIE[self::REMEMBER] === '' )
+				return;
+
+			$device = self::_deviceCookie();
+
+			if( $device !== null ) {
+
+				$id = $device[0];
+				$hash = hash( 'sha256', $device[1] );
+
+				\Nino\Filesystem::mutate( $appData, self::ACCOUNTS, static function( mixed $state ) use ( $id, $hash ): ?array {
+
+					$accounts = self::_accountsOf( $state );
+					$kept = array_values( array_filter( $accounts[$id]['remember'] ?? [], static fn( array $entry ): bool => hash_equals( $entry['hash'], $hash ) === false && hash_equals( $entry['previous'] ?? $entry['hash'], $hash ) === false ) );
+
+					if( isset( $accounts[$id] ) === false || $kept === ( $accounts[$id]['remember'] ?? [] ) )
+						return null;
+
+					if( $kept === [] )
+						unset( $accounts[$id]['remember'] );
+					else
+						$accounts[$id]['remember'] = $kept;
+
+					return [ 'accounts' => $accounts ];
+				}, [] );
+			}
+
+			self::_cookie( $appData, '', 0 );
 		}
 
 		/**
@@ -1724,12 +2100,12 @@ namespace Nino\Modules {
 		 *	The accounts a file holds, each read for what it has to be: the id is 12
 		 *	hex characters, the address lower case, the strings strings, 'active' a
 		 *	bool and the time of the last sign-in a string or null, and the epoch - 32 hex
-		 *	characters - there where the account has one. A record that is
+		 *	characters - there where the account has one, and the list remember (see _devicesOf()) there where it has devices. A record that is
 		 *	none is left out - the file is plain php and editable
 		 *
 		 *	@param		mixed			$state				As the file holds it
 		 *
-		 *	@return 	array										id => email, name, group, active, created, login - and epoch, where there is one
+		 *	@return 	array										id => email, name, group, active, created, login - and epoch and remember, where there are some
 		 */
 		private static function _accountsOf( mixed $state ): array {
 
@@ -1750,7 +2126,7 @@ namespace Nino\Modules {
 					'active'	=> ( $record['active'] ?? false ) === true,
 					'created'	=> $text( $record['created'] ?? null ),
 					'login'		=> is_string( $record['login'] ?? null ) === true ? $record['login'] : null,
-				] + ( self::_epochOf( $record ) !== '' ? [ 'epoch' => self::_epochOf( $record ) ] : [] );
+				] + ( self::_epochOf( $record ) !== '' ? [ 'epoch' => self::_epochOf( $record ) ] : [] ) + ( ( $devices = self::_devicesOf( $record['remember'] ?? null ) ) !== [] ? [ 'remember' => $devices ] : [] );
 			}
 
 			return $accounts;
@@ -1762,7 +2138,7 @@ namespace Nino\Modules {
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$id
 		 *
-		 *	@return 	array|null								email, name, group, active, created, login and - where there is one - epoch; null for an id nobody has
+		 *	@return 	array|null								email, name, group, active, created, login and - where there are some - epoch and remember; null for an id nobody has
 		 */
 		private static function _record( array &$appData, string $id ): ?array {
 
@@ -1770,7 +2146,7 @@ namespace Nino\Modules {
 		}
 
 		/**
-		 *	An account without its epoch: what the account is to everybody outside this class
+		 *	An account without its epoch and its devices: what the account is to everybody outside this class
 		 *
 		 *	@param		array 		$record				As _record() has it
 		 *
@@ -1778,7 +2154,7 @@ namespace Nino\Modules {
 		 */
 		private static function _plain( array $record ): array {
 
-			unset( $record['epoch'] );
+			unset( $record['epoch'], $record['remember'] );
 
 			return $record;
 		}
@@ -2045,6 +2421,29 @@ namespace Nino\Modules {
 		private static function _days( array &$appData ): int {
 
 			return (int) \Nino\Features::setting( $appData, self::FEATURE_KEY, 'inviteDays', 7 );
+		}
+
+		/**
+		 *	The box 'stay signed in on this device' of the second step of the form: drawn by the component from its own template, so that a project whose words
+		 *	do not have the label yet (the install unit is applied add-only) shows no box with a bare key in place of it
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *
+		 *	@return 	string									The markup; '' where the label of the box has no text
+		 */
+		private static function _box( array &$appData ): string {
+
+			return \Nino\Html::resolveTextfill( $appData, '/feature/members/code/remember' ) === null ? '' : \Nino\Feature::template( $appData, self::TEMPLATES, 'members-remember' );
+		}
+
+		/**
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *
+		 *	@return 	int											How many days a device that stays signed in is good for, from its last use
+		 */
+		private static function _rememberDays( array &$appData ): int {
+
+			return (int) \Nino\Features::setting( $appData, self::FEATURE_KEY, 'rememberDays', self::DEFAULT_REMEMBER );
 		}
 
 		/**

@@ -5,7 +5,7 @@ declare(strict_types=1);
  *						init() registers behaviour and writes nothing: the panel CRM (adminPanels()), the
  *						components [crm-portal-head], [crm-portal-door], [crm-client], [crm-documents], [crm-portal-nav], [crm-portal-start], [crm-portal-dates], [crm-projects], [crm-uploads], [crm-client-data] and [crm-privacy], the callbacks that keep the portal's lookup true when a member signs in or
  *						out, the one that takes the portal's pages out of the menus of a visitor, the gate of the client (every page of the portal sends a member whose client has not taken note of the Datenschutz or given the data of the invoice to that step, and a file is withheld from such a member) and the ones that let a document follow its request in Sign, the style sheet and the script of the portal, the route
- *						/.crm/pdf/<id> that answers the PDF of a finalised document, /.crm/xml/<id> that answers its electronic invoice and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/anmeldeadresse and POST /.crm/anmeldeadresse/code of the block Anmeldeadresse on that page, POST /.crm/datenschutz of the page Datenschutz, POST /.crm/auftrag of the order under an offer and POST /.crm/abnahme of the approval under the files of a project and POST /.crm/einwilligung/widerruf of the revocation of a consent, GET /.crm/player that answers the player of a file of a project to the script of the portal, and the callback that mails the owner when a member has changed the address the account signs in with; and the surface at /crm, one page of the project with its
+ *						/.crm/pdf/<id> that answers the PDF of a finalised document, /.crm/xml/<id> that answers its electronic invoice and the routes POST /.crm/daten of the page Meine Daten, POST /.crm/anmeldeadresse and POST /.crm/anmeldeadresse/code of the block Anmeldeadresse on that page, POST /.crm/geraete/abmelden of its button that signs the account out of every device, GET /portal/manifest.webmanifest and the icons /portal/icon.svg and /portal/icon.png of the portal as an app on the home screen (Portal\App), POST /.crm/datenschutz of the page Datenschutz, POST /.crm/auftrag of the order under an offer and POST /.crm/abnahme of the approval under the files of a project and POST /.crm/einwilligung/widerruf of the revocation of a consent, GET /.crm/player that answers the player of a file of a project to the script of the portal, and the callback that mails the owner when a member has changed the address the account signs in with; and the surface at /crm, one page of the project with its
  *						endpoint and assets (Surface::init()). The database is opened on first use, the portal pages come with the install unit
  *						the wizard applies, and the screen Einrichtung of the surface completes the product (see Admin::apiSetup()).
  */
@@ -232,6 +232,9 @@ class Crm {
 		\Nino\Callbacks::registerCallback( $appData, '/sign/signed', [ Documents::class, 'callbackSigned' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/sign/declined', [ Documents::class, 'callbackDeclined' ] );
 
+		// The portal as an app on the home screen: its manifest, its icon and the lines of the head (see Portal\App)
+		Portal\App::init( $appData );
+
 		// The PDF of a document is answered to the workbench session that may manage the documents and, once it is released, to the member of its client (see Render::callbackDownload())
 		$appData['/nino/http/routes']['GET://.crm/pdf/*'] = [ 'uri' => '/.crm/pdf/*' ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.crm/pdf/*', [ \Crm\Documents\Render::class, 'callbackDownload' ] );
@@ -250,6 +253,8 @@ class Crm {
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/anmeldeadresse', [ Portal\Data::class, 'callbackLogin' ] );
 		$appData['/nino/http/routes']['POST://.crm/anmeldeadresse/code'] = [ 'uri' => Portal\Data::ROUTE_CODE ];
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/anmeldeadresse/code', [ Portal\Data::class, 'callbackCode' ] );
+		$appData['/nino/http/routes']['POST://.crm/geraete/abmelden'] = [ 'uri' => Portal\Data::ROUTE_DEVICES ];
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.crm/geraete/abmelden', [ Portal\Data::class, 'callbackDevices' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/members/changed', [ Portal\Data::class, 'callbackChanged' ] );
 
 		// The Datenschutz and the order: the forms of the pages Datenschutz and of the offers post here, a member of a client agrees or orders (see Portal\Privacy::callbackAgree(), Portal\Order::callbackOrder())

@@ -22,6 +22,7 @@ return [
 	'[[/feature/members/code/label]]'	=> 'Your code',
 	'[[/feature/members/code/button]]'	=> 'Sign in',
 	'[[/feature/members/code/again]]'	=> 'Request a new code',
+	'[[/feature/members/code/remember]]'	=> 'Stay signed in on this device',
 
 	// The button of that page, [members-confirm]
 	'[[/feature/members/confirm/intro]]'	=> 'You are signing in as',

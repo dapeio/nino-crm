@@ -555,6 +555,43 @@ a.crm-crumbs__link:hover {
 	color: var(--crm-ink);
 }
 
+/*	The hint to put the portal on the home screen: a note under the message of the owner on the start page and the list of the projects. The server draws it hidden and the script shows it
+	(a window under 1024px that is no app yet); [hidden] has to win against the display of the note. The two systems are two lines, the buttons stand under them, each 44px high	*/
+
+.crm-home[hidden] {
+	display: none;
+}
+
+.crm-home__body {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.crm-home__title {
+	margin: 0 0 var(--crm-1);
+	font-size: var(--crm-text-m);
+	font-weight: 600;
+}
+
+.crm-home__system {
+	margin: 0 0 var(--crm-1);
+}
+
+.crm-home__system[hidden] {
+	display: none;
+}
+
+.crm-home__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--crm-2);
+	margin: var(--crm-3) 0 0;
+}
+
+.crm-home__actions [hidden] {
+	display: none;
+}
+
 /*	The note over the page of a step of the gate: the sentence that says what is asked, and under it where it goes on to after it	*/
 
 .crm-gate__next {
@@ -2601,6 +2638,19 @@ a.crm-files__name:hover {
 	margin: 0;
 }
 
+/*	The button that signs the account out of every device, under the one that changes the address: its sentence first, the button after it, a space over the pair	*/
+.crm-login__devices {
+	margin: var(--crm-5) 0 0;
+}
+
+.crm-login__devices .crm-data__actions {
+	margin: 0;
+}
+
+.crm-login__devices .crm-login__hint {
+	margin: 0 0 var(--crm-3);
+}
+
 .crm-login__sent {
 	margin: 0;
 	color: var(--crm-ink-2);
@@ -3725,8 +3775,10 @@ a.crm-nav__link[aria-current="page"] .crm-icon {
 	.crm-table__toggle,
 	.crm-documents__links,
 	.crm-files__links,
+	.crm-home,
 	.crm-login__fold,
 	.crm-login__form,
+	.crm-login__devices,
 	.crm-data__also,
 	.crm-order--form,
 	.crm-order--privacy,

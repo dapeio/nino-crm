@@ -855,7 +855,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 260 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 272 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -4927,6 +4927,7 @@ function portalConsentChecks( array &$appData, array $a, array $b, array $accoun
 }
 
 portalConsentChecks( $appData, $a, $b, $accounts, $stray, $p1, $today, $wordsDe, $wordsEn, $reset, $asAdmin, $asVisitor, $made, $location, $mkOffer );
+portalHomeChecks( $appData, $a, $accounts, $stray, (string) $p1, $asVisitor, $asAdmin, $reset );
 
 // The rest of the suite runs as it did before: Review and Events off
 foreach( [ 'events', 'review' ] as $key )
@@ -5142,4 +5143,391 @@ function portalPlayerChecks( array &$appData, array $a, array $b, array $account
 	check( 'Review draws the player of the file a caller names when the request names none, and the list where nothing is named', portalFind( $given, '//div['. $token( 'review-player' ). '][@data-review-file="'. $two['id']. '"]//input[@name="return"]/@value' )[0]->nodeValue === '/portal/projekte' && portalFind( $plain, '//*[@data-review-file]' ) === [] && \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'file' => $pdf['id'] ] ) === \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'file' => '0123456789ab' ] ) );
 	$asVisitor();
 	check( '...and a visitor gets nothing, however the caller names it', \Nino\Modules\Review::componentReviewPlayer( $appData, [ 'file' => $two['id'] ] ) === '' );
+}
+
+// --- Die Home-Screen-App: Manifest, Icon, Kopf, Hinweis, Alle Geräte abmelden ------------------------------------------------------------
+
+/**
+ *	A request as the site answers it: routed, the callbacks run, the fills of the request put in and the body rendered once more - which is what a body that names a fill or a shortcode meets
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$uri
+ *
+ *	@return 	array										The request, response and all
+ */
+function portalAsServed( array &$appData, string $uri ): array {
+
+	unset( $appData['./crm/portal/bar'] );
+	$request = ninoVisit( $appData, $uri );
+	\Nino\Http::response( $appData, $request );
+	\Nino\Html::addFills( $appData, \Nino\Html::requestFills( $request, '' ), '*' );
+	\Nino\Html::response( $appData, $request );
+
+	return $request;
+}
+
+/**
+ *	A page as the output sends it: served, rendered, and the last hook run that holds the bytes about to be sent
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$uri
+ *
+ *	@return 	array										[ status, the document of the page, the html ]
+ */
+function portalSent( array &$appData, string $uri ): array {
+
+	$request = portalAsServed( $appData, $uri );
+	\Nino\Callbacks::doCallbacks( $appData, '/nino/http/output', $request );
+	$html = (string) ( $request['/nino/http/response']['body'] ?? '' );
+	$document = new DOMDocument();
+	$was = libxml_use_internal_errors( true );
+	$document->loadHTML( '<?xml encoding="utf-8"?>'. $html );
+	libxml_clear_errors();
+	libxml_use_internal_errors( $was );
+
+	return [ $request['/nino/http/response']['statusCode'], new DOMXPath( $document ), $html ];
+}
+
+/**
+ *	The checks of the portal as an app on the home screen, and of the button that signs the account out of every device
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$a						The client with the accounts
+ *	@param		array 		$accounts			The accounts by name
+ *	@param		array 		$stray				A member of no client
+ *	@param		string		$project			A project of the client
+ *	@param		\Closure	$asVisitor
+ *	@param		\Closure	$asAdmin
+ *	@param		\Closure	$reset
+ *
+ *	@return 	void
+ */
+function portalHomeChecks( array &$appData, array $a, array $accounts, array $stray, string $project, \Closure $asVisitor, \Closure $asAdmin, \Closure $reset ): void {
+
+	echo "\nHome-Screen: Manifest, Icon, Kopf, Hinweis\n";
+
+	$nameWas = \Nino\Html::resolveTextfill( $appData, '/project/company/general/name' ) ?? '';
+	$name = static fn( string $text ) => \Nino\Html::addFills( $GLOBALS['appData'], [ '[[/project/company/general/name]]' => $text ], '*' );
+	$theme = \Nino\Filesystem::path( $appData, '/assets/theme.css' );
+	$themeWas = is_file( $theme ) === true ? (string) file_get_contents( $theme ) : null;
+	$setTheme = static function( ?string $css ) use ( $theme ): void {
+		if( $css === null )
+			@unlink( $theme );
+		else
+			file_put_contents( $theme, $css );
+	};
+	$setTheme( ":root {\n\t--nino-default: #fafafa;\n\t--nino-on-default: #101010;\n\t--nino-brand-safe: #336699;\n}\n@media (prefers-color-scheme: dark) {\n\t:root:not([data-nino-mode=\"light\"]) {\n\t\t--nino-default: #202020;\n\t}\n}\n" );
+	$name( 'Studio Nord Hamburg' );
+
+	// The manifest: a visitor reads it, in the shape a browser asks for
+	$asVisitor();
+	check( 'the three routes lie under the protected prefix and are not protected: the gate asks nothing of them, the pages of the portal are still shut',
+		\Nino\Modules\Members::protects( $appData, '/portal/projekte' ) === true && \Nino\Modules\Members::protects( $appData, \Crm\Portal\App::MANIFEST ) === false && \Nino\Modules\Members::protects( $appData, \Crm\Portal\App::ICON ) === false
+		&& \Nino\Modules\Members::protects( $appData, \Crm\Portal\App::ICON_PNG ) === false && array_diff( [ '/portal/manifest.webmanifest', '/portal/icon.svg', '/portal/icon.png' ], \Nino\Modules\Members::open( $appData ) ) === [] );
+	$served = portalAsServed( $appData, '/portal/manifest.webmanifest' )['/nino/http/response'];
+	$manifest = json_decode( (string) $served['body'], true );
+	check( 'GET /portal/manifest.webmanifest answers a visitor 200 with application/manifest+json and the cache of an hour, and the body is JSON',
+		$served['statusCode'] === 200 && str_starts_with( (string) $served['header']['Content-Type'], 'application/manifest+json' ) && $served['header']['Cache-Control'] === 'public, max-age=3600' && is_array( $manifest ) );
+	check( '...it names the website as the app (name, and a short name cut at the end of a word within 12 characters), the page it opens, the part of the site it covers, standalone, the language of the site',
+		( $manifest['name'] ?? '' ) === 'Studio Nord Hamburg' && ( $manifest['short_name'] ?? '' ) === 'Studio Nord' && ( $manifest['start_url'] ?? '' ) === '/portal/projekte' && ( $manifest['scope'] ?? '' ) === '/portal' && ( $manifest['display'] ?? '' ) === 'standalone' && ( $manifest['lang'] ?? '' ) === 'de-DE' );
+	check( '...the colours are those of the theme: the brand for the bar of the browser, the ground of the page of the portal - the light ground with 4% of its ink - behind the splash',
+		( $manifest['theme_color'] ?? '' ) === '#336699' && ( $manifest['background_color'] ?? '' ) === '#f1f1f1' && \Crm\Portal\App::colours( $appData ) === [ 'brand' => '#336699', 'page' => '#f1f1f1', 'light' => '#fafafa', 'dark' => '#202020' ] );
+	$icons = (array) ( $manifest['icons'] ?? [] );
+	check( '...the icons: the SVG for any size, maskable too, and the PNG of 180 pixels',
+		count( $icons ) === 2 && $icons[0] === [ 'src' => '/portal/icon.svg', 'sizes' => 'any', 'type' => 'image/svg+xml', 'purpose' => 'any maskable' ] && $icons[1] === [ 'src' => '/portal/icon.png', 'sizes' => '180x180', 'type' => 'image/png', 'purpose' => 'any' ] );
+	check( '...the shortening: whole up to 12 characters, else cut at the end of a word, else where the word stands - and a name of one long word is cut at 12',
+		array_map( [ \Crm\Portal\App::class, 'shortName' ], [ 'Nord', 'Nord Kreativ', 'Nord Kreativ X', 'Studio Nord Hamburg', 'Kreativagentur Nord', 'Zwölf Zeichen am Ende', 'Eins Zwei Drei', '  Pad  ', 'Äöüß Äöüß Äöüßx' ] )
+			=== [ 'Nord', 'Nord Kreativ', 'Nord Kreativ', 'Studio Nord', 'Kreativagent', 'Zwölf', 'Eins Zwei', 'Pad', 'Äöüß Äöüß' ] );
+
+	// A name that is markup, a fill, a shortcode and a null byte: text, in the JSON and in the SVG
+	$name( 'Evil &lt;b&gt;x&lt;/b&gt; [members-name] [crm-client] [[/nope/key]] "q" &amp; \'s' );
+	$evil = portalAsServed( $appData, '/portal/manifest.webmanifest' )['/nino/http/response'];
+	$evilManifest = json_decode( (string) $evil['body'], true );
+	check( 'a name that is markup, a shortcode or a fill is the text it is: in the manifest it is decoded to what was typed, and the body has no tag, no ampersand, no quote of its own and no bracket but its own',
+		is_array( $evilManifest ) && $evilManifest['name'] === 'Evil <b>x</b> [members-name] [crm-client] [[/nope/key]] "q" & \'s' && str_contains( (string) $evil['body'], '<b>' ) === false && str_contains( (string) $evil['body'], '&' ) === false
+		&& substr_count( (string) $evil['body'], '[' ) === 1 && substr_count( (string) $evil['body'], ']' ) === 1 );
+	$name( "A\0B" );
+	check( '...a null byte is left out', ( json_decode( (string) portalAsServed( $appData, '/portal/manifest.webmanifest' )['/nino/http/response']['body'], true )['name'] ?? '' ) === 'AB' );
+	$name( '' );
+	check( '...a website with no name is the word of the portal, in both languages', ( json_decode( (string) portalAsServed( $appData, '/portal/manifest.webmanifest' )['/nino/http/response']['body'], true )['name'] ?? '' ) === 'Portal' );
+
+	// The icon
+	$name( 'Studio Nord Hamburg' );
+	$svg = portalAsServed( $appData, '/portal/icon.svg' )['/nino/http/response'];
+	$vector = new DOMDocument();
+	check( 'GET /portal/icon.svg is an SVG of 512 by 512 that is well formed XML: 200, image/svg+xml, the cache of a day',
+		$svg['statusCode'] === 200 && str_starts_with( (string) $svg['header']['Content-Type'], 'image/svg+xml' ) && $svg['header']['Cache-Control'] === 'public, max-age=86400' && $vector->loadXML( (string) $svg['body'] ) === true
+		&& $vector->documentElement?->getAttribute( 'width' ) === '512' && $vector->documentElement->getAttribute( 'viewBox' ) === '0 0 512 512' );
+	$sheet = new DOMXPath( $vector );
+	$sheet->registerNamespace( 's', 'http://www.w3.org/2000/svg' );
+	check( '...the brand\'s surface over the whole of it and the initials of the name, the first letter of the first and of the last word, in white', $sheet->query( '//s:rect[@fill="#336699"][@width="512"][@height="512"]' )->length === 1
+		&& $sheet->query( '//s:text[@fill="#ffffff"]' )->item( 0 )?->textContent === 'SH' && $sheet->query( '//s:script | //s:foreignObject | //s:a' )->length === 0 );
+	$name( 'Evil &lt;b&gt;x&lt;/b&gt; [members-name] &amp; "Bo"' );
+	$evilSvg = (string) portalAsServed( $appData, '/portal/icon.svg' )['/nino/http/response']['body'];
+	$evilVector = new DOMDocument();
+	check( '...the initials of a name that is markup are letters, and the document is as well formed as ever: no tag of the name, no entity left open', $evilVector->loadXML( $evilSvg ) === true && $evilVector->getElementsByTagName( 'text' )->item( 0 )?->textContent === 'EB' && str_contains( $evilSvg, '<b>' ) === false );
+	$name( '[[/nope/key]] [members-name]' );
+	$bracketSvg = (string) portalAsServed( $appData, '/portal/icon.svg' )['/nino/http/response']['body'];
+	check( '...and one that is only brackets and a shortcode has no bracket in the document at all besides the escaped ones', ( new DOMDocument() )->loadXML( $bracketSvg ) === true && preg_match( '/>[^<]*[\[\]][^<]*</', $bracketSvg ) !== 1 );
+	$name( 'Studio Nord Hamburg' );
+
+	// The PNG: GD draws it, once, in a file that is answered as a file
+	$png = portalAsServed( $appData, '/portal/icon.png' )['/nino/http/response'];
+	$file = (string) ( $png['file'] ?? '' );
+	$info = $file !== '' && is_file( $file ) === true ? getimagesize( $file ) : false;
+	$image = $file !== '' && is_file( $file ) === true ? imagecreatefrompng( $file ) : false;
+	$white = 0;
+
+	if( $image !== false )
+		for( $y = 50; $y < 130; $y++ )
+			for( $x = 30; $x < 150; $x++ )
+				if( ( ( imagecolorat( $image, $x, $y ) >> 16 ) & 0xff ) > 0xb0 )
+					$white++;
+
+	check( 'GET /portal/icon.png is a PNG of 180 by 180 pixels, answered as a file with image/png and the cache of a day: the brand in the corners, white letters in the middle',
+		$png['statusCode'] === 200 && ( $png['header']['Content-Type'] ?? '' ) === 'image/png' && ( $png['header']['Cache-Control'] ?? '' ) === 'public, max-age=86400' && $info !== false && $info[0] === 180 && $info[1] === 180 && $info[2] === IMAGETYPE_PNG
+		&& $image !== false && ( imagecolorat( $image, 2, 2 ) & 0xffffff ) === 0x336699 && ( imagecolorat( $image, 177, 177 ) & 0xffffff ) === 0x336699 && $white > 150 );
+	touch( $file, time() - 7200 );
+	clearstatcache( true, $file );
+	$aged = filemtime( $file );
+	$again = portalAsServed( $appData, '/portal/icon.png' )['/nino/http/response'];
+	clearstatcache( true, $file );
+	check( '...the file is kept under a name that holds what it was made from, in a directory of its own, and is written once: a second request answers the file that is there',
+		str_contains( $file, '/data/crm-icon/' ) === true && ( $again['file'] ?? '' ) === $file && filemtime( $file ) === $aged );
+	$name( 'Zeta Omega' );
+	$other = (string) ( portalAsServed( $appData, '/portal/icon.png' )['/nino/http/response']['file'] ?? '' );
+	check( '...another name makes another file, and only that one is left', $other !== '' && $other !== $file && is_file( $other ) === true && is_file( $file ) === false && count( glob( dirname( $other ). '/*' ) ?: [] ) === 1 );
+	$name( 'Studio Nord Hamburg' );
+
+	// Without GD: the route is not made, the manifest does not name it and the head does not either
+	$bare = $appData;
+	$bare['./crm/portal/gd'] = false;
+	unset( $bare['/nino/http/routes']['GET://portal/icon.png'] );
+	\Crm\Portal\App::init( $bare );
+	$missing = portalAsServed( $bare, '/portal/icon.png' )['/nino/http/response'];
+	$bareManifest = json_decode( (string) portalAsServed( $bare, '/portal/manifest.webmanifest' )['/nino/http/response']['body'], true );
+	check( 'where GD is not there the route of the PNG is not made: the request is the 404 of the site, the manifest holds the SVG alone, and the head names no apple-touch-icon of its own',
+		$missing['statusCode'] === 404 && isset( $bare['/nino/http/routes']['GET://portal/icon.png'] ) === false && isset( $appData['/nino/http/routes']['GET://portal/icon.png'] ) === true && count( (array) ( $bareManifest['icons'] ?? [] ) ) === 1 && str_contains( \Crm\Portal\App::headTags( $bare ), 'apple-touch-icon' ) === false && str_contains( \Crm\Portal\App::headTags( $appData ), 'apple-touch-icon' ) === true );
+
+	// The logo of the project: a square raster image is an icon of the manifest, a wide one and one that is none are not
+	$square = imagecreatetruecolor( 96, 96 );
+	$wide = imagecreatetruecolor( 200, 40 );
+	ob_start();
+	imagepng( $square );
+	$squareBytes = (string) ob_get_clean();
+	ob_start();
+	imagepng( $wide );
+	$wideBytes = (string) ob_get_clean();
+	$logo = static function( string $filename, string $bytes ) use ( &$appData ): array {
+		\Nino\Filesystem::forceDir( $appData, '/images' );
+		file_put_contents( \Nino\Filesystem::path( $appData, '/images/'. $filename ), $bytes );
+		$appData['/nino/html/images']['/logo'] = [ 'label' => 'Logo', 'width' => 96, 'height' => 96, 'filename' => $filename, 'alt' => [] ];
+
+		return (array) ( json_decode( (string) portalAsServed( $appData, '/portal/manifest.webmanifest' )['/nino/http/response']['body'], true )['icons'] ?? [] );
+	};
+	$withLogo = $logo( 'logo.png', $squareBytes );
+	$withWide = $logo( 'wide.png', $wideBytes );
+	$withSvg = $logo( 'logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>' );
+	$gif = imagecreatetruecolor( 96, 96 );
+	ob_start();
+	imagegif( $gif );
+	$withGif = $logo( 'logo.gif', (string) ob_get_clean() );
+	unset( $appData['/nino/html/images']['/logo'] );
+	check( 'the logo of the project joins the manifest where it is a square raster image: with its size and its type - a wide one is no icon, and neither is a file that is no raster image of those types (an SVG, a GIF)',
+		count( $withLogo ) === 3 && $withLogo[2]['sizes'] === '96x96' && $withLogo[2]['type'] === 'image/png' && str_ends_with( $withLogo[2]['src'], '/images/logo.png' ) && count( $withWide ) === 2 && count( $withSvg ) === 2 && count( $withGif ) === 2 );
+	foreach( [ 'logo.png', 'wide.png', 'logo.svg', 'logo.gif' ] as $filename )
+		@unlink( \Nino\Filesystem::path( $appData, '/images/'. $filename ) );
+
+	// The colours of a project whose theme says nothing
+	$setTheme( null );
+	check( 'a project with no theme.css gets the colours the kernel\'s own theme starts from - and no colour for the dark scheme, which its theme does not have', \Crm\Portal\App::colours( $appData ) === [ 'brand' => '#147bb7', 'page' => '#f5f5f5', 'light' => '#ffffff', 'dark' => null ] );
+	$setTheme( ":root { --nino-brand-safe: javascript:alert(1); --nino-default: #12; }" );
+	check( '...and so does one whose tokens are no colours', \Crm\Portal\App::colours( $appData )['brand'] === '#147bb7' && \Crm\Portal\App::colours( $appData )['light'] === '#ffffff' );
+	$setTheme( $themeWas );
+
+	// The head: the pages that have the bar name the manifest and the icon of the portal, the others are left as the site has them
+	$name( 'Studio Nord Hamburg' );
+	$reset();
+	portalSignIn( $appData, $accounts['anna'] );
+	$counts = [];
+
+	foreach( [ '/portal', '/portal/projekte', '/portal/belege', '/portal/termine', '/portal/upload', '/portal/meine-daten', '/portal/projekte?projekt='. $project ] as $uri ) {
+		[ $status, $page ] = portalSent( $appData, $uri );
+		$counts[$uri] = [ $status, $page->query( '//link[@rel="manifest"]' )->length, $page->query( '//link[@rel="manifest"]/@href' )->item( 0 )?->nodeValue, $page->query( '//link[@rel="apple-touch-icon"]' )->length, $page->query( '//link[@rel="apple-touch-icon"]/@href' )->item( 0 )?->nodeValue,
+			$page->query( '//meta[@name="theme-color"]' )->length, $page->query( '//meta[@name="apple-mobile-web-app-capable"]/@content' )->item( 0 )?->nodeValue, $page->query( '//meta[@name="apple-mobile-web-app-title"]/@content' )->item( 0 )?->nodeValue ];
+	}
+
+	check( 'every page with the bar has exactly one manifest, the one of the portal - the manifest of the head of the site is gone -, one apple-touch-icon, two colours of the bar of the browser (light and dark by media), the line that makes iOS an app of it, and its title',
+		array_values( array_unique( array_map( 'json_encode', $counts ) ) ) === [ json_encode( [ 200, 1, '/portal/manifest.webmanifest', 1, '/portal/icon.png', 2, 'yes', 'Studio Nord' ] ) ] && count( $counts ) === 7 );
+	[ , $page, $html ] = portalSent( $appData, '/portal/projekte' );
+	$colours = $page->query( '//meta[@name="theme-color"]' );
+	check( '...the colours are the theme\'s: the ground of the light scheme for the light media and the dark ground for the dark; the lines stand in the head, before its end, and the page is the page it was',
+		$colours->length === 2 && $colours->item( 0 )?->getAttribute( 'media' ) === '(prefers-color-scheme: light)' && $colours->item( 0 )->getAttribute( 'content' ) === \Crm\Portal\App::colours( $appData )['light'] && $colours->item( 1 )?->getAttribute( 'media' ) === '(prefers-color-scheme: dark)'
+		&& $colours->item( 1 )->getAttribute( 'content' ) === \Crm\Portal\App::colours( $appData )['dark'] && strpos( $html, 'apple-mobile-web-app-title' ) < strpos( $html, '</head>' ) && $page->query( '//body//main' )->length === 1 && str_contains( $html, 'site.webmanifest' ) === false );
+	// A name that is markup: its line in <title> is no line of the head that names a manifest, so it stays as typed and only the real manifest link is swapped
+	$name( '<link rel="manifest" href="/evil"> <link rel="apple-touch-icon" href="/evil.png"> Co' );
+	[ , , $named ] = portalSent( $appData, '/portal/projekte' );
+	$name( 'Studio Nord Hamburg' );
+	check( 'a name that is itself a link to a manifest is text in the <title> and stays there: the one manifest line is the portal\'s, and so is the one apple-touch-icon line',
+		preg_match( '~<title>[^\n]*<link rel="manifest" href="/evil"> <link rel="apple-touch-icon" href="/evil.png">[^\n]*</title>~', $named ) === 1 && preg_match_all( '~^\s*<link rel="manifest"~m', $named ) === 1 && str_contains( $named, '<link rel="manifest" href="/portal/manifest.webmanifest">' ) === true
+		&& preg_match_all( '~^\s*<link rel="apple-touch-icon"~m', $named ) === 1 && str_contains( $named, '<link rel="apple-touch-icon" href="/portal/icon.png">' ) === true );
+	// An answer that is no html is left as it is, whatever it holds and whoever marked it
+	$plain = [ '/nino/http/response' => [ 'statusCode' => 200, 'header' => [ 'Content-Type' => 'text/plain; charset=utf-8' ], 'body' => "<head>\n<link rel=\"manifest\" href=\"/x\">\n</head>" ] ];
+	$appData['./crm/portal/bar'] = true;
+	$keep = $plain['/nino/http/response']['body'];
+	\Crm\Portal\App::callbackOutput( $appData, $plain );
+	unset( $appData['./crm/portal/bar'] );
+	check( 'an answer that is no html is not touched by the hook that puts the lines of the app into a head', $plain['/nino/http/response']['body'] === $keep );
+	// A theme without a block for the dark scheme has no dark bar: one colour, with no media
+	$setTheme( ":root {\n\t--nino-default: #fafafa;\n\t--nino-brand-safe: #336699;\n}\n" );
+	[ , $plainTheme ] = portalSent( $appData, '/portal/projekte' );
+	$setTheme( $themeWas );
+	check( 'a theme with no block for the dark scheme gets one colour of the bar of the browser and no media on it - no dark bar over a light page', $plainTheme->query( '//meta[@name="theme-color"]' )->length === 1 && $plainTheme->query( '//meta[@name="theme-color"]/@media' )->length === 0
+		&& $plainTheme->query( '//meta[@name="theme-color"]/@content' )->item( 0 )?->nodeValue === '#fafafa' );
+	// A page that sets the navigation itself (nav="0") has no bar: it is not the app's
+	unset( $appData['./crm/portal/bar'] );
+	portalHeadAt( $appData, '/portal', ' nav="0"' );
+	$withoutBar = isset( $appData['./crm/portal/bar'] );
+	portalHeadAt( $appData, '/portal' );
+	check( 'a page with [crm-portal-head nav="0"] has no bar and says nothing to the output hook, so its head gets no lines of the app; the head with the bar does', $withoutBar === false && ( $appData['./crm/portal/bar'] ?? false ) === true );
+	unset( $appData['./crm/portal/bar'] );
+	$asVisitor();
+	[ , $door, $doorHtml ] = portalSent( $appData, '/' );
+	[ , , $missingHtml ] = portalSent( $appData, '/no-such-page' );
+	check( 'a page that has no bar - the door, a page of nobody - names nothing of the portal: the head of the site stays as it is, with its own manifest', str_contains( $doorHtml, 'portal/manifest' ) === false && str_contains( $missingHtml, 'portal/manifest' ) === false && $door->query( '//link[@rel="manifest"]' )->length === 1 && str_contains( $doorHtml, 'site.webmanifest' ) === true );
+
+	// The card: under the message, on the start page and the list of projects, hidden until the script shows it
+	$reset();
+	portalSignIn( $appData, $accounts['anna'] );
+	$cards = [];
+
+	foreach( [ '/portal', '/portal/projekte' ] as $uri ) {
+		[ , $page ] = portalPage( $appData, $uri ) + [ 1 => '' ];
+		$cards[$uri] = portalFind( $page, '//*[@data-crm-home]' );
+	}
+
+	$card = $cards['/portal'][0] ?? null;
+	check( 'the start page and the list of projects have one card for the home screen: a note (role note), drawn hidden by the server, with the icon smartphone, a sentence for iOS and one for Android, the button to install - hidden - and the one to put it away',
+		count( $cards['/portal'] ) === 1 && count( $cards['/portal/projekte'] ) === 1 && $card instanceof DOMElement && $card->getAttribute( 'role' ) === 'note' && $card->hasAttribute( 'hidden' ) === true && in_array( 'crm-home', explode( ' ', $card->getAttribute( 'class' ) ), true )
+		&& portalFind( $card->ownerDocument->saveHTML( $card ), '//div[@data-crm-home]/svg[contains(@class, "crm-icon--smartphone")]' ) !== [] && count( portalFind( $card->ownerDocument->saveHTML( $card ), '//p[@data-crm-system]' ) ) === 2
+		&& portalFind( $card->ownerDocument->saveHTML( $card ), '//button[@data-crm-install][@hidden]' ) !== [] && count( portalFind( $card->ownerDocument->saveHTML( $card ), '//button[@data-crm-dismiss][@type="button"]' ) ) === 1 );
+	$cardless = [];
+
+	foreach( [ '/portal/belege', '/portal/termine', '/portal/upload', '/portal/meine-daten', '/portal/projekte?projekt='. $project, '/portal/datenschutz' ] as $uri )
+		$cardless[$uri] = count( portalFind( portalPage( $appData, $uri )[1], '//*[@data-crm-home]' ) );
+
+	$asVisitor();
+	check( '...and no other page has it: the pages of the other areas, the page of a project, the Datenschutz - and a visitor is shown none', array_sum( $cardless ) === 0 && count( $cardless ) === 6 && portalFind( \Nino\Html::renderHtml( $appData, '[crm-portal-head]' ), '//*[@data-crm-home]' ) === [] );
+	portalSignIn( $appData, $accounts['anna'] );
+	\Crm\Settings::set( $appData, 'portal_message', 'Eine Nachricht' );
+	$withMessage = portalPage( $appData, '/portal' )[1];
+	check( '...it stands under the message of the owner and over the head of the page', strpos( $withMessage, 'crm-message' ) !== false && strpos( $withMessage, 'crm-message' ) < strpos( $withMessage, 'data-crm-home' ) && strpos( $withMessage, 'data-crm-home' ) < strpos( $withMessage, 'crm-head' ) );
+	\Crm\Settings::set( $appData, 'portal_message', '' );
+	\Crm\Settings::set( $appData, 'privacy_text', 'Text zur Prüfung des Hinweises.' );
+	check( '...and while a step of the gate is pending - the Datenschutz to take note of - it is not drawn', portalFind( portalHeadAt( $appData, '/portal' ), '//*[@data-crm-home]' ) === [] && \Crm\Portal::pending( $appData, \Crm\Clients::get( $appData, $a['id'] ) ?? [] ) === 'privacy' );
+	$pendingManifest = portalAsServed( $appData, '/portal/manifest.webmanifest' )['/nino/http/response'];
+	check( '...the manifest and the icon of the app are no page of the gate: a client with a step pending is not sent away from them (the page of the portal is)', $pendingManifest['statusCode'] === 200 && isset( $pendingManifest['header']['Location'] ) === false && is_array( json_decode( (string) $pendingManifest['body'], true ) ) && portalServe( $appData, '/portal/icon.svg' )['statusCode'] === 200 && isset( portalServe( $appData, '/portal/icon.svg' )['header']['Location'] ) === false
+		&& portalServe( $appData, '/portal/projekte' )['statusCode'] === 303 );
+	\Crm\Settings::set( $appData, 'privacy_text', '' );
+
+	// The words of the card, in both languages: German with Du, English, none empty, no key left standing
+	$words = [ 'de_DE' => (array) require dirname( __DIR__ ). '/Portal/text/de_DE.php', 'en_US' => (array) require dirname( __DIR__ ). '/Portal/text/en_US.php' ];
+	$keys = [ 'app/name', 'home/title', 'home/ios-name', 'home/ios', 'home/android-name', 'home/android', 'home/install', 'home/dismiss', 'data/devices-text', 'data/devices-button', 'data/state-devices', 'data/state-devices-failed' ];
+	$has = static fn( array $set ): bool => array_filter( $keys, static fn( string $key ): bool => trim( (string) ( $set['[[/project/crm-portal/'. $key. ']]'] ?? '' ) ) === '' ) === [];
+	check( 'the words of the card, of the button and of the two notes are there in both languages, none empty, the German with Du and the English other than it', $has( $words['de_DE'] ) === true && $has( $words['en_US'] ) === true
+		&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', array_intersect_key( $words['de_DE'], array_flip( array_map( static fn( string $key ): string => '[[/project/crm-portal/'. $key. ']]', $keys ) ) ) ) ) !== 1
+		&& array_filter( $keys, static fn( string $key ): bool => $words['de_DE']['[[/project/crm-portal/'. $key. ']]'] === $words['en_US']['[[/project/crm-portal/'. $key. ']]'] && $key !== 'app/name' && $key !== 'home/ios-name' && $key !== 'home/android-name' ) === [] );
+	$appData['./nino/locales/current'] = 'en_US';
+	$english = portalPage( $appData, '/portal' )[1];
+	$appData['./nino/locales/current'] = 'de_DE';
+	check( '...in English the card is the English one and no key is left standing', str_contains( $english, $words['en_US']['[[/project/crm-portal/home/title]]'] ) === true && str_contains( $english, '[[/project' ) === false && str_contains( $english, $words['de_DE']['[[/project/crm-portal/home/title]]'] ) === false );
+	check( 'the style sheet lets [hidden] win against the display of a note, and the script holds none of it: the card has a rule for it', preg_match( '/\.crm-home\[hidden\]\s*\{\s*display:\s*none;/', (string) file_get_contents( dirname( __DIR__ ). '/Portal/assets/portal.css' ) ) === 1 );
+
+	// Alle Geräte abmelden
+	echo "\nAlle Geräte abmelden: Meine Daten, POST /.crm/geraete/abmelden\n";
+	$reset();
+	portalSignIn( $appData, $accounts['anna'] );
+	$data = portalPage( $appData, '/portal/meine-daten' )[1];
+	$forms = portalFind( $data, '//section[contains(@class, "crm-login")]//form[contains(@class, "crm-login__devices")]' );
+	check( 'the block Anmeldeadresse of Meine Daten has the button: a post form to /.crm/geraete/abmelden with the csrf token of the session and one button of the secondary kind, 44px by the class of every button',
+		count( $forms ) === 1 && $forms[0]->getAttribute( 'method' ) === 'post' && $forms[0]->getAttribute( 'action' ) === '/.crm/geraete/abmelden' && portalFind( $forms[0]->ownerDocument->saveHTML( $forms[0] ), '//input[@name="_csrf"]/@value' )[0]->nodeValue === \Nino\Csrf::getToken( $appData )
+		&& portalFind( $forms[0]->ownerDocument->saveHTML( $forms[0] ), '//button[@type="submit"][contains(@class, "crm-btn")]' ) !== [] );
+	$state = portalFind( portalPage( $appData, '/portal/meine-daten?state=devices' )[1], '//section[contains(@class, "crm-login")]//p[contains(@class, "crm-note--success")][@role="status"]' );
+	check( '...?state=devices is said in that block, as a note of success, and does not open the form that changes the address; any other state is not said there', count( $state ) === 1 && portalFind( portalPage( $appData, '/portal/meine-daten?state=devices' )[1], '//details[contains(@class, "crm-login__fold")][@open]' ) === []
+		&& portalFind( portalPage( $appData, '/portal/meine-daten?state=nonsense' )[1], '//section[contains(@class, "crm-login")]//p[contains(@class, "crm-note")]' ) === [] && count( portalFind( portalPage( $appData, '/portal/meine-daten?state=devices-failed' )[1], '//section[contains(@class, "crm-login")]//p[contains(@class, "crm-note--error")][@role="alert"]' ) ) === 1 );
+
+	$asVisitor();
+	$visitor = portalServe( $appData, '/.crm/geraete/abmelden', 'POST' );
+	portalSignIn( $appData, $stray );
+	$none = portalServe( $appData, '/.crm/geraete/abmelden', 'POST' );
+	check( 'POST /.crm/geraete/abmelden is the 404 for a visitor and for a member of no client, and nothing for a GET', $visitor['statusCode'] === 404 && $none['statusCode'] === 404 && portalServe( $appData, '/.crm/geraete/abmelden' )['statusCode'] === 404 );
+	portalSignIn( $appData, $accounts['anna'] );
+	$id = $accounts['anna']['id'];
+	$state = (array) \Nino\Filesystem::getFileContent( $appData, '/data/members.php', [] );
+	$state['accounts'][$id]['remember'] = [ [ 'hash' => hash( 'sha256', 'device' ), 'created' => '2026-11-01T10:00:00Z', 'expires' => time() + 5000, 'agent' => 'Agent' ] ];
+	\Nino\Filesystem::putFileContent( $appData, '/data/members.php', $state );
+	$otherDevice = $_SESSION;
+	$expired = portalServe( $appData, '/.crm/geraete/abmelden', 'POST', [ '_csrf' => 'wrong' ] );
+	check( '...a post without the token of the session is the redirect with ?state=expired and ends nothing', $expired['statusCode'] === 303 && ( $expired['header']['Location'] ?? '' ) === '/portal/meine-daten?state=expired' && ( \Nino\Filesystem::getFileContent( $appData, '/data/members.php', [] )['accounts'][$id]['remember'] ?? [] ) !== [] );
+	$epoch = (string) ( \Nino\Filesystem::getFileContent( $appData, '/data/members.php', [] )['accounts'][$id]['epoch'] ?? '' );
+	$done = portalServe( $appData, '/.crm/geraete/abmelden', 'POST' );
+	$after = (array) ( \Nino\Filesystem::getFileContent( $appData, '/data/members.php', [] )['accounts'][$id] ?? [] );
+	check( 'the post signs the account out of every device: the redirect to Meine Daten with ?state=devices, the list of the devices is empty, the account has an epoch of its own that is new',
+		$done['statusCode'] === 303 && ( $done['header']['Location'] ?? '' ) === '/portal/meine-daten?state=devices' && isset( $after['remember'] ) === false && preg_match( '/^[0-9a-f]{32}$/D', (string) ( $after['epoch'] ?? '' ) ) === 1 && $after['epoch'] !== $epoch );
+	check( '...the session that asked stays - the client is still its own, the page of the portal is served - and the session of another device, which carries the old epoch, is signed out', ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $id && portalServe( $appData, '/portal' )['statusCode'] !== 401 );
+	// A write that fails is said, and nothing is ended: the lock of the accounts is a directory
+	$locks = \Nino\Filesystem::path( $appData, '/data' ). '/.locks';
+	foreach( glob( $locks. '/*.lock' ) ?: [] as $lockFile )
+		unlink( $lockFile );
+	\Nino\Filesystem::mutate( $appData, '/data/members.php', static fn( mixed $state ): ?array => null, [] );
+	$accountLock = ( glob( $locks. '/*.lock' ) ?: [] )[0] ?? '';
+	$state = (array) \Nino\Filesystem::getFileContent( $appData, '/data/members.php', [] );
+	$state['accounts'][$id]['remember'] = [ [ 'hash' => hash( 'sha256', 'other' ), 'created' => '2026-11-01T10:00:00Z', 'expires' => time() + 5000, 'agent' => 'Agent' ] ];
+	\Nino\Filesystem::putFileContent( $appData, '/data/members.php', $state );
+	unlink( $accountLock );
+	mkdir( $accountLock );
+	$stuck = portalServe( $appData, '/.crm/geraete/abmelden', 'POST' );
+	rmdir( $accountLock );
+	$ignoredWarnings = ninoWarnings();
+	check( 'where the accounts cannot be written the post says so - the redirect with ?state=devices-failed - and ends nothing: the list is as it was',
+		( $stuck['header']['Location'] ?? '' ) === '/portal/meine-daten?state=devices-failed' && ( \Nino\Filesystem::getFileContent( $appData, '/data/members.php', [] )['accounts'][$id]['remember'] ?? [] ) !== [] );
+	$_SESSION = $otherDevice;
+	check( '...a session of another device, which carries the old epoch, is signed out', \Nino\Modules\Members::current( $appData ) === null );
+
+	// A device that stays signed in is signed in on the page it asks for - and a client with a step of the gate pending is led to that step, as after a code
+	$reset();
+	portalSignIn( $appData, $accounts['anna'] );
+	$token = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
+	$state = (array) \Nino\Filesystem::getFileContent( $appData, '/data/members.php', [] );
+	$state['accounts'][$id]['remember'] = [ [ 'hash' => hash( 'sha256', $token ), 'created' => '2026-11-01T10:00:00Z', 'expires' => time() + 5000, 'agent' => 'Agent' ] ];
+	\Nino\Filesystem::putFileContent( $appData, '/data/members.php', $state );
+	\Crm\Settings::set( $appData, 'privacy_text', 'Text zur Prüfung des Cookies.' );
+	$_SESSION = [];
+	unset( $appData['./nino/auth/current'], $appData['./members/cookies'] );
+	\Crm\Portal::forget( $appData );
+	$_COOKIE['nino_remember'] = $id. '.'. $token;
+	$led = portalServe( $appData, '/portal/projekte' );
+	unset( $_COOKIE['nino_remember'] );
+	check( 'a client who comes back with the cookie of a device is signed in on the page it asks for and, with the Datenschutz still to take note of, led to that step as after a code - with the page it wanted',
+		( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $id && $led['statusCode'] === 303 && str_starts_with( (string) ( $led['header']['Location'] ?? '' ), '/portal/datenschutz' ) && str_contains( (string) $led['header']['Location'], 'weiter=' ) && count( (array) ( $appData['./members/cookies'] ?? [] ) ) === 1 );
+	\Crm\Settings::set( $appData, 'privacy_text', '' );
+
+	// The manifest and the icon are no business of the cookie: a request for them signs nobody in and rotates nothing
+	$_SESSION = [];
+	$rotated = explode( '=', explode( ';', (string) ( $appData['./members/cookies'][0] ?? '' ) )[0], 2 )[1] ?? '';
+	unset( $appData['./members/cookies'] );
+	$_COOKIE['nino_remember'] = $rotated;
+	$manifestAsk = portalServe( $appData, '/portal/manifest.webmanifest' );
+	$iconAsk = portalServe( $appData, '/portal/icon.svg' );
+	unset( $_COOKIE['nino_remember'] );
+	check( 'the request for the manifest or the icon with a good cookie signs nobody in, sets no cookie and uses the token up for nothing', $manifestAsk['statusCode'] === 200 && $iconAsk['statusCode'] === 200 && \Nino\Modules\Members::current( $appData ) === null && ( $appData['./members/cookies'] ?? [] ) === []
+		&& ( \Nino\Filesystem::getFileContent( $appData, '/data/members.php', [] )['accounts'][$id]['remember'][0]['hash'] ?? '' ) === hash( 'sha256', explode( '.', $rotated )[1] ?? '' ) );
+
+	// The README
+	$readme = (string) file_get_contents( dirname( __DIR__ ). '/README.md' );
+	check( 'the README says what the app is and how it is signed in: the manifest, the icons, the hint for the home screen, the cookie of a device, the epoch, the button and the menu entry',
+		array_filter( [ '/portal/manifest.webmanifest', '/portal/icon.svg', '/portal/icon.png', 'nino_remember', 'rememberDays', '/.crm/geraete/abmelden', 'Alle Geräte abmelden', 'crm-clients/account-forget', 'data/crm-icon', 'Einheit erneut anwenden', 'GD', 'localStorage', '/members/open' ], static fn( string $needle ): bool => str_contains( $readme, $needle ) === false ) === [] );
+
+	\Nino\Html::addFills( $appData, [ '[[/project/company/general/name]]' => $nameWas ], '*' );
+	unset( $appData['./members/cookies'] );
 }

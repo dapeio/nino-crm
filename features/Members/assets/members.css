@@ -99,6 +99,23 @@
 	text-decoration: underline;
 }
 
+/*	The box under the field for the code: stay signed in on this device. The whole line is the target, 2.75rem high	*/
+.members-code__remember {
+	display: flex;
+	text-align: start;
+	align-items: center;
+	gap: var(--space-1);
+	min-height: 2.75rem;
+	cursor: pointer;
+}
+
+.members-code__check {
+	flex: none;
+	width: 1.25rem;
+	height: 1.25rem;
+	margin: 0;
+}
+
 /*	The message above the button: what happened to the request, in words	*/
 .members-login__state {
 	margin: 0 0 var(--space-1);

@@ -23,6 +23,7 @@ return [
 	'[[/feature/members/code/label]]'	=> 'Dein Code',
 	'[[/feature/members/code/button]]'	=> 'Anmelden',
 	'[[/feature/members/code/again]]'	=> 'Neuen Code anfordern',
+	'[[/feature/members/code/remember]]'	=> 'Auf diesem Gerät angemeldet bleiben',
 
 	// Der Knopf dieser Seite, [members-confirm]
 	'[[/feature/members/confirm/intro]]'	=> 'Du meldest Dich an als',

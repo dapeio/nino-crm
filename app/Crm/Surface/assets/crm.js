@@ -3653,6 +3653,20 @@
 					} );
 				} } );
 
+			// Every device the account stays signed in on, and every session of it, ends: where a laptop was lost, or a member left
+			items.push( { label : t( 'acc.forget' ), run : function() {
+				ask( { title : t( 'acc.forget' ), text : t( 'acc.forget-text', whoIs( account ) ), yes : t( 'acc.forget-yes' ) } ).then( function( yes ) {
+
+					if( yes !== true )
+						return;
+
+					call( 'crm-clients/account-forget', post(), 'error.account-forget' ).then( function( answer ) {
+						if( answer.ok === true )
+							toast( t( 'acc.forgotten' ) );
+					} );
+				} );
+			} } );
+
 			items.push( 'sep' );
 		}
 

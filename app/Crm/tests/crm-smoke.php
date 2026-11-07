@@ -310,8 +310,8 @@ check( 'the workbench has one panel of the module, in the content group, and the
 	&& \Crm\Crm::adminPanels( $appData ) === [ \Crm\Crm\Admin::class ] );
 check( 'its permission is /_admin/crm/manage, the one of the whole CRM', \Crm\Crm\Admin::perm() === '/_admin/crm/manage' && ( new \ReflectionClass( \Crm\Crm::class ) )->getConstant( 'MANAGE_PERM' ) === '/_admin/crm/manage' && ( $panels['crm']['perm'] ?? '' ) === '/_admin/crm/manage' );
 check( 'its actions are the two that moved from Kunden: the status and the setup', array_keys( \Crm\Crm\Admin::actions() ) === [ 'crm/status', 'crm/setup' ] );
-check( 'the API of the clients is the fourteen actions that remain, and has no setup and no status - and no panel in it', array_keys( \Crm\Clients\Admin::actions() ) === [ 'crm-clients/list', 'crm-clients/get', 'crm-clients/save', 'crm-clients/active', 'crm-clients/invite', 'crm-clients/accounts', 'crm-clients/unlinked',
-	'crm-clients/account-link', 'crm-clients/account-resend', 'crm-clients/account-active', 'crm-clients/account-name', 'crm-clients/account-email', 'crm-clients/account-remove', 'crm-clients/portal', 'crm-clients/message' ]
+check( 'the API of the clients is the fifteen actions that remain, and has no setup and no status - and no panel in it', array_keys( \Crm\Clients\Admin::actions() ) === [ 'crm-clients/list', 'crm-clients/get', 'crm-clients/save', 'crm-clients/active', 'crm-clients/invite', 'crm-clients/accounts', 'crm-clients/unlinked',
+	'crm-clients/account-link', 'crm-clients/account-resend', 'crm-clients/account-active', 'crm-clients/account-name', 'crm-clients/account-email', 'crm-clients/account-forget', 'crm-clients/account-remove', 'crm-clients/portal', 'crm-clients/message' ]
 	&& array_filter( [ 'nav', 'icon', 'template', 'assets', 'text', 'summary', 'perm', 'apiSetup', 'apiStatus', 'unitDir' ], static fn( string $method ): bool => method_exists( \Crm\Clients\Admin::class, $method ) === true ) === [] );
 
 $assets = \Crm\Crm\Admin::assets();
@@ -345,7 +345,7 @@ ninoUser( $appData, 'admin@example.com' );
 $posts = [ 'crm-clients/list' => [], 'crm-clients/get' => [ 'id' => '1' ], 'crm-clients/save' => [ 'name' => 'Nobody' ], 'crm-clients/active' => [ 'id' => '1' ],
 	'crm-clients/invite' => [ 'id' => '1', 'email' => 'nobody@example.org' ], 'crm-clients/accounts' => [ 'id' => '1' ], 'crm-clients/unlinked' => [],
 	'crm-clients/account-link' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/account-resend' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/account-active' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ],
-	'crm-clients/account-name' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa', 'name' => 'Nobody' ], 'crm-clients/account-email' => [ 'id' => '1', 'member' => 'aaaaaaaaaaaa', 'email' => 'nobody@example.org' ], 'crm-clients/account-remove' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/portal' => [ 'id' => '1' ], 'crm-clients/message' => [ 'id' => '1', 'text' => 'x' ] ];
+	'crm-clients/account-name' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa', 'name' => 'Nobody' ], 'crm-clients/account-email' => [ 'id' => '1', 'member' => 'aaaaaaaaaaaa', 'email' => 'nobody@example.org' ], 'crm-clients/account-forget' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/account-remove' => [ 'id' => '1', 'account' => 'aaaaaaaaaaaa' ], 'crm-clients/portal' => [ 'id' => '1' ], 'crm-clients/message' => [ 'id' => '1', 'text' => 'x' ] ];
 $denied = [ 'signed out' => [], 'without the permission' => [] ];
 
 unset( $appData['./nino/auth/current'] );
@@ -1299,7 +1299,7 @@ check( '...a client without an address is made as ever', $status === 200 && arra
 $offAnswers = [];
 
 foreach( [ 'unlinked' => [], 'account-link' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa' ], 'account-resend' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa' ], 'account-active' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa' ],
-	'account-name' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa', 'name' => 'X' ], 'account-email' => [ 'id' => (string) $first['id'], 'member' => 'aaaaaaaaaaaa', 'email' => 'x@example.org' ], 'account-remove' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa' ] ] as $action => $data ) {
+	'account-name' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa', 'name' => 'X' ], 'account-email' => [ 'id' => (string) $first['id'], 'member' => 'aaaaaaaaaaaa', 'email' => 'x@example.org' ], 'account-forget' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa' ], 'account-remove' => [ 'id' => (string) $first['id'], 'account' => 'aaaaaaaaaaaa' ] ] as $action => $data ) {
 	[ $status, $body ] = ninoCall( $appData, $panel, $data, 'crm-clients/'. $action );
 	$offAnswers[$action] = [ $status, $body['code'] ?? '' ];
 }
@@ -2055,5 +2055,36 @@ function privacyChecks( array &$fresh, callable $run, string $root ): void {
 	check( 'the words of the line are in both languages of the panel, and the surface says its row', array_filter( $panel, static fn( array $words ): bool => array_filter( [ 'status/privacy-ok', 'status/privacy-default', 'setup/privacy', 'setup/privacy-there' ], static fn( string $key ): bool => trim( (string) ( $words['[[/_admin/crm/'. $key. ']]'] ?? '' ) ) === '' ) !== [] ) === []
 		&& trim( (string) ( \Crm\Surface::texts()['einrichtung.row-privacy'] ?? '' ) ) !== '' );
 }
+
+/**
+ *	The action that signs an account out of every device (crm-clients/account-forget): the devices that stay signed in are gone, the account has an epoch of its own, the sessions of the account end
+ *
+ *	@param		array 		&$appData
+ *	@param		callable	$call					The panel's action as a call: ( action, data ) => [ status, body ]
+ *	@param		array 		$other				A client that is not the one of the account
+ *
+ *	@return 	void
+ */
+function crmForgetChecks( array &$appData, callable $call, array $other ): void {
+
+	[ , $body ] = $call( 'crm-clients/save', [ 'company' => 'Geraete GmbH', 'account_email' => 'geraete@example.org', 'account_name' => 'Geraete Person' ] );
+	$client = (array) ( $body['client'] ?? [] );
+	$account = (array) ( $body['first']['account'] ?? [] );
+	$id = (string) ( $account['id'] ?? '' );
+	$state = (array) \Nino\Filesystem::getFileContent( $appData, '/data/members.php', [] );
+	$state['accounts'][$id]['epoch'] = str_repeat( 'a', 32 );
+	$state['accounts'][$id]['remember'] = [ [ 'hash' => hash( 'sha256', 'one' ), 'created' => '2026-11-01T10:00:00Z', 'expires' => time() + 1000, 'agent' => 'Agent' ] ];
+	\Nino\Filesystem::putFileContent( $appData, '/data/members.php', $state );
+
+	[ $status, $answer ] = $call( 'crm-clients/account-forget', [ 'id' => (string) $client['id'], 'account' => $id ] );
+	$after = (array) ( ( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members.php', [] ) )['accounts'][$id] ?? [] );
+	check( 'account-forget signs an account out of every device: the answer says so, the list of its devices is empty and the account has an epoch of its own that is not the old one', $status === 200 && $answer === [ 'forgotten' => true ]
+		&& isset( $after['remember'] ) === false && preg_match( '/^[0-9a-f]{32}$/D', (string) ( $after['epoch'] ?? '' ) ) === 1 && $after['epoch'] !== str_repeat( 'a', 32 ) && ( $after['email'] ?? '' ) === 'geraete@example.org' && ( $after['active'] ?? false ) === true );
+	check( '...the log line names the client and the account and no address or value', \Crm\Clients\Admin::log( 'crm-clients/account-forget', [ 'id' => (string) $client['id'], 'account' => $id, 'email' => 'geraete@example.org' ] ) === 'Signed account '. $id. ' of client '. $client['number']. ' out of all devices' );
+	check( '...an account of another client is 404 crm_clients_member and keeps its devices; an id that is none is 400', $call( 'crm-clients/account-forget', [ 'id' => (string) $other['id'], 'account' => $id ] )[1]['code'] === 'crm_clients_member'
+		&& $call( 'crm-clients/account-forget', [ 'id' => (string) $client['id'], 'account' => 'nope' ] )[0] === 400 );
+}
+
+crmForgetChecks( $appData, $call, $kg );
 
 ninoDone( $appData );

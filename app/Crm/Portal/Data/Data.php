@@ -40,6 +40,7 @@ class Data {
 	public const string ROUTE = '/.crm/daten';
 	public const string ROUTE_LOGIN = '/.crm/anmeldeadresse';
 	public const string ROUTE_CODE = '/.crm/anmeldeadresse/code';
+	public const string ROUTE_DEVICES = '/.crm/geraete/abmelden';
 	public const string PAGE = '/portal/meine-daten';
 
 	// The fields of the form, in their order: the client's fields the member may change, how the input is made, whether it takes the whole line and whether it is required
@@ -66,6 +67,8 @@ class Data {
 	// in the block where the address names a step (login=change or login=code); login-invalid and login-expired are the keys of the words of invalid and expired
 	private const array LOGIN_STATES = [
 		'login-changed' => [ 'success', 'circle-check', 'status' ],
+		'devices'       => [ 'success', 'circle-check', 'status' ],
+		'devices-failed' => [ 'error', 'circle-alert', 'alert' ],
 		'same'          => [ 'info', 'info', 'status' ],
 		'limit'         => [ 'error', 'circle-alert', 'alert' ],
 		'gone'          => [ 'error', 'circle-alert', 'alert' ],
@@ -357,10 +360,11 @@ class Data {
 		if( $new !== null )
 			$step = Portal::render( 'data-login-code', [ '[[dir]]' => $dir, '[[address]]' => \Nino\Modules\Components::escape( $new ) ] + $bad );
 		else
-			$step = Portal::render( 'data-login-change', [ '[[dir]]' => $dir, '[[open]]' => $asked === 'change' || ( $tone !== null && $key !== 'login-changed' ) ? ' open' : '' ] + $bad );
+			$step = Portal::render( 'data-login-change', [ '[[dir]]' => $dir, '[[open]]' => $asked === 'change' || ( $tone !== null && in_array( $key, [ 'login-changed', 'devices', 'devices-failed' ], true ) === false ) ? ' open' : '' ] + $bad );
 
 		return Portal::render( 'data-login', [
 			'[[address]]' => \Nino\Modules\Components::escape( (string) $member['email'] ),
+			'[[dir]]'     => $dir,
 			'[[state]]'   => $tone === null ? '' : Portal::render( 'data-state', [ '[[state]]' => $key, '[[tone]]' => $tone[0], '[[icon]]' => $tone[1], '[[role]]' => $tone[2] ] ),
 			'[[step]]'    => $step,
 		] );
@@ -436,6 +440,36 @@ class Data {
 			'wrong' => self::redirect( $appData, $request, 'wrong', '', '', '', '', 'code' ),
 			default => self::redirect( $appData, $request, 'gone' ),
 		};
+	}
+
+	/**
+	 *	'/nino/http/response/POST://.crm/geraete/abmelden': the button of the block Anmeldeadresse signs the account out of every device. A visitor and a member of no client are answered 404; a
+	 *	token that is not the session's is the redirect with ?state=expired. Members::forgetAll() empties the list of the devices that stay signed in and gives the account an epoch of its
+	 *	own, so that every other session ends and no cookie signs it in again; the session that asks stays - it is written again with the new epoch - and the redirect is ?state=devices, which the
+	 *	block says. A write that failed is ?state=devices-failed
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackDevices( array &$appData, array &$request ): void {
+
+		$member = self::memberOfClient( $appData );
+
+		if( $member === null ) {
+			self::notFound( $request );
+
+			return;
+		}
+
+		if( \Nino\Form::blocked( $request ) === true ) {
+			self::redirect( $appData, $request, 'expired' );
+
+			return;
+		}
+
+		self::redirect( $appData, $request, \Nino\Modules\Members::forgetAll( $appData, $member['id'] ) === true ? 'devices' : 'devices-failed' );
 	}
 
 	/**

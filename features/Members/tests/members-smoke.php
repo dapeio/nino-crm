@@ -351,11 +351,12 @@ check( 'key, class and version are what the directory and the plan say', is_arra
 check( 'it names itself in both interface languages', is_array( $manifest ) && \Nino\Features::localized( $manifest['name'], 'de_DE' ) !== \Nino\Features::localized( $manifest['name'], 'en_US' )
 	&& \Nino\Features::localized( $manifest['description'], 'de_DE' ) !== \Nino\Features::localized( $manifest['description'], 'en_US' ) );
 check( 'it owns the three files of the accounts, the links and the epoch - and not the counter, which is an hour long', is_array( $manifest ) && $manifest['data'] === [ '/data/members.php', '/data/members-tokens.php', '/data/members-session.php' ] );
-check( 'the settings are the five of the plan, each with its default and its bounds', is_array( $manifest ) && array_keys( $manifest['settings'] ) === [ 'paths', 'start', 'linkMinutes', 'inviteDays', 'attempts' ]
+check( 'the settings are the six of the plan, each with its default and its bounds', is_array( $manifest ) && array_keys( $manifest['settings'] ) === [ 'paths', 'start', 'linkMinutes', 'inviteDays', 'attempts', 'rememberDays' ]
 	&& $manifest['settings']['paths']['type'] === 'lines' && $manifest['settings']['start']['default'] === '/'
 	&& [ $manifest['settings']['linkMinutes']['default'], $manifest['settings']['linkMinutes']['min'], $manifest['settings']['linkMinutes']['max'] ] === [ 15, 5, 1440 ]
 	&& [ $manifest['settings']['inviteDays']['default'], $manifest['settings']['inviteDays']['min'], $manifest['settings']['inviteDays']['max'] ] === [ 7, 1, 30 ]
-	&& [ $manifest['settings']['attempts']['default'], $manifest['settings']['attempts']['min'], $manifest['settings']['attempts']['max'] ] === [ 5, 1, 50 ] );
+	&& [ $manifest['settings']['attempts']['default'], $manifest['settings']['attempts']['min'], $manifest['settings']['attempts']['max'] ] === [ 5, 1, 50 ]
+	&& [ $manifest['settings']['rememberDays']['default'], $manifest['settings']['rememberDays']['min'], $manifest['settings']['rememberDays']['max'] ] === [ 90, 1, 365 ] );
 check( 'it says all six sections of its manual in both languages, and its section of the privacy policy as a starting point', is_array( $manifest ) && (function() use ( $manifest ): bool {
 	foreach( \Nino\Features::MANUAL_SECTIONS as $section )
 		foreach( (array) ( $manifest['manual'][$section] ?? [] ) as $line )
@@ -441,6 +442,9 @@ else {
 	check( '...it names the minutes a code is valid, the tries it has and the days of an invitation the settings and the class give by default - and carries no ampersand, no entity and no bracket', array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => preg_match( '/[&\[]/', (string) $privacy[$locale]['members']['text'] ) === 1
 		|| $named( (string) $privacy[$locale]['members']['text'], $manifest['settings']['linkMinutes']['default'] ) === false || $named( (string) $privacy[$locale]['members']['text'], $manifest['settings']['inviteDays']['default'] ) === false
 		|| $named( (string) $privacy[$locale]['members']['text'], ( new ReflectionClassConstant( \Nino\Modules\Members::class, 'CODE_TRIES' ) )->getValue() ) === false ) === [] );
+
+	check( '...and the cookie of a device that stays signed in and the days the setting gives it by default, in both languages', array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => str_contains( (string) $privacy[$locale]['members']['text'], 'nino_remember' ) === false
+		|| $named( (string) $privacy[$locale]['members']['text'], $manifest['settings']['rememberDays']['default'] ) === false || $named( (string) $privacy[$locale]['members']['text'], ( new ReflectionClassConstant( \Nino\Modules\Members::class, 'REMEMBER_MAX' ) )->getValue() ) === false ) === [] );
 
 	$privacy['en_US']['members']['text'] = '<p>The editor changed this.</p>';
 	\Nino\Filesystem::putFileContent( $appData, '/elements/privacy.php', $privacy );
@@ -543,7 +547,7 @@ $stepCode = $stepFields['code'] ?? null;
 $again = membersFind( $step, '//form/a[contains(concat(" ", normalize-space(@class), " "), " members-code__again ")]' );
 check( 'where a code is out [members-login] is the second step: one form that posts to /.members/code, with a field for the code and no field for an address, the page it is on and the csrf token of the session, a button and a link back to the page - and no .nino-form',
 	count( $stepForms ) === 1 && strtolower( $stepForms[0]->getAttribute( 'method' ) ) === 'post' && $stepForms[0]->getAttribute( 'action' ) === '/.members/code' && membersClasses( $stepForms[0] ) === [ 'members-code', 'wide' ]
-	&& array_keys( $stepFields ) === [ 'return', '_csrf', 'code' ] && $stepFields['return']->getAttribute( 'value' ) === '/join' && $stepFields['_csrf']->getAttribute( 'value' ) === \Nino\Csrf::getToken( $appData )
+	&& array_keys( $stepFields ) === [ 'return', '_csrf', 'code', 'remember' ] && $stepFields['return']->getAttribute( 'value' ) === '/join' && $stepFields['_csrf']->getAttribute( 'value' ) === \Nino\Csrf::getToken( $appData )
 	&& count( membersFind( $step, '//form//button[@type="submit"]' ) ) === 1 && count( $again ) === 1 && $again[0]->getAttribute( 'href' ) === '/join' );
 check( '...its field takes six digits the way a phone offers them: text with a numeric keypad, the one-time-code hint, a pattern and a length that let a space through, focused, required - and its label belongs to it',
 	$stepCode !== null && $stepCode->getAttribute( 'type' ) === 'text' && $stepCode->getAttribute( 'inputmode' ) === 'numeric' && $stepCode->getAttribute( 'autocomplete' ) === 'one-time-code' && $stepCode->getAttribute( 'pattern' ) === '[0-9 ]*'
@@ -2506,6 +2510,461 @@ else {
 
 echo "\n";
 
+
+// --- Devices that stay signed in: the box, the cookie, its token, and every way a device is ended -------------------------------
+
+echo "Modules\\Members - devices that stay signed in: nino_remember, one token for each, replaced with every use\n";
+
+/**
+ *	The lines of Set-Cookie the feature set since the last call, as the request left them
+ *
+ *	@param		array 		&$appData
+ *
+ *	@return 	array										A list of lines
+ */
+function membersCookies( array &$appData ): array {
+
+	$lines = (array) ( $appData['./members/cookies'] ?? [] );
+	unset( $appData['./members/cookies'] );
+
+	return array_values( array_filter( $lines, 'is_string' ) );
+}
+
+/**
+ *	The value a line of Set-Cookie sets: the id of the account, a dot and the token - '' for a line that deletes the cookie
+ *
+ *	@param		string		$line
+ *
+ *	@return 	string
+ */
+function membersCookieValue( string $line ): string {
+
+	return preg_match( '/^nino_remember=([0-9a-f]{12}\.[A-Za-z0-9_-]{43});/D', $line, $found ) === 1 ? $found[1] : '';
+}
+
+/**
+ *	Give an account a device the way a member does: ask for a code, give it with the box ticked or not
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$email
+ *	@param		bool			$remember
+ *	@param		string		$cookie				The cookie the browser brings along, '' for none
+ *
+ *	@return 	array										The lines of Set-Cookie of the answer
+ */
+function membersDevice( array &$appData, string $email, bool $remember = true, string $cookie = '' ): array {
+
+	membersVisitor();
+	unset( $_COOKIE['nino_remember'], $appData['./members/cookies'] );
+	$digits = membersAskCode( $appData, $email, '/club/news' );
+
+	if( $cookie !== '' )
+		$_COOKIE['nino_remember'] = $cookie;
+
+	membersServe( $appData, '/.members/code', 'POST', [ 'code' => $digits, 'return' => '/club/news' ] + ( $remember === true ? [ 'remember' => '1' ] : [] ) );
+	unset( $_COOKIE['nino_remember'] );
+
+	return membersCookies( $appData );
+}
+
+/**
+ *	A visit with a cookie and no session, the way a device comes back
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$cookie				The value of the cookie
+ *	@param		string		$uri
+ *	@param		string		$method
+ *
+ *	@return 	array										[ the request, the lines of Set-Cookie, the member who is signed in or null ]
+ */
+function membersVisitWith( array &$appData, string $cookie, string $uri = '/club/news', string $method = 'GET' ): array {
+
+	membersVisitor();
+	unset( $appData['./members/cookies'] );
+	$_COOKIE['nino_remember'] = $cookie;
+	$request = membersServe( $appData, $uri, $method );
+	unset( $_COOKIE['nino_remember'] );
+
+	return [ $request, membersCookies( $appData ), \Nino\Modules\Members::current( $appData ) ];
+}
+
+/**
+ *	The devices an account keeps, as the file holds them
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$id
+ *
+ *	@return 	array
+ */
+function membersDevices( array &$appData, string $id ): array {
+
+	return (array) ( membersFile( $appData, 'accounts' )['accounts'][$id]['remember'] ?? [] );
+}
+
+/**
+ *	Every file of the sandbox that holds a text - where a token must never be
+ *
+ *	@param		array 		&$appData
+ *	@param		string		$needle
+ *
+ *	@return 	array										The paths of the files that hold it
+ */
+function membersFilesHolding( array &$appData, string $needle ): array {
+
+	$found = [];
+
+	foreach( new RecursiveIteratorIterator( new RecursiveDirectoryIterator( ninoSandboxDir( $appData ), FilesystemIterator::SKIP_DOTS ) ) as $file )
+		if( $file->isFile() === true && str_contains( (string) file_get_contents( $file->getPathname() ), $needle ) === true )
+			$found[] = $file->getPathname();
+
+	return $found;
+}
+
+/**
+ *	The checks of the devices: the box, the cookie and its token, the sign-in with it and the replacement of the token, the ends of a device and the count of a bad cookie
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		&$told				What the features that build on the feature were told
+ *
+ *	@return 	void
+ */
+function membersDeviceChecks( array &$appData, array &$told ): void {
+
+	\Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [ '/club' ] ] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', [] );
+	$_SERVER['HTTP_USER_AGENT'] = "Agent/1.0 (Test)\r\n". str_repeat( 'x', 400 );
+	unset( $_SERVER['HTTPS'] );
+
+	$eve = \Nino\Modules\Members::add( $appData, 'eve@example.org', 'Eve', 'staff' );
+	$eveId = is_array( $eve ) === true ? $eve['id'] : '';
+
+	// The box of the second step: a checkbox, off, in the form of the code, in front of the button
+	membersVisitor();
+	\Nino\Runtime::setSessionValue( $appData, './members/pending', [ 'email' => 'eve@example.org', 'nonce' => str_repeat( 'c', 32 ), 'tries' => 0, 'until' => time() + 600 ] );
+	ninoVisit( $appData, '/club/news?members=sent' );
+	$step = \Nino\Html::renderHtml( $appData, '[members-login]' );
+	$box = membersFind( $step, '//form[contains(concat(" ", normalize-space(@class), " "), " members-code ")]//label[contains(concat(" ", normalize-space(@class), " "), " members-code__remember ")]//input' );
+	$controls = membersFind( $step, '//form//*[self::input or self::button]' );
+	check( 'the second step of the form has a checkbox named remember, value 1, off - inside a label that holds a sentence, in front of the button',
+		count( $box ) === 1 && $box[0]->getAttribute( 'type' ) === 'checkbox' && $box[0]->getAttribute( 'name' ) === 'remember' && $box[0]->getAttribute( 'value' ) === '1' && $box[0]->hasAttribute( 'checked' ) === false
+		&& trim( (string) membersText( $step, '//label[contains(@class,"members-code__remember")]' ) ) !== '' && $controls !== [] && end( $controls )->nodeName === 'button' );
+	\Nino\Runtime::unsetSessionValue( $appData, './members/pending' );
+	membersVisitor();
+	check( '...the first step has no such box', membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//input[@name="remember"]' ) === [] );
+
+	// A code without the box makes no device and no cookie
+	$plain = membersDevice( $appData, 'eve@example.org', false );
+	check( 'a code given without the box signs in and makes no cookie and no device', ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $eveId && $plain === [] && membersDevices( $appData, $eveId ) === [] );
+
+	// With the box: the cookie, its attributes, and what the account keeps
+	$stamp = time();
+	$lines = membersDevice( $appData, 'eve@example.org' );
+	$value = membersCookieValue( $lines[0] ?? '' );
+	[ $cookieId, $token ] = array_pad( explode( '.', $value, 2 ), 2, '' );
+	$kept = membersDevices( $appData, $eveId );
+	check( 'a code given with the box ticked sets one cookie: nino_remember = <id of the account>.<token of 43 characters>, for 90 days (Max-Age), site-wide, HttpOnly, SameSite=Lax - and no Secure over http',
+		count( $lines ) === 1 && $value !== '' && $cookieId === $eveId && preg_match( '/; Max-Age=7776000; Path=\/; HttpOnly; SameSite=Lax$/D', $lines[0] ) === 1 && str_contains( $lines[0], 'Secure' ) === false );
+	check( '...the account keeps one entry: the sha256 of the token, the time it was made, the end of its 90 days, the user agent cut at 300 characters with its control characters out',
+		count( $kept ) === 1 && $kept[0]['hash'] === hash( 'sha256', $token ) && abs( strtotime( (string) $kept[0]['created'] ) - $stamp ) < 10 && abs( $kept[0]['expires'] - ( $stamp + 90 * 86400 ) ) < 10
+		&& mb_strlen( $kept[0]['agent'] ) === 300 && str_starts_with( $kept[0]['agent'], 'Agent/1.0 (Test)xxx' ) && preg_match( '/[\x00-\x1f]/', $kept[0]['agent'] ) !== 1 && array_keys( $kept[0] ) === [ 'hash', 'created', 'expires', 'agent' ] );
+	check( '...the token is in the cookie and nowhere else: in no file of the project, not in the log and not in a mail - and the account the others read has no list', membersFilesHolding( $appData, $token ) === []
+		&& array_key_exists( 'remember', \Nino\Modules\Members::account( $appData, $eveId ) ?? [] ) === false && array_key_exists( 'remember', \Nino\Modules\Members::current( $appData ) ?? [ 'remember' => 1 ] ) === false
+		&& str_contains( json_encode( $GLOBALS['mails'] ) ?: '', $token ) === false );
+
+	$_SERVER['HTTPS'] = 'on';
+	$secure = membersDevice( $appData, 'eve@example.org' );
+	unset( $_SERVER['HTTPS'] );
+	check( '...over https the cookie is Secure as well', count( $secure ) === 1 && str_ends_with( $secure[0], '; Secure; SameSite=Lax' ) === true && str_contains( $secure[0], 'HttpOnly' ) === true );
+	$cookieOne = $value;
+	$valueTwo = membersCookieValue( $secure[0] ?? '' );
+	$replaced = membersDevice( $appData, 'eve@example.org', true, $cookieOne );
+	$tokenOne = explode( '.', $cookieOne, 2 )[1] ?? '';
+	check( '...a device that brings the cookie of an earlier visit takes the place of its token: the list does not grow, and the old token is not in it', count( $replaced ) === 1 && count( membersDevices( $appData, $eveId ) ) === 2
+		&& in_array( hash( 'sha256', $tokenOne ), array_column( membersDevices( $appData, $eveId ), 'hash' ), true ) === false );
+	$value = $valueTwo;
+	$token = explode( '.', $value, 2 )[1] ?? '';
+
+	// The way back: no session, a good cookie
+	$told = [];
+
+	// The device had only a short time left: a use gives it the days again
+	$state = membersFile( $appData, 'accounts' );
+	$state['accounts'][$eveId]['remember'] = array_map( static fn( array $entry ): array => hash_equals( $entry['hash'], hash( 'sha256', $token ) ) === true ? [ 'expires' => time() + 1000 ] + $entry : $entry, $state['accounts'][$eveId]['remember'] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members.php', $state );
+	$stamp = time();
+	[ $request, $set, $member ] = membersVisitWith( $appData, $value );
+	[ $newId, $newToken ] = array_pad( explode( '.', membersCookieValue( $set[0] ?? '' ), 2 ), 2, '' );
+	$devices = membersDevices( $appData, $eveId );
+	check( 'a visitor with no session and a good cookie is signed in on the page asked for: no gate (not the 401), the member is Eve, the features that build on it are told once',
+		( $member['id'] ?? '' ) === $eveId && $request['/nino/http/response']['statusCode'] !== 401 && count( $told ) === 1 && $told[0][0] === 'login' && $told[0][1]['id'] === $eveId );
+	check( '...the token is replaced by a new one: another cookie of the same form, the entry holds the hash of the new token and keeps its day of making, its end is 90 days from now whatever it had left, and the old token is in no entry',
+		count( $set ) === 1 && $newId === $eveId && $newToken !== '' && $newToken !== $token && array_search( hash( 'sha256', $newToken ), array_column( $devices, 'hash' ), true ) !== false
+		&& in_array( hash( 'sha256', $token ), array_column( $devices, 'hash' ), true ) === false && count( $devices ) === 2 && ( array_column( $devices, 'expires', 'hash' )[ hash( 'sha256', $newToken ) ] ?? 0 ) - $stamp >= 90 * 86400 - 10 );
+	// Two tabs that open at once bring the same cookie: the one a use has just replaced signs in as well, with no new cookie, no count and no write
+	[ , $setTwin, $memberTwin ] = membersVisitWith( $appData, $value );
+	$twinDevices = membersDevices( $appData, $eveId );
+	check( '...a request that brings the token that was replaced within thirty seconds - two tabs that open at once - is signed in as well, and leaves the new cookie in place: no cookie line, no new token, no try counted',
+		( $memberTwin['id'] ?? '' ) === $eveId && $setTwin === [] && $twinDevices === $devices && \Nino\Feature::spent( $appData, 'members-tries', 'remember|127.0.0.1', 1 ) === false );
+
+	// ...and thirty-one seconds later the old token is dead
+	$state = membersFile( $appData, 'accounts' );
+	$state['accounts'][$eveId]['remember'] = array_map( static fn( array $entry ): array => isset( $entry['rotated'] ) === true ? [ 'rotated' => time() - 31 ] + $entry : $entry, $state['accounts'][$eveId]['remember'] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members.php', $state );
+	check( '...but after thirty seconds the old token is dead: it signs nobody in, its cookie is deleted (Max-Age=0, no value) and the address has made one wrong try',
+		(function() use ( &$appData, $value ): bool {
+			[ $request, $set, $member ] = membersVisitWith( $appData, $value );
+			return $member === null && $request['/nino/http/response']['statusCode'] === 401 && count( $set ) === 1 && str_starts_with( $set[0], 'nino_remember=; Max-Age=0;' ) && str_contains( $set[0], 'HttpOnly' ) && \Nino\Feature::spent( $appData, 'members-tries', 'remember|127.0.0.1', 1 ) === true;
+		} )() );
+
+	// The page that is read: a post, an endpoint of the feature and an answer that is no page do not look at the cookie
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	$cookie = $newId. '.'. $newToken;
+	[ , $setPost, $memberPost ] = membersVisitWith( $appData, $cookie, '/club/news', 'POST' );
+	[ , $setEndpoint, $memberEndpoint ] = membersVisitWith( $appData, $cookie, '/.members/login?t=x' );
+	$appData['/nino/http/routes']['GET://club/data.json'] = [ 'uri' => '/club/data.json', 'header' => [ 'Content-Type' => 'application/json' ] ];
+	[ , $setJson, $memberJson ] = membersVisitWith( $appData, $cookie, '/club/data.json' );
+	check( 'only the request for a page is signed in by a cookie: a post, an endpoint of the feature and an answer that is no html leave the token alone, set no cookie and make no session',
+		$memberPost === null && $setPost === [] && $memberEndpoint === null && $setEndpoint === [] && $memberJson === null && $setJson === [] && in_array( hash( 'sha256', $newToken ), array_column( membersDevices( $appData, $eveId ), 'hash' ), true ) === true );
+	unset( $appData['/nino/http/routes']['GET://club/data.json'] );
+
+	// A member who is signed in is no business of the cookie: the token stays and no cookie is set
+	membersVisitor();
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	membersSignIn( $appData, (array) \Nino\Modules\Members::account( $appData, $eveId ) );
+	$_COOKIE['nino_remember'] = $cookie;
+	unset( $appData['./members/cookies'] );
+	membersServe( $appData, '/club/news' );
+	unset( $_COOKIE['nino_remember'] );
+	check( 'a visit that has a session leaves the cookie as it is: no new token, no cookie', membersCookies( $appData ) === [] && in_array( hash( 'sha256', $newToken ), array_column( membersDevices( $appData, $eveId ), 'hash' ), true ) === true );
+
+	// Ends of a device: run out, switched off, the epoch of the account renewed, the address changed, a cookie that is none
+	$rewrite = static function( string $id, callable $change ) use ( &$appData ): void {
+		$state = membersFile( $appData, 'accounts' );
+		$state['accounts'][$id]['remember'] = array_map( $change, $state['accounts'][$id]['remember'] );
+		\Nino\Filesystem::putFileContent( $appData, '/data/members.php', $state );
+	};
+	$rewrite( $eveId, static fn( array $entry ): array => [ 'expires' => time() - 5 ] + $entry );
+	[ $request, $set, $member ] = membersVisitWith( $appData, $cookie );
+	check( 'a token that has run out signs nobody in, and its cookie is deleted', $member === null && count( $set ) === 1 && str_starts_with( $set[0], 'nino_remember=; Max-Age=0' ) );
+
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	$lines = membersDevice( $appData, 'eve@example.org' );
+	$cookie = membersCookieValue( $lines[0] ?? '' );
+	\Nino\Modules\Members::change( $appData, $eveId, [ 'active' => false ] );
+	check( 'switching an account off empties its list, and a cookie of it signs nobody in', membersDevices( $appData, $eveId ) === [] && membersVisitWith( $appData, $cookie )[2] === null );
+	// A list that is there for an account that is off - a file edited by hand, a restore - is no way in either: the account has to be active
+	$state = membersFile( $appData, 'accounts' );
+	$state['accounts'][$eveId]['remember'] = [ [ 'hash' => hash( 'sha256', explode( '.', $cookie, 2 )[1] ?? '' ), 'created' => '2026-11-01T10:00:00Z', 'expires' => time() + 5000, 'agent' => 'Agent' ] ];
+	\Nino\Filesystem::putFileContent( $appData, '/data/members.php', $state );
+	[ , $setOff, $memberOff ] = membersVisitWith( $appData, $cookie );
+	check( '...and so is a device in the list of an account that is off: it signs nobody in', $memberOff === null && count( $setOff ) === 1 && str_starts_with( $setOff[0], 'nino_remember=; Max-Age=0' ) );
+	\Nino\Modules\Members::change( $appData, $eveId, [ 'active' => true ] );
+
+	$lines = membersDevice( $appData, 'eve@example.org' );
+	$cookie = membersCookieValue( $lines[0] ?? '' );
+	$beforeEpoch = membersFile( $appData, 'accounts' )['accounts'][$eveId]['epoch'] ?? '';
+	$changed = \Nino\Modules\Members::change( $appData, $eveId, [ 'email' => 'eve2@example.org' ] );
+	check( 'a change of the sign-in address by the owner empties the list: the cookie of the old address signs nobody in', is_array( $changed ) && membersDevices( $appData, $eveId ) === [] && membersVisitWith( $appData, $cookie )[2] === null );
+
+	$lines = membersDevice( $appData, 'eve2@example.org' );
+	$cookie = membersCookieValue( $lines[0] ?? '' );
+	\Nino\Modules\Members::askChange( $appData, (array) \Nino\Modules\Members::current( $appData ), 'eve3@example.org' );
+	$digits = str_replace( ' ', '', membersCodeOf( end( $GLOBALS['mails'] ) ?: [] ) );
+	$done = \Nino\Modules\Members::confirmChange( $appData, (array) \Nino\Modules\Members::current( $appData ), $digits );
+	check( '...and so does the member\'s own change, with the code of the new address', $done === 'ok' && membersDevices( $appData, $eveId ) === [] && membersVisitWith( $appData, $cookie )[2] === null );
+
+	// Signing out: this device goes, the others stay
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	$one = membersCookieValue( membersDevice( $appData, 'eve3@example.org' )[0] ?? '' );
+	$two = membersCookieValue( membersDevice( $appData, 'eve3@example.org' )[0] ?? '' );
+	check( 'two devices: the account keeps two tokens', count( membersDevices( $appData, $eveId ) ) === 2 );
+	membersVisitor();
+	unset( $appData['./members/cookies'] );
+	$_COOKIE['nino_remember'] = $two;
+	$told = [];
+	membersServe( $appData, '/.members/logout' );
+	unset( $_COOKIE['nino_remember'] );
+	$left = membersDevices( $appData, $eveId );
+	$out = membersCookies( $appData );
+	check( 'signing out takes the token of this device out of the account and deletes its cookie - the token of the other device stays',
+		count( $left ) === 1 && $left[0]['hash'] === hash( 'sha256', explode( '.', $one )[1] ) && count( $out ) === 1 && str_starts_with( $out[0], 'nino_remember=; Max-Age=0;' ) && str_contains( $out[0], 'SameSite=Lax' ) );
+	check( '...and the device that signed out is out: the same cookie signs nobody in', membersVisitWith( $appData, $two )[2] === null );
+	membersVisitor();
+	unset( $appData['./members/cookies'] );
+	$_COOKIE['nino_remember'] = 'garbage';
+	membersServe( $appData, '/.members/logout' );
+	unset( $_COOKIE['nino_remember'] );
+	check( '...a sign-out with a cookie that is garbage deletes it too and changes nothing', count( membersCookies( $appData ) ) === 1 && count( membersDevices( $appData, $eveId ) ) === 1 );
+
+	// The eleventh device takes the place of the oldest
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	$first = $one;
+	$cookies = [ $first ];
+	for( $round = 0; $round < 10; $round++ )
+		$cookies[] = membersCookieValue( membersDevice( $appData, 'eve3@example.org' )[0] ?? '' );
+	$list = membersDevices( $appData, $eveId );
+	check( 'an account keeps ten devices at most: the eleventh makes the oldest go, and the cookie of that one signs nobody in',
+		count( $list ) === 10 && in_array( hash( 'sha256', explode( '.', $first )[1] ), array_column( $list, 'hash' ), true ) === false && in_array( hash( 'sha256', explode( '.', $cookies[10] )[1] ), array_column( $list, 'hash' ), true ) === true
+		&& membersVisitWith( $appData, $first )[2] === null );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	check( '...and the newest of them is as good as ever', ( membersVisitWith( $appData, $cookies[10] )[2]['id'] ?? '' ) === $eveId );
+
+	// Every device of an account: forgetAll() - the list empty, the epoch of the account new, no session of it left but the one that asked
+	$mine = membersCookieValue( membersDevice( $appData, 'eve3@example.org' )[0] ?? '' );
+	$sessionOther = $_SESSION;
+	$epoch = membersFile( $appData, 'accounts' )['accounts'][$eveId]['epoch'] ?? '';
+	$_COOKIE['nino_remember'] = $mine;
+	unset( $appData['./members/cookies'] );
+	$did = \Nino\Modules\Members::forgetAll( $appData, $eveId );
+	$stayed = ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $eveId;
+	$cookieOut = membersCookies( $appData );
+	unset( $_COOKIE['nino_remember'] );
+	$newEpoch = membersFile( $appData, 'accounts' )['accounts'][$eveId]['epoch'] ?? '';
+	$sessionHere = $_SESSION;
+	$_SESSION = $sessionOther;
+	check( 'forgetAll() empties the list and gives the account an epoch of its own - 32 hex characters, not the one it had', $did === true && membersDevices( $appData, $eveId ) === [] && preg_match( '/^[0-9a-f]{32}$/D', $newEpoch ) === 1 && $newEpoch !== $epoch );
+	check( '...the session that asked stays - written again with the new epoch - and the cookie of that device is deleted', $stayed === true && count( $cookieOut ) === 1 && str_starts_with( $cookieOut[0], 'nino_remember=; Max-Age=0;' ) );
+	check( '...a session of another device, which carries the old epoch, reads signed out', \Nino\Modules\Members::current( $appData ) === null && ( $sessionHere[$appData['./nino/uid']]['./members/account']['own'] ?? '' ) === $newEpoch );
+	check( '...a device that had a token is out as well, and an account nobody has is false', membersVisitWith( $appData, $mine )[2] === null && \Nino\Modules\Members::forgetAll( $appData, str_repeat( 'a', 12 ) ) === false );
+
+	// forgetAll() for another account does not touch the session of the one who is signed in (the owner's way)
+	membersVisitor();
+	$flo = \Nino\Modules\Members::add( $appData, 'flo@example.org', 'Flo', '' );
+	membersSignIn( $appData, (array) \Nino\Modules\Members::account( $appData, $eveId ) );
+	$sessionOf = \Nino\Runtime::getSessionValue( $appData, './members/account' );
+	unset( $appData['./members/cookies'] );
+	$other = \Nino\Modules\Members::forgetAll( $appData, is_array( $flo ) === true ? $flo['id'] : '' );
+	check( 'forgetAll() of another account leaves the session of whoever asks and its cookie as they are', $other === true && \Nino\Runtime::getSessionValue( $appData, './members/account' ) === $sessionOf && membersCookies( $appData ) === [] );
+
+	// Sign everybody out ends the devices of everybody
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	$cookieA = membersCookieValue( membersDevice( $appData, 'eve3@example.org' )[0] ?? '' );
+	check( 'signOutAll() ends the devices as it ends the sessions: every list is empty and the cookie signs nobody in', \Nino\Modules\Members::signOutAll( $appData ) === true && membersDevices( $appData, $eveId ) === [] && membersVisitWith( $appData, $cookieA )[2] === null );
+	check( '...and with nothing to end it is as quiet as before', \Nino\Modules\Members::signOutAll( $appData ) === true );
+
+	// A bad cookie is one try of its address, and an address that has brought twenty is not looked at any more
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	$bad = [ 'garbage', 'abcdefabcdef.'. str_repeat( 'A', 43 ), $eveId. '.'. str_repeat( 'B', 43 ), $eveId. '.'. str_repeat( 'B', 42 ) ];
+	$deleted = 0;
+
+	foreach( $bad as $oneBad ) {
+		$visit = membersVisitWith( $appData, $oneBad );
+		$deleted += count( array_filter( $visit[1], static fn( string $line ): bool => str_starts_with( $line, 'nino_remember=; Max-Age=0' ) ) );
+	}
+
+	check( 'a cookie that is garbage, of an account nobody has, of a token the account does not hold or of the wrong length is deleted each time', $deleted === 4 );
+	check( '...and each one is a try of the address: four are in the counter, and the address is not yet at its end', \Nino\Feature::spent( $appData, 'members-tries', 'remember|127.0.0.1', 4 ) === true && \Nino\Feature::spent( $appData, 'members-tries', 'remember|127.0.0.1', 5 ) === false );
+	$good = membersCookieValue( membersDevice( $appData, 'eve3@example.org' )[0] ?? '' );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+
+	for( $round = 0; $round < 20; $round++ )
+		\Nino\Feature::count( $appData, 'members-tries', 'remember|127.0.0.1', 20, 3600 );
+
+	[ , $set, $member ] = membersVisitWith( $appData, $good );
+	check( 'after twenty wrong cookies in an hour a good cookie still signs in, and rotates: the count never stands in the way of a good token',
+		( $member['id'] ?? '' ) === $eveId && count( $set ) === 1 && membersCookieValue( $set[0] ) !== '' && membersCookieValue( $set[0] ) !== $good );
+	[ , $setBad ] = membersVisitWith( $appData, 'abcdefabcdef.'. str_repeat( 'A', 43 ) );
+	check( '...a wrong cookie from such an address is neither counted nor deleted any more - the count stays at twenty', $setBad === [] && \Nino\Feature::spent( $appData, 'members-tries', 'remember|127.0.0.1', 20 ) === true && \Nino\Feature::spent( $appData, 'members-tries', 'remember|127.0.0.1', 21 ) === false );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	[ , $setNext ] = membersVisitWith( $appData, 'abcdefabcdef.'. str_repeat( 'A', 43 ) );
+	check( '...and in the next window a wrong cookie is deleted and counted again', count( $setNext ) === 1 && str_starts_with( $setNext[0], 'nino_remember=; Max-Age=0' ) && \Nino\Feature::spent( $appData, 'members-tries', 'remember|127.0.0.1', 1 ) === true );
+
+	// The days of a device: the setting - and the default where the setting is out of its bounds (the kernel hands the default for a value that does not validate)
+	$settingsWas = $appData['/nino/features']['members']['settings']['rememberDays'] ?? null;
+	$ages = [];
+
+	foreach( [ 30, 400, 0 ] as $days ) {
+		$appData['/nino/features']['members']['settings']['rememberDays'] = $days;
+		$ages[$days] = preg_match( '/; Max-Age=([0-9]+);/', membersDevice( $appData, 'eve3@example.org' )[0] ?? '', $found ) === 1 ? (int) $found[1] : -1;
+	}
+
+	if( $settingsWas === null )
+		unset( $appData['/nino/features']['members']['settings']['rememberDays'] );
+	else
+		$appData['/nino/features']['members']['settings']['rememberDays'] = $settingsWas;
+
+	check( 'the Max-Age of the cookie is the days of the setting rememberDays: 30 days for 30, and the 90 of the default for a value outside 1 to 365 - 400 and 0 - as the kernel hands it', $ages === [ 30 => 30 * 86400, 400 => 90 * 86400, 0 => 90 * 86400 ] );
+
+	// The word of the box is the project's: where it has none the box is not drawn, and no key of the unit is left standing in the form
+	$wordWas = \Nino\Html::resolveTextfill( $appData, '/feature/members/code/remember' );
+	membersVisitor();
+	\Nino\Runtime::setSessionValue( $appData, './members/pending', [ 'email' => 'eve@example.org', 'nonce' => str_repeat( 'd', 32 ), 'tries' => 0, 'until' => time() + 600 ] );
+	ninoVisit( $appData, '/club/news?members=sent' );
+	$texts = [];
+
+	foreach( [ 'de_DE', 'en_US' ] as $locale ) {
+		$texts[$locale] = \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] );
+		$cut = (array) $texts[$locale];
+		unset( $cut['[[/feature/members/code/remember]]'] );
+		\Nino\Filesystem::putFileContent( $appData, '/text/'. $locale. '.php', $cut );
+	}
+
+	$bare = \Nino\Html::renderHtml( $appData, '[members-login]' );
+
+	foreach( $texts as $locale => $text )
+		\Nino\Filesystem::putFileContent( $appData, '/text/'. $locale. '.php', $text );
+
+	\Nino\Runtime::unsetSessionValue( $appData, './members/pending' );
+	check( 'a project whose words have no label for the box gets no box and no bare key: the form has the field for the code and not the box, and no [[/feature/ is left in it', $wordWas !== null && membersFind( $bare, '//input[@name="code"]' ) !== [] && membersFind( $bare, '//input[@name="remember"]' ) === [] && str_contains( $bare, '[[/feature/' ) === false );
+
+	// A sign-in the epoch cannot be written for is no sign-in: a code that is good is answered with the 500 and nobody is signed in
+	$locks = \Nino\Filesystem::path( $appData, '/data' ). '/.locks';
+	membersVisitor();
+	$digits = membersAskCode( $appData, 'eve3@example.org', '/club/news' );
+	foreach( glob( $locks. '/*.lock' ) ?: [] as $lockFile )
+		unlink( $lockFile );
+	\Nino\Filesystem::mutate( $appData, '/data/members-session.php', static fn( mixed $state ): ?array => null, [] );
+	$epochLock = ( glob( $locks. '/*.lock' ) ?: [] )[0] ?? '';
+	unlink( $epochLock );
+	mkdir( $epochLock );
+	ninoWarnings();
+	$refused = membersServe( $appData, '/.members/code', 'POST', [ 'code' => $digits, 'return' => '/club/news', 'remember' => '1' ] );
+	rmdir( $epochLock );
+	ninoWarnings();
+	check( 'where the epoch cannot be written a good code answers 500 and signs nobody in - and sets no cookie, makes no device', $refused['/nino/http/response']['statusCode'] === 500 && \Nino\Modules\Members::current( $appData ) === null && membersCookies( $appData ) === [] );
+
+	// Signing out with the token a use has just replaced - the second tab - takes the device as well
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+	$first = membersCookieValue( membersDevice( $appData, 'eve3@example.org' )[0] ?? '' );
+	$before = count( membersDevices( $appData, $eveId ) );
+	[ , $setRotated ] = membersVisitWith( $appData, $first );
+	membersVisitor();
+	unset( $appData['./members/cookies'] );
+	$_COOKIE['nino_remember'] = $first;
+	membersServe( $appData, '/.members/logout' );
+	unset( $_COOKIE['nino_remember'] );
+	membersCookies( $appData );
+	check( 'signing out with the token that was just replaced takes the device out of the account all the same: the list is one shorter, and the new token signs nobody in',
+		count( $setRotated ) === 1 && count( membersDevices( $appData, $eveId ) ) === $before - 1 && membersVisitWith( $appData, membersCookieValue( $setRotated[0] ) )[2] === null );
+
+	// The box is a row that starts at the edge: the form stands in a centred section, and the sentence of the box must not centre itself
+	check( 'the rule of the box sets text-align: start - the sentence beside the box does not take the centring of the section the form stands in',
+		preg_match( '/\.members-code__remember\s*\{[^}]*text-align:\s*start;/', (string) file_get_contents( dirname( __DIR__ ). '/assets/members.css' ) ) === 1 );
+
+	// A token is compared with hash_equals() wherever a list of devices is looked at - for a signature of the code that no test of behaviour can see
+	$source = (string) file_get_contents( dirname( __DIR__ ). '/Members.php' );
+	check( 'the hash of a token is compared with hash_equals() in the sign-in, the sign-out and the replacement of a device, and with no other operator',
+		substr_count( $source, "hash_equals( \$entry['hash'], " ) === 3 && substr_count( $source, "hash_equals( \$entry['previous'] ?? " ) === 2 && preg_match( '/\$entry\[.(hash|previous).\]\s*[!=]==?\s/', $source ) !== 1 );
+
+	// The paths a feature opens under a protected prefix
+	$open = static function( array &$appData, array &$list ): void { $list = array_merge( $list, [ '/club/app.webmanifest', '/club/icons/*', '/.members/x', '/_admin/x', 7, 'club/relative', "/club/a\0b" ] ); };
+	\Nino\Callbacks::registerCallback( $appData, '/members/open', $open );
+	check( 'a feature opens paths under a protected prefix through /members/open: those are not protected, the rest of the prefix is - and an endpoint, a path with a null byte and what is no path are never opened',
+		\Nino\Modules\Members::protects( $appData, '/club/app.webmanifest' ) === false && \Nino\Modules\Members::protects( $appData, '/club/icons/a.svg' ) === false && \Nino\Modules\Members::protects( $appData, '/club/news' ) === true
+		&& \Nino\Modules\Members::open( $appData ) === [ '/club/app.webmanifest', '/club/icons/*' ] );
+	$appData['/nino/http/routes']['GET://club/app.webmanifest'] = [ 'uri' => '/club/app.webmanifest', 'header' => [ 'Content-Type' => 'application/manifest+json' ] ];
+	membersVisitor();
+	$page = membersServe( $appData, '/club/app.webmanifest' );
+	check( '...and a visitor is answered what the route answers there, not the login page', $page['/nino/http/response']['statusCode'] !== 401 );
+	unset( $appData['/nino/http/routes']['GET://club/app.webmanifest'] );
+	unset( $appData['./nino/callbacks']['/members/open'] );
+	check( '...and with no feature that opens one the whole prefix is protected again', \Nino\Modules\Members::protects( $appData, '/club/app.webmanifest' ) === true );
+
+	unset( $_SERVER['HTTP_USER_AGENT'] );
+}
+
+membersDeviceChecks( $appData, $told );
+echo "\n";
 
 // --- The panel's script, where node is on the path -----------------------------------
 //

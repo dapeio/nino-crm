@@ -20,7 +20,7 @@ const path = require('path');
 const vm = require('vm');
 
 const root = require('fs').realpathSync( process.env.NINO_ROOT || path.join( __dirname, '../../..' ) );
-const { check, done, source, load, element, documentOf, fire, findAll } = require( path.join( root, 'tests/harness.js' ) );
+const { check, done, source, fills, load, element, documentOf, fire, findAll } = require( path.join( root, 'tests/harness.js' ) );
 
 const SCRIPT = 'app/Crm/Portal/assets/portal.js';
 const ORIGIN = 'https://example.org';
@@ -305,8 +305,175 @@ async function suite() {
 	check( '...an open tab that lies left of the box is scrolled back into it', model.nav.scrollLeft === 0 );
 
 	await playerSuite();
+	await homeSuite();
 
 	done();
+}
+
+/**
+ *	A page with the card that tells how to put the portal on the home screen: the card is drawn hidden, with a sentence for each system, the button to install and the button to put it away
+ *
+ *	@param		{Object}		[options]			portal: false for a page that is no page of the portal
+ *
+ *	@return		{Object}
+ */
+function homePage( options ) {
+	const dismiss = make( 'button', 'crm-btn', { type : 'button', 'data-crm-dismiss' : '' } );
+	const install = make( 'button', 'crm-btn', { type : 'button', 'data-crm-install' : '' } );
+	install.hidden = true;
+	const ios = make( 'p', 'crm-home__system', { 'data-crm-system' : 'ios' } );
+	const android = make( 'p', 'crm-home__system', { 'data-crm-system' : 'android' } );
+	const card = make( 'div', 'crm-home crm-note', { 'data-crm-home' : '', role : 'note' }, [ ios, android, make( 'p', 'crm-home__actions', {}, [ install, dismiss ] ) ] );
+	card.hidden = true;
+	const children = [ card ];
+	if( ( options || {} ).portal !== false )
+		children.unshift( make( 'div', 'crm-portal' ) );
+	const mount = make( 'div', 'root', {}, children );
+	findAll( mount, function() { return true; } ).concat( [ mount ] ).forEach( function( el ) {
+		Object.defineProperty( el, 'parentElement', { get : function() { return el.parentNode; } } );
+	} );
+	return { mount : mount, card : card, dismiss : dismiss, install : install, ios : ios, android : android };
+}
+
+/**
+ *	Run the script over a page of a window the way a phone has it
+ *
+ *	@param		{Object}		model				From homePage()
+ *	@param		{Object}		[world]			width, standalone (display-mode), iosStandalone, marked (the value of the mark in the storage), broken (a storage that throws)
+ *
+ *	@return		{Object}									The window's listeners, the storage and what was asked of the media
+ */
+function homeRun( model, world ) {
+	world = world || {};
+	const state = { listeners : {}, store : new Map(), queries : [] };
+	if( world.marked !== undefined )
+		state.store.set( 'crm-homescreen', world.marked );
+	const doc = Object.assign( documentOf( model.mount ), { readyState : 'complete', addEventListener : function() {} } );
+	const win = {
+		innerWidth : world.width === undefined ? 390 : world.width,
+		navigator : { standalone : world.iosStandalone === true ? true : undefined },
+		addEventListener : function( name, fn ) { ( state.listeners[name] = state.listeners[name] || [] ).push( fn ); },
+		matchMedia : function( query ) { state.queries.push( query ); return { matches : world.standalone === true && query === '(display-mode: standalone)' }; },
+		requestAnimationFrame : function( fn ) { fn(); },
+	};
+	const storage = world.broken === true
+		? { getItem : function() { throw new Error( 'blocked' ); }, setItem : function() { throw new Error( 'blocked' ); } }
+		: { getItem : function( key ) { return state.store.has( key ) ? state.store.get( key ) : null; }, setItem : function( key, value ) { state.store.set( key, String( value ) ); } };
+	const parsed = new URL( ORIGIN+ '/portal/projekte' );
+	const context = vm.createContext( {
+		window : win, document : doc, console : console, URL : URL, URLSearchParams : URLSearchParams, Promise : Promise, localStorage : storage,
+		location : { search : '', hash : '', pathname : parsed.pathname, href : parsed.href, origin : parsed.origin },
+		history : { state : null, replaceState : function() {} },
+		fetch : function() { return Promise.resolve( { ok : true, url : ORIGIN+ '/portal/projekte' } ); },
+	} );
+	load( SCRIPT, context );
+	state.window = win;
+	state.send = function( name, event ) { ( state.listeners[name] || [] ).forEach( function( fn ) { fn( event ); } ); };
+	return state;
+}
+
+/**
+ *	The install the browser offers: an event that can be stopped, asked for and answered
+ *
+ *	@param		{string}		[outcome]			What the person chooses
+ *
+ *	@return		{Object}
+ */
+function offer( outcome ) {
+	const event = { stopped : false, asked : 0 };
+	event.preventDefault = function() { event.stopped = true; };
+	event.prompt = function() { event.asked++; return Promise.resolve(); };
+	event.userChoice = Promise.resolve( { outcome : outcome || 'accepted' } );
+	return event;
+}
+
+/**
+ *	The card for the home screen: where it is shown, what puts it away for good, and the install the browser offers
+ *
+ *	@return		{Promise}
+ */
+async function homeSuite() {
+	let model = homePage();
+	let world = homeRun( model );
+	check( 'the card is drawn hidden and the script shows it on a page of the portal in a window of 390px that is no app and has no mark: the two sentences and the button to put it away, the button to install still hidden', model.card.hidden === false && model.install.hidden === true && model.android.hidden !== true && model.ios.hidden !== true );
+	check( '...the question of the app is the display mode standalone and the width is the window\'s own', world.queries.indexOf( '(display-mode: standalone)' ) !== -1 );
+
+	model = homePage();
+	homeRun( model, { standalone : true } );
+	check( 'where the page runs as an app (display-mode: standalone) the card stays hidden', model.card.hidden === true );
+	model = homePage();
+	homeRun( model, { iosStandalone : true } );
+	check( '...and where iOS says it is an app (navigator.standalone)', model.card.hidden === true );
+	model = homePage();
+	homeRun( model, { width : 1024 } );
+	check( '...and from a window of 1024px', model.card.hidden === true );
+	model = homePage();
+	homeRun( model, { width : 1023 } );
+	check( '...but not under it: 1023px shows it', model.card.hidden === false );
+	model = homePage();
+	homeRun( model, { marked : '1' } );
+	check( 'a device that has put it away keeps it away: the mark crm-homescreen in the localStorage', model.card.hidden === true );
+	model = homePage( { portal : false } );
+	homeRun( model );
+	check( 'a page that is no page of the portal is left as it is', model.card.hidden === true );
+
+	model = homePage();
+	world = homeRun( model );
+	fire( model.dismiss, 'click' );
+	check( 'Ausblenden hides the card and writes the mark of the device, and nothing but the mark: one entry, crm-homescreen', model.card.hidden === true && world.store.get( 'crm-homescreen' ) === '1' && world.store.size === 1 );
+	const again = homePage();
+	homeRun( again, { marked : world.store.get( 'crm-homescreen' ) } );
+	check( '...and on the next page of that device it is not shown again', again.card.hidden === true );
+
+	model = homePage();
+	world = homeRun( model, { broken : true } );
+	check( 'a storage that refuses (a private window, blocked data) is no error: the card is shown, and putting it away still hides it', model.card.hidden === false && ( fire( model.dismiss, 'click' ), model.card.hidden === true ) );
+
+	// The install the browser offers
+	model = homePage();
+	world = homeRun( model );
+	const first = offer( 'accepted' );
+	world.send( 'beforeinstallprompt', first );
+	check( 'where the browser offers the install the event is kept, its own bar is stopped, the button to install is shown and the sentence for Android is not - the one for iOS stays', first.stopped === true && model.install.hidden === false && model.android.hidden === true && model.ios.hidden !== true && model.card.hidden === false );
+	fire( model.install, 'click' );
+	await settle();
+	check( '...the button asks the browser for the install, once, and an accepted install puts the card away for good', first.asked === 1 && model.card.hidden === true && world.store.get( 'crm-homescreen' ) === '1' );
+
+	model = homePage();
+	world = homeRun( model );
+	const refused = offer( 'dismissed' );
+	world.send( 'beforeinstallprompt', refused );
+	fire( model.install, 'click' );
+	await settle();
+	check( '...a person who says no leaves the card where it is, and nothing is stored - the button that is spent goes and the sentence for Android is back', refused.asked === 1 && model.card.hidden === false && world.store.size === 0 && model.install.hidden === true && model.android.hidden === false );
+	model = homePage();
+	world = homeRun( model );
+	const broken = offer();
+	broken.prompt = function() { throw new Error( 'refused' ); };
+	world.send( 'beforeinstallprompt', broken );
+	fire( model.install, 'click' );
+	check( '...a prompt the browser refuses is spent the same way: no error, the button goes, the sentence is back', model.install.hidden === true && model.android.hidden === false && model.card.hidden === false );
+	fire( model.install, 'click' );
+	check( '...and the offer is spent: a second click asks nothing', refused.asked === 1 );
+
+	model = homePage();
+	world = homeRun( model );
+	check( 'a browser that offers nothing keeps the sentences and the button to install stays hidden', model.install.hidden === true && model.android.hidden !== true );
+	world.send( 'appinstalled', {} );
+	check( '...and an install that is done another way (appinstalled) puts the card away', model.card.hidden === true && world.store.get( 'crm-homescreen' ) === '1' );
+
+	model = homePage();
+	world = homeRun( model, { standalone : true } );
+	world.send( 'beforeinstallprompt', offer() );
+	const unused = offer();
+	world.send( 'beforeinstallprompt', unused );
+	check( 'an offer that comes to a page that is shown no card shows nothing - and the browser\'s own offer is left alone: the event is not stopped', model.card.hidden === true && model.install.hidden === true && unused.stopped === false );
+
+	// The words are the server's: the script has none of them, and keeps no word of its own
+	const text = source( SCRIPT );
+	const words = fills( 'app/Crm/Portal/text/de_DE.php' );
+	const own = Object.keys( words ).filter( function( key ) { return key.indexOf( '/home/' ) !== -1; } ).map( function( key ) { return words[key]; } );
+	check( 'the script holds no word of the card - the sentences stand in the markup', own.length === 7 && own.every( function( word ) { return text.indexOf( word ) === -1; } ) );
 }
 
 /**
@@ -851,4 +1018,4 @@ function unmarked( row ) {
 	}
 }
 
-suite();
+suite().catch( function( error ) { console.error( error ); process.exit( 1 ); } );

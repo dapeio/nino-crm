@@ -2017,7 +2017,7 @@ function press( w, key, target, mods ) {
 		&& textOf( all( arows( kc )[0], '.who div' )[0] ) === 'lena@nordlicht.example · zuletzt angemeldet am 30.10.2026' && textOf( all( arows( kc )[1], '.who div' )[0] ) === 'noch nie angemeldet' && textOf( all( arows( kc )[2], '.who div' )[0] ) === 'alt@nordlicht.example · zuletzt angemeldet am 02.01.2026' );
 	check( '...a name that is markup is text, and a row that is gone says so by the last four characters of its id and has no second line', findAll( accountsCard( kc ), function( node ) { return node.tagName === 'B' } ).length === 4 && all( arows( kc )[3], '.who div' ).length === 0 );
 	check( '...what can be done with an account is its menu: a link to sign in for one that signed in, the invitation again for one that did not, nothing to send to one that is off - which is freed instead -, and for a row that is gone only the row to remove',
-		labels( arows( kc )[0] ) === 'Anmeldelink senden|Name ändern|Adresse ändern|Sperren|Löschen' && labels( arows( kc )[1] ) === 'Einladung erneut senden|Name ändern|Adresse ändern|Sperren|Löschen' && labels( arows( kc )[2] ) === 'Name ändern|Adresse ändern|Freigeben|Löschen' && labels( arows( kc )[3] ) === 'Zeile entfernen'
+		labels( arows( kc )[0] ) === 'Anmeldelink senden|Name ändern|Adresse ändern|Sperren|Alle Geräte abmelden|Löschen' && labels( arows( kc )[1] ) === 'Einladung erneut senden|Name ändern|Adresse ändern|Sperren|Alle Geräte abmelden|Löschen' && labels( arows( kc )[2] ) === 'Name ändern|Adresse ändern|Freigeben|Alle Geräte abmelden|Löschen' && labels( arows( kc )[3] ) === 'Zeile entfernen'
 		&& all( arows( kc )[0], '.menu button' )[0].getAttribute( 'aria-label' ) === 'Aktionen des Kontos' );
 	check( '...Konto einladen and Bestehendes verknüpfen are below the rows, and the way to the panel of Members', textOf( all( accountsCard( kc ), '#invite-open' )[0] ) === 'Konto einladen' && textOf( all( accountsCard( kc ), '#link-open' )[0] ) === 'Bestehendes verknüpfen'
 		&& all( accountsCard( kc ), 'a' ).map( function( a ) { return a.getAttribute( 'href' ) } ).join() === '/_admin/#members' );
@@ -2181,7 +2181,7 @@ function press( w, key, target, mods ) {
 	click( ks, kitem( arows( ks )[0], 'Sperren' ) );
 	await settle();
 	check( 'Sperren posts crm-clients/account-active with the value it wants; the row wears the badge gesperrt and offers Freigeben, and no link to send', JSON.stringify( switched ) === '{"id":"1","account":"aaaaaaaaaaaa","active":false}' && textOf( all( arows( ks )[0], '.badge' )[0] ) === 'gesperrt'
-		&& labels( arows( ks )[0] ) === 'Name ändern|Adresse ändern|Freigeben|Löschen' && ks.toast.textContent === 'Das Konto ist gesperrt.' );
+		&& labels( arows( ks )[0] ) === 'Name ändern|Adresse ändern|Freigeben|Alle Geräte abmelden|Löschen' && ks.toast.textContent === 'Das Konto ist gesperrt.' );
 	click( ks, kitem( arows( ks )[2], 'Freigeben' ) );
 	await settle();
 	check( '...Freigeben posts active true, and says so', JSON.stringify( switched ) === '{"id":"1","account":"cccccccccccc","active":true}' && ks.toast.textContent === 'Das Konto ist freigegeben.' );
@@ -2191,6 +2191,23 @@ function press( w, key, target, mods ) {
 	check( '...a client that is off refuses it, and the sentence says why, in the red toast', kInactiveAnswer.toast.textContent.indexOf( 'Der Kunde ist deaktiviert.' ) === 0 && textOf( all( arows( kInactiveAnswer )[2], '.badge' )[0] ) === 'gesperrt' );
 
 	// delete
+	let forgotten = [];
+	const kf = await kopen( '#kunde-1', { 'crm-clients/account-forget' : function( data ) { forgotten.push( data ); return data.account === 'cccccccccccc' ? [ 500, { error : 'x', code : 'crm_clients_write' } ] : [ 200, { forgotten : true } ] } } );
+	click( kf, kitem( arows( kf )[0], 'Alle Geräte abmelden' ) );
+	check( 'Alle Geräte abmelden asks first, with the name of the account and what happens to the devices - nothing is posted before the yes', kf.dialogs.length === 1 && forgotten.length === 0 && textOf( all( kf.dialogs[0], 'h2' )[0] ) === 'Alle Geräte abmelden' && textOf( all( kf.dialogs[0], 'p' )[0] ).indexOf( 'Lena Brandt' ) === 0
+		&& all( kf.dialogs[0], 'button' ).map( textOf ).join( '|' ) === 'Abbrechen|Abmelden' && all( kf.dialogs[0], 'button' )[1].classList.contains( 'danger' ) === false );
+	no( kf, 0 );
+	await settle();
+	check( '...the no posts nothing', forgotten.length === 0 && arows( kf ).length === 4 );
+	click( kf, kitem( arows( kf )[0], 'Alle Geräte abmelden' ) );
+	yes( kf, 1 );
+	await settle();
+	check( '...the yes posts crm-clients/account-forget with the client and the account and says so; the row stays as it is', JSON.stringify( forgotten ) === '[{"id":"1","account":"aaaaaaaaaaaa"}]' && kf.toast.textContent === 'Das Konto ist von allen Geräten abgemeldet.' && arows( kf ).length === 4 && labels( arows( kf )[0] ).indexOf( 'Alle Geräte abmelden' ) !== -1 );
+	click( kf, kitem( arows( kf )[2], 'Alle Geräte abmelden' ) );
+	yes( kf, 2 );
+	await settle();
+	check( '...a refusal is said in the red toast, with the sentence of its code', kf.toast.textContent === 'Das Konto konnte nicht geschrieben werden.' && kf.toast.classList.contains( 'bad' ) === true );
+
 	let removed = [];
 	const kd = await kopen( '#kunde-1', { 'crm-clients/account-remove' : function( data ) { removed.push( data ); return data.account === 'cccccccccccc' ? [ 500, { error : 'x', code : 'crm_clients_write' } ] : [ 200, { removed : true } ] } } );
 	click( kd, kitem( arows( kd )[1], 'Löschen' ) );
@@ -2252,7 +2269,7 @@ function press( w, key, target, mods ) {
 		check( '...and it posts notify true', invitedPlain !== null && invitedPlain.notify === true );
 		click( kplain, kitem( arows( kplain )[0], 'Anmeldelink senden' ) );
 		check( 'the dialog of the account menu has no box either, and the yes posts notify true', all( kplain.dialogs[0], '#dlg-notify' ).length === 0 && textOf( kplain.dialogs[0] ).indexOf( texts['notify.noperm-members'] ) !== -1 && textOf( kplain.dialogs[0] ).indexOf( 'Häkchen' ) === -1 && ( yes( kplain, 0 ), await settle(), resendPlain !== null && resendPlain.notify === true ) );
-		check( 'the menu of an account has no entry to change the address without the permission of Members - the new address is where the next code goes - whatever else the account holds; the entries the CRM\'s permission covers are there', labels( arows( kplain )[0] ) === 'Anmeldelink senden|Name ändern|Sperren|Löschen' && labels( arows( kplain )[1] ) === 'Einladung erneut senden|Name ändern|Sperren|Löschen' );
+		check( 'the menu of an account has no entry to change the address without the permission of Members - the new address is where the next code goes - whatever else the account holds; the entries the CRM\'s permission covers are there', labels( arows( kplain )[0] ) === 'Anmeldelink senden|Name ändern|Sperren|Alle Geräte abmelden|Löschen' && labels( arows( kplain )[1] ) === 'Einladung erneut senden|Name ändern|Sperren|Alle Geräte abmelden|Löschen' );
 		const nplain = world( { hash : '#kunde-neu', perms : { crm : true }, answers : kanswers() } );
 		nplain.boot();
 		await settle();
@@ -2368,8 +2385,8 @@ function press( w, key, target, mods ) {
 	check( 'the card of a client that is off says so once - in a note at the top and in the box of the accounts - and offers no invitation, no link and no new document; the badge is the grey one', all( koff.main, '.note' ).length === 1 && textOf( all( koff.main, '.note' )[0] ) === 'Der Kunde ist deaktiviert: Er bekommt keinen neuen Beleg, und seine Konten sind aus.'
 		&& textOf( accountsCard( koff ) ).indexOf( 'Der Kunde ist deaktiviert: Konten lassen sich weder einladen noch verknüpfen noch einschalten.' ) !== -1 && all( accountsCard( koff ), '#invite-open' ).length === 0 && all( accountsCard( koff ), '#link-open' ).length === 0
 		&& kmenu( koff, 'Neuer Beleg ▾' ) === undefined && textOf( all( koff.main, '.head .badge' )[0] ) === 'inaktiv' && all( koff.main, '.head .badge' )[0].classList.contains( 'b-draft' ) === true );
-	check( '...its accounts offer no link and no switch-on - an account that is off stays off - but the rename and the delete; and the menu of the client has the switch-on', labels( arows( koff )[0] ) === 'Name ändern|Adresse ändern|Sperren|Löschen'
-		&& labels( arows( koff )[2] ) === 'Name ändern|Adresse ändern|Löschen' && all( kmenu( koff, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'Stammdaten bearbeiten|Aktivieren' );
+	check( '...its accounts offer no link and no switch-on - an account that is off stays off - but the rename and the delete; and the menu of the client has the switch-on', labels( arows( koff )[0] ) === 'Name ändern|Adresse ändern|Sperren|Alle Geräte abmelden|Löschen'
+		&& labels( arows( koff )[2] ) === 'Name ändern|Adresse ändern|Alle Geräte abmelden|Löschen' && all( kmenu( koff, '⋯' ), '[role="menuitem"]' ).map( textOf ).join( '|' ) === 'Stammdaten bearbeiten|Aktivieren' );
 	const kmembers = await kopen( '#kunde-1', { 'crm-clients/get' : function() { return [ 200, { client : kclient, accounts : [ { id : 'aaaaaaaaaaaa', gone : true, state : 'members-off' }, { id : 'bbbbbbbbbbbb', gone : true, state : 'members-off' } ] } ] } } );
 	check( 'with Members off the card says that in one sentence instead of rows that would all read "gelöscht", and offers nothing to do', arows( kmembers ).length === 0 && textOf( accountsCard( kmembers ) ).indexOf( 'Das Feature Mitglieder ist nicht aktiv. Die Konten dieses Kunden lassen sich erst wieder verwalten, wenn Du es im Panel Features einschaltest.' ) !== -1
 		&& all( accountsCard( kmembers ), 'button' ).length === 0 );
