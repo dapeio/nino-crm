@@ -8,11 +8,12 @@
  *								what it posts, the totals it shows
  *				  the shell		the element helper (every element is made from data, no markup is written), the toast, the menus, the dialogs
  *								(<dialog>), the keys (/ finds the search, Esc closes), the router (#uebersicht, #belege, #beleg-12,
- *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #projekte, #projekte-neu, #projekt-<id>, #uploads, #positionen, #positionen-neu, #position-<uri>, #einstellungen, #einrichtung, and
+ *								#entwurf-16, #neu-invoice, #kunden, #kunde-3, #kunde-3-portal, #kunde-neu, #projekte, #projekte-neu, #projekt-<id>, #termine, #termine-neu, #termin-<name>, #uploads, #positionen, #positionen-neu, #position-<uri>, #einstellungen, #einrichtung, and
  *								for PDF-Vorlagen #pdf, #pdf-bausteine, #pdf-layout, #pdf-design, #pdf-vorlage-<key>, #pdf-neue-vorlage-<tag>, #pdf-baustein-<key>,
  *								#pdf-neuer-baustein) and the answers of the endpoint (the session that ended, the token that is stale)
- *				  the screens	Übersicht (with its search over the clients, the projects and the documents), Belege, Beleg and Entwurf, then Kunden, Kundenkarte (with the tab Projekte), Neuer Kunde, Projekte (the list, Neues Projekt and the Projektkarte with its tabs
- *								Belege and Dateien, which drives the Elements panel's actions for the type projekte and the Files panel's for the project's folder), Uploads (every file the customers
+ *				  the screens	Übersicht (with its search over the clients, the projects and the documents), Belege, Beleg and Entwurf, then Kunden, Kundenkarte (with the tabs Projekte and Termine), Neuer Kunde, Projekte (the list, Neues Projekt and the Projektkarte with its tabs
+ *								Belege and Dateien, which drives the Elements panel's actions for the type projekte and the Files panel's for the project's folder, and the select of its phase), Termine (the
+ *								list of the dates, Neuer Termin and the Termin, which drives the Elements panel's actions for the type events), Uploads (every file the customers
  *								put into their upload folders, with the ZIP of a choice and its deletion), Positionen (for an account with the permission of the
  *								Elements panel with the editor of an item, Position, which edits the elements of the type positionen through the panel's actions) and Einstellungen, the
  *								Einrichtung of the first run (the page starts there while crm/status says the product is not whole) and - for an account
@@ -52,7 +53,7 @@
 	const CONSENT_PURPOSES = [ 'social', 'archive' ];
 	const NEW_KINDS = [ 'invoice', 'offer', 'contract', 'privacy', 'information' ];
 	const CLIENT_FIELDS = [ 'company', 'name', 'street', 'zip', 'city', 'country', 'email', 'phone', 'vat_id', 'buyer_reference' ];
-	const CLIENT_TABS = [ 'belege', 'projekte', 'portal', 'notizen' ];
+	const CLIENT_TABS = [ 'belege', 'projekte', 'termine', 'portal', 'notizen' ];
 	const RELOAD_KEY = 'crm-reloaded';
 	const AUTOSAVE_MS = 800;
 
@@ -78,7 +79,7 @@
 			filter : { chip : 'all', q : '', sort : 'date', dir : -1, year : 0, page : 1 },
 			cfilter : { q : '', sort : 'number', dir : 1, page : 1 },
 			ufilter : { q : '', sort : 'age', dir : -1, page : 1 }, ubody : null, picked : new Set(),
-			pfilter : { q : '', sort : 'name', dir : 1 }, ifilter : { q : '', sort : 'sort', dir : 1, page : 1 }, pbody : null, jclients : [], jfilter : { q : '', all : false, client : '', page : 1 }, jbody : null, busy : null, pdf : { site : [] }, saver : {}, company : null,
+			pfilter : { q : '', sort : 'name', dir : 1 }, ifilter : { q : '', sort : 'sort', dir : 1, page : 1 }, pbody : null, jclients : [], jfilter : { q : '', all : false, client : '', phase : '', page : 1 }, jbody : null, tfilter : { q : '' }, tbody : null, busy : null, pdf : { site : [] }, saver : {}, company : null,
 			unsent : {}, follow : null, view : 0, entered : false, seen : null, tab : '', draft : null, saving : false, queued : false, pending : null, privacy : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
 		} );
 	};
@@ -1520,6 +1521,21 @@
 	};
 
 	/**
+	 *	The tile of the next date: its day, its title and its client, and the way to the dates
+	 *
+	 *	@param		{Object|undefined}	date		The first of the dates that are coming; none where there is none
+	 *
+	 *	@return		{Object}
+	 */
+	const eventTile = function( date ) {
+
+		return el( 'a', { class: 'card tile', id: 'tile-event', href: date === undefined ? '#termine' : '#termin-'+ date.id },
+			el( 'div', { class: 'l', text: t( 'tile.event' ) } ),
+			el( 'div', { class: 'v', text: date === undefined ? '–' : eventDay( date.start ).slice( 0, 2 )+ ' '+ dmy( date.start ).slice( 0, 6 )+ ( date.all_day === true ? '' : ', '+ date.start.slice( 11, 16 ) ) } ),
+			el( 'div', { class: 'h', text: date === undefined ? t( 'tile.event-none' ) : date.title+ ( date.client_title === '' ? '' : ' · '+ date.client_title ) } ) );
+	};
+
+	/**
 	 *	@param		{Object}	need						An entry of needs()
 	 *
 	 *	@return		{Object|Array}						Its line; the orders of the portal are the line that counts them and a line for each of the first
@@ -1738,7 +1754,11 @@
 
 		loading();
 
-		api( 'crm-documents/overview' ).then( function( answer ) {
+		// The next date is a tile beside the others: where the dates cannot be read the Übersicht has none
+		Promise.all( [ api( 'crm-documents/overview' ), api( 'crm-termine/list', { days : 365 } ) ] ).then( function( answers ) {
+
+			const answer = answers[0];
+			const dates = answers[1].ok === true && answers[1].body.missing !== true ? answers[1].body : null;
 
 			if( state.view !== mine )
 				return;
@@ -1766,7 +1786,8 @@
 				tile( t( 'tile.overdue' ), cash( sum.overdue_gross ), sum.overdue_count === 0 ? t( 'tile.overdue-none' ) : plural( sum.overdue_count, 'tile.overdue-one', 'tile.overdue-many' )+ ', '+ t( 'tile.oldest', dmy( sum.overdue_oldest ) ), sum.overdue_count > 0 ? 'bad' : '' ),
 				tile( t( 'tile.offers' ), cash( sum.offers_gross ), plural( sum.offers_count, 'tile.offers-one', 'tile.offers-many' ), '' ),
 				tile( t( 'tile.paid', sum.paid_year ), cash( sum.paid_gross ), t( 'tile.paid-'+ state.settings.vat_mode ), 'good' ),
-				tile( t( 'tile.drafts' ), String( sum.drafts_count ), sum.drafts_count > 0 ? t( 'tile.drafts-last', dmy( sum.drafts_last ) ) : t( 'tile.drafts-none' ), '' ) ) );
+				tile( t( 'tile.drafts' ), String( sum.drafts_count ), sum.drafts_count > 0 ? t( 'tile.drafts-last', dmy( sum.drafts_last ) ) : t( 'tile.drafts-none' ), '' ),
+				dates === null ? null : eventTile( dates.upcoming[0] ) ) );
 
 			const shown = needs.slice( 0, 10 );
 			const stale = answer.body.stale;
@@ -4089,12 +4110,12 @@
 
 		loading();
 
-		Promise.all( [ api( 'crm-clients/get', { id : String( where.id ) } ), api( 'crm-documents/list', { client : String( where.id ) } ), api( 'crm-projekte/list', { client : String( where.id ) } ) ] ).then( function( answers ) {
+		Promise.all( [ api( 'crm-clients/get', { id : String( where.id ) } ), api( 'crm-documents/list', { client : String( where.id ) } ), api( 'crm-projekte/list', { client : String( where.id ) } ), api( 'crm-termine/list', { client : String( where.id ), days : 365 } ) ] ).then( function( answers ) {
 
 			if( state.view !== mine )
 				return;
 
-			// The projects are a tab of their own: where they cannot be read the card has the others
+			// The projects and the dates are tabs of their own: where they cannot be read the card has the others
 			const failure = answers.slice( 0, 2 ).find( function( answer ) { return answer.ok !== true } );
 
 			if( failure !== undefined ) {
@@ -4107,7 +4128,7 @@
 			// The link "einladen" of the Übersicht leads to the invitation: the tab Portal, the form open
 			state.tab = where.tab === 'einladen' ? 'portal' : where.tab;
 
-			drawKunde( { client : answers[0].body.client, accounts : answers[0].body.accounts, documents : answers[1].body.documents, projects : answers[2].ok === true && answers[2].body.missing !== true ? answers[2].body.projects : null, portal : null, editing : false, inviting : where.tab === 'einladen', invite : null, box : null, master : null, message : null } );
+			drawKunde( { client : answers[0].body.client, accounts : answers[0].body.accounts, documents : answers[1].body.documents, projects : answers[2].ok === true && answers[2].body.missing !== true ? answers[2].body.projects : null, events : answers[3] !== undefined && answers[3].ok === true ? answers[3].body : null, portal : null, editing : false, inviting : where.tab === 'einladen', invite : null, box : null, master : null, message : null } );
 		} );
 	};
 
@@ -4899,6 +4920,26 @@
 		return el( 'div', { class: 'actions', id: 'client-upload-folder-box' }, button, el( 'span', { class: 'state-note', text: t( 'cportal.upload-folder-hint' ) } ) );
 	};
 
+	/**
+	 *	The dates of the client: those that are coming, soonest first, and under their own line those that are over; Neuer Termin starts one for the client
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const tabClientEvents = function( view ) {
+
+		const client = view.client;
+
+		if( view.events === null || view.events.missing === true )
+			return note( '', t( 'events.missing' ) );
+
+		return el( 'div', { id: 'client-events' },
+			state.perms.elements === true && client.active === true ? el( 'div', { class: 'actions top' }, link( '#termine-neu-k'+ client.id, t( 'events.new' ), { class: 'btn primary', id: 'client-event-new' } ) ) : null,
+			eventTable( view.events.upcoming, false, t( 'events.client-empty' ), 'client-events-list' ),
+			eventPast( view.events.past, false ) );
+	};
+
 	const tabClientPortal = function( view ) {
 
 		const holder = el( 'div' );
@@ -5112,7 +5153,7 @@
 			} );
 			clear( body );
 			unsaver( 'tab' );
-			body.appendChild( { belege : tabClientDocuments, projekte : tabClientProjects, portal : tabClientPortal, notizen : tabClientNotes }[key]( view ) );
+			body.appendChild( { belege : tabClientDocuments, projekte : tabClientProjects, termine : tabClientEvents, portal : tabClientPortal, notizen : tabClientNotes }[key]( view ) );
 		};
 
 		const strip = el( 'div', { class: 'tabs', role: 'tablist' }, tabs.map( function( key ) {
@@ -5120,7 +5161,7 @@
 			const button = el( 'button', { type: 'button', role: 'tab', 'aria-selected': key === start ? 'true' : 'false', class: key === start ? 'on' : '', dataset: { tab: key }, on: { click: function() {
 				if( state.view === view.mine )
 					show( key );
-			} } }, t( 'ctab.'+ key ), key === 'belege' ? el( 'span', { class: 'n', text: String( view.documents.length ) } ) : null, key === 'projekte' && view.projects !== null ? el( 'span', { class: 'n', text: String( view.projects.length ) } ) : null );
+			} } }, t( 'ctab.'+ key ), key === 'belege' ? el( 'span', { class: 'n', text: String( view.documents.length ) } ) : null, key === 'projekte' && view.projects !== null ? el( 'span', { class: 'n', text: String( view.projects.length ) } ) : null, key === 'termine' && view.events !== null && view.events.missing !== true ? el( 'span', { class: 'n', text: String( view.events.upcoming.length ) } ) : null );
 
 			buttons.push( button );
 
@@ -5867,6 +5908,9 @@
 
 	const PROJECT_TYPE = 'projekte';
 	const PROJECT_TABS = [ 'belege', 'dateien' ];
+
+	// The phases a project can be in, in the order of the work: the words of the screens and of the portal
+	const PROJECT_PHASES = [ 'recording', 'mix', 'master', 'review' ];
 	const FOLDER_NAME = 80;
 
 	/**
@@ -5939,10 +5983,10 @@
 	};
 
 	/**
-	 *	The projects the list shows: the done ones only where the switch is on, then the search over the title, the client and its number
+	 *	The projects the list shows: the done ones only where the switch is on, those in the phase the filter names (all phases for none), then the search over the title, the client and its number
 	 *
 	 *	@param		{Array}		projects				As crm-projekte/list has them, the newest first
-	 *	@param		{Object}	filter					q, all (the done ones too), client (the id of a client; '' for every one)
+	 *	@param		{Object}	filter					q, all (the done ones too), client (the id of a client; '' for every one), phase ('' for every phase)
 	 *
 	 *	@return		{Array}
 	 */
@@ -5951,8 +5995,71 @@
 		const query = filter.q.trim().toLowerCase();
 
 		return projects.filter( function( project ) {
-			return ( filter.all === true || project.done === false ) && ( filter.client === undefined || filter.client === '' || String( project.client_id ) === filter.client ) && ( query === '' || ( project.title+ ' '+ project.client_title+ ' '+ project.client ).toLowerCase().includes( query ) );
+			return ( filter.all === true || project.done === false ) && ( filter.client === undefined || filter.client === '' || String( project.client_id ) === filter.client ) && ( !filter.phase || project.phase === filter.phase ) && ( query === '' || ( project.title+ ' '+ project.client_title+ ' '+ project.client ).toLowerCase().includes( query ) );
 		} );
+	};
+
+	/**
+	 *	The pill of the phase a project is in
+	 *
+	 *	@param		{Object}	project
+	 *
+	 *	@return		{Object|null}							null for a project that has none
+	 */
+	const phaseBadge = function( project ) {
+		return PROJECT_PHASES.includes( project.phase ) === true ? el( 'span', { class: 'badge b-phase', dataset: { phase: project.phase }, text: t( 'phase.'+ project.phase ) } ) : null;
+	};
+
+	/**
+	 *	The select in the head of a project's card that puts the project into a phase: it saves at once
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const phaseSelect = function( view ) {
+
+		const project = view.project;
+		const select = el( 'select', { id: 'project-phase', value: PROJECT_PHASES.includes( project.phase ) === true ? project.phase : '', on: { change: function() {
+
+			select.disabled = true;
+
+			call( 'crm-projekte/phase', { id : project.id, phase : select.value }, 'projects.error-phase' ).then( function( answer ) {
+
+				select.disabled = false;
+
+				if( answer.ok !== true ) {
+					select.value = PROJECT_PHASES.includes( project.phase ) === true ? project.phase : '';
+					return;
+				}
+
+				toast( t( 'projects.phase-saved' ) );
+
+				if( state.view === view.mine )
+					reloadProjekt( view );
+			} );
+		} } }, el( 'option', { value: '', text: t( 'projects.phase-none' ) } ), PROJECT_PHASES.map( function( phase ) { return el( 'option', { value: phase, text: t( 'phase.'+ phase ) } ) } ) );
+
+		return el( 'label', { class: 'phase', for: 'project-phase' }, el( 'span', { text: t( 'projects.phase' ) } ), select );
+	};
+
+	/**
+	 *	The line under the head of a project's card that names the next date of its client, with the way to a new one. A date belongs to a client and not to a project: the type of the dates has no field for one
+	 *
+	 *	@param		{Object}	view						events (whether the dates can be read), next_event (the date, null for none) and the client
+	 *
+	 *	@return		{Object|null}							null where the dates cannot be read
+	 */
+	const nextEventLine = function( view ) {
+
+		if( view.events !== true )
+			return null;
+
+		const next = view.next_event;
+
+		return el( 'p', { class: 'state-note', id: 'project-next-event' }, t( 'projects.next-event' )+ ' ',
+			next === null || next === undefined ? el( 'span', { text: t( 'projects.next-event-none' ) } ) : [ link( '#termin-'+ next.id, eventWhen( next ) ), ' · '+ next.title ],
+			state.perms.elements === true && view.client !== null && view.client.active === true ? [ ' ', link( '#termine-neu-k'+ view.client.id+ '-p'+ view.project.id, t( 'events.new' ), { class: 'btn sm quiet', id: 'project-event-new' } ) ] : null );
 	};
 
 	const projectBadge = function( project ) {
@@ -6159,6 +6266,11 @@
 				filter.page = 1;
 				again();
 			} } } ), el( 'span', { text: t( 'projects.show-done' ) } ) ),
+			body.missing === true ? null : el( 'select', { id: 'p-phase', 'aria-label': t( 'projects.phase' ), value: filter.phase, on: { change: function( event ) {
+				filter.phase = event.target.value;
+				filter.page = 1;
+				again();
+			} } }, el( 'option', { value: '', text: t( 'projects.phase-all' ) } ), PROJECT_PHASES.map( function( phase ) { return el( 'option', { value: phase, text: t( 'phase.'+ phase ) } ) } ) ),
 			edits === true && body.missing !== true ? link( '#projekte-neu', t( 'projects.new' ), { class: 'btn primary', id: 'projects-new' } ) : null ) );
 
 		if( body.missing === true ) {
@@ -6168,7 +6280,7 @@
 
 		append( state.main, [ cardList( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl', id: 'projects' },
 			el( 'thead', {}, el( 'tr', {}, el( 'th', { scope: 'col', text: t( 'projects.column-project' ) } ), el( 'th', { scope: 'col', text: t( 'column.client' ) } ), el( 'th', { scope: 'col', text: t( 'projects.column-started' ) } ),
-				el( 'th', { scope: 'col', class: 'r', text: t( 'projects.column-documents' ) } ), el( 'th', { scope: 'col', class: 'r', text: t( 'projects.column-files' ) } ), el( 'th', { scope: 'col', class: 'r', text: t( 'projects.column-comments' ) } ), el( 'th', { scope: 'col', text: t( 'column.state' ) } ) ) ),
+				el( 'th', { scope: 'col', class: 'r', text: t( 'projects.column-documents' ) } ), el( 'th', { scope: 'col', class: 'r', text: t( 'projects.column-files' ) } ), el( 'th', { scope: 'col', class: 'r', text: t( 'projects.column-comments' ) } ), el( 'th', { scope: 'col', text: t( 'column.state' ) } ), el( 'th', { scope: 'col', text: t( 'projects.phase' ) } ) ) ),
 			el( 'tbody', {}, shown.length === 0
 				? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '7', class: 'muted', text: t( body.projects.length === 0 ? 'projects.empty' : 'projects.none' ) } ) )
 				: shown.map( function( project ) {
@@ -6179,8 +6291,9 @@
 						el( 'td', { class: 'r num' }, project.documents === 0 ? el( 'span', { class: 'muted', text: '–' } ) : project.documents+ '', project.open > 0 ? el( 'span', { class: 'muted', text: ' · '+ t( 'projects.open-offers', project.open ) } ) : null ),
 						el( 'td', { class: 'r num' }, project.files === null ? el( 'span', { class: 'muted', text: '–' } ) : String( project.files ) ),
 						commentCell( project ),
-						el( 'td', {}, projectBadge( project ), project.download === true ? downloadMark() : null, project.consent_social === true ? consentMark() : null ) );
-				} ) ) ) ), 'projekte', [ 'id', 'who', 'date:l', 'docs:l', 'files:l', 'com:l', 'state' ] ) ] );
+						el( 'td', {}, projectBadge( project ), project.download === true ? downloadMark() : null, project.consent_social === true ? consentMark() : null ),
+						el( 'td', {}, phaseBadge( project ) ) );
+				} ) ) ) ), 'projekte', [ 'id', 'who', 'date:l', 'docs:l', 'files:l', 'com:l', 'state', 'phase' ] ) ] );
 		append( state.main, [ pagerOf( filter, pages, again ), el( 'p', { class: 'state-note top', text: t( edits === true ? 'projects.note-edit' : 'projects.note' ) } ) ] );
 	};
 
@@ -7447,6 +7560,7 @@
 		state.main.appendChild( head( el( 'h1', { text: projectName( project ) } ), projectBadge( project ),
 			el( 'span', { class: 'sub' }, view.client === null ? project.client : link( '#kunde-'+ view.client.id, view.client.title ), project.started === '' ? null : ' · '+ t( 'projects.since', dmy( project.started ) ) ),
 			downloadState( view ),
+			phaseSelect( view ),
 			el( 'span', { class: 'grow' } ),
 			linkable( view.client ) ? linkButton( { client : view.client.id, target : projectPage( project.id ), object : projectName( project ) }, 'project-link', true ) : null,
 			view.client !== null && view.client.active === true ? newMenu( t( 'card.document-new' ), view.client.id, project.id ) : null,
@@ -7459,6 +7573,11 @@
 
 		if( consents !== null )
 			state.main.appendChild( consents );
+
+		const next = nextEventLine( view );
+
+		if( next !== null )
+			state.main.appendChild( next );
 
 		view.info = projectCard( view );
 		state.main.appendChild( view.info );
@@ -7497,6 +7616,600 @@
 		state.main.appendChild( strip );
 		state.main.appendChild( body );
 		show( start );
+	};
+
+
+	// --- Termine -----------------------------------------------------------------------------------------------------
+	// A date is an element of the type events of the feature Events. The surface drives the Elements panel's own actions for it (elements/save makes one and changes it,
+	// elements/delete removes it); crm-termine/list and crm-termine/get read it with its client. A date belongs to a client by its group - the number of the client as a
+	// slug - and has no project: the type has no field that names one. The words of a date are written in the native language; the other languages keep theirs.
+
+	const EVENT_TYPE = 'events';
+
+	/**
+	 *	@param		{string}	moment					Y-m-dTH:i, as the server writes the times of a date (the timezone of the site)
+	 *
+	 *	@return		{string}									Mo, 12.11.2026; '' for none
+	 */
+	const eventDay = function( moment ) {
+
+		if( typeof moment !== 'string' || /^\d{4}-\d{2}-\d{2}/.test( moment ) === false )
+			return '';
+
+		return new Date( Number( moment.slice( 0, 4 ) ), Number( moment.slice( 5, 7 ) ) - 1, Number( moment.slice( 8, 10 ) ) ).toLocaleDateString( 'de-DE', { weekday: 'short' } ).replace( /\.$/, '' )+ ', '+ dmy( moment );
+	};
+
+	/**
+	 *	When a date takes place, in words: the day and the time, to the end of the same day or to the day it ends on; a day without a time says that it is one
+	 *
+	 *	@param		{Object}	date						As crm-termine/list has it: start, end, all_day
+	 *
+	 *	@return		{string}
+	 */
+	const eventWhen = function( date ) {
+
+		if( date.all_day === true )
+			return eventDay( date.start )+ ' · '+ t( 'events.all-day' );
+
+		const time = function( moment ) { return moment.slice( 11, 16 ) };
+
+		if( date.end === '' )
+			return eventDay( date.start )+ ' '+ time( date.start );
+
+		if( date.end.slice( 0, 10 ) === date.start.slice( 0, 10 ) )
+			return eventDay( date.start )+ ' '+ time( date.start )+ '–'+ time( date.end );
+
+		return eventDay( date.start )+ ' '+ time( date.start )+ ' – '+ eventDay( date.end )+ ' '+ time( date.end );
+	};
+
+	/**
+	 *	The words of a date as the type holds them (paragraphs and lists as markup) written as plain text for the field of the form: a paragraph is a block of lines, a blank line
+	 *	between two
+	 *
+	 *	@param		{string}	html
+	 *
+	 *	@return		{string}
+	 */
+	const eventTextOf = function( html ) {
+
+		return String( html )
+			.replace( /<br\s*\/?>/gi, '\n' )
+			.replace( /<\/(p|li|ul|ol)>\s*/gi, '\n\n' )
+			.replace( /<[^>]*>/g, '' )
+			.replace( /&nbsp;/g, ' ' ).replace( /&lt;/g, '<' ).replace( /&gt;/g, '>' ).replace( /&quot;/g, '"' ).replace( /&#0*39;/g, '\'' ).replace( /&amp;/g, '&' )
+			.replace( /\n{3,}/g, '\n\n' ).trim();
+	};
+
+	/**
+	 *	The words typed into the field of the form as the paragraphs the type holds: blank lines divide the paragraphs, a line break inside one stays, everything is text
+	 *
+	 *	@param		{string}	text
+	 *
+	 *	@return		{string}									'' for no words
+	 */
+	const eventHtmlOf = function( text ) {
+
+		const escape = function( line ) { return line.replace( /&/g, '&amp;' ).replace( /</g, '&lt;' ).replace( />/g, '&gt;' ).replace( /"/g, '&quot;' ) };
+
+		return String( text ).replace( /\r\n?/g, '\n' ).split( /\n\s*\n/ ).map( function( paragraph ) { return paragraph.trim() } ).filter( function( paragraph ) { return paragraph !== '' } )
+			.map( function( paragraph ) { return '<p>'+ paragraph.split( '\n' ).map( escape ).join( '<br>' )+ '</p>' } ).join( '' );
+	};
+
+	/**
+	 *	The name a new date is made under: the day it begins and a few letters at random, which the site serves it by (lower-case letters, digits and hyphens)
+	 *
+	 *	@param		{string}	start						Y-m-dTH:i
+	 *
+	 *	@return		{string}
+	 */
+	const eventUri = function( start ) {
+
+		let rest = '';
+
+		while( rest.length < 6 )
+			rest += Math.floor( Math.random() * 36 ).toString( 36 );
+
+		return 'termin-'+ start.slice( 0, 10 ).replace( /-/g, '' )+ '-'+ rest;
+	};
+
+	/**
+	 *	The moments the fields of the form hold
+	 *
+	 *	@param		{Object}	values					startDay, startTime, endDay, endTime
+	 *
+	 *	@return		{Object}									start and end (Y-m-dTH:i; end is '' for none), or problem (the field that is wrong and the key of its sentence)
+	 */
+	const eventMoments = function( values ) {
+
+		if( /^\d{4}-\d{2}-\d{2}$/.test( values.startDay ) === false )
+			return { problem : [ 'start-day', 'events.err-start' ] };
+
+		const start = values.startDay+ 'T'+ ( values.startTime === '' ? '00:00' : values.startTime );
+		const end = values.endDay === '' && values.endTime === '' ? '' : ( values.endDay === '' ? values.startDay : values.endDay )+ 'T'+ ( values.endTime === '' ? '23:59' : values.endTime );
+
+		if( end !== '' && ( /^\d{4}-\d{2}-\d{2}$/.test( values.endDay === '' ? values.startDay : values.endDay ) === false || end <= start ) )
+			return { problem : [ values.endDay === '' ? 'end-time' : 'end-day', 'events.err-end' ] };
+
+		return { start : start, end : end };
+	};
+
+	/**
+	 *	The place of a date in a list of clients: the select of the form. The group of a client is its number as a slug; a date for everyone has none, and a group the owner
+	 *	made by hand in the Elements panel stays an option of its own for the date that has it
+	 *
+	 *	@param		{Array}		clients					The clients that can be chosen
+	 *	@param		{string}	group						The group the control starts at
+	 *
+	 *	@return		{Object}
+	 */
+	const eventClientSelect = function( clients, group ) {
+
+		const known = group === '' || clients.some( function( client ) { return groupOf( client.number ) === group } );
+
+		return el( 'select', { id: 'f-client', value: group },
+			el( 'option', { value: '', text: t( 'events.for-all' ) } ),
+			known === true ? null : el( 'option', { value: group, text: t( 'events.group-other', group ) } ),
+			clients.map( function( client ) { return el( 'option', { value: groupOf( client.number ), text: client.number+ ' · '+ clientTitle( client ) } ) } ) );
+	};
+
+	/**
+	 *	The client a date belongs to, as the lists show it
+	 *
+	 *	@param		{Object}	date
+	 *
+	 *	@return		{Object|string}
+	 */
+	const eventClient = function( date ) {
+
+		if( date.client_id !== 0 )
+			return link( '#kunde-'+ date.client_id, date.client_title, { on: { click: function( event ) { event.stopPropagation() } } } );
+
+		return el( 'span', { class: 'muted', text: date.group === '' ? t( 'events.for-all' ) : t( 'events.group-other', date.group ) } );
+	};
+
+	/**
+	 *	The table of a list of dates
+	 *
+	 *	@param		{Array}		dates						As crm-termine/list has them
+	 *	@param		{boolean}	withClient			The column of the client
+	 *	@param		{string}	empty						The sentence of an empty list
+	 *	@param		{string}	[id]
+	 *
+	 *	@return		{Object}
+	 */
+	const eventTable = function( dates, withClient, empty, id ) {
+
+		const columns = withClient === true ? 4 : 3;
+
+		return cardList( el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl', id: id },
+			el( 'thead', {}, el( 'tr', {}, el( 'th', { scope: 'col', text: t( 'events.column-when' ) } ), el( 'th', { scope: 'col', text: t( 'events.column-title' ) } ), withClient === true ? el( 'th', { scope: 'col', text: t( 'column.client' ) } ) : null, el( 'th', { scope: 'col', text: t( 'events.column-place' ) } ) ) ),
+			el( 'tbody', {}, dates.length === 0
+				? el( 'tr', { class: 'plain' }, el( 'td', { colspan: String( columns ), class: 'muted', text: empty } ) )
+				: dates.map( function( date ) {
+					return el( 'tr', { dataset: { id: date.id }, on: { click: function() { wn.location.hash = '#termin-'+ date.id } } },
+						el( 'td', { class: 'num', text: eventWhen( date ) }, date.running === true ? [ ' ', badge( 'open', t( 'events.running' ) ) ] : null ),
+						el( 'td', { class: 'wrap' }, link( '#termin-'+ date.id, date.title !== '' ? date.title : date.id ) ),
+						withClient === true ? el( 'td', {}, eventClient( date ) ) : null,
+						el( 'td', { text: date.place } ) );
+				} ) ) ) ), withClient === true ? 'termine' : 'ctermine', withClient === true ? [ 'date', 'id', 'who', 'sub' ] : [ 'date', 'id', 'sub' ] );
+	};
+
+	/**
+	 *	The dates that are over, folded under their own line
+	 *
+	 *	@param		{Array}		dates
+	 *	@param		{boolean}	withClient
+	 *
+	 *	@return		{Object|null}
+	 */
+	const eventPast = function( dates, withClient ) {
+
+		return dates.length === 0 ? null : el( 'details', { class: 'fold', id: 'events-past' }, el( 'summary', { text: t( 'events.past', dates.length ) } ), eventTable( dates, withClient, '' ) );
+	};
+
+	const termine = function( where, mine ) {
+
+		loading();
+
+		api( 'crm-termine/list' ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answer.ok !== true ) {
+				loadFailed( answer, 'error.load', function() { route() } );
+				return;
+			}
+
+			state.tbody = answer.body;
+			drawTermine();
+		} );
+	};
+
+	const drawTermine = function() {
+
+		const body = state.tbody;
+		const filter = state.tfilter;
+		const query = filter.q.trim().toLowerCase();
+		const only = function( dates ) {
+			return dates.filter( function( date ) { return query === '' || ( date.title+ ' '+ date.place+ ' '+ date.client_title+ ' '+ date.client ).toLowerCase().includes( query ) } );
+		};
+		const upcoming = only( body.upcoming );
+
+		reveal();
+
+		state.main.appendChild( head( t( 'events.title' ), el( 'span', { class: 'sub', text: t( 'events.count', body.upcoming.length ) } ), el( 'span', { class: 'grow' } ),
+			body.missing === true ? null : search( t( 'events.search' ), filter.q, { input: function( event ) {
+				filter.q = event.target.value;
+				keepSearch( drawTermine, true );
+			} } ),
+			state.perms.elements === true && body.missing !== true ? link( '#termine-neu', t( 'events.new' ), { class: 'btn primary', id: 'events-new' } ) : null ) );
+
+		if( body.missing === true ) {
+			state.main.appendChild( note( '', t( 'events.missing' ) ) );
+			return;
+		}
+
+		state.main.appendChild( eventTable( upcoming, true, t( body.upcoming.length === 0 ? 'events.empty' : 'events.none', 60 ), 'events' ) );
+		append( state.main, [ eventPast( only( body.past ), true ), el( 'p', { class: 'state-note top', text: t( state.perms.elements === true ? 'events.note-edit' : 'events.note' ) } ) ] );
+	};
+
+	/**
+	 *	The form of a date: a new one, or the one that is changed. Title, client, the day and the time it begins and ends, the place and the words
+	 *
+	 *	@param		{Object}	spec						clients (those that can be chosen), native, date (as crm-termine/get has it; null for a new one), preset (title and group of a new one)
+	 *
+	 *	@return		{Object}									form, rows and the posts it makes: moments(), fields()
+	 */
+	const eventForm = function( spec ) {
+
+		const form = formOf();
+		const date = spec.date;
+		const group = date === null ? spec.preset.group : date.group;
+		const words = date === null ? '' : eventTextOf( date.text );
+		const rows = [
+			{ name : 'title', label : t( 'events.f-title' ), control : el( 'input', { id: 'f-title', type: 'text', maxlength: '200', autocomplete: 'off', value: date === null ? spec.preset.title : date.title } ) },
+			{ name : 'group', label : t( 'events.f-client' ), control : eventClientSelect( spec.clients, group ) },
+			{ name : 'start-day', label : t( 'events.f-start' ), control : el( 'input', { id: 'f-start-day', type: 'date', value: date === null ? '' : date.start.slice( 0, 10 ) } ) },
+			{ name : 'start-time', label : t( 'events.f-start-time' ), control : el( 'input', { id: 'f-start-time', type: 'time', value: date === null || date.all_day === true ? '' : date.start.slice( 11, 16 ) } ), hint : t( 'events.hint-time' ) },
+			{ name : 'end-day', label : t( 'events.f-end' ), control : el( 'input', { id: 'f-end-day', type: 'date', value: date === null || date.end === '' ? '' : date.end.slice( 0, 10 ) } ), hint : t( 'form.optional' ) },
+			{ name : 'end-time', label : t( 'events.f-end-time' ), control : el( 'input', { id: 'f-end-time', type: 'time', value: date === null || date.end === '' ? '' : date.end.slice( 11, 16 ) } ), hint : t( 'form.optional' ) },
+			{ name : 'place', label : t( 'events.f-place' ), control : el( 'input', { id: 'f-place', type: 'text', maxlength: '200', autocomplete: 'off', value: date === null ? '' : date.place } ), hint : t( 'form.optional' ) },
+			{ name : 'description', label : t( 'events.f-description' ), control : el( 'textarea', { id: 'f-description', rows: 4, maxlength: '2000', value: words } ), hint : t( 'form.optional' ) },
+		];
+		const list = formList( rows, form );
+
+		/**
+		 *	What the form says, checked: the fields to post (a field the date had stays out of the post where it was not changed - the words, because the type holds lists and the
+		 *	form does not, and the group, which may be one the surface does not make), or the control that is wrong
+		 *
+		 *	@return		{Object}								fields, or problem ([ control, key of the sentence ])
+		 */
+		const posts = function() {
+
+			const values = valuesOfForm( form );
+			const title = values.title.trim();
+
+			if( title === '' )
+				return { problem : [ 'title', 'events.err-title' ] };
+
+			const moments = eventMoments( { startDay : values['start-day'], startTime : values['start-time'], endDay : values['end-day'], endTime : values['end-time'] } );
+
+			if( moments.problem !== undefined )
+				return { problem : moments.problem };
+
+			const fields = { title : title, start : moments.start, end : moments.end, place : values.place.trim() };
+
+			if( date === null || values.group !== date.group )
+				fields.group = values.group;
+
+			if( date === null ? values.description.trim() !== '' : values.description.trim() !== words )
+				fields.text = eventHtmlOf( values.description );
+
+			return { fields : fields };
+		};
+
+		return { form : form, list : list, posts : posts };
+	};
+
+	/**
+	 *	Say what is wrong with a form and put the person at it
+	 *
+	 *	@param		{Object}	form
+	 *	@param		{Array}		problem					[ control, key of the sentence ]
+	 *
+	 *	@return		{void}
+	 */
+	const eventProblem = function( form, problem ) {
+
+		form.controls[problem[0]].classList.add( 'err' );
+		form.controls[problem[0]].setAttribute( 'aria-invalid', 'true' );
+		form.notes[problem[0]].textContent = t( problem[1] );
+		form.controls[problem[0]].focus();
+		toast( t( problem[1] ), true );
+	};
+
+	/**
+	 *	The screen of a new date: #termine-neu, or #termine-neu-k<id> with the client chosen, or #termine-neu-k<id>-p<project> with the title of the project in the title
+	 *
+	 *	@param		{Object}	where						client (the id of the client) and project (the id of the project), absent or '' for none
+	 *	@param		{number}	mine
+	 *
+	 *	@return		{void}
+	 */
+	const terminNeu = function( where, mine ) {
+
+		if( state.perms.elements !== true ) {
+			reveal();
+			state.main.appendChild( head( t( 'events.title' ) ) );
+			state.main.appendChild( note( 'bad', t( 'events.forbidden' ) ) );
+			return;
+		}
+
+		loading();
+
+		Promise.all( [ api( 'crm-clients/list' ), api( 'crm-termine/list', { days : 1 } ), where.project === '' ? Promise.resolve( null ) : api( 'crm-projekte/get', { id : where.project } ) ] ).then( function( answers ) {
+
+			if( state.view !== mine )
+				return;
+
+			const failure = answers.slice( 0, 2 ).find( function( answer ) { return answer.ok !== true } );
+
+			if( failure !== undefined ) {
+				loadFailed( failure, 'error.load', function() { route() } );
+				return;
+			}
+
+			if( answers[1].body.missing === true ) {
+				reveal();
+				state.main.appendChild( head( t( 'events.title' ) ) );
+				state.main.appendChild( note( '', t( 'events.missing' ) ) );
+				return;
+			}
+
+			const clients = answers[0].body.clients.filter( function( client ) { return client.active === true } );
+			const chosen = clients.find( function( client ) { return String( client.id ) === where.client } );
+			const project = answers[2] !== null && answers[2].ok === true && chosen !== undefined && answers[2].body.project.client === chosen.number ? answers[2].body.project : null;
+
+			drawTerminNeu( clients, answers[1].body.native, { group : chosen === undefined ? '' : groupOf( chosen.number ), title : project === null ? '' : projectName( project ) }, mine );
+		} );
+	};
+
+	const drawTerminNeu = function( clients, native, preset, mine ) {
+
+		const made = eventForm( { clients : clients, native : native, date : null, preset : preset } );
+		const form = made.form;
+		const create = el( 'button', { type: 'submit', class: 'btn primary', id: 'event-create', title: t( 'save.shortcut' ), text: t( 'events.create' ) } );
+		let creating = false;
+
+		const submit = function( event ) {
+
+			event.preventDefault();
+
+			if( creating === true )
+				return;
+
+			Object.keys( form.controls ).forEach( function( name ) {
+				form.controls[name].classList.remove( 'err' );
+				form.controls[name].removeAttribute( 'aria-invalid' );
+				form.notes[name].textContent = '';
+			} );
+
+			const result = made.posts();
+
+			if( result.problem !== undefined ) {
+				eventProblem( form, result.problem );
+				return;
+			}
+
+			const uri = eventUri( result.fields.start );
+			let release = function() {};
+
+			// While the post goes out, a way out of the screen waits for it (see route())
+			state.busy = new Promise( function( resolve ) { release = resolve } );
+			creating = true;
+			create.disabled = true;
+
+			api( 'elements/save', { type : EVENT_TYPE, uri : uri, locale : native, isNew : true, fields : result.fields } ).then( function( answer ) {
+
+				creating = false;
+				create.disabled = false;
+				state.busy = null;
+				release();
+
+				if( answer.ok !== true ) {
+					refuseAt( form, answer, 'events.error-save' );
+					return;
+				}
+
+				toast( t( 'events.made', result.fields.title ) );
+
+				if( state.view === mine ) {
+					form.dirty = false;
+					state.draft = null;
+					wn.location.hash = '#termin-'+ uri;
+				}
+			} );
+		};
+
+		reveal();
+
+		const box = el( 'form', { id: 'event-form', novalidate: 'novalidate', on: { submit: submit } },
+			head( t( 'events.new-title' ), el( 'span', { class: 'grow' } ), link( '#termine', t( 'form.cancel' ), { class: 'btn', id: 'event-abort' } ), create ),
+			el( 'div', { class: 'card pad' }, made.list ) );
+
+		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#termine', t( 'events.title' ) ), ' › '+ t( 'events.new-title' ).toLowerCase() ) );
+		state.main.appendChild( box );
+		submitter( 'new-event', box, create, function() { return form.dirty === true } );
+		form.controls.title.focus();
+	};
+
+	// --- Termin ------------------------------------------------------------------------------------------------------
+
+	const termin = function( where, mine ) {
+
+		loading();
+
+		Promise.all( [ api( 'crm-termine/get', { id : where.id } ), state.perms.elements === true ? api( 'crm-clients/list' ) : Promise.resolve( null ) ] ).then( function( answers ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answers[0].status === 404 ) {
+				reveal();
+				state.main.appendChild( head( t( 'events.title' ) ) );
+				state.main.appendChild( note( answers[0].body !== null && answers[0].body.code === 'crm_termine_missing' ? '' : 'bad', el( 'span', { text: errorText( answers[0], 'events.gone' ) } ), ' ', link( '#termine', t( 'events.back' ) ) ) );
+				return;
+			}
+
+			if( answers[0].ok !== true || ( answers[1] !== null && answers[1].ok !== true ) ) {
+				loadFailed( answers[0].ok !== true ? answers[0] : answers[1], 'error.load', function() { route() } );
+				return;
+			}
+
+			drawTermin( { date : answers[0].body.date, native : answers[0].body.native, clients : answers[1] === null ? [] : answers[1].body.clients.filter( function( client ) { return client.active === true } ), editing : false, info : null, mine : mine } );
+		} );
+	};
+
+	/**
+	 *	The facts of the date, or - after Bearbeiten - the form that changes it
+	 *
+	 *	@param		{Object}	view
+	 *
+	 *	@return		{Object}
+	 */
+	const terminCard = function( view ) {
+
+		const date = view.date;
+
+		if( view.editing === false ) {
+
+			unsaver( 'event' );
+
+			return el( 'div', { class: 'card pad', id: 'event-info' }, el( 'h3', { text: t( 'events.card' ) } ), kv( [
+				[ t( 'events.f-start' ), eventWhen( date ) ],
+				[ t( 'events.f-place' ), date.place ],
+				[ t( 'events.f-client' ), date.client_id !== 0 ? link( '#kunde-'+ date.client_id, date.client_title+ ' · '+ date.client ) : ( date.group === '' ? t( 'events.for-all' ) : t( 'events.group-other', date.group ) ) ],
+				[ t( 'events.f-description' ), eventTextOf( date.text ) === '' ? '' : stacked( eventTextOf( date.text ).split( '\n' ) ) ],
+			] ) );
+		}
+
+		const made = eventForm( { clients : view.clients, native : view.native, date : date, preset : { group : '', title : '' } } );
+		const form = made.form;
+		const save = el( 'button', { type: 'submit', class: 'btn sm primary', id: 'event-save', title: t( 'save.shortcut' ), text: t( 'form.save' ) } );
+		let saving = false;
+
+		const box = el( 'form', { class: 'card pad', id: 'event-info', novalidate: 'novalidate', on: { submit: function( event ) {
+
+			event.preventDefault();
+
+			if( saving === true )
+				return;
+
+			Object.keys( form.controls ).forEach( function( name ) {
+				form.controls[name].classList.remove( 'err' );
+				form.controls[name].removeAttribute( 'aria-invalid' );
+				form.notes[name].textContent = '';
+			} );
+
+			const result = made.posts();
+
+			if( result.problem !== undefined ) {
+				eventProblem( form, result.problem );
+				return;
+			}
+
+			saving = true;
+			save.disabled = true;
+
+			api( 'elements/save', { type : EVENT_TYPE, uri : date.id, locale : view.native, isNew : false, fields : result.fields } ).then( function( answer ) {
+
+				saving = false;
+				save.disabled = false;
+
+				if( answer.ok !== true ) {
+					refuseAt( form, answer, 'events.error-save' );
+					return;
+				}
+
+				form.dirty = false;
+				toast( t( 'events.saved' ) );
+
+				if( state.view === view.mine )
+					reloadTermin( view );
+			} );
+		} } }, el( 'h3', { text: t( 'events.card' ) } ), made.list,
+			el( 'div', { class: 'actions top' }, save, el( 'button', { type: 'button', class: 'btn sm', id: 'event-cancel', text: t( 'form.cancel' ), on: { click: function() {
+				form.dirty = false;
+				state.draft = null;
+				view.editing = false;
+				view.info.replaceWith( view.info = terminCard( view ) );
+			} } } ) ) );
+
+		submitter( 'event', box, save, function() { return form.dirty === true } );
+
+		return box;
+	};
+
+	const reloadTermin = function( view ) {
+
+		const mine = state.view;
+
+		api( 'crm-termine/get', { id : view.date.id } ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answer.ok !== true ) {
+				failed( answer, 'error.load' );
+				return;
+			}
+
+			drawTermin( Object.assign( {}, view, { date : answer.body.date, editing : false, info : null, mine : mine } ) );
+		} );
+	};
+
+	const drawTermin = function( view ) {
+
+		const date = view.date;
+
+		view.mine = state.view;
+		state.draft = null;
+		reveal();
+
+		const items = [];
+
+		if( state.perms.elements === true )
+			items.push(
+				{ label : t( 'events.edit' ), run : function() {
+					if( view.editing === true )
+						return;
+					view.editing = true;
+					view.info.replaceWith( view.info = terminCard( view ) );
+				} },
+				'sep',
+				{ label : t( 'events.delete' ), danger : true, run : function() {
+					ask( { title : t( 'events.delete' ), text : t( 'events.delete-text', date.title !== '' ? date.title : date.id ), yes : t( 'events.delete' ), danger : true } ).then( function( yes ) {
+
+						if( yes !== true || state.view !== view.mine )
+							return;
+
+						call( 'elements/delete', { type : EVENT_TYPE, uri : date.id }, 'events.error-delete' ).then( function( answer ) {
+							if( answer.ok === true && state.view === view.mine ) {
+								toast( t( 'events.deleted' ) );
+								wn.location.hash = date.client_id === 0 ? '#termine' : '#kunde-'+ date.client_id+ '-termine';
+							}
+						} );
+					} );
+				} } );
+
+		state.main.appendChild( el( 'div', { class: 'crumb' }, link( '#termine', t( 'events.title' ) ), ' › '+ ( date.title !== '' ? date.title : date.id ) ) );
+		state.main.appendChild( head( el( 'h1', { text: date.title !== '' ? date.title : date.id } ), date.running === true ? badge( 'open', t( 'events.running' ) ) : null,
+			el( 'span', { class: 'sub', text: eventWhen( date ) } ), el( 'span', { class: 'grow' } ),
+			items.length === 0 ? null : menu( { label : '⋯', aria : t( 'items.more' ), items : items } ) ) );
+
+		view.info = terminCard( view );
+		state.main.appendChild( view.info );
 	};
 
 
@@ -10092,7 +10805,7 @@
 		if( text === 'kunde-neu' )
 			return { screen : 'kundeneu' };
 
-		found = /^kunde-([1-9][0-9]{0,9})(?:-(belege|projekte|portal|notizen|einladen))?$/.exec( text );
+		found = /^kunde-([1-9][0-9]{0,9})(?:-(belege|projekte|termine|portal|notizen|einladen))?$/.exec( text );
 
 		if( found !== null )
 			return { screen : 'kunde', id : Number( found[1] ), tab : found[2] === undefined ? '' : found[2] };
@@ -10109,6 +10822,19 @@
 
 		if( found !== null )
 			return { screen : 'projekt', id : found[1], tab : found[2] === undefined ? '' : found[2] };
+
+		if( text === 'termine' )
+			return { screen : 'termine' };
+
+		found = /^termine-neu(?:-k([1-9][0-9]{0,9})(?:-p([A-Za-z0-9][A-Za-z0-9_-]{0,99}))?)?$/.exec( text );
+
+		if( found !== null )
+			return { screen : 'terminneu', client : found[1] === undefined ? '' : found[1], project : found[2] === undefined ? '' : found[2] };
+
+		found = /^termin-([A-Za-z0-9][A-Za-z0-9_-]{0,99})$/.exec( text );
+
+		if( found !== null )
+			return { screen : 'termin', id : found[1] };
 
 		if( text === 'uploads' )
 			return { screen : 'uploads' };
@@ -10163,9 +10889,9 @@
 		return { screen : 'uebersicht' };
 	};
 
-	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, projekte : projekte, projektneu : projektNeu, projekt : projekt, uploads : uploads, positionen : positionen, position : position, einstellungen : einstellungen, einrichtung : einrichtung,
+	const screens = { uebersicht : uebersicht, belege : belege, beleg : beleg, entwurf : entwurf, kunden : kunden, kunde : kunde, kundeneu : kundeNeu, projekte : projekte, projektneu : projektNeu, projekt : projekt, termine : termine, terminneu : terminNeu, termin : termin, uploads : uploads, positionen : positionen, position : position, einstellungen : einstellungen, einrichtung : einrichtung,
 		pdfvorlagen : pdfVorlagen, pdfvorlage : pdfVorlage, pdfbausteine : pdfBausteine, pdfbaustein : pdfBaustein, pdflayout : pdfLayout, pdfdesign : pdfDesign };
-	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', projekte : 'projekte', projektneu : 'projekte', projekt : 'projekte', uploads : 'uploads', positionen : 'positionen', position : 'positionen', einstellungen : 'einstellungen', einrichtung : '',
+	const rail = { uebersicht : 'uebersicht', belege : 'belege', beleg : 'belege', entwurf : 'belege', kunden : 'kunden', kunde : 'kunden', kundeneu : 'kunden', projekte : 'projekte', projektneu : 'projekte', projekt : 'projekte', termine : 'termine', terminneu : 'termine', termin : 'termine', uploads : 'uploads', positionen : 'positionen', position : 'positionen', einstellungen : 'einstellungen', einrichtung : '',
 		pdfvorlagen : 'pdf', pdfvorlage : 'pdf', pdfbausteine : 'pdf', pdfbaustein : 'pdf', pdflayout : 'pdf', pdfdesign : 'pdf' };
 
 	/**
@@ -10392,7 +11118,7 @@
 		state : state,
 		el : el,
 		t : t,
-		model : { cardList : cardList, docName : docName, visible : visible, visibleClients : visibleClients, clientTitle : clientTitle, ratesText : ratesText, chips : chips, draftOf : draftOf, draftNew : draftNew, payloadOf : payloadOf, totalsOf : totalsOf, ready : ready, lineOf : lineOf, primaryOf : primaryOf, tabsOf : tabsOf, errorText : errorText,
+		model : { cardList : cardList, eventWhen : eventWhen, eventTextOf : eventTextOf, eventHtmlOf : eventHtmlOf, eventMoments : eventMoments, eventUri : eventUri, docName : docName, visible : visible, visibleClients : visibleClients, clientTitle : clientTitle, ratesText : ratesText, chips : chips, draftOf : draftOf, draftNew : draftNew, payloadOf : payloadOf, totalsOf : totalsOf, ready : ready, lineOf : lineOf, primaryOf : primaryOf, tabsOf : tabsOf, errorText : errorText,
 			firstItem : firstItem, owedOf : owedOf, mailtoOf : mailtoOf, telOf : telOf, hitsOf : hitsOf, remindedDay : remindedDay, templateKey : templateKey, positionKey : positionKey, positionDraftOf : positionDraftOf, positionPosts : positionPosts, blockDraft : blockDraft, blockPayload : blockPayload, millimetres : millimetres, tokenGroups : tokenGroups, insertAt : insertAt },
 	};
 

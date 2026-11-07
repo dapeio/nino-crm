@@ -15,6 +15,9 @@ declare(strict_types=1);
  *								project_states (state(), setDownload()) - not in a field of the type, which an installed site never gets anew. A project without
  *								a row has no download: its client listens to the files and does not save them. While an offer of the project waits for the
  *								client's order (waiting()) the files are not open at all. The portal reads both (Portal::callbackFileAllowed(), Portal\Files, Portal\Projects).
+ *
+ *								The phase a project is in (recording, mix, master or review; none by default) is kept in the same row (setPhase()). It is the owner's word
+ *								for where the work stands, and a project that is done keeps it.
  */
 namespace Crm;
 
@@ -26,6 +29,9 @@ class Projekte {
 
 	// What an id looks like: the number the type gives (00001), or any name an element of the type has - the same pattern the screens take
 	public const string ID = '/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/D';
+
+	// The phases of a project, in the order of the work; a project has one of them or none ('')
+	public const array PHASES = [ 'recording', 'mix', 'master', 'review' ];
 
 	// The time of the day a state is written with
 	private const string TIME = 'Y-m-d\TH:i:s\Z';
@@ -51,7 +57,7 @@ class Projekte {
 	 *	@param		bool			$openOnly			Leave out the projects that are done
 	 *	@param		string		$search				Part of the title (case does not matter, no wildcards)
 	 *
-	 *	@return 	array											id, title, client (the number), description, started, done, folder of each - and documents (how many documents name it), open (how many of them are offers that are open or sent) and download (whether its client may download the files); one query for all the states
+	 *	@return 	array											id, title, client (the number), description, started, done, folder of each - and documents (how many documents name it), open (how many of them are offers that are open or sent), download (whether its client may download the files) and phase ('' for none); one query for all the states
 	 */
 	public static function list( array &$appData, ?string $clientNumber = null, bool $openOnly = false, string $search = '' ): array {
 
@@ -71,7 +77,7 @@ class Projekte {
 			if( $search !== '' && mb_stripos( $project['title'], $search, 0, 'UTF-8' ) === false )
 				continue;
 
-			$projects[] = $project + [ 'documents' => $counts[$project['id']]['documents'] ?? 0, 'open' => $counts[$project['id']]['open'] ?? 0, 'download' => $downloads[$project['id']] ?? false ];
+			$projects[] = $project + [ 'documents' => $counts[$project['id']]['documents'] ?? 0, 'open' => $counts[$project['id']]['open'] ?? 0, 'download' => $downloads[$project['id']]['download'] ?? false, 'phase' => $downloads[$project['id']]['phase'] ?? '' ];
 		}
 
 		return $projects;
@@ -83,7 +89,7 @@ class Projekte {
 	 *	@param		array 		&$appData
 	 *	@param		string		$id						The name of the element, the last part of its uri
 	 *
-	 *	@return 	array|null								id, title, client, description, started, done, folder, download; null for none
+	 *	@return 	array|null								id, title, client, description, started, done, folder, download, phase; null for none
 	 */
 	public static function get( array &$appData, string $id ): ?array {
 
@@ -95,7 +101,9 @@ class Projekte {
 		if( is_array( $element ) === false || $element === [] )
 			return null;
 
-		return self::shape( $element + [ '.uri' => self::TYPE. '/'. $id ] ) + [ 'download' => self::state( $appData, $id )['download'] ];
+		$state = self::state( $appData, $id );
+
+		return self::shape( $element + [ '.uri' => self::TYPE. '/'. $id ] ) + [ 'download' => $state['download'], 'phase' => $state['phase'] ];
 	}
 
 	/**
@@ -104,13 +112,47 @@ class Projekte {
 	 *	@param		array 		&$appData
 	 *	@param		string		$id						The id of a project; a project without a row, and an id that is none, has no download
 	 *
-	 *	@return 	array											download (bool), download_at (the time it was switched on, '' for none), download_by (the account of the workbench that did it, '')
+	 *	@return 	array											download (bool), download_at (the time it was switched on, '' for none), download_by (the account of the workbench that did it, '') and phase (one of PHASES, '' for none)
 	 */
 	public static function state( array &$appData, string $id ): array {
 
-		$row = preg_match( self::ID, $id ) === 1 ? Db::row( $appData, 'SELECT download, download_at, download_by FROM project_states WHERE project = :project', [ 'project' => $id ] ) : null;
+		$row = preg_match( self::ID, $id ) === 1 ? Db::row( $appData, 'SELECT download, download_at, download_by, phase FROM project_states WHERE project = :project', [ 'project' => $id ] ) : null;
 
-		return [ 'download' => $row !== null && (int) $row['download'] === 1, 'download_at' => (string) ( $row['download_at'] ?? '' ), 'download_by' => (string) ( $row['download_by'] ?? '' ) ];
+		return [ 'download' => $row !== null && (int) $row['download'] === 1, 'download_at' => (string) ( $row['download_at'] ?? '' ), 'download_by' => (string) ( $row['download_by'] ?? '' ), 'phase' => self::phaseOf( (string) ( $row['phase'] ?? '' ) ) ];
+	}
+
+	/**
+	 *	Put a project into a phase, or take it out of the one it is in. The row of the project is made where it has none, and what it holds of the download stays
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$id						The id of a project
+	 *	@param		string		$phase				One of PHASES, or '' for none
+	 *
+	 *	@return 	array|string							The state as state() has it, with the id of the project; 'unknown' for a project that is not there, 'invalid' for a phase that is none of them
+	 */
+	public static function setPhase( array &$appData, string $id, string $phase ): array|string {
+
+		if( $phase !== '' && in_array( $phase, self::PHASES, true ) === false )
+			return 'invalid';
+
+		if( self::get( $appData, $id ) === null )
+			return 'unknown';
+
+		Db::exec( $appData, 'INSERT INTO project_states ( project, phase ) VALUES ( :project, :phase ) ON CONFLICT ( project ) DO UPDATE SET phase = excluded.phase', [ 'project' => $id, 'phase' => $phase ] );
+
+		self::forget( $appData );
+
+		return [ 'id' => $id ] + self::state( $appData, $id );
+	}
+
+	/**
+	 *	@param		string		$phase				As the table holds it
+	 *
+	 *	@return 	string										The phase if it is one of PHASES, else ''
+	 */
+	private static function phaseOf( string $phase ): string {
+
+		return in_array( $phase, self::PHASES, true ) === true ? $phase : '';
 	}
 
 	/**
@@ -158,8 +200,11 @@ class Projekte {
 		return self::remember( $appData, 'folder|'. $clientNumber. '|'. $folder, static function() use ( &$appData, $clientNumber, $folder ): ?array {
 
 			foreach( self::read( $appData ) as $project )
-				if( $project['client'] === $clientNumber && $project['folder'] === $folder )
-					return $project + [ 'download' => self::state( $appData, $project['id'] )['download'] ];
+				if( $project['client'] === $clientNumber && $project['folder'] === $folder ) {
+					$state = self::state( $appData, $project['id'] );
+
+					return $project + [ 'download' => $state['download'], 'phase' => $state['phase'] ];
+				}
 
 			return null;
 		} );
@@ -466,20 +511,20 @@ class Projekte {
 	}
 
 	/**
-	 *	Which projects have their download on: one query
+	 *	The download and the phase of the projects that have a row: one query
 	 *
 	 *	@param		array 		&$appData
 	 *
-	 *	@return 	array											id => true
+	 *	@return 	array											id => download (bool), phase
 	 */
 	private static function downloads( array &$appData ): array {
 
-		$on = [];
+		$states = [];
 
-		foreach( Db::rows( $appData, 'SELECT project FROM project_states WHERE download = 1' ) as $row )
-			$on[(string) $row['project']] = true;
+		foreach( Db::rows( $appData, 'SELECT project, download, phase FROM project_states' ) as $row )
+			$states[(string) $row['project']] = [ 'download' => (int) $row['download'] === 1, 'phase' => self::phaseOf( (string) $row['phase'] ) ];
 
-		return $on;
+		return $states;
 	}
 
 	/**

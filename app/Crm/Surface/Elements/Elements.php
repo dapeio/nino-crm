@@ -1,15 +1,17 @@
 <?php
 declare(strict_types=1);
 /**
- *	Crm\Surface\Elements		What the screens Positionen and Projekte of the surface take from the Elements panel of the workbench: its actions
+ *	Crm\Surface\Elements		What the screens Positionen, Projekte and Termine of the surface take from the Elements panel of the workbench: its actions
  *													elements/list, elements/get, elements/save and elements/delete go through the endpoint as the panel has them, under the
  *													permission of the panel, and the sentences of their codes are the panel's own. One thing only the surface adds: every one
- *													of them is for the element types /positionen and /projekte and for no other. A post that names another type (or none) is refused before
+ *													of them is for the element types /positionen, /projekte and /events and for no other. A post that names another type (or none) is refused before
  *													the panel is asked - 404 crm_positionen_type -, so that the endpoint never becomes an editor for the elements of the site.
  *													For the type projekte two things more are the surface's, because the panel does not know the documents: a project that a
  *													document names is not deleted (409 crm_project_documents, with the count), nor one the customer approved (409 crm_project_approved) or one that a consent or its revocation names (409 crm_project_records), and the client of a project is the number of a
  *													client that is there (400 crm_project_client_unknown) and does not change while a document names the project (409
- *													crm_project_client_locked) - the documents of a project are the client's.
+ *													crm_project_client_locked) - the documents of a project are the client's. For the type events one thing is the surface's: the group of a date is the group of a client that is there
+ *													(k-0003, the number as a slug) or none, and a new date has a name of lower-case letters and digits divided by hyphens (400 crm_event_uri), so that a date made here is for one client or for everyone and for no group of Members that the
+ *													owner did not mean (400 crm_event_group); a save that names no group leaves the one the date has.
  *
  *													The panel is used as it is: what a save posts (type, uri, locale, isNew, fields), what it answers and the line of the
  *													activity log are its. The panel saves one language per post; the editor of the screen posts the native language with the
@@ -26,7 +28,8 @@ class Elements {
 	// The types the actions are for: the names the panel posts, which are the element types /positionen and /projekte without their slash
 	public const string TYPE = 'positionen';
 	public const string PROJECTS = 'projekte';
-	public const array TYPES = [ self::TYPE, self::PROJECTS ];
+	public const string EVENTS = 'events';
+	public const array TYPES = [ self::TYPE, self::PROJECTS, self::EVENTS ];
 
 	// The actions of the panel that the surface offers, and the method of this class that answers each
 	private const array ACTIONS = [ 'elements/list' => 'apiList', 'elements/get' => 'apiGet', 'elements/save' => 'apiSave', 'elements/delete' => 'apiDelete' ];
@@ -138,7 +141,7 @@ class Elements {
 	 */
 	public static function apiSave( array &$appData, array &$request ): void {
 
-		if( self::guard( $appData, $request ) === true && self::projectSaved( $appData, $request ) === true )
+		if( self::guard( $appData, $request ) === true && self::projectSaved( $appData, $request ) === true && self::eventSaved( $appData, $request ) === true )
 			\Nino\Modules\Elements\Admin::apiSave( $appData, $request );
 	}
 
@@ -185,6 +188,45 @@ class Elements {
 
 			if( $count > 0 ) {
 				\Nino\Http::fail( $request, 409, 'documents name this project', 'crm_project_client_locked', [ $count ], 'client' );
+				return;
+			}
+
+			$allowed = true;
+		} );
+
+		return $allowed;
+	}
+
+	/**
+	 *	What a save of a date must hold to: a new date has a name the site serves it by (lower-case letters and digits, divided by single hyphens, as the feed and the portal read it), and the group it names, if it names one, is none or the group of a client that is there and active
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	bool											Whether the panel may be asked
+	 */
+	private static function eventSaved( array &$appData, array &$request ): bool {
+
+		$data = \Nino\Admin\Admin::postData();
+
+		if( \Nino\Admin\Admin::postString( $data, 'type' ) !== self::EVENTS )
+			return true;
+
+		if( ( $data['isNew'] ?? false ) === true && preg_match( '/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', \Nino\Admin\Admin::postString( $data, 'uri' ) ) !== 1 ) {
+			\Nino\Http::fail( $request, 400, 'the name of a date is lower-case letters and digits divided by hyphens', 'crm_event_uri', [], 'uri' );
+			return false;
+		}
+
+		if( is_array( $data['fields'] ?? null ) === false || array_key_exists( 'group', $data['fields'] ) === false )
+			return true;
+
+		$group = $data['fields']['group'];
+		$allowed = false;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request, $group, &$allowed ): void {
+
+			if( is_string( $group ) === false || \Crm\Termine::groupAllowed( $appData, $group ) === false ) {
+				\Nino\Http::fail( $request, 400, 'the group is none of a client', 'crm_event_group', [], 'group' );
 				return;
 			}
 

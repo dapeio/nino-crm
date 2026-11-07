@@ -14,7 +14,7 @@ declare(strict_types=1);
  *																					status, body, code, params and field exactly as the workbench gives them. The kernel checks the
  *																					token (the route says csrf, the page sends it in X-CSRF-Token); a refused token is the 403 with
  *																					the code csrf, no session the 401 with the code session, an action the table does not hold the
- *																					404 with the code action; the four actions of the Elements panel (elements/list, get, save, delete) are for the types positionen and projekte alone, any
+ *																					404 with the code action; the four actions of the Elements panel (elements/list, get, save, delete) are for the types positionen, projekte and events alone, any
  *																					other type is the 404 with the code crm_positionen_type; the two of the Text panel (text/keys, text/savebatch) are for the keys below /project/company/
  *																					alone, a batch with another key is the 404 with the code crm_texts_key, and the seven of the Files panel (files/list, folder/add, folder/save,
  *																					upload, save, remove, delete) and the three of the Review panel (review/comments, review/answer, review/done; the permission of the panel besides the CRM's, the feature on or the 409 with the code review_off) are for the folders of the clients alone, any other is the 404 with the code crm_files_group; crm-uploads/list reads the files of the upload folders of the clients for the screen Uploads. The upload of a picture (pdf/layout/image) comes as a multipart post with the action and the
@@ -91,7 +91,7 @@ class Surface {
 	 */
 	public static function actions(): array {
 
-		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), \Crm\Projekte\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions(), Surface\Texts::actions(), Surface\Files::actions(), Surface\Review::actions(), Surface\Uploads::actions() );
+		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), \Crm\Projekte\Admin::actions(), \Crm\Termine\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions(), Surface\Texts::actions(), Surface\Files::actions(), Surface\Review::actions(), Surface\Uploads::actions() );
 	}
 
 	/**

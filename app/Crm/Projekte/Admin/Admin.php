@@ -9,11 +9,14 @@ declare(strict_types=1);
  *												crm-projekte/list		the projects (a client's, the open ones, a search in the title) with their client, the number of their documents
  *																						and of the offers among them that wait, and the number of their files, and approval (who approved the project in the portal and when; null for a project nobody approved), and consent_social (the client holds a consent to the social use of the work for the project); and native, the language the screens save in, and allowed -
  *																						whether the account holds the permission of the Files panel while the feature is on, as it is now (a setup changes it under the page)
- *												crm-projekte/get		one project with its client, the offer that holds its files back until the customer has ordered it (waiting: its id and number, or null), its approval (the record with the JSON the customer was shown), the consents of the client for it (consents: a line for each purpose with a sentence or a consent, the newest consent with the record that took it back), its folder and the files in it - each audio or video file with the number of its comments and of the open ones,
+ *												crm-projekte/get		one project with its client, its phase, the next date of its client (next_event; events says whether the dates can be read), the offer that holds its files back until the customer has ordered it (waiting: its id and number, or null), its approval (the record with the JSON the customer was shown), the consents of the client for it (consents: a line for each purpose with a sentence or a consent, the newest consent with the record that took it back), its folder and the files in it - each audio or video file with the number of its comments and of the open ones,
  *																						where the feature Review is on (review says whether it is)
  *
  *												crm-projekte/download	switch the download of the files of a project for its client on or off (id, on): the state the portal reads (Projekte::state()); the
  *																						activity log names the project by its id and the account that did it is kept with the switch
+ *
+ *												crm-projekte/phase		put a project into a phase or take it out of one (id, phase: recording, mix, master, review or empty for none): the state the card, the list and the portal read
+ *																						(Projekte::state()); the activity log names the project by its id and the phase
  *
  *												The files are read from the feature (Files::folders(), Files::files(), Files::url()) by the CRM's own read: the permission of the
  *												CRM is the owner's, and the list is for looking. The feature may be off; then there are no files to count and the answer says so.
@@ -36,6 +39,7 @@ class Admin {
 			'crm-projekte/list' => [ self::class, 'apiList' ],
 			'crm-projekte/get'  => [ self::class, 'apiGet' ],
 			'crm-projekte/download' => [ self::class, 'apiDownload' ],
+			'crm-projekte/phase' => [ self::class, 'apiPhase' ],
 		];
 	}
 
@@ -53,6 +57,7 @@ class Admin {
 
 		return match( $action ) {
 			'crm-projekte/download' => $id === '' ? '' : ( ( $data['on'] ?? false ) === true ? 'Switched on the download of project ' : 'Switched off the download of project ' ). $id,
+			'crm-projekte/phase'    => $id === '' ? '' : ( ( $data['phase'] ?? '' ) === '' ? 'Took project '. $id. ' out of its phase' : 'Put project '. $id. ' into the phase '. (string) $data['phase'] ),
 			default                 => '',
 		};
 	}
@@ -181,6 +186,9 @@ class Admin {
 				'review'  => self::filesOn( $appData ) === true && self::reviewOn( $appData ) === true,
 				'folder'  => $folder,
 				'list'    => $list,
+				// The next date of the client (a date has a client and no project): events says whether the dates can be read at all
+				'events'     => \Crm\Termine::missing( $appData ) === false,
+				'next_event' => \Crm\Termine::missing( $appData ) === false && $shown['client_id'] !== 0 ? \Crm\Termine::next( $appData, $shown['client'] ) : null,
 				// The setting of the feature Files that mails the members of a file made visible: what the box of the tab starts at
 				'notify'  => self::filesOn( $appData ) === true && \Crm\Settings::get( $appData, 'notify_files' ) === '1',
 			] );
@@ -222,6 +230,42 @@ class Admin {
 			self::$_made['crm-projekte/download'] = $id;
 
 			\Nino\Http::ok( $request, [ 'id' => $id, 'download' => $state['download'], 'download_at' => $state['download_at'] ] );
+		} );
+	}
+
+	/**
+	 *	Put a project into a phase: id and phase (one of Projekte::PHASES, or '' to take it out of one). Answers the project's id and its phase
+	 */
+	public static function apiPhase( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
+
+			$data = \Nino\Admin\Admin::postData();
+			$id = \Nino\Admin\Admin::postString( $data, 'id' );
+
+			if( is_string( $data['phase'] ?? null ) === false || ( $data['phase'] !== '' && in_array( $data['phase'], Projekte::PHASES, true ) === false ) ) {
+				\Nino\Http::fail( $request, 400, 'the phase is none of the phases', 'crm_projekte_phase', [], 'phase' );
+				return;
+			}
+
+			if( Projekte::missing( $appData ) === true ) {
+				\Nino\Http::fail( $request, 404, 'the element type of the projects is not there', 'crm_projekte_missing', [], 'id' );
+				return;
+			}
+
+			$state = Projekte::setPhase( $appData, $id, $data['phase'] );
+
+			if( is_string( $state ) === true ) {
+				\Nino\Http::fail( $request, 404, 'there is no such project', 'crm_projekte_unknown', [], 'id' );
+				return;
+			}
+
+			self::$_made['crm-projekte/phase'] = $id;
+
+			\Nino\Http::ok( $request, [ 'id' => $id, 'phase' => $state['phase'] ] );
 		} );
 	}
 

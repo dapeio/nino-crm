@@ -248,8 +248,8 @@ check( '...the JSON block holds the token of the session, the user, the permissi
 	&& $data['links']['workbench'] === '/_admin/' && $data['links']['site'] === '/' );
 check( '...the links lead to the pages of the workbench the surface has no screen of: the Elements panel at the type of the items, the panels PDF, Members and Users - and none to a panel Kunden or Belege, which are gone', $data['links']['items'] === '/_admin/#elements/positionen' && $data['links']['projects'] === '/_admin/#elements/projekte' && $data['links']['files'] === '/_admin/#files' && $data['links']['pdf'] === '/_admin/#pdf'
 	&& $data['links']['members'] === '/_admin/#members' && $data['links']['users'] === '/_admin/#users' && array_diff( array_keys( $data['links'] ), [ 'css', 'site', 'workbench', 'items', 'projects', 'files', 'pdf', 'members', 'users' ] ) === [] && str_contains( $html, 'crm-clients' ) === false && str_contains( $html, 'crm-documents' ) === false );
-check( '...the rail has eight entries and each is a screen of the surface: Kunden, Projekte, Uploads, Positionen, PDF-Vorlagen and Einstellungen are hashes with their own mark, the count of the clients has its place, nothing leaves the page but the two links of the foot', preg_match_all( '~<nav class="nav".*?</nav>~s', $html, $rail ) === 1
-	&& preg_match_all( '~<a href="([^"]*)"(?: data-r="([a-z]+)")?~', $rail[0][0], $entries, PREG_SET_ORDER ) === 8 && array_map( static fn( array $entry ): string => $entry[1]. '|'. ( $entry[2] ?? '' ), $entries ) === [ '#uebersicht|uebersicht', '#belege|belege', '#kunden|kunden', '#projekte|projekte', '#uploads|uploads', '#positionen|positionen', '#pdf|pdf', '#einstellungen|einstellungen' ]
+check( '...the rail has nine entries and each is a screen of the surface: Kunden, Projekte, Termine, Uploads, Positionen, PDF-Vorlagen and Einstellungen are hashes with their own mark, the count of the clients has its place, nothing leaves the page but the two links of the foot', preg_match_all( '~<nav class="nav".*?</nav>~s', $html, $rail ) === 1
+	&& preg_match_all( '~<a href="([^"]*)"(?: data-r="([a-z]+)")?~', $rail[0][0], $entries, PREG_SET_ORDER ) === 9 && array_map( static fn( array $entry ): string => $entry[1]. '|'. ( $entry[2] ?? '' ), $entries ) === [ '#uebersicht|uebersicht', '#belege|belege', '#kunden|kunden', '#projekte|projekte', '#termine|termine', '#uploads|uploads', '#positionen|positionen', '#pdf|pdf', '#einstellungen|einstellungen' ]
 	&& str_contains( $rail[0][0], 'id="n-kunden"' ) === true && str_contains( $rail[0][0], 'id="n-belege"' ) === true );
 check( '...the words are the surface\'s and the sentences of the codes of both panels, as error.<code>', $data['texts']['error.crm_documents_fixed'] === Surface::texts()['error.crm_documents_fixed'] && isset( $data['texts']['error.crm_clients_email'] ) === true
 	&& str_starts_with( $data['texts']['error.crm_documents_state'], 'Dieser Schritt' ) === true && count( array_filter( array_keys( $data['texts'] ), static fn( string $key ): bool => str_starts_with( $key, 'error.crm_' ) ) ) > 60 );
@@ -795,8 +795,8 @@ foreach( [ 'not json', '[]', '{"action":["crm-documents/list"]}', '{"action":1}'
 	check( 'a body that is no action ('. $broken. ') is 404 action as well', $answer['statusCode'] === 404 && $answer['body']['code'] === 'action' );
 }
 
-check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects and the switch of their download, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the eight of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - the three of the Review panel that read, answer and settle the comments on them, the list of the uploads and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get', 'crm-projekte/download' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/notify', 'files/delete', 'files/remove' ], [ 'review/comments', 'review/answer', 'review/done' ], [ 'crm-uploads/list' ] )
-	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|notify|delete|remove)|review/(comments|answer|done)|crm-uploads/list)$~D', $action ) !== 1 ) === []
+check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects, the switch of their download and their phase, the two reads of the dates, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the eight of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - the three of the Review panel that read, answer and settle the comments on them, the list of the uploads and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get', 'crm-projekte/download', 'crm-projekte/phase' ], [ 'crm-termine/list', 'crm-termine/get' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/notify', 'files/delete', 'files/remove' ], [ 'review/comments', 'review/answer', 'review/done' ], [ 'crm-uploads/list' ] )
+	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte|termine)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|notify|delete|remove)|review/(comments|answer|done)|crm-uploads/list)$~D', $action ) !== 1 ) === []
 	&& in_array( 'crm-clients/setup', array_keys( Surface::actions() ), true ) === false && in_array( 'crm-clients/status', array_keys( Surface::actions() ), true ) === false );
 
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiList' ], [ 'year' => (string) date( 'Y' ) ], 'crm-documents/list' );
@@ -1566,7 +1566,7 @@ $asItems();
 
 [ $status, $made ] = surfaceApi( $appData, 'elements/save', $project );
 check( 'a save without a uri makes the next numbered element, which is the panel\'s own way for a type that numbers: 200 and the uri in the element; Projekte::get() reads it', $status === 200 && $made['element']['.uri'] === '/projekte/00001' && $made['nextUri'] === '00002'
-	&& \Crm\Projekte::get( $appData, '00001' ) === [ 'id' => '00001', 'title' => 'Album 2027', 'client' => $a['number'], 'description' => "Aufnahme\nund Mix", 'started' => '2026-10-01', 'done' => false, 'folder' => '', 'download' => false ] );
+	&& \Crm\Projekte::get( $appData, '00001' ) === [ 'id' => '00001', 'title' => 'Album 2027', 'client' => $a['number'], 'description' => "Aufnahme\nund Mix", 'started' => '2026-10-01', 'done' => false, 'folder' => '', 'download' => false, 'phase' => '' ] );
 [ $status, ] = surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'done' => true ] ] + $project );
 check( '...a change names the number: done is the switch, the other fields stay; the folder is a field of its own', $status === 200 && \Crm\Projekte::get( $appData, '00001' )['done'] === true && \Crm\Projekte::get( $appData, '00001' )['title'] === 'Album 2027'
 	&& surfaceApi( $appData, 'elements/save', [ 'uri' => '00001', 'isNew' => false, 'fields' => [ 'done' => false, 'folder' => 'aaaaaaaaaaaa' ] ] + $project )[0] === 200 && \Crm\Projekte::get( $appData, '00001' )['folder'] === 'aaaaaaaaaaaa' && \Crm\Projekte::get( $appData, '00001' )['done'] === false );
@@ -2964,6 +2964,9 @@ surfaceReplyChecks( $appData, $a, $accounts, $audio, $asReview, $asCrm, $asUser,
 
 echo "\nThe script of the surface\n";
 
+surfaceTermineChecks( $appData, $a, $b, $asVisitor, $asCrm, $asItems, $asUser );
+surfacePhaseChecks( $appData, $a, $b, $asVisitor, $asCrm, $asItems );
+
 $node = trim( (string) shell_exec( 'command -v node 2>/dev/null' ) );
 
 if( $node === '' )
@@ -3171,3 +3174,260 @@ function surfaceClientChecks( array &$appData, \Closure $asCrm ): void {
 }
 
 ninoDone( $appData );
+
+// --- Termine: the dates of the feature Events in the surface --------------------------------------------------------------
+
+/**
+ *	A moment in the timezone of the site, a number of days from now
+ *
+ *	@param		int				$days
+ *	@param		int				$hour
+ *
+ *	@return 	string										Y-m-dTH:i
+ */
+function surfaceMoment( int $days, int $hour = 10 ): string {
+
+	return date( 'Y-m-d', strtotime( ( $days >= 0 ? '+' : '' ). $days. ' days' ) ). sprintf( 'T%02d:00', $hour );
+}
+
+/**
+ *	The dates through the endpoint: the list and the card, the actions of the Elements panel for the type events (the rights of the panel, the types that are allowed, the group of a date), and the next date on the card of a project
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$a						A client
+ *	@param		array 		$b						Another client
+ *	@param		\Closure	$asVisitor
+ *	@param		\Closure	$asCrm				The account of the CRM alone
+ *	@param		\Closure	$asItems			The account of the CRM that holds the permission of the Elements panel
+ *	@param		\Closure	$asUser
+ *
+ *	@return 	void
+ */
+function surfaceTermineChecks( array &$appData, array $a, array $b, \Closure $asVisitor, \Closure $asCrm, \Closure $asItems, \Closure $asUser ): void {
+
+	echo "\nTermine\n";
+
+	$asUser( 'admin@example.com', 'correct horse battery staple' );
+	\Nino\Features::deactivate( $appData, 'events' );
+	[ $status, $off ] = surfaceApi( $appData, 'crm-termine/list' );
+	check( 'where the feature Events is off the list says missing and has no date; a card of a date is 404 crm_termine_missing - the answer is not an error of the list', $status === 200 && $off['missing'] === true && $off['upcoming'] === [] && $off['past'] === [] && \Crm\Termine::missing( $appData ) === true
+		&& surfaceApi( $appData, 'crm-termine/get', [ 'id' => 'x' ] )[1]['code'] === 'crm_termine_missing' );
+	check( '...and the card of a project says that the dates cannot be read: events false and no next date', ( $projectOff = surfaceApi( $appData, 'elements/save', [ 'type' => 'projekte', 'uri' => '', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Mit Terminen', 'client' => $a['number'] ] ] ) )[0] === 200
+		&& surfaceApi( $appData, 'crm-projekte/get', [ 'id' => \Nino\Elements::getElementUriFromUri( (string) $projectOff[1]['element']['.uri'] ) ] )[1]['events'] === false );
+	$projectId = \Nino\Elements::getElementUriFromUri( (string) $projectOff[1]['element']['.uri'] );
+	$asUser( 'admin@example.com', 'correct horse battery staple' );
+	check( 'the feature Events is on', \Nino\Features::activate( $appData, 'events' ) === true && \Crm\Termine::missing( $appData ) === false );
+	$group = \Crm\Clients::group( $a['number'] );
+	$new = static fn( string $uri, array $fields, string $type = 'events' ): array => [ 'type' => $type, 'uri' => $uri, 'locale' => 'de_DE', 'isNew' => true, 'fields' => $fields ];
+	$date = [ 'title' => 'Aufnahme Tag 1', 'start' => surfaceMoment( 5 ), 'end' => surfaceMoment( 5, 18 ), 'place' => 'Studio 1', 'group' => $group ];
+
+	$asVisitor();
+	check( 'the four actions of the Elements panel take the type events as they take the others: 401 for nobody', surfaceApi( $appData, 'elements/save', $new( 'termin-a', $date ) )[0] === 401 && surfaceApi( $appData, 'elements/delete', [ 'type' => 'events', 'uri' => 'termin-a' ] )[0] === 401 && surfaceApi( $appData, 'crm-termine/list' )[0] === 401 );
+	$asCrm();
+	check( '...403 for the account of the CRM alone: the guard of the panel comes first, and nothing is made', surfaceApi( $appData, 'elements/save', $new( 'termin-a', $date ) )[0] === 403 && surfaceApi( $appData, 'elements/list', [ 'type' => 'events' ] )[0] === 403 && surfaceApi( $appData, 'elements/delete', [ 'type' => 'events', 'uri' => 'termin-a' ] )[0] === 403 && surfaceApi( $appData, 'crm-termine/list' )[1]['upcoming'] === [] );
+	$asItems();
+
+	[ $status, $made ] = surfaceApi( $appData, 'elements/save', $new( 'termin-a', $date ) );
+	check( 'a save of a date makes the element of the type events as the panel makes it: 200 and the uri in the element - the group is the group of a client', $status === 200 && $made['element']['.uri'] === '/events/termin-a' );
+	$listed = surfaceApi( $appData, 'crm-termine/list' )[1];
+	check( '...the list has it: the name, the title, the place, the moments in the timezone of the site, the group and the client it belongs to', $listed['missing'] === false && count( $listed['upcoming'] ) === 1 && array_diff_key( $listed['upcoming'][0], [ 'x' => 1 ] ) === [ 'id' => 'termin-a', 'title' => 'Aufnahme Tag 1', 'place' => 'Studio 1', 'start' => surfaceMoment( 5 ), 'end' => surfaceMoment( 5, 18 ), 'all_day' => false, 'running' => false, 'group' => $group,
+		'client_id' => $a['id'], 'client' => $a['number'], 'client_title' => $a['title'] ] && $listed['allowed'] === true && $listed['native'] === 'de_DE' && preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/D', $listed['now'] ) === 1 );
+
+	$refused = [];
+
+	foreach( [ 'vip' => 'a group of Members that is no client', 'K-0001' => 'the number, not the group', 'k-9999' => 'a client that is not there', $group. ' ' => 'a space', '<b>' => 'markup', "k-0001\0" => 'a null byte' ] as $bad => $why ) {
+		[ $status, $answer ] = surfaceApi( $appData, 'elements/save', $new( 'termin-bad', [ 'title' => 'Fremd', 'start' => surfaceMoment( 4 ), 'group' => $bad ] ) );
+
+		if( $status !== 400 || ( $answer['code'] ?? '' ) !== 'crm_event_group' || ( $answer['field'] ?? '' ) !== 'group' )
+			$refused[] = $why;
+	}
+
+	[ $status, $answer ] = surfaceApi( $appData, 'elements/save', $new( 'termin-bad', [ 'title' => 'Fremd', 'start' => surfaceMoment( 4 ), 'group' => [ $group ] ] ) );
+	check( 'a group that is none of a client is 400 crm_event_group at the field group - a group of Members, a number, a client that is not there, a space, markup, a null byte and a list - and nothing is made', $refused === [] && $status === 400 && $answer['code'] === 'crm_event_group'
+		&& \Nino\Elements::getElement( $appData, '/events/termin-bad', 'de_DE' ) === false );
+	check( '...a date for everyone has the group empty or none at all, and it is on the list without a client', surfaceApi( $appData, 'elements/save', $new( 'termin-alle', [ 'title' => 'Offener Termin', 'start' => surfaceMoment( 9 ), 'group' => '' ] ) )[0] === 200
+		&& surfaceApi( $appData, 'elements/save', $new( 'termin-ohne', [ 'title' => 'Ohne Gruppe', 'start' => surfaceMoment( 10, 0 ) ] ) )[0] === 200
+		&& array_column( surfaceApi( $appData, 'crm-termine/list' )[1]['upcoming'], 'client_id', 'id' ) === [ 'termin-a' => $a['id'], 'termin-alle' => 0, 'termin-ohne' => 0 ] );
+	check( '...a day without a time is all day', array_column( surfaceApi( $appData, 'crm-termine/list' )[1]['upcoming'], 'all_day', 'id' ) === [ 'termin-a' => false, 'termin-alle' => false, 'termin-ohne' => true ] );
+
+	[ $status, ] = surfaceApi( $appData, 'elements/save', [ 'type' => 'events', 'uri' => 'termin-a', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'title' => 'Aufnahme Tag 1 (neu)' ] ] );
+	check( 'a save that names no group leaves the group the date has', $status === 200 && surfaceApi( $appData, 'crm-termine/get', [ 'id' => 'termin-a' ] )[1]['date']['group'] === $group && surfaceApi( $appData, 'crm-termine/get', [ 'id' => 'termin-a' ] )[1]['date']['title'] === 'Aufnahme Tag 1 (neu)' );
+	check( '...a change of the group to another client moves the date; to a group that is none of a client it is refused and the date stays', surfaceApi( $appData, 'elements/save', [ 'type' => 'events', 'uri' => 'termin-a', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'group' => \Crm\Clients::group( $b['number'] ) ] ] )[0] === 200
+		&& surfaceApi( $appData, 'crm-termine/get', [ 'id' => 'termin-a' ] )[1]['date']['client_id'] === $b['id'] && surfaceApi( $appData, 'elements/save', [ 'type' => 'events', 'uri' => 'termin-a', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'group' => 'vip' ] ] )[0] === 400
+		&& surfaceApi( $appData, 'crm-termine/get', [ 'id' => 'termin-a' ] )[1]['date']['client_id'] === $b['id'] );
+	surfaceApi( $appData, 'elements/save', [ 'type' => 'events', 'uri' => 'termin-a', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'group' => $group ] ] );
+
+	// A group the owner made by hand in the panel stays where it is: the surface reads it, and a save that does not name it leaves it
+	\Nino\Elements::insertElement( $appData, '/events/termin-vip', [ 'title' => 'Für die Gruppe', 'start' => surfaceMoment( 12 ), 'group' => 'vip' ], 'de_DE' );
+	$vip = surfaceApi( $appData, 'crm-termine/get', [ 'id' => 'termin-vip' ] )[1]['date'];
+	check( 'a date of a group that is no client is on the list with its group and no client; a save that does not name the group leaves it', $vip['group'] === 'vip' && $vip['client_id'] === 0 && $vip['client'] === ''
+		&& surfaceApi( $appData, 'elements/save', [ 'type' => 'events', 'uri' => 'termin-vip', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'place' => 'Raum 2' ] ] )[0] === 200 && surfaceApi( $appData, 'crm-termine/get', [ 'id' => 'termin-vip' ] )[1]['date']['group'] === 'vip' );
+
+	// Title, place and words are text: whatever they hold comes back as it was typed, in a JSON answer, and nothing of it is read as markup on the way
+	$markup = '<img src=x onerror=alert(1)> [members-name] "q" & \'s\'';
+	surfaceApi( $appData, 'elements/save', $new( 'termin-text', [ 'title' => $markup, 'start' => surfaceMoment( 6 ), 'place' => $markup, 'text' => '<p>'. htmlspecialchars( $markup ). '</p><script>alert(1)</script>' ] ) );
+	$text = surfaceApi( $appData, 'crm-termine/get', [ 'id' => 'termin-text' ] )[1]['date'];
+	check( 'a title and a place with markup come back as text, as typed; the words of the type are cleaned by the panel (no script) and carry the text escaped', $text['title'] === $markup && $text['place'] === $markup && str_contains( $text['text'], '<script' ) === false && str_contains( $text['text'], '&lt;img src=x onerror=alert(1)&gt;' ) === true );
+
+	// The types: events is the third, nothing else
+	$other = [];
+
+	foreach( [ 'Events', '/events', 'events/x', 'events ', 'event', 'members' ] as $type )
+		foreach( [ 'elements/list' => [], 'elements/get' => [ 'uri' => 'termin-a' ], 'elements/save' => [ 'uri' => 'termin-x', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Fremd', 'start' => surfaceMoment( 4 ) ] ], 'elements/delete' => [ 'uri' => 'termin-a' ] ] as $action => $data ) {
+			[ $status, $answer ] = surfaceApi( $appData, $action, [ 'type' => $type ] + $data );
+
+			if( $status !== 404 || ( $answer['code'] ?? '' ) !== 'crm_positionen_type' )
+				$other[] = $type. ' '. $action;
+		}
+
+	check( 'another spelling of the type or another type is 404 crm_positionen_type for each of the four actions, and the date is as it was', $other === [] && \Nino\Elements::getElement( $appData, '/events/termin-a', 'de_DE' ) !== false && \Nino\Elements::getElement( $appData, '/events/termin-x', 'de_DE' ) === false );
+
+	// What the list holds: the dates that are coming within the days and those that ended within thirty days
+	foreach( [ 'termin-gestern' => [ -1, 'k' ], 'termin-alt' => [ -29, 'k' ], 'termin-uralt' => [ -40, 'k' ], 'termin-59' => [ 59, 'k' ], 'termin-61' => [ 61, 'k' ], 'termin-300' => [ 300, 'k' ] ] as $uri => [ $days, ] )
+		surfaceApi( $appData, 'elements/save', $new( $uri, [ 'title' => $uri, 'start' => surfaceMoment( $days ), 'group' => $group ] ) );
+
+	$window = surfaceApi( $appData, 'crm-termine/list' )[1];
+	check( 'the list has the dates of the next 60 days soonest first and, apart, those that are over within 30 days, the newest first - a date farther away or older is not there', array_column( $window['upcoming'], 'id' ) === [ 'termin-a', 'termin-text', 'termin-alle', 'termin-ohne', 'termin-vip', 'termin-59' ] && array_column( $window['past'], 'id' ) === [ 'termin-gestern', 'termin-alt' ] );
+	check( '...days widens it to a year, a client narrows it to the group of that client, a client that is not there has none', in_array( 'termin-300', array_column( surfaceApi( $appData, 'crm-termine/list', [ 'days' => 365 ] )[1]['upcoming'], 'id' ), true ) === true && in_array( 'termin-61', array_column( surfaceApi( $appData, 'crm-termine/list', [ 'days' => 365 ] )[1]['upcoming'], 'id' ), true ) === true
+		&& array_unique( array_column( surfaceApi( $appData, 'crm-termine/list', [ 'client' => (string) $a['id'] ] )[1]['upcoming'], 'client_id' ) ) === [ $a['id'] ] && array_column( surfaceApi( $appData, 'crm-termine/list', [ 'client' => '9999' ] )[1]['upcoming'], 'id' ) === []
+		&& array_column( surfaceApi( $appData, 'crm-termine/list', [ 'client' => (string) $b['id'] ] )[1]['upcoming'], 'id' ) === [] );
+	$badFilters = array_filter( [ [ 'client' => '0' ], [ 'client' => 'x' ], [ 'client' => '1 OR 1' ], [ 'days' => 0 ], [ 'days' => 3661 ], [ 'days' => '60' ], [ 'days' => [ 1 ] ] ], static fn( array $data ): bool => ( $answer = surfaceApi( $appData, 'crm-termine/list', $data ) )[0] !== 400 || $answer[1]['code'] !== 'crm_termine_format' );
+	check( '...a filter that is none is 400 crm_termine_format: a client that is no id, days that are no whole number between 1 and 3660', $badFilters === [] );
+
+	[ $status, $card ] = surfaceApi( $appData, 'crm-termine/get', [ 'id' => 'termin-a' ] );
+	check( 'the card of a date: the list entry with the words as the type holds them and the link; a date that is not there, a name that is none and a path are 404 crm_termine_unknown', $status === 200 && $card['date']['id'] === 'termin-a' && array_key_exists( 'text', $card['date'] ) && array_key_exists( 'link', $card['date'] )
+		&& array_filter( [ 'nicht-da', '../x', 'a/b', '', str_repeat( 'a', 101 ) ], static fn( string $id ): bool => ( $answer = surfaceApi( $appData, 'crm-termine/get', [ 'id' => $id ] ) )[0] !== 404 || $answer[1]['code'] !== 'crm_termine_unknown' ) === [] );
+
+	check( 'the pattern of a name of a date takes the names the site serves and no path, no dot, no leading hyphen and no more than 100 characters', array_filter( [ 'termin-a', 'a', 'A_b-1', str_repeat( 'a', 100 ) ], static fn( string $id ): bool => preg_match( \Crm\Termine::ID, $id ) !== 1 ) === [] && array_filter( [ 'a/b', '../x', '.x', '-x', '', str_repeat( 'a', 101 ), "a\n", 'a b', "a\0" ], static fn( string $id ): bool => preg_match( \Crm\Termine::ID, $id ) === 1 ) === [] );
+
+	// The name of a new date: the site serves a date by lower-case letters and digits divided by single hyphens
+	$badNames = [];
+
+	foreach( [ 'Termin-UP', 'termin_x', 'a--b', '-a', 'a-', 'a b', 'ä', 'a.b', '..', '', 'A' ] as $name ) {
+		[ $status, $answer ] = surfaceApi( $appData, 'elements/save', $new( $name, [ 'title' => 'Name', 'start' => surfaceMoment( 4 ) ] ) );
+
+		if( $status !== 400 || ( $answer['code'] ?? '' ) !== 'crm_event_uri' || ( $answer['field'] ?? '' ) !== 'uri' )
+			$badNames[] = $name;
+	}
+
+	check( 'a new date with a name the portal and the feed do not serve is 400 crm_event_uri at the field uri - capitals, an underscore, a double or a leading or trailing hyphen, a space, a dot, no name - and nothing is made', $badNames === [] && \Nino\Elements::getElement( $appData, '/events/Termin-UP', 'de_DE' ) === false
+		&& surfaceApi( $appData, 'elements/save', $new( 'termin-20261201-abc123', [ 'title' => 'Name', 'start' => surfaceMoment( 4 ) ] ) )[0] === 200 && surfaceApi( $appData, 'elements/save', $new( '2026', [ 'title' => 'Name', 'start' => surfaceMoment( 4 ) ] ) )[0] === 200 );
+	\Nino\Elements::insertElement( $appData, '/events/Alt_Name', [ 'title' => 'Von Hand', 'start' => surfaceMoment( 11 ) ], 'de_DE' );
+	check( '...a date that has such a name from the panel can be changed, as a change names no new name', surfaceApi( $appData, 'elements/save', [ 'type' => 'events', 'uri' => 'Alt_Name', 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'place' => 'Raum' ] ] )[0] === 200 );
+
+	// The group of a client that is off is no group of a date
+	$off = array_values( array_filter( \Crm\Clients::list( $appData ), static fn( array $client ): bool => $client['active'] === false ) );
+	[ $status, $answer ] = surfaceApi( $appData, 'elements/save', $new( 'termin-inaktiv', [ 'title' => 'Inaktiv', 'start' => surfaceMoment( 4 ), 'group' => \Crm\Clients::group( $off[0]['number'] ) ] ) );
+	check( 'the group of a client that is off is 400 crm_event_group like a group that is none, and nothing is made', $off !== [] && $status === 400 && $answer['code'] === 'crm_event_group' && \Nino\Elements::getElement( $appData, '/events/termin-inaktiv', 'de_DE' ) === false );
+
+	// The filter client is a text
+	$badClient = array_filter( [ [ 'client' => [ 1 ] ], [ 'client' => 1 ], [ 'client' => true ], [ 'client' => [] ], [ 'client' => null ] ], static fn( array $data ): bool => ( $answer = surfaceApi( $appData, 'crm-termine/list', $data ) )[0] !== 400 || $answer[1]['code'] !== 'crm_termine_format' );
+	check( 'a client that is a list, a number, a boolean or null is 400 crm_termine_format and not every date', $badClient === [] );
+
+	// A name that is none is none for the class itself, whatever the element store would answer for it
+	\Nino\Elements::insertElement( $appData, '/events/termin-probe', [ 'title' => 'Probe', 'start' => surfaceMoment( 13 ) ], 'de_DE' );
+	$found = array_filter( [ 'termin-probe/', 'termin-probe/.', './termin-probe', "termin-probe\0", 'termin-probe ', ' termin-probe', '../events/termin-probe', 'x/../termin-probe' ], static fn( string $id ): bool => \Crm\Termine::get( $appData, $id ) !== null );
+	check( 'Termine::get() answers a name and nothing that only reaches it: with a path, a slash, a dot or a space it is none, the date itself is there', \Crm\Termine::get( $appData, 'termin-probe' )['title'] === 'Probe' && $found === [] );
+
+	// The API classes keep their own guard: an account without the permission of the CRM is 403 whatever the table says
+	$asUser( 'plain@example.com', 'plain password' );
+	[ $listStatus, ] = ninoCall( $appData, [ \Crm\Termine\Admin::class, 'apiList' ], [], 'crm-termine/list' );
+	[ $getStatus, ] = ninoCall( $appData, [ \Crm\Termine\Admin::class, 'apiGet' ], [ 'id' => 'termin-probe' ], 'crm-termine/get' );
+	$asCrm();
+	[ $okStatus, ] = ninoCall( $appData, [ \Crm\Termine\Admin::class, 'apiList' ], [], 'crm-termine/list' );
+	check( 'the actions of the dates ask for the permission of the CRM themselves: 403 for an account without it, for the list and for the card, and 200 with it', $listStatus === 403 && $getStatus === 403 && $okStatus === 200 );
+	$asItems();
+
+	// The card of a project names the next date of its client
+	$asCrm();
+	$next = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => $projectId ] )[1];
+	check( 'the card of a project says that the dates can be read and names the next date of its client - a date has a client and no project', $next['events'] === true && is_array( $next['next_event'] ) && $next['next_event']['id'] === 'termin-a' && $next['next_event']['client'] === $a['number'] );
+	$asItems();
+	surfaceApi( $appData, 'elements/delete', [ 'type' => 'events', 'uri' => 'termin-a' ] );
+	surfaceApi( $appData, 'elements/delete', [ 'type' => 'events', 'uri' => 'termin-59' ] );
+	surfaceApi( $appData, 'elements/delete', [ 'type' => 'events', 'uri' => 'termin-61' ] );
+	surfaceApi( $appData, 'elements/delete', [ 'type' => 'events', 'uri' => 'termin-300' ] );
+	surfaceApi( $appData, 'elements/delete', [ 'type' => 'events', 'uri' => 'termin-text' ] );
+	$asCrm();
+	$later = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => $projectId ] )[1];
+	check( '...the delete of the panel takes the dates away; a client with none coming has next_event null, and events stays true', $later['events'] === true && $later['next_event'] === null );
+	$asItems();
+	check( 'the delete of a date goes through the panel: 200 and the date is gone from the type and from the list of the past; a second delete is the panel\'s own answer (200, nothing to remove)', surfaceApi( $appData, 'elements/delete', [ 'type' => 'events', 'uri' => 'termin-gestern' ] )[0] === 200 && \Nino\Elements::getElement( $appData, '/events/termin-gestern', 'de_DE' ) === false
+		&& in_array( 'termin-gestern', array_column( surfaceApi( $appData, 'crm-termine/list' )[1]['past'], 'id' ), true ) === false && surfaceApi( $appData, 'elements/delete', [ 'type' => 'events', 'uri' => 'termin-gestern' ] )[0] === 200 );
+}
+
+/**
+ *	The phase of a project through the endpoint
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$a
+ *	@param		array 		$b
+ *	@param		\Closure	$asVisitor
+ *	@param		\Closure	$asCrm
+ *	@param		\Closure	$asItems
+ *
+ *	@return 	void
+ */
+function surfacePhaseChecks( array &$appData, array $a, array $b, \Closure $asVisitor, \Closure $asCrm, \Closure $asItems ): void {
+
+	echo "\nPhasen\n";
+
+	$asItems();
+	$made = surfaceApi( $appData, 'elements/save', [ 'type' => 'projekte', 'uri' => '', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Phasen-Projekt', 'client' => $a['number'] ] ] )[1];
+	$id = \Nino\Elements::getElementUriFromUri( (string) $made['element']['.uri'] );
+	$other = \Nino\Elements::getElementUriFromUri( (string) surfaceApi( $appData, 'elements/save', [ 'type' => 'projekte', 'uri' => '', 'locale' => 'de_DE', 'isNew' => true, 'fields' => [ 'title' => 'Zweites', 'client' => $b['number'] ] ] )[1]['element']['.uri'] );
+	$linesFor = static function( string $needle ) use ( &$appData ): int {
+		return count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ), static fn( string $entry ): bool => str_contains( $entry, $needle ) === true ) );
+	};
+
+	$asVisitor();
+	check( 'crm-projekte/phase is in the table by its name: 401 for nobody', surfaceApi( $appData, 'crm-projekte/phase', [ 'id' => $id, 'phase' => 'mix' ] )[0] === 401 && \Crm\Projekte::get( $appData, $id )['phase'] === '' );
+	\Nino\Auth::insertUser( $appData, 'phase-plain@example.com', 'phase plain', [] );
+	$_SESSION = [];
+	\Nino\Auth::loginUser( $appData, 'phase-plain@example.com', 'phase plain' );
+	check( '...403 for an account without the permission of the CRM', surfaceApi( $appData, 'crm-projekte/phase', [ 'id' => $id, 'phase' => 'mix' ] )[0] === 403 && \Crm\Projekte::get( $appData, $id )['phase'] === '' );
+	$asCrm();
+
+	[ $status, $answer ] = surfaceApi( $appData, 'crm-projekte/phase', [ 'id' => $id, 'phase' => 'mix' ] );
+	check( 'a phase is put with the id and the phase: the answer has both, the card and the list say it, and the activity log names the project and the phase', $status === 200 && $answer === [ 'id' => $id, 'phase' => 'mix' ] && surfaceApi( $appData, 'crm-projekte/get', [ 'id' => $id ] )[1]['project']['phase'] === 'mix'
+		&& array_intersect_key( array_column( surfaceApi( $appData, 'crm-projekte/list' )[1]['projects'], 'phase', 'id' ), [ $other => 1, $id => 1 ] ) === [ $other => '', $id => 'mix' ] && $linesFor( 'Put project '. $id. ' into the phase mix' ) === 1 );
+
+	$all = [];
+
+	foreach( \Crm\Projekte::PHASES as $phase )
+		$all[$phase] = surfaceApi( $appData, 'crm-projekte/phase', [ 'id' => $id, 'phase' => $phase ] )[1]['phase'] ?? '';
+
+	check( '...every phase there is can be put: recording, mix, master and review - in the order of the work', json_encode( $all ) === '{"recording":"recording","mix":"mix","master":"master","review":"review"}' && $all === [ 'recording' => 'recording', 'mix' => 'mix', 'master' => 'master', 'review' => 'review' ] );
+
+	$bad = [];
+
+	foreach( [ 'Mix', 'mix ', 'mixing', 'x', '<b>', "mix\0", '0', 'null', 'false', 'MASTER' ] as $phase )
+		if( ( $answer = surfaceApi( $appData, 'crm-projekte/phase', [ 'id' => $id, 'phase' => $phase ] ) )[0] !== 400 || $answer[1]['code'] !== 'crm_projekte_phase' || $answer[1]['field'] !== 'phase' )
+			$bad[] = $phase;
+
+	foreach( [ [ 'id' => $id ], [ 'id' => $id, 'phase' => null ], [ 'id' => $id, 'phase' => 1 ], [ 'id' => $id, 'phase' => [ 'mix' ] ], [ 'id' => $id, 'phase' => true ] ] as $data )
+		if( surfaceApi( $appData, 'crm-projekte/phase', $data )[0] !== 400 )
+			$bad[] = json_encode( $data );
+
+	check( 'a phase that is none of the four is 400 crm_projekte_phase at the field phase - another spelling, a space, markup, a null byte, no phase at all, a number, a boolean and a list - and the project stays in the phase it was in, with no line in the log', $bad === [] && \Crm\Projekte::get( $appData, $id )['phase'] === 'review' && $linesFor( 'into the phase x' ) === 0 && $linesFor( 'into the phase <b>' ) === 0 );
+	check( '...a project that is not there, an id that is none and an id of a path are 404 crm_projekte_unknown, and no row is made', array_filter( [ '99999', '../x', 'a/b', '' ], static fn( string $project ): bool => ( $answer = surfaceApi( $appData, 'crm-projekte/phase', [ 'id' => $project, 'phase' => 'mix' ] ) )[0] !== 404 || $answer[1]['code'] !== 'crm_projekte_unknown' ) === []
+		&& \Crm\Db::row( $appData, 'SELECT project FROM project_states WHERE project = \'99999\'' ) === null );
+
+	[ $status, $answer ] = surfaceApi( $appData, 'crm-projekte/phase', [ 'id' => $id, 'phase' => '' ] );
+	check( 'the empty phase takes the project out of its phase, and the log says so', $status === 200 && $answer === [ 'id' => $id, 'phase' => '' ] && \Crm\Projekte::get( $appData, $id )['phase'] === '' && $linesFor( 'Took project '. $id. ' out of its phase' ) === 1 );
+
+	// The phase and the download are one row: neither takes the other away
+	surfaceApi( $appData, 'crm-projekte/phase', [ 'id' => $id, 'phase' => 'master' ] );
+	surfaceApi( $appData, 'crm-projekte/download', [ 'id' => $id, 'on' => true ] );
+	$held = surfaceApi( $appData, 'crm-projekte/get', [ 'id' => $id ] )[1]['project'];
+	surfaceApi( $appData, 'crm-projekte/download', [ 'id' => $id, 'on' => false ] );
+	check( 'a phase and the download are one row and neither takes the other away: the download switched on keeps the phase, switched off keeps it as well; the phase put with the download on keeps the day', $held['phase'] === 'master' && $held['download'] === true && \Crm\Projekte::get( $appData, $id )['phase'] === 'master' && \Crm\Projekte::get( $appData, $id )['download'] === false
+		&& ( surfaceApi( $appData, 'crm-projekte/download', [ 'id' => $id, 'on' => true ] ) && ( $day = \Crm\Projekte::state( $appData, $id )['download_at'] ) !== '' && surfaceApi( $appData, 'crm-projekte/phase', [ 'id' => $id, 'phase' => 'review' ] )[0] === 200 && \Crm\Projekte::state( $appData, $id )['download_at'] === $day ) );
+
+	// A project that is done keeps its phase
+	$asItems();
+	surfaceApi( $appData, 'elements/save', [ 'type' => 'projekte', 'uri' => $id, 'locale' => 'de_DE', 'isNew' => false, 'fields' => [ 'done' => true ] ] );
+	check( 'a project that is done keeps its phase: card and list still say it', \Crm\Projekte::get( $appData, $id )['done'] === true && \Crm\Projekte::get( $appData, $id )['phase'] === 'review' );
+	\Nino\Elements::deleteElement( $appData, '/projekte/'. $id, '*' );
+	check( '...and the phase goes with the project', \Crm\Db::row( $appData, 'SELECT project FROM project_states WHERE project = :project', [ 'project' => $id ] ) === null );
+}

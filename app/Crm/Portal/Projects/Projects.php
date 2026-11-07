@@ -151,7 +151,7 @@ class Projects {
 		$rows = [ 'open' => '', 'done' => '' ];
 
 		foreach( $projects as $project )
-			$rows[$project['done'] === true ? 'done' : 'open'] .= self::row( $project, $counts[$project['id']] ?? 0, $files[$project['id']] === null ? null : count( $files[$project['id']] ), $dir );
+			$rows[$project['done'] === true ? 'done' : 'open'] .= self::row( $project, $counts[$project['id']] ?? 0, $files[$project['id']] === null ? null : count( $files[$project['id']] ), $dir, $short );
 
 		return Portal::render( 'projects', [
 			'[[classes]]'  => $classes. ( $short === true ? ' crm-projects--short' : '' ),
@@ -227,10 +227,11 @@ class Projects {
 	 *	@param		int				$documents		How many released documents name it
 	 *	@param		int|null	$files				How many files the member may see; null where there is no folder to count
 	 *	@param		string		$dir					The directory the project is served from, escaped
+	 *	@param		bool			$short				The row stands in the short list of the start page, which has no phase
 	 *
 	 *	@return 	string
 	 */
-	private static function row( array $project, int $documents, ?int $files, string $dir ): string {
+	private static function row( array $project, int $documents, ?int $files, string $dir, bool $short = false ): string {
 
 		$day = Documents\Render::day( $project['started'] );
 		$state = $project['done'] === true ? 'done' : 'open';
@@ -241,10 +242,27 @@ class Projects {
 			'[[tone]]'      => Portal::tone( $state ),
 			'[[dir]]'       => $dir,
 			'[[title]]'     => \Nino\Modules\Components::escape( $project['title'] ),
+			'[[phase]]'     => $short === true ? '' : self::phase( $project, 'project-phase' ),
 			'[[started]]'   => $day === '' ? '' : Portal::render( 'project-started', [ '[[iso]]' => \Nino\Modules\Components::escape( $project['started'] ), '[[date]]' => \Nino\Modules\Components::escape( $day ) ] ),
 			'[[files]]'     => $files === null ? '' : self::count( 'files', $files ),
 			'[[documents]]' => self::count( 'documents', $documents ),
 		] );
+	}
+
+	/**
+	 *	The pill of the phase a project is in: none for a project without one, and none for a project that is done - its state says so, and says it before anything
+	 *
+	 *	@param		array 		$project			As Projekte::get() has it
+	 *	@param		string		$template			The template of the pill
+	 *
+	 *	@return 	string										Markup; '' for none
+	 */
+	private static function phase( array $project, string $template ): string {
+
+		if( $project['done'] === true || in_array( $project['phase'] ?? '', Projekte::PHASES, true ) === false )
+			return '';
+
+		return Portal::render( $template, [ '[[phase]]' => $project['phase'], '[[word]]' => '[[/project/crm-portal/projects/phase-'. $project['phase']. ']]' ] );
 	}
 
 	/**
@@ -323,7 +341,7 @@ class Projects {
 	 *	only where something waits, the card of what the client has to do - the offer that can be ordered with the form of its order (the form of the tab Angebot, posting
 	 *	from here), the approval while the project can be approved (a sentence with the way to the block in the tab Dateien) and an invoice of the project that is
 	 *	open, with the way to its row in the tab Belege; the note of an order that was made from here stands in that card -, then the card of the data: the client, the
-	 *	start, the state, the download, and how many files, offers and documents the project has
+	 *	start, the state, the phase, the download, and how many files, offers and documents the project has
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$client
@@ -398,6 +416,7 @@ class Projects {
 			'client'   => [ 'overview-client', $escape( $client['company'] !== '' ? $client['company'] : $client['name'] ) ],
 			'started'  => [ 'started', $day === '' ? '' : Portal::render( 'overview-since', [ '[[iso]]' => $escape( $project['started'] ), '[[date]]' => $escape( $day ) ] ) ],
 			'state'    => [ 'overview-state', Portal::render( 'overview-state', [ '[[tone]]' => Portal::tone( $state ), '[[state]]' => '[[/project/crm-portal/projects/state-'. $state. ']]', '[[approved]]' => $approved ] ) ],
+			'phase'    => [ 'overview-phase', self::phase( $project, 'overview-phase' ) ],
 			'download' => [ 'overview-download', $folder === false ? '' : Portal::render( 'overview-download', [
 				'[[state]]' => $download['download'] === true && $waits === false ? 'free' : 'locked',
 				'[[word]]'  => '[[/project/crm-portal/projects/overview-download-'. $word. ']]',

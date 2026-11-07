@@ -122,14 +122,14 @@ $thirdFile->exec( 'INSERT INTO client_accounts ( client_id, member_id ) VALUES (
 $thirdFile = null;
 $migrated = \Crm\Db::pdo( $third );
 $rows = \Crm\Db::rows( $third, 'SELECT client_id, member_id FROM client_accounts ORDER BY rowid' );
-check( 'migrations 0004 to 0014 on a database of the third schema run once: version 14, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 11 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 14
+check( 'migrations 0004 to 0015 on a database of the third schema run once: version 15, the first link of an account stays, the later one goes', \Crm\Db::migrated() === 12 && (int) $migrated->query( 'PRAGMA user_version' )->fetchColumn() === 15
 	&& array_map( 'json_encode', $rows ) === [ '{"client_id":2,"member_id":"aaaaaaaaaaaa"}', '{"client_id":1,"member_id":"bbbbbbbbbbbb"}' ] );
 check( '...migration 0006 gave the documents the column project, empty for every row there is, and the index on it', in_array( 'project', array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( documents )' ), 'name' ), true ) === true
 	&& (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'documents_project\' AND tbl_name = \'documents\'' )['n'] === 1 && \Crm\Db::rows( $third, 'SELECT id FROM documents WHERE project <> \'\'' ) === [] );
 check( '...and the index that keeps an account on one client is unique', (int) \Crm\Db::row( $third, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE type = \'index\' AND name = \'client_accounts_member_unique\' AND sql LIKE \'%UNIQUE%\'' )['n'] === 1 );
 $stateColumns = array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( project_states )' ), null, 'name' );
-check( '...migration 0011 made the table of the states of the projects: the project is its key and the download is off, with no day and no account, where nothing is said', array_keys( $stateColumns ) === [ 'project', 'download', 'download_at', 'download_by' ] && (int) $stateColumns['project']['pk'] === 1
-	&& $stateColumns['download']['dflt_value'] === '0' && (int) $stateColumns['download']['notnull'] === 1 && $stateColumns['download_at']['dflt_value'] === "''" && $stateColumns['download_by']['dflt_value'] === "''" && \Crm\Db::rows( $third, 'SELECT project FROM project_states' ) === [] );
+check( '...migrations 0011 and 0015 made the table of the states of the projects: the project is its key, the download is off, with no day and no account, and the phase is empty, where nothing is said', array_keys( $stateColumns ) === [ 'project', 'download', 'download_at', 'download_by', 'phase' ] && (int) $stateColumns['project']['pk'] === 1
+	&& $stateColumns['download']['dflt_value'] === '0' && (int) $stateColumns['download']['notnull'] === 1 && $stateColumns['download_at']['dflt_value'] === "''" && $stateColumns['download_by']['dflt_value'] === "''" && $stateColumns['phase']['dflt_value'] === "''" && (int) $stateColumns['phase']['notnull'] === 1 && \Crm\Db::rows( $third, 'SELECT project FROM project_states' ) === [] );
 $dismissColumns = array_column( \Crm\Db::rows( $third, 'PRAGMA table_info( dismissals )' ), null, 'name' );
 check( '...migration 0012 made the table of the dismissals: the member and the sum are its key together, and there is no row where nothing was dismissed', array_keys( $dismissColumns ) === [ 'member', 'sha256', 'at' ]
 	&& (int) $dismissColumns['member']['pk'] === 1 && (int) $dismissColumns['sha256']['pk'] === 2 && (int) $dismissColumns['at']['pk'] === 0 && (int) $dismissColumns['at']['notnull'] === 1 && \Crm\Db::rows( $third, 'SELECT member FROM dismissals' ) === [] );
@@ -2446,5 +2446,82 @@ function crmUploadFolderChecks( array &$fresh, callable $run, string $root ): vo
 }
 
 crmUploadFolderChecks( $fresh, $run, $root );
+crmPhaseChecks( $appData, $kg );
 
 ninoDone( $appData );
+
+/**
+ *	The phase of a project: the migration that adds its column to the table of the states, and Projekte::setPhase(), state(), get() and list()
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$client				A client of the sandbox
+ *
+ *	@return 	void
+ */
+function crmPhaseChecks( array &$appData, array $client ): void {
+
+	echo "\nThe phase of a project\n";
+
+	$statements = (array) include \Crm\Db::migrations()[15];
+	check( 'migration 0015 adds one column to the table of the states and nothing else: the phase, a text that is empty where nothing is said - add-only', array_keys( \Crm\Db::migrations() ) === range( 1, 15 ) && count( $statements ) === 1
+		&& preg_match( '/^ALTER TABLE project_states ADD COLUMN phase TEXT NOT NULL DEFAULT \'\'$/D', (string) $statements[0] ) === 1 && basename( \Crm\Db::migrations()[15] ) === '0015-project-phase.php' );
+
+	// A database of the thirteenth schema with a project whose download is on: the migration keeps the row, the phase is empty
+	$old = ninoSandbox( 'crm-phase-old' );
+	\Nino\Filesystem::forceDir( $old, '/data' );
+	$file = new \PDO( 'sqlite:'. \Nino\Filesystem::path( $old, \Crm\Db::FILE ) );
+
+	foreach( range( 1, 14 ) as $number )
+		foreach( (array) include \Crm\Db::migrations()[$number] as $statement )
+			$file->exec( (string) $statement );
+
+	$file->exec( 'PRAGMA user_version = 14' );
+	$file->exec( 'INSERT INTO project_states ( project, download, download_at, download_by ) VALUES ( \'00007\', 1, \'2026-01-02T03:04:05Z\', \'owner@example.org\' )' );
+	$file = null;
+	$pdo = \Crm\Db::pdo( $old );
+	check( '...a database of the fourteenth schema is migrated once: version 15, the row of the project is as it was - its download, its day and its account - and its phase is empty', \Crm\Db::migrated() === 1 && (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() === 15
+		&& \Crm\Db::rows( $old, 'SELECT project, download, download_at, download_by, phase FROM project_states' ) === [ [ 'project' => '00007', 'download' => 1, 'download_at' => '2026-01-02T03:04:05Z', 'download_by' => 'owner@example.org', 'phase' => '' ] ] );
+	\Crm\Db::close();
+	\Nino\Filesystem::removeDir( ninoSandboxDir( $old ) );
+	\Crm\Db::pdo( $appData );
+
+	$made = \Nino\Elements::insertElement( $appData, '/projekte/', [ 'title' => 'Album mit Phase', 'client' => $client['number'] ], '*' );
+	$id = is_array( $made ) ? \Nino\Elements::getElementUriFromUri( (string) $made['.uri'] ) : '';
+	$state = \Crm\Projekte::state( $appData, $id );
+	check( 'a project without a row is in no phase: state(), get() and list() say it, and reading makes no row', $id !== '' && $state['phase'] === '' && \Crm\Projekte::get( $appData, $id )['phase'] === '' && array_column( array_filter( \Crm\Projekte::list( $appData ), static fn( array $project ): bool => $project['id'] === $id ), 'phase' ) === [ '' ]
+		&& \Crm\Db::row( $appData, 'SELECT project FROM project_states WHERE project = :project', [ 'project' => $id ] ) === null );
+
+	$put = \Crm\Projekte::setPhase( $appData, $id, 'mix' );
+	check( 'setPhase() puts the project into a phase and answers its state with its id; get(), state() and list() carry it; the download is off, with no day and no account', $put === [ 'id' => $id, 'download' => false, 'download_at' => '', 'download_by' => '', 'phase' => 'mix' ]
+		&& \Crm\Projekte::get( $appData, $id )['phase'] === 'mix' && \Crm\Projekte::state( $appData, $id )['phase'] === 'mix' && array_column( array_filter( \Crm\Projekte::list( $appData ), static fn( array $project ): bool => $project['id'] === $id ), 'phase' ) === [ 'mix' ]
+		&& array_column( \Crm\Projekte::list( $appData, $client['number'] ), 'phase', 'id' )[$id] === 'mix' );
+
+	$each = [];
+
+	foreach( \Crm\Projekte::PHASES as $phase )
+		$each[] = \Crm\Projekte::setPhase( $appData, $id, $phase )['phase'] ?? '';
+
+	check( '...each of the four phases, and the empty phase takes it away', $each === [ 'recording', 'mix', 'master', 'review' ] && \Crm\Projekte::setPhase( $appData, $id, '' )['phase'] === '' && \Crm\Projekte::get( $appData, $id )['phase'] === '' );
+	check( '...a phase that is none is "invalid" and a project that is not there "unknown" - an id that is none as well - and nothing is written for either', array_map( static fn( string $phase ): mixed => \Crm\Projekte::setPhase( $appData, $id, $phase ), [ 'Mix', ' mix', 'mix ', 'x', '<b>', "mix\0", 'mixing', 'null' ] ) === array_fill( 0, 8, 'invalid' )
+		&& \Crm\Projekte::setPhase( $appData, '99999', 'mix' ) === 'unknown' && \Crm\Projekte::setPhase( $appData, '../x', 'mix' ) === 'unknown' && \Crm\Projekte::setPhase( $appData, '99999', 'x' ) === 'invalid' && \Crm\Db::row( $appData, 'SELECT project FROM project_states WHERE project = \'99999\'' ) === null && \Crm\Projekte::get( $appData, $id )['phase'] === '' );
+
+	// The phase and the download are one row: neither takes the other away
+	\Crm\Projekte::setDownload( $appData, $id, true, 'owner@example.org' );
+	$day = \Crm\Projekte::state( $appData, $id )['download_at'];
+	\Crm\Projekte::setPhase( $appData, $id, 'master' );
+	$both = \Crm\Projekte::state( $appData, $id );
+	\Crm\Projekte::setDownload( $appData, $id, false );
+	check( 'the phase and the download are one row and neither takes the other away: a phase put with the download on keeps the day and the account; the download switched off keeps the phase', $day !== '' && $both === [ 'download' => true, 'download_at' => $day, 'download_by' => 'owner@example.org', 'phase' => 'master' ]
+		&& \Crm\Projekte::state( $appData, $id ) === [ 'download' => false, 'download_at' => '', 'download_by' => '', 'phase' => 'master' ] );
+
+	// What the table holds is read through the list of the phases: a value nobody put there is no phase
+	\Crm\Db::exec( $appData, 'UPDATE project_states SET phase = :phase WHERE project = :project', [ 'phase' => 'Mix<b>', 'project' => $id ] );
+	\Crm\Projekte::forget( $appData );
+	check( 'a value of the column that is none of the four reads as no phase, in state(), get() and list()', \Crm\Projekte::state( $appData, $id )['phase'] === '' && \Crm\Projekte::get( $appData, $id )['phase'] === '' && array_column( array_filter( \Crm\Projekte::list( $appData ), static fn( array $project ): bool => $project['id'] === $id ), 'phase' ) === [ '' ] );
+
+	\Crm\Projekte::setPhase( $appData, $id, 'review' );
+	\Nino\Elements::deleteElement( $appData, '/projekte/'. $id, '*' );
+	$readme = (string) file_get_contents( dirname( __DIR__ ). '/README.md' );
+	check( 'the README says what the phase and the dates are: the migration, the table, the actions, the group rule of a date and the screens', array_filter( [ '`0015-project-phase.php`', '`project_states`', '`Projekte::setPhase(', '`crm-projekte/phase`', '`crm_projekte_phase`', '`crm-termine/list`', '`crm-termine/get`', '`crm_event_group`', '`#termine`', '`#termin-<Name>`', '`/events`', '`events`' ], static fn( string $needle ): bool => str_contains( $readme, $needle ) === false ) === [] );
+	check( 'the row goes with the project, the phase with it', \Crm\Db::row( $appData, 'SELECT project FROM project_states WHERE project = :project', [ 'project' => $id ] ) === null && \Crm\Projekte::get( $appData, $id ) === null );
+}

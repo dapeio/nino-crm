@@ -450,7 +450,7 @@ dialog.dlg .field > span { color: var(--fg-2) }
 	.hits a.hit, .jump-to, .menu .list button, .menu .list a { min-height: 44px }
 	.jump { margin-inline: -16px; padding-inline: 16px }
 	#vat, #numbers, #particulars, #seller, #privacy, #consents, #message-all, #firma-holder, #portal { scroll-margin-top: 64px }
-	.btn, .field input, .field select, .kv input, .kv select, .toolbar select, .head select, .search input { min-height: 44px }
+	.btn, .field input, .field select, .kv input, .kv select, .toolbar select, .head select, .search input, .phase select, #p-phase { min-height: 44px }
 	.search { height: 44px }
 	.drop .btn { min-width: 44px }
 	.drop input[type="file"], .check { min-height: 44px }
@@ -523,7 +523,10 @@ dialog.dlg .field > span { color: var(--fg-2) }
 	.tbl.cards[data-cards="belege"] td[data-col="due"]::before { content: "· " attr(data-label) " " }
 	.tbl.cards[data-cards="belege"] td[data-col="due"]::before { content: "· " attr(data-label) " " / attr(data-label) " " }
 	.tbl.cards[data-cards="kunden"] tbody tr { grid-template-columns: minmax(0, 1fr) fit-content(60%); grid-template-areas: "id state" "who who" "sub city" "acc sum" }
-	.tbl.cards[data-cards="projekte"] tbody tr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "id state" "who who" "date docs" "files com" }
+	.tbl.cards[data-cards="projekte"] tbody tr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "id state" "who phase" "date docs" "files com" }
+	.tbl.cards[data-cards="termine"] tbody tr { grid-template-columns: minmax(0, 1fr) fit-content(50%); grid-template-areas: "id id" "date date" "who sub" }
+	.tbl.cards[data-cards="ctermine"] tbody tr { grid-template-columns: minmax(0, 1fr) fit-content(50%); grid-template-areas: "id id" "date sub" }
+	.tbl.cards td[data-col="phase"] { grid-area: phase; justify-self: end }
 	.tbl.cards[data-cards="uploads"] tbody tr { grid-template-columns: 44px minmax(0, 1fr) fit-content(40%); padding-left: 0; grid-template-areas: "pick id sum" "pick who who" "pick by date" "pick age age" }
 	.tbl.cards[data-cards="uploads"] thead { display: block }
 	.tbl.cards[data-cards="uploads"] thead tr { display: block; padding: 0 12px; border-bottom: 1px solid var(--line) }
@@ -580,3 +583,12 @@ dialog.dlg .field > span { color: var(--fg-2) }
 	.tbl.ed .picker input { flex: 1 1 100%; min-width: 0 }
 	.tbl.ed .picker .btn { min-height: 44px }
 }
+/* Termine and the phase of a project: the tile that leads to the dates, the folded list of the dates that are over, the select of the phase and its pill */
+a.tile { display: block; color: inherit; text-decoration: none }
+a.tile:hover { background: var(--surface-2) }
+a.tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+details.fold { margin-top: 12px }
+details.fold > summary { cursor: pointer; color: var(--fg-2); margin-bottom: 8px; min-height: 28px }
+.b-phase { background: var(--accent-soft); color: var(--accent) }
+.phase { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-2) }
+.phase select, #p-phase { height: 28px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: inherit; font: inherit; padding: 0 6px }

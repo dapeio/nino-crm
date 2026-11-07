@@ -172,7 +172,7 @@ function world( options ) {
 
 	const nav = element('nav');
 	nav.id = 'nav';
-	[ 'uebersicht', 'belege', 'kunden', 'projekte', 'uploads', 'positionen', 'pdf', 'einstellungen' ].forEach( function( key ) {
+	[ 'uebersicht', 'belege', 'kunden', 'projekte', 'termine', 'uploads', 'positionen', 'pdf', 'einstellungen' ].forEach( function( key ) {
 		const anchor = element('a');
 		anchor.setAttribute( 'data-r', key );
 		anchor.setAttribute( 'href', '#'+ key );
@@ -574,7 +574,7 @@ function press( w, key, target, mods ) {
 	const recentLines = lists[1].children;
 	check( '"Zuletzt" lists the latest documents: a draft opens in the editor, the others as a document, each with its kind, client and day', recentLines.length === 3 && all( recentLines[0], 'a' )[0].getAttribute( 'href' ) === '#beleg-11' && all( recentLines[1], 'a' )[0].getAttribute( 'href' ) === '#entwurf-16'
 		&& textOf( recentLines[1] ).indexOf( 'Entwurf' ) === 0 && textOf( recentLines[1] ).indexOf( 'Rechnung · Podcast Süd' ) !== -1 && textOf( recentLines[1] ).indexOf( '03.11.2026' ) !== -1 && textOf( recentLines[2] ).indexOf( 'Vertrag Album 2027' ) === 0 );
-	check( '...everything came from two calls: the status of the first run, then the overview', overview.sent().join() === 'crm/status,crm-documents/overview' );
+	check( '...everything came from three calls: the status of the first run, the overview and the dates', overview.sent().join() === 'crm/status,crm-documents/overview,crm-termine/list' );
 	check( 'the head has the search and the menu of the new documents', all( overview.main, '#q' ).length === 1 && all( all( overview.main, '.menu' )[0], 'button' ).length === 6 && all( all( overview.main, '.menu' )[0], 'button' ).slice( 1 ).map( textOf ).join( '|' ) === 'Rechnung|Angebot|Vertrag (aus Angebot)|Datenschutz|Information' );
 
 	const empty = world( { hash : '#uebersicht', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : Object.assign( {}, summary, { count : 0, overdue_count : 0, overdue_gross : 0, overdue_oldest : '', drafts_count : 0, drafts_last : '' } ), needs : [], recent : [], settings : settings } ] } } } );
@@ -2047,8 +2047,8 @@ function press( w, key, target, mods ) {
 	 *
 	 *	@return		{Promise}									The world, booted on the hash and settled
 	 */
-	const kopen = async function( hash, over ) {
-		const w = world( { hash : hash, answers : kanswers( over ) } );
+	const kopen = async function( hash, over, perms ) {
+		const w = world( { hash : hash, answers : kanswers( over ), perms : perms } );
 		w.boot();
 		await settle();
 		return w;
@@ -2166,7 +2166,7 @@ function press( w, key, target, mods ) {
 		&& all( all( kc.main, '#master' )[0], 'dt' ).map( textOf ).join( '|' ) === 'Firma|Name|E-Mail|Telefon|Anschrift|USt-IdNr.|'+ texts['card.business']+ '|Kunde seit' );
 	const kc2 = await kopen( '#kunde-2' );
 	check( '...a client without a company, a phone and a VAT id leaves those rows out, and a country that is not DE is on the third line of the address', all( all( kc2.main, '#master' )[0], 'dt' ).map( textOf ).join( '|' ) === 'Name|E-Mail|Anschrift|'+ texts['card.business']+ '|Kunde seit' && textOf( all( kc2.main, '#master dd' )[2] ) === 'Lindenweg 31010 WienAT' );
-	check( '...the tabs are Belege with the count, Portal and Notizen, and the first is open', all( kc.main, '.tabs button' ).map( textOf ).join( '|' ) === 'Belege7|Projekte|Portal|Notizen' && all( kc.main, '.tabs button' )[0].getAttribute( 'aria-selected' ) === 'true' && all( kc.main, '.tabs button' )[0].classList.contains( 'on' ) === true );
+	check( '...the tabs are Belege with the count, Projekte, Termine, Portal and Notizen, and the first is open', all( kc.main, '.tabs button' ).map( textOf ).join( '|' ) === 'Belege7|Projekte|Termine|Portal|Notizen' && all( kc.main, '.tabs button' )[0].getAttribute( 'aria-selected' ) === 'true' && all( kc.main, '.tabs button' )[0].classList.contains( 'on' ) === true );
 	const docRows = all( all( kc.main, '#tab' )[0], 'tbody tr' );
 	check( '...Belege lists the documents of the client with the number (the title for a document without one, the word for a draft), the kind, the day, the amount - a stroke where there are no lines - and the badges; a click opens the document, a draft its editor',
 		docRows.length === 7 && kcells( docRows[0] ).join( '|' ) === 'R-2026-0007|Rechnung|02.10.2026|1.190,00'+ NBSP+ '€|versendet Portal' && kcells( docRows[6] )[0] === 'Vertrag Album 2027' && kcells( docRows[6] )[3] === '–' && kcells( docRows[5] )[0] === 'Entwurf'
@@ -2617,10 +2617,10 @@ function press( w, key, target, mods ) {
 	click( ktab, kitem( kmenu( ktab, '⋯' ), 'Stammdaten bearbeiten' ) );
 	const openForm = all( ktab.main, '#master' )[0];
 	type( all( openForm, '#f-city' )[0], 'Lübeck', false );
-	click( ktab, all( ktab.main, '.tabs button' )[3] );
+	click( ktab, all( ktab.main, '.tabs button' )[4] );
 	click( ktab, all( ktab.main, '.tabs button' )[0] );
 	check( 'a tab changes the body under the strip and nothing above it: the form of the Stammdaten that is open is the same form, with what was typed, and the guard still knows it', all( ktab.main, '#master' )[0] === openForm && all( openForm, '#f-city' )[0].value === 'Lübeck' && ktab.app.state.draft.dirty === true
-		&& all( ktab.main, '.tabs button' ).map( function( b ) { return b.classList.contains( 'on' ) } ).join() === 'true,false,false,false' && all( ktab.main, '.tabs button' ).map( function( b ) { return b.getAttribute( 'aria-selected' ) } ).join() === 'true,false,false,false' );
+		&& all( ktab.main, '.tabs button' ).map( function( b ) { return b.classList.contains( 'on' ) } ).join() === 'true,false,false,false,false' && all( ktab.main, '.tabs button' ).map( function( b ) { return b.getAttribute( 'aria-selected' ) } ).join() === 'true,false,false,false,false' );
 	click( ktab, kitem( kmenu( ktab, '⋯' ), 'Stammdaten bearbeiten' ) );
 	check( '...and the menu item that opens the form, pressed again, does not make a new one: what was typed is still there', all( ktab.main, '#master' )[0] === openForm && all( openForm, '#f-city' )[0].value === 'Lübeck' && all( ktab.main, '#client-save' ).length === 1 );
 	const kopenInvite = await kopen( '#kunde-1', { 'crm-clients/account-name' : function() { return [ 200, { account : Object.assign( {}, kaccounts[0], { name : 'Neu' } ) } ] } } );
@@ -2650,22 +2650,22 @@ function press( w, key, target, mods ) {
 
 	// the tabs
 	const kp = await kopen( '#kunde-1' );
-	click( kp, all( kp.main, '.tabs button' )[2] );
+	click( kp, all( kp.main, '.tabs button' )[3] );
 	await settle();
 	const portalText = function( w ) { return all( w.main, '#client-portal' )[0] };
 	check( 'the tab Portal asks crm-clients/portal for the client, and shows the documents the client sees as links to them - the title for a document that has one, the number else - with their kind and day', JSON.stringify( kp.last( 'crm-clients/portal' ).data ) === '{"id":"1"}' && all( portalText( kp ), '.list-mini' )[0].children.length === 2
-		&& all( all( portalText( kp ), '.list-mini' )[0], 'a' ).map( function( a ) { return a.getAttribute( 'href' ) + ':' + textOf( a ) } ).join( '|' ) === '#beleg-11:R-2026-0007|#beleg-17:Vertrag Album 2027' && all( kp.main, '.tabs button' )[2].classList.contains( 'on' ) === true );
+		&& all( all( portalText( kp ), '.list-mini' )[0], 'a' ).map( function( a ) { return a.getAttribute( 'href' ) + ':' + textOf( a ) } ).join( '|' ) === '#beleg-11:R-2026-0007|#beleg-17:Vertrag Album 2027' && all( kp.main, '.tabs button' )[3].classList.contains( 'on' ) === true );
 	check( '...the folders of Files with how many files the client may see in each and whether it uploads - a name that is markup is text -, and what Review counts', all( all( portalText( kp ), '.list-mini' )[1], 'li' ).map( textOf ).join( '|' ) === 'Ordner „Nordlicht <Album>“ · 14 Dateien · Upload erlaubt|Ordner „Cover“ · 1 Datei · kein Upload'
 		&& findAll( portalText( kp ), function( node ) { return node.tagName === 'ALBUM' } ).length === 0 && textOf( portalText( kp ) ).indexOf( 'Review: 3 zum Kommentieren, 7 Kommentare' ) !== -1 && textOf( portalText( kp ) ).indexOf( 'Gezählt sind die Dateien, die der Kunde sehen darf' ) !== -1 );
+	click( kp, all( kp.main, '.tabs button' )[4] );
 	click( kp, all( kp.main, '.tabs button' )[3] );
-	click( kp, all( kp.main, '.tabs button' )[2] );
 	await settle();
 	check( '...it is asked for once: the tab drawn again takes what it has', kp.all( 'crm-clients/portal' ).length === 1 && textOf( portalText( kp ) ).indexOf( 'Review: 3 zum Kommentieren' ) !== -1 );
 	const koffp = await kopen( '#kunde-1-portal', { 'crm-clients/portal' : function() { return [ 200, { documents : [], features : { files : false, review : false }, folders : [], review : { media : 0, comments : 0 } } ] } } );
 	check( 'with Files off the tab says that the portal shows none, with Review off it says nothing of comments, and with no document it says that nothing is released', textOf( portalText( koffp ) ).indexOf( 'Das Feature Dateien ist nicht aktiv, das Portal zeigt keine Dateien.' ) !== -1 && textOf( portalText( koffp ) ).indexOf( 'Review' ) === -1 && textOf( portalText( koffp ) ).indexOf( 'Nichts freigegeben.' ) !== -1 );
 	const kfolderless = await kopen( '#kunde-1-portal', { 'crm-clients/portal' : function() { return [ 200, { documents : [], features : { files : true, review : true }, folders : [], review : { media : 0, comments : 0 } } ] } } );
 	check( '...a client with no folder and nothing to comment on says that', textOf( portalText( kfolderless ) ).indexOf( 'Der Kunde hat noch keinen Ordner.' ) !== -1 && textOf( portalText( kfolderless ) ).indexOf( 'Review: nichts zum Kommentieren' ) !== -1 );
-	check( 'the address of a tab opens it: #kunde-1-portal draws the Portal tab at once', all( koffp.main, '.tabs button' )[2].classList.contains( 'on' ) === true && koffp.last( 'crm-clients/portal' ) !== undefined );
+	check( 'the address of a tab opens it: #kunde-1-portal draws the Portal tab at once', all( koffp.main, '.tabs button' )[3].classList.contains( 'on' ) === true && koffp.last( 'crm-clients/portal' ) !== undefined );
 
 	let notesSaved = null;
 	const kt = await kopen( '#kunde-1-notizen', { 'crm-clients/save' : function( data ) { notesSaved = data; return [ 200, { client : Object.assign( {}, kclient, data ) } ] } } );
@@ -2679,7 +2679,7 @@ function press( w, key, target, mods ) {
 	const kinv = await kopen( '#kunde-3-einladen', { 'crm-clients/get' : function() { return [ 200, { client : kclients[2], accounts : [] } ] } } );
 	const timerCount = kinv.timers.length;
 	kinv.timers.slice().reverse().forEach( function( timer ) { if( timer.cleared !== true ) timer.fn() } );
-	check( 'the address #kunde-3-einladen - what "einladen" in the Übersicht leads to - is the card of that client at the tab Portal with the invitation open, the address field the one with the cursor in it', all( kinv.main, '.tabs button' )[2].classList.contains( 'on' ) === true && all( kinv.main, '#invite' ).length === 1 && all( kinv.main, '#f-invite-email' )[0].focused === true
+	check( 'the address #kunde-3-einladen - what "einladen" in the Übersicht leads to - is the card of that client at the tab Portal with the invitation open, the address field the one with the cursor in it', all( kinv.main, '.tabs button' )[3].classList.contains( 'on' ) === true && all( kinv.main, '#invite' ).length === 1 && all( kinv.main, '#f-invite-email' )[0].focused === true
 		&& JSON.stringify( kinv.last( 'crm-clients/get' ).data ) === '{"id":"3"}' && timerCount >= 1 );
 	check( '...a client without accounts says so above the buttons', textOf( accountsCard( kinv ) ).indexOf( 'Noch kein Konto. Der Kunde sieht das Portal erst mit einem.' ) !== -1 );
 
@@ -2977,7 +2977,7 @@ function press( w, key, target, mods ) {
 
 	const first = await iopen( '' );
 	check( 'the first showing of the page asks for the status before it draws the Übersicht, and a module that is not whole sends it to the Einrichtung: the overview is not asked for', first.sent().join() === 'crm/status' && first.location.hash === '#einrichtung' && first.all( 'crm-documents/overview' ).length === 0 && all( first.main, '#einrichtung-rows' ).length === 1 );
-	check( '...the rail has its eight entries (PDF-Vorlagen hidden for an account without the Pdf permission) and none is marked: the Einrichtung is no entry of it', all( first.nav, '[data-r]' ).length === 8 && all( first.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).length === 0 );
+	check( '...the rail has its nine entries (PDF-Vorlagen hidden for an account without the Pdf permission) and none is marked: the Einrichtung is no entry of it', all( first.nav, '[data-r]' ).length === 9 && all( first.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).length === 0 );
 	check( '...a row for each item of the status, its word and its state: done for the module and the data directory, to do for the rest', irows( first ).length === ifresh.length && Array.from( irows( first ) ).map( function( li ) { return li.getAttribute( 'data-key' )+ ':'+ li.getAttribute( 'data-state' ) } ).join() === 'module:ok,data:ok,members:todo,files:todo,review:todo,sign:todo,pdf:todo,events:todo,portal:todo,pdf-templates:todo,home:todo,mail-cap:todo,notify:todo,privacy:todo'
 		&& textOf( irows( first )[2] ).indexOf( texts['einrichtung.row-members'] ) === 0 && textOf( irows( first )[2] ).indexOf( texts['status.members-off'] ) !== -1 && textOf( irows( first )[2] ).indexOf( texts['einrichtung.state-todo'] ) !== -1 && textOf( irows( first )[0] ).indexOf( texts['status.allok'] ) === -1 );
 	check( '...what is missing is said in one sentence of the status: the portal names what it lacks, the PDF templates their keys, the start page that it is not the door yet', textOf( irows( first )[8] ).indexOf( texts['status.portal-partial'].replace( '%s', texts['status.lacks-paths']+ ', '+ texts['status.lacks-start'] ) ) !== -1
@@ -3051,7 +3051,7 @@ function press( w, key, target, mods ) {
 	check( 'no sentence of the status names the button by a label of its own - the screen\'s button is Einrichten, the card\'s Portal einrichten -: the sentences speak of das Einrichten', Object.keys( texts ).filter( function( key ) { return /^status\./.test( key ) && /Drück|Portal einrichten/.test( texts[key] ) } ).length === 0 && /^status\.portal-/.test( 'status.portal-none' ) );
 	iwhole = true;
 	const whole = await iopen( '' );
-	check( 'a module that is whole starts on the Übersicht: the status is asked once, then the overview, and the Einrichtung is not shown', whole.sent().join() === 'crm/status,crm-documents/overview' && whole.location.hash === '' && all( whole.main, '#einrichtung-rows' ).length === 0 && all( whole.nav, '[data-r]' )[0].classList.contains( 'on' ) === true );
+	check( 'a module that is whole starts on the Übersicht: the status is asked once, then the overview, and the Einrichtung is not shown', whole.sent().join() === 'crm/status,crm-documents/overview,crm-termine/list' && whole.location.hash === '' && all( whole.main, '#einrichtung-rows' ).length === 0 && all( whole.nav, '[data-r]' )[0].classList.contains( 'on' ) === true );
 	const direct = await iopen( '#einrichtung' );
 	check( 'the router sends #einrichtung to the Übersicht when the status is whole', direct.location.hash === '#uebersicht' && direct.all( 'crm-documents/overview' ).length === 1 && all( direct.main, '#einrichtung-rows' ).length === 0 );
 	const unreadable = await iopen( '', { 'crm/status' : function() { return [ 500, { error : 'x', code : 'crm_clients_database' } ] } } );
@@ -4197,8 +4197,8 @@ function press( w, key, target, mods ) {
 	const xwords = [ ...new Set( [ ...script.matchAll( /'(items\.[a-z0-9-]+)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return /-$/.test( key ) === false } ).concat( [ 'title', 'description', 'unit', 'price', 'vat', 'hidden', 'sort' ].map( function( name ) { return 'items.k-'+ name } ) ) ) ];
 	const xmissing = xwords.filter( function( key ) { return typeof texts[key] !== 'string' || texts[key] === '' } );
 	check( 'every word the screen and the editor of the Positionen ask for is a word of the page, and so are the sentences of the panel\'s code the editor shows and of the restriction', xmissing.length === 0 && xwords.length >= 40 && typeof texts['error.elements_fields_not_allowed'] === 'string' && texts['error.crm_positionen_type'].indexOf( texts['nav.items'] ) !== -1 && texts['error.crm_positionen_type'].indexOf( texts['nav.projects'] ) !== -1 );
-	check( 'the editor posts to the panel\'s actions for the type and to nothing else of it: elements/get, save and delete, with the type positionen, and save and delete with the type projekte - nothing else', [ ...script.matchAll( /api\( '(elements\/[a-z]+)'/g ), ...script.matchAll( /call\( '(elements\/[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).sort().join() === 'elements/delete,elements/delete,elements/get,elements/save,elements/save'
-		&& script.indexOf( "POSITION_TYPE = 'positionen'" ) !== -1 && script.indexOf( "PROJECT_TYPE = 'projekte'" ) !== -1 );
+	check( 'the editor posts to the panel\'s actions for the type and to nothing else of it: elements/get, save and delete, with the type positionen, save and delete with the type projekte and save (a new date, a changed one) and delete with the type events - nothing else', [ ...script.matchAll( /api\( '(elements\/[a-z]+)'/g ), ...script.matchAll( /call\( '(elements\/[a-z]+)'/g ) ].map( function( found ) { return found[1] } ).sort().join() === 'elements/delete,elements/delete,elements/delete,elements/get,elements/save,elements/save,elements/save,elements/save'
+		&& script.indexOf( "POSITION_TYPE = 'positionen'" ) !== -1 && script.indexOf( "PROJECT_TYPE = 'projekte'" ) !== -1 && script.indexOf( "EVENT_TYPE = 'events'" ) !== -1 );
 
 	// --- C13: Strg+S in the editor of a Position
 	const xk = await xopen( '#position-mixing' );
@@ -4579,10 +4579,10 @@ function press( w, key, target, mods ) {
 	// --- the list
 	check( 'the list asks crm-projekte/list once and nothing else; the head says Projekte, how many of how many, the search, the switch and Neues Projekt', jr.all( 'crm-projekte/list' ).length === 1 && JSON.stringify( jr.last( 'crm-projekte/list' ).data ) === '{}' && textOf( all( jr.main, 'h1' )[0] ) === 'Projekte' && textOf( all( jr.main, '.sub' )[0] ) === '2 von 3'
 		&& jf( jr, 'q' ) !== undefined && jf( jr, 'p-all' ).type === 'checkbox' && jf( jr, 'p-all' ).getAttribute( 'role' ) === 'switch' && jf( jr, 'p-all' ).checked === false && textOf( jf( jr, 'projects-new' ) ) === texts['projects.new'] && jf( jr, 'projects-new' ).getAttribute( 'href' ) === '#projekte-neu' && jf( jr, 'projects-new' ).classList.contains( 'primary' ) === true );
-	check( '...the table has the columns Projekt, Kunde, Beginn, Belege, Dateien, Kommentare offen and Status; the done projects are not in it unless the switch is on - the newest first', all( jf( jr, 'projects' ), 'thead th' ).map( textOf ).join( '|' ) === [ texts['projects.column-project'], texts['column.client'], texts['projects.column-started'], texts['projects.column-documents'], texts['projects.column-files'], texts['projects.column-comments'], texts['column.state'] ].join( '|' ) && jrows( jr ).map( function( tr ) { return tr.dataset.id } ).join() === '00003,00001' );
+	check( '...the table has the columns Projekt, Kunde, Beginn, Belege, Dateien, Kommentare offen, Status and Phase; the done projects are not in it unless the switch is on - the newest first', all( jf( jr, 'projects' ), 'thead th' ).map( textOf ).join( '|' ) === [ texts['projects.column-project'], texts['column.client'], texts['projects.column-started'], texts['projects.column-documents'], texts['projects.column-files'], texts['projects.column-comments'], texts['column.state'], texts['projects.phase'] ].join( '|' ) && jrows( jr ).map( function( tr ) { return tr.dataset.id } ).join() === '00003,00001' );
 	const j1 = jrows( jr )[1];
 	check( '...a row has the title as the link to the card, the client as the link to its card, the day, the documents with the offers that wait, the files and the state', all( j1, 'a' )[0].getAttribute( 'href' ) === '#projekt-00001' && textOf( all( j1, 'a' )[0] ) === 'Album 2027' && all( j1, 'a' )[1].getAttribute( 'href' ) === '#kunde-1' && textOf( all( j1, 'a' )[1] ) === 'Nordlicht Records GmbH'
-		&& j1.children.map( textOf ).slice( 2 ).join( '|' ) === '01.10.2026|3 · '+ texts['projects.open-offers'].replace( '%s', '1' )+ '|1|–|'+ texts['projects.running'] && textOf( jrows( jr )[0].children[3] ) === '–' && textOf( jrows( jr )[0].children[2] ) === '' );
+		&& j1.children.map( textOf ).slice( 2 ).join( '|' ) === '01.10.2026|3 · '+ texts['projects.open-offers'].replace( '%s', '1' )+ '|1|–|'+ texts['projects.running']+ '|' && textOf( jrows( jr )[0].children[3] ) === '–' && textOf( jrows( jr )[0].children[2] ) === '' );
 	jtoggle( jf( jr, 'p-all' ), true );
 	check( '...the switch Abgeschlossene zeigen draws the done ones too - greyed, with their state - without asking the server again', jrows( jr ).map( function( tr ) { return tr.dataset.id } ).join() === '00003,00002,00001' && jrows( jr )[1].classList.contains( 'dim' ) === true && textOf( jrows( jr )[1].children[6] ) === texts['projects.done'] && jr.all( 'crm-projekte/list' ).length === 1 && textOf( all( jr.main, '.sub' )[0] ) === '3 von 3' );
 	type( jf( jr, 'q' ), 'richter', false );
@@ -5377,6 +5377,7 @@ function press( w, key, target, mods ) {
 		click( jplain, jf( jplain, 'up-send' ) );
 		await settle();
 		check( 'a '+ refusal[0]+ ' is not a sign of a web server limit: one request, the file fails, and the line does not say the parts were made smaller', jplain.all( 'files/upload' ).length === 1 && all( jf( jplain, 'up-list' ), 'li' )[0].dataset.state === 'failed' && jsay( jplain, 0 ) !== texts['projects.up-smaller'] );
+	await termineAndPhasesSuite( { jopen : jopen, jf : jf, jrows : jrows, jmenu : jmenu, jitem : jitem, jsubmit : jsubmit, jyes : jyes, jtab : jtab, jget : jget, jrow : jrow, jperms : jperms, jprojects : jprojects, jclient1 : jclient1, kopen : kopen, kclient : kclient, jtoggle : jtoggle } );
 
 	// === /crm im Alltag, the screens of the projects and the uploads
 	await everydayProjectChecks();
@@ -5556,7 +5557,7 @@ function press( w, key, target, mods ) {
 		const jl = await jopen( '#projekte' );
 		const jtable = tableOf( jl, 'projects' );
 
-		check( 'the projects are cards, with the counts named in a row of their own', jtable.dataset.cards === 'projekte' && colsOf( rowsOf( jtable )[0] ) === 'id who date docs files com state' );
+		check( 'the projects are cards, with the counts named in a row of their own', jtable.dataset.cards === 'projekte' && colsOf( rowsOf( jtable )[0] ) === 'id who date docs files com state phase' && rowsOf( jtable )[0].children[7].dataset.label === texts['projects.phase'] );
 
 		const cd = await jopen( '#kunde-1-belege' );
 		const cdTable = tableOf( cd );
@@ -5598,7 +5599,7 @@ function press( w, key, target, mods ) {
 
 	// --- the Kundenkarte: the tab Projekte
 	const jkc = await jopen( '#kunde-1', { 'crm-clients/get' : function() { return [ 200, { client : kclient, accounts : kaccounts } ] }, 'crm-documents/list' : function() { return [ 200, { documents : kdocs, years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } );
-	check( 'the card of a client asks crm-projekte/list for the client\'s projects, by its id; the tabs are Belege, Projekte (with the count), Portal and Notizen', JSON.stringify( jkc.last( 'crm-projekte/list' ).data ) === '{"client":"1"}' && all( jkc.main, '.tabs button' ).map( textOf ).join( '|' ) === [ texts['ctab.belege']+ '7', texts['ctab.projekte']+ '2', texts['ctab.portal'], texts['ctab.notizen'] ].join( '|' ) );
+	check( 'the card of a client asks crm-projekte/list for the client\'s projects, by its id; the tabs are Belege, Projekte (with the count), Termine, Portal and Notizen', JSON.stringify( jkc.last( 'crm-projekte/list' ).data ) === '{"client":"1"}' && all( jkc.main, '.tabs button' ).map( textOf ).join( '|' ) === [ texts['ctab.belege']+ '7', texts['ctab.projekte']+ '2', texts['ctab.termine'], texts['ctab.portal'], texts['ctab.notizen'] ].join( '|' ) );
 	click( jkc, jtab( jkc, 'projekte' ) );
 	const jkrows = all( jf( jkc, 'client-projects' ), 'tbody tr' );
 	check( '...the tab lists them, the newest first as the server has them, with the day, the documents and the state - the done ones greyed - and the title as the link to the card', jkrows.length === 2 && jkrows.map( function( tr ) { return tr.dataset.id } ).join() === '00002,00001' && jkrows[0].classList.contains( 'dim' ) === true && jkrows[1].classList.contains( 'dim' ) === false
@@ -5607,8 +5608,8 @@ function press( w, key, target, mods ) {
 		&& jf( ( await ( async function() { const w = await jopen( '#kunde-4-projekte', { 'crm-clients/get' : function() { return [ 200, { client : Object.assign( {}, kclient, { id : 4, active : false } ), accounts : [] } ] }, 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [] } ) ] } } ); return w } )() ), 'client-project-new' ) === undefined
 		&& jf( await jopen( '#kunde-1-projekte', {}, { crm : true, pdf : false, elements : false } ), 'client-project-new' ) === undefined );
 	check( '...a client with no project says so; where the type is missing the tab points to the settings and has no count', textOf( jf( await jopen( '#kunde-1-projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { projects : [] } ) ] } } ), 'client-projects' ) ).indexOf( texts['projects.client-empty'] ) !== -1
-		&& ( function( w ) { return all( w.main, '.tabs button' ).map( textOf ).join( '|' ) === [ texts['ctab.belege']+ '7', texts['ctab.projekte'], texts['ctab.portal'], texts['ctab.notizen'] ].join( '|' ) && all( w.main, '.note a' )[0].getAttribute( 'href' ) === '#einstellungen' } )( await jopen( '#kunde-1-projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { missing : true, projects : [] } ) ] } } ) ) );
-	check( '...a card whose projects cannot be read is still the card: the other tabs are there', ( function( w ) { return all( w.main, '.tabs button' ).length === 4 && textOf( all( w.main, 'h1' )[0] ) === 'Nordlicht Records GmbH' } )( await jopen( '#kunde-1', { 'crm-projekte/list' : function() { return [ 500, { error : 'x', code : 'crm_documents_database' } ] } } ) ) );
+		&& ( function( w ) { return all( w.main, '.tabs button' ).map( textOf ).join( '|' ) === [ texts['ctab.belege']+ '7', texts['ctab.projekte'], texts['ctab.termine'], texts['ctab.portal'], texts['ctab.notizen'] ].join( '|' ) && all( w.main, '.note a' )[0].getAttribute( 'href' ) === '#einstellungen' } )( await jopen( '#kunde-1-projekte', { 'crm-projekte/list' : function() { return [ 200, jlist( { missing : true, projects : [] } ) ] } } ) ) );
+	check( '...a card whose projects cannot be read is still the card: the other tabs are there', ( function( w ) { return all( w.main, '.tabs button' ).length === 5 && textOf( all( w.main, 'h1' )[0] ) === 'Nordlicht Records GmbH' } )( await jopen( '#kunde-1', { 'crm-projekte/list' : function() { return [ 500, { error : 'x', code : 'crm_documents_database' } ] } } ) ) );
 
 	// --- the Entwurf: the field Projekt
 	const jprojs = [ { id : '00001', title : 'Album 2027', done : false }, { id : '00002', title : 'Webseite', done : true } ];
@@ -6311,7 +6312,7 @@ function press( w, key, target, mods ) {
 		all( rail.nav, '[data-r]' ).forEach( function( anchor, index ) { anchor.getBoundingClientRect = function() { return { left : index * 110 - rail.nav.scrollLeft, right : index * 110 + 100 - rail.nav.scrollLeft } } } );
 		rail.boot();
 		await settle();
-		check( 'the rail is brought to the open entry: Einstellungen, the last, is beyond the right edge of a row that scrolls, so the row scrolls by the part that was out of sight - and the page does not', rail.nav.scrollLeft === 7 * 110 + 100 - 300 && rail.scrolls.length === 0 );
+		check( 'the rail is brought to the open entry: Einstellungen, the last, is beyond the right edge of a row that scrolls, so the row scrolls by the part that was out of sight - and the page does not', rail.nav.scrollLeft === 8 * 110 + 100 - 300 && rail.scrolls.length === 0 );
 		const css = source( OWN+ 'assets/crm.css' );
 		const phone = css.slice( css.lastIndexOf( '@media (max-width: 760px)' ) );
 		check( 'on the phone the rail is one row that scrolls and does not wrap, the tiles are a grid of two columns of equal width - minmax(0, 1fr), so that no long word widens one - with the number above its word and no line that cannot wrap, and the entries are 44px high', /\.rail \{[^}]*flex-wrap: nowrap/.test( phone ) && /\.nav \{[^}]*overflow-x: auto/.test( phone ) && /\.nav \{[^}]*flex-wrap: nowrap/.test( phone ) && /\.tiles \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test( phone ) && /\.tile \{[^}]*min-width: 0/.test( phone ) && /\.tile \{[^}]*flex-direction: column/.test( phone ) && /nowrap/.test( phone.slice( phone.indexOf( '.tile ' ), phone.indexOf( '.head .search-box' ) ) ) === false && css.indexOf( '.tiles, .tiles' ) === -1 && /\.tile \.v \{[^}]*order: -1/.test( phone ) && /\.nav a \{[^}]*min-height: 44px/.test( phone ) );
@@ -6708,3 +6709,316 @@ function press( w, key, target, mods ) {
 	process.exit( process.exitCode ?? 0 );
 
 } )();
+
+// --- Termine and the phases of the projects ---------------------------------------------------------------------------------
+
+/**
+ *	A date as crm-termine/list has it
+ *
+ *	@param		{Object}	[over]
+ *
+ *	@return		{Object}
+ */
+function termin( over ) {
+	return Object.assign( { id : 'termin-a', title : 'Aufnahme Tag 1', place : 'Studio 1', start : '2026-11-12T14:00', end : '2026-11-12T16:00', all_day : false, running : false, group : 'k-0001', client_id : 1, client : 'K-0001', client_title : 'Nordlicht Records GmbH' }, over || {} );
+}
+
+/**
+ *	The screens Termine, Neuer Termin and Termin, the tab Termine of the card of a client, the next date on the card of a project and on the Übersicht, and the phase of a project: the select of the card, the column and the filter of the list
+ *
+ *	@param		{Object}	env						The openers and fixtures of the suite of the projects
+ *
+ *	@return		{Promise}
+ */
+async function termineAndPhasesSuite( env ) {
+
+	const { jitem, jsubmit, jyes, jget, jrow, kopen, kclient } = env;
+	const script = source( OWN+ 'assets/crm.js' );
+	const posts = [];
+	const list = function( over ) { return Object.assign( { missing : false, native : 'de_DE', now : '2026-11-06T10:00', allowed : true, upcoming : [ termin(), termin( { id : 'termin-b', title : 'Mix-Abend', place : '', start : '2026-11-20T00:00', end : '', all_day : true, group : '', client_id : 0, client : '', client_title : '' } ) ], past : [ termin( { id : 'termin-c', title : 'Vorbei', start : '2026-11-01T09:00', end : '2026-11-03T17:30' } ) ] }, over || {} ) };
+	const card = function( over ) { return Object.assign( { missing : false, native : 'de_DE', now : '2026-11-06T10:00', allowed : true, date : Object.assign( termin(), { text : '<p>Zeile eins<br>Zeile zwei</p><p>Absatz &amp; mehr</p>', link : '' } ) }, over || {} ) };
+	const answers = function( over ) {
+		return Object.assign( {
+			'crm-termine/list' : function() { return [ 200, list() ] },
+			'crm-termine/get' : function( data ) { return data.id === 'termin-a' ? [ 200, card() ] : [ 404, { error : 'x', code : 'crm_termine_unknown', params : [], field : 'id' } ] },
+			'elements/save' : function( data ) { posts.push( [ 'elements/save', data ] ); return [ 200, { element : { '.uri' : '/events/'+ data.uri }, nextUri : '' } ] },
+			'elements/delete' : function( data ) { posts.push( [ 'elements/delete', data ] ); return [ 200, {} ] },
+			'crm-projekte/phase' : function( data ) { posts.push( [ 'crm-projekte/phase', data ] ); return [ 200, { id : data.id, phase : data.phase } ] },
+		}, over || {} );
+	};
+	const open = async function( hash, over, perms ) { posts.length = 0; return env.jopen( hash, answers( over ), perms ); };
+
+	// --- the model: when, the words, the moments
+	const model = ( await ( async function() { const w = await open( '#uebersicht' ); return w.app.model } )() );
+	check( 'the model says when a date is: the day with its weekday and the time to the end of the same day, to the day it ends on, or all day - and a date with no end has the time of the start alone', model.eventWhen( termin() ) === 'Do, 12.11.2026 14:00–16:00'
+		&& model.eventWhen( termin( { end : '2026-11-13T10:00' } ) ) === 'Do, 12.11.2026 14:00 – Fr, 13.11.2026 10:00' && model.eventWhen( termin( { all_day : true, start : '2026-11-20T00:00', end : '' } ) ) === 'Fr, 20.11.2026 · '+ texts['events.all-day'] && model.eventWhen( termin( { end : '' } ) ) === 'Do, 12.11.2026 14:00' );
+	check( '...the words of a date are text in the form and paragraphs in the type: a blank line divides two, a line break stays, markup is escaped, and the way back gives the words as they were typed', model.eventHtmlOf( "Eins\nzwei\n\nDrei <b>&</b> \"vier\"" ) === '<p>Eins<br>zwei</p><p>Drei &lt;b&gt;&amp;&lt;/b&gt; &quot;vier&quot;</p>' && model.eventHtmlOf( '  \n ' ) === ''
+		&& model.eventTextOf( '<p>Eins<br>zwei</p><p>Drei &lt;b&gt;&amp;&lt;/b&gt; &quot;vier&quot;</p>' ) === "Eins\nzwei\n\nDrei <b>&</b> \"vier\"" && model.eventTextOf( model.eventHtmlOf( "a\n\nb" ) ) === "a\n\nb" && model.eventTextOf( '<ul><li>A</li><li>B</li></ul>' ) === "A\n\nB" );
+	check( '...the moments of the form: a day alone is its midnight, the end of a day alone is that day, an end that is not after the start or a start that is no day is refused at its control', JSON.stringify( model.eventMoments( { startDay : '2026-11-12', startTime : '14:00', endDay : '', endTime : '16:00' } ) ) === '{"start":"2026-11-12T14:00","end":"2026-11-12T16:00"}'
+		&& JSON.stringify( model.eventMoments( { startDay : '2026-11-12', startTime : '', endDay : '', endTime : '' } ) ) === '{"start":"2026-11-12T00:00","end":""}' && JSON.stringify( model.eventMoments( { startDay : '2026-11-12', startTime : '14:00', endDay : '2026-11-12', endTime : '14:00' } ).problem ) === '["end-day","events.err-end"]'
+		&& JSON.stringify( model.eventMoments( { startDay : '2026-11-12', startTime : '14:00', endDay : '', endTime : '13:00' } ).problem ) === '["end-time","events.err-end"]' && JSON.stringify( model.eventMoments( { startDay : '', startTime : '14:00', endDay : '', endTime : '' } ).problem ) === '["start-day","events.err-start"]' );
+	check( '...an end with a day and no time is the end of that day, 23:59 - not its midnight, which would end the date where it began', JSON.stringify( model.eventMoments( { startDay : '2026-11-12', startTime : '', endDay : '2026-11-13', endTime : '' } ) ) === '{"start":"2026-11-12T00:00","end":"2026-11-13T23:59"}'
+		&& JSON.stringify( model.eventMoments( { startDay : '2026-11-12', startTime : '10:00', endDay : '2026-11-12', endTime : '' } ) ) === '{"start":"2026-11-12T10:00","end":"2026-11-12T23:59"}' );
+	check( '...the days of the week are written as the browser writes them in German, short and with no full stop: a week from Monday', [ 9, 10, 11, 12, 13, 14, 15 ].map( function( day ) { return model.eventWhen( termin( { start : '2026-11-'+ String( day ).padStart( 2, '0' )+ 'T10:00', end : '' } ) ).slice( 0, 2 ) } ).join() === 'Mo,Di,Mi,Do,Fr,Sa,So' && /toLocaleDateString\( 'de-DE', \{ weekday: 'short' \}/.test( script ) === true );
+	check( '...a new date is made under a name of lower-case letters, digits and hyphens - the day it begins and six at random - that the site serves it by; two are not the same', /^termin-20261112-[a-z0-9]{6}$/.test( model.eventUri( '2026-11-12T14:00' ) ) && new Set( [ 1, 2, 3, 4, 5 ].map( function() { return model.eventUri( '2026-11-12T14:00' ) } ) ).size > 1 );
+
+	// --- the router
+	const hashes = [ [ '#termine', 'termine' ], [ '#termine-neu', 'terminneu' ], [ '#termine-neu-k1', 'terminneu' ], [ '#termine-neu-k1-p00001', 'terminneu' ], [ '#termin-termin-a', 'termin' ], [ '#termin-a_b-1', 'termin' ], [ '#kunde-1-termine', 'kunde' ] ];
+	const word = await open( '#uebersicht' );
+	check( 'the router names the screens of the dates: Termine, Neuer Termin with a client and a project, and the card of a date by its name - each hash names its screen, the ones that are none draw the Übersicht', hashes.every( function( pair ) { return word.app.parse( pair[0] ).screen === pair[1] } ) === true
+		&& word.app.parse( '#termine-neu-k1-p00001' ).client === '1' && word.app.parse( '#termine-neu-k1-p00001' ).project === '00001' && word.app.parse( '#termine-neu-k1-p00001-a_b' ).project === '00001-a_b' && word.app.parse( '#termine-neu-k1-p'+ 'a'.repeat( 100 ) ).project === 'a'.repeat( 100 ) && word.app.parse( '#termine-neu-k1' ).project === '' && word.app.parse( '#termine-neu' ).client === '' && word.app.parse( '#termin-termin-a' ).id === 'termin-a'
+		&& [ '#termin-', '#termine-neu-k0', '#termine-neu-k1-p', '#termine-neu-k1-p-a', '#termine-neu-k1-p'+ 'a'.repeat( 101 ), '#termin-../x', '#termin-a/b', '#termine-x', '#termin-'+ 'a'.repeat( 101 ) ].every( function( bad ) { return word.app.parse( bad ).screen === 'uebersicht' } ) );
+
+	// --- the list
+	const t1 = await open( '#termine' );
+	check( 'Termine asks crm-termine/list for the dates, with no filter, and marks Termine in the rail; the head says how many are coming', t1.last( 'crm-termine/list' ) !== undefined && JSON.stringify( t1.last( 'crm-termine/list' ).data ) === '{}' && all( t1.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).map( function( a ) { return a.getAttribute( 'data-r' ) } ).join() === 'termine'
+		&& textOf( all( t1.main, 'h1' )[0] ) === texts['events.title'] && textOf( all( t1.main, '.sub' )[0] ) === texts['events.count'].replace( '%s', '2' ) );
+	const rows = all( env.jf( t1, 'events' ), 'tbody tr' );
+	check( '...the table has the columns Wann, Titel, Kunde and Ort; a row has the day and the time, the title as the link to the card, the client as the link to its card and the place - a date for everyone says so', all( env.jf( t1, 'events' ), 'thead th' ).map( textOf ).join( '|' ) === [ texts['events.column-when'], texts['events.column-title'], texts['column.client'], texts['events.column-place'] ].join( '|' )
+		&& rows.length === 2 && rows.map( function( tr ) { return tr.dataset.id } ).join() === 'termin-a,termin-b' && rows[0].children.map( textOf ).join( '|' ) === 'Do, 12.11.2026 14:00–16:00|Aufnahme Tag 1|Nordlicht Records GmbH|Studio 1'
+		&& all( rows[0], 'a' ).map( function( a ) { return a.getAttribute( 'href' ) } ).join() === '#termin-termin-a,#kunde-1' && textOf( rows[1].children[0] ) === 'Fr, 20.11.2026 · '+ texts['events.all-day'] && textOf( rows[1].children[2] ) === texts['events.for-all'] );
+	const tPast = all( t1.main, '#events-past' )[0];
+	check( '...the dates that are over are folded under their own line with their number, and are a table of the same kind', tPast.tagName === 'DETAILS' && textOf( all( tPast, 'summary' )[0] ) === texts['events.past'].replace( '%s', '1' ) && all( tPast, 'tbody tr' ).length === 1 && textOf( all( tPast, 'tbody tr' )[0].children[1] ) === 'Vorbei' && textOf( all( tPast, 'tbody tr' )[0].children[0] ) === 'So, 01.11.2026 09:00 – Di, 03.11.2026 17:30' );
+	const tClick = await open( '#termine' );
+	click( tClick, all( all( env.jf( tClick, 'events' ), 'tbody tr' )[0], 'a' )[1] );
+	const clientClicked = tClick.location.hash;
+	click( tClick, all( env.jf( tClick, 'events' ), 'tbody tr' )[1] );
+	check( '...a click on a row opens the card of the date, and a click on the link of the client does not: it leaves the click to the link', clientClicked === '#termine' && tClick.location.hash === '#termin-termin-b' );
+	const tFind = await open( '#termine' );
+	type( all( tFind.main, '#q' )[0], 'mix', false );
+	check( '...the search finds by the title, the place, the client and its number, and says so when nothing is found', all( env.jf( tFind, 'events' ), 'tbody tr' ).map( function( tr ) { return tr.dataset.id } ).join() === 'termin-b' && ( type( all( tFind.main, '#q' )[0], 'studio 1', false ), all( env.jf( tFind, 'events' ), 'tbody tr' ).map( function( tr ) { return tr.dataset.id } ).join() === 'termin-a' )
+		&& ( type( all( tFind.main, '#q' )[0], 'K-0001', false ), all( env.jf( tFind, 'events' ), 'tbody tr' ).length === 1 ) && ( type( all( tFind.main, '#q' )[0], 'zzz', false ), textOf( all( env.jf( tFind, 'events' ), 'tbody tr' )[0] ) === texts['events.none'] ) );
+	const tMark = await open( '#termine', { 'crm-termine/list' : function() { return [ 200, list( { upcoming : [ termin( { title : '<img src=x onerror=alert(1)>', place : '<b>Ort</b> [members-name]', client_title : '<i>Kunde</i>', running : true } ) ], past : [] } ) ] } } );
+	const tMarkRow = all( env.jf( tMark, 'events' ), 'tbody tr' )[0];
+	check( '...a title, a place and a client with markup are text - no element is made of them - and a date that has begun says it is running', all( tMark.main, 'img' ).length === 0 && all( tMark.main, 'b' ).length === 0 && all( tMark.main, 'i' ).length === 0 && textOf( tMarkRow.children[1] ) === '<img src=x onerror=alert(1)>' && textOf( tMarkRow.children[3] ) === '<b>Ort</b> [members-name]'
+		&& textOf( tMarkRow.children[0] ).indexOf( texts['events.running'] ) !== -1 && all( tMark.main, '#events-past' ).length === 0 );
+	const tEmpty = await open( '#termine', { 'crm-termine/list' : function() { return [ 200, list( { upcoming : [], past : [] } ) ] } } );
+	check( '...with no date the table says so with the 60 days, and a list that is empty keeps the button', textOf( all( env.jf( tEmpty, 'events' ), 'tbody tr' )[0] ) === texts['events.empty'].replace( '%s', '60' ) && all( tEmpty.main, '#events-new' ).length === 1 );
+	const tMissing = await open( '#termine', { 'crm-termine/list' : function() { return [ 200, list( { missing : true, upcoming : [], past : [] } ) ] } } );
+	check( '...where the feature is off or its type is not there the screen says so, with no table, no search and no button', textOf( all( tMissing.main, '.note' )[0] ) === texts['events.missing'] && all( tMissing.main, 'table' ).length === 0 && all( tMissing.main, '#q' ).length === 0 && all( tMissing.main, '#events-new' ).length === 0 );
+	const tNoPerm = await open( '#termine', {}, { crm : true, pdf : false, elements : false, text : false, files : false } );
+	check( '...an account without the permission of the Elements panel sees the list, the note for looking only, and no button', all( tNoPerm.main, 'tbody tr' ).length === 3 && all( tNoPerm.main, '#events-new' ).length === 0 && textOf( all( tNoPerm.main, '.state-note' ).pop() ) === texts['events.note'] );
+	check( '...and the new button leads to #termine-neu for an account that has it', all( t1.main, '#events-new' )[0].getAttribute( 'href' ) === '#termine-neu' );
+	const tBroken = await open( '#termine', { 'crm-termine/list' : function() { return [ 500, { error : 'x', code : 'crm_documents_database' } ] } } );
+	check( '...a list that cannot be read is the failure of the page with its button to try again', all( tBroken.main, 'table' ).length === 0 && all( tBroken.main, 'button' ).length > 0 );
+
+	// --- Neuer Termin
+	const tn = await open( '#termine-neu-k1-p00001', { 'crm-clients/list' : function() { return [ 200, { clients : [ { id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true }, { id : 2, number : 'K-0002', title : 'Jonas Richter', active : true }, { id : 3, number : 'K-0003', title : 'Alt AG', active : false } ] } ] } } );
+	const field = function( w, id ) { return all( w.main, '#'+ id )[0] };
+	check( 'a new date asks for the clients, the dates (to know that the type is there) and - from the card of a project - the project; the form has the title, the client, the day and the time it begins, the end, the place and the words', ['crm-clients/list', 'crm-termine/list', 'crm-projekte/get'].every( function( action ) { return tn.last( action ) !== undefined } ) && JSON.stringify( tn.last( 'crm-projekte/get' ).data ) === '{"id":"00001"}'
+		&& [ 'f-title', 'f-client', 'f-start-day', 'f-start-time', 'f-end-day', 'f-end-time', 'f-place', 'f-description' ].every( function( id ) { return field( tn, id ) !== undefined } ) && field( tn, 'f-start-day' ).type === 'date' && field( tn, 'f-start-time' ).type === 'time' && all( tn.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).map( function( a ) { return a.getAttribute( 'data-r' ) } ).join() === 'termine' );
+	check( '...the client is a select with "für alle" first and the active clients - the one that is off is not there - with the group of the client from the card chosen, and the title is the title of the project', all( field( tn, 'f-client' ), 'option' ).map( function( o ) { return o.value+ '='+ textOf( o ) } ).join( '|' ) === '='+ texts['events.for-all']+ '|k-0001=K-0001 · Nordlicht Records GmbH|k-0002=K-0002 · Jonas Richter' && field( tn, 'f-client' ).value === 'k-0001' && field( tn, 'f-title' ).value === 'Album 2027' );
+	const tnOther = await open( '#termine-neu-k2-p00001', { 'crm-clients/list' : function() { return [ 200, { clients : [ { id : 1, number : 'K-0001', title : 'Nordlicht', active : true }, { id : 2, number : 'K-0002', title : 'Jonas Richter', active : true } ] } ] } } );
+	const tnPlain = await open( '#termine-neu' );
+	check( '...a project of another client gives no title, and from the screen of the dates the client is "für alle" and the title empty', field( tnOther, 'f-title' ).value === '' && field( tnOther, 'f-client' ).value === 'k-0002' && field( tnPlain, 'f-client' ).value === '' && field( tnPlain, 'f-title' ).value === '' && tnPlain.last( 'crm-projekte/get' ) === undefined );
+	const tnNo = await open( '#termine-neu', {}, { crm : true, pdf : false, elements : false, text : false, files : false } );
+	check( '...an account without the permission of the Elements panel is told so and has no form', all( tnNo.main, 'form' ).length === 0 && textOf( all( tnNo.main, '.note' )[0] ) === texts['events.forbidden'] );
+	const tnMissing = await open( '#termine-neu', { 'crm-termine/list' : function() { return [ 200, list( { missing : true, upcoming : [], past : [] } ) ] } } );
+	check( '...and where the dates cannot be read there is no form either', all( tnMissing.main, 'form' ).length === 0 && textOf( all( tnMissing.main, '.note' )[0] ) === texts['events.missing'] );
+
+	// refusals before anything is posted
+	const none = tn.all( 'elements/save' ).length;
+	type( field( tn, 'f-title' ), '', false );
+	jsubmit( all( tn.main, '#event-form' )[0] );
+	check( 'a date with no title is refused at the title, in the sentence, marked and focused - nothing is posted', tn.all( 'elements/save' ).length === none && field( tn, 'f-title' ).classList.contains( 'err' ) === true && field( tn, 'f-title' ).getAttribute( 'aria-invalid' ) === 'true' && field( tn, 'f-title' ).focused === true && textOf( tn.toast ).indexOf( texts['events.err-title'] ) !== -1 );
+	type( field( tn, 'f-title' ), 'Aufnahme', false );
+	jsubmit( all( tn.main, '#event-form' )[0] );
+	check( '...with no day it is refused at the day it begins', tn.all( 'elements/save' ).length === none && field( tn, 'f-start-day' ).classList.contains( 'err' ) === true && field( tn, 'f-title' ).classList.contains( 'err' ) === false );
+	type( field( tn, 'f-start-day' ), '2026-12-01', false );
+	type( field( tn, 'f-start-time' ), '10:00', false );
+	type( field( tn, 'f-end-time' ), '09:00', false );
+	jsubmit( all( tn.main, '#event-form' )[0] );
+	check( '...and with an end that is not after the beginning at the end', tn.all( 'elements/save' ).length === none && field( tn, 'f-end-time' ).classList.contains( 'err' ) === true && textOf( tn.toast ).indexOf( texts['events.err-end'] ) !== -1 && field( tn, 'f-start-day' ).classList.contains( 'err' ) === false );
+
+	// the post
+	type( field( tn, 'f-end-time' ), '12:30', false );
+	type( field( tn, 'f-place' ), 'Studio <1>', false );
+	type( field( tn, 'f-description' ), 'Erste Zeile\nzweite <b>Zeile</b>\n\nAbsatz', false );
+	jsubmit( all( tn.main, '#event-form' )[0] );
+	await settle();
+	const sent = tn.last( 'elements/save' ).data;
+	check( 'a new date posts the Elements panel\'s own save for the type events: a name of its own, the native language, isNew, and the fields - the title, the two moments, the place, the group of the client and the words as paragraphs with the markup escaped', sent.type === 'events' && /^termin-20261201-[a-z0-9]{6}$/.test( sent.uri ) && sent.locale === 'de_DE' && sent.isNew === true
+		&& JSON.stringify( sent.fields ) === JSON.stringify( { title : 'Aufnahme', start : '2026-12-01T10:00', end : '2026-12-01T12:30', place : 'Studio <1>', group : 'k-0001', text : '<p>Erste Zeile<br>zweite &lt;b&gt;Zeile&lt;/b&gt;</p><p>Absatz</p>' } ) );
+	check( '...it says it is made and leads to the card of the date; the guard of the page knows no unsaved form any more', tn.location.hash === '#termin-'+ sent.uri && textOf( tn.toast ).indexOf( texts['events.made'].replace( '%s', 'Aufnahme' ) ) !== -1 && tn.app.state.draft === null );
+
+	// a date for everyone with no end and no time and no place
+	const tnAll = await open( '#termine-neu' );
+	type( field( tnAll, 'f-title' ), 'Offener Tag', false );
+	type( field( tnAll, 'f-start-day' ), '2026-12-24', false );
+	jsubmit( all( tnAll.main, '#event-form' )[0] );
+	await settle();
+	check( 'a date with a day alone is posted at its midnight with no end, for everyone (the group empty), with no words at all', JSON.stringify( tnAll.last( 'elements/save' ).data.fields ) === '{"title":"Offener Tag","start":"2026-12-24T00:00","end":"","place":"","group":""}' );
+
+	// the refusal of the server is said beside the field it names - the group is the select
+	const tnRefused = await open( '#termine-neu-k1', { 'elements/save' : function() { return [ 400, { error : 'x', code : 'crm_event_group', params : [], field : 'group' } ] } } );
+	type( field( tnRefused, 'f-title' ), 'x', false );
+	type( field( tnRefused, 'f-start-day' ), '2026-12-24', false );
+	jsubmit( all( tnRefused.main, '#event-form' )[0] );
+	await settle();
+	check( '...a refusal of the server is said beside the field it names: the group is the select of the client, marked and focused, with the sentence of the code - and the screen stays, the form as it was', field( tnRefused, 'f-client' ).classList.contains( 'err' ) === true && field( tnRefused, 'f-client' ).focused === true && tnRefused.location.hash === '#termine-neu-k1' && field( tnRefused, 'f-title' ).value === 'x'
+		&& textOf( all( all( tnRefused.main, 'dd' ).find( function( dd ) { return all( dd, '#f-client' ).length === 1 } ), '.state-note' ).pop() ) === texts['error.crm_event_group'] );
+
+	// --- the card of a date
+	const tc = await open( '#termin-termin-a', { 'crm-clients/list' : function() { return [ 200, { clients : [ { id : 1, number : 'K-0001', title : 'Nordlicht Records GmbH', active : true }, { id : 2, number : 'K-0002', title : 'Jonas Richter', active : true } ] } ] } } );
+	check( 'the card of a date asks crm-termine/get by its name; the head has the title and when it is, the card the facts: the beginning, the place, the client as the link to its card and the words as lines', JSON.stringify( tc.last( 'crm-termine/get' ).data ) === '{"id":"termin-a"}' && textOf( all( tc.main, 'h1' )[0] ) === 'Aufnahme Tag 1' && textOf( all( tc.main, '.head .sub' )[0] ) === 'Do, 12.11.2026 14:00–16:00'
+		&& all( all( tc.main, '#event-info' )[0], 'dt' ).map( textOf ).join( '|' ) === [ texts['events.f-start'], texts['events.f-place'], texts['events.f-client'], texts['events.f-description'] ].join( '|' ) && all( all( tc.main, '#event-info' )[0], 'a' )[0].getAttribute( 'href' ) === '#kunde-1'
+		&& textOf( all( all( tc.main, '#event-info' )[0], 'dd' ).pop() ) === 'Zeile einsZeile zweiAbsatz & mehr' && all( tc.nav, '[data-r]' ).filter( function( a ) { return a.classList.contains( 'on' ) } ).map( function( a ) { return a.getAttribute( 'data-r' ) } ).join() === 'termine' );
+	const tcGone = await open( '#termin-nicht-da' );
+	check( '...a date that is not there says so with the way back, and the list of the dates where the type is missing says that', textOf( all( tcGone.main, '.note' )[0] ).indexOf( texts['error.crm_termine_unknown'] ) !== -1 && all( tcGone.main, '.note a' )[0].getAttribute( 'href' ) === '#termine' );
+	const tcNo = await open( '#termin-termin-a', {}, { crm : true, pdf : false, elements : false, text : false, files : false } );
+	check( '...an account without the permission of the Elements panel sees the card and has no menu, and does not ask for the clients', all( tcNo.main, '.menu' ).length === 0 && tcNo.last( 'crm-clients/list' ) === undefined && textOf( all( tcNo.main, 'h1' )[0] ) === 'Aufnahme Tag 1' );
+	const tcMark = await open( '#termin-termin-a', { 'crm-termine/get' : function() { return [ 200, card( { date : Object.assign( termin( { title : '<b>x</b>', place : '<i>y</i>', client_title : '<u>z</u>' } ), { text : '<p>&lt;script&gt;1&lt;/script&gt;</p>', link : '' } ) } ) ] } } );
+	check( '...title, place, client and words with markup are text on the card', all( tcMark.main, 'b' ).length === 0 && all( tcMark.main, 'i' ).length === 0 && all( tcMark.main, 'u' ).length === 0 && all( tcMark.main, 'script' ).length === 0 && textOf( all( tcMark.main, 'h1' )[0] ) === '<b>x</b>' && textOf( all( tcMark.main, '#event-info' )[0] ).indexOf( '<script>1</script>' ) !== -1 );
+
+	// Bearbeiten
+	click( tc, jitem( tc, texts['events.edit'] ) );
+	const edit = all( tc.main, '#event-info' )[0];
+	check( 'Bearbeiten opens the form in the card, filled: the title, the client (the select is at the group of the date), the day and the time of the beginning and of the end, the place and the words as lines; a second press makes no second form', edit.tagName === 'FORM' && field( tc, 'f-title' ).value === 'Aufnahme Tag 1' && field( tc, 'f-client' ).value === 'k-0001' && field( tc, 'f-start-day' ).value === '2026-11-12' && field( tc, 'f-start-time' ).value === '14:00'
+		&& field( tc, 'f-end-day' ).value === '2026-11-12' && field( tc, 'f-end-time' ).value === '16:00' && field( tc, 'f-place' ).value === 'Studio 1' && field( tc, 'f-description' ).value === 'Zeile eins\nZeile zwei\n\nAbsatz & mehr' && ( click( tc, jitem( tc, texts['events.edit'] ) ), all( tc.main, 'form' ).length === 1 ) );
+	type( field( tc, 'f-place' ), 'Studio 2', false );
+	jsubmit( edit );
+	await settle();
+	check( 'a save posts the changed date for the type events with its name, as a change: the fields of the form - and neither the group nor the words, which the form did not change', tc.last( 'elements/save' ).data.type === 'events' && tc.last( 'elements/save' ).data.uri === 'termin-a' && tc.last( 'elements/save' ).data.isNew === false && tc.last( 'elements/save' ).data.locale === 'de_DE'
+		&& JSON.stringify( tc.last( 'elements/save' ).data.fields ) === '{"title":"Aufnahme Tag 1","start":"2026-11-12T14:00","end":"2026-11-12T16:00","place":"Studio 2"}' && textOf( tc.toast ).indexOf( texts['events.saved'] ) !== -1 );
+	click( tc, jitem( tc, texts['events.edit'] ) );
+	type( field( tc, 'f-client' ), 'k-0002', false );
+	type( field( tc, 'f-description' ), 'Neu', false );
+	jsubmit( all( tc.main, '#event-info' )[0] );
+	await settle();
+	check( '...a changed client and changed words are posted: the group of the other client and the words as a paragraph', tc.last( 'elements/save' ).data.fields.group === 'k-0002' && tc.last( 'elements/save' ).data.fields.text === '<p>Neu</p>' );
+	click( tc, jitem( tc, texts['events.edit'] ) );
+	type( field( tc, 'f-title' ), 'Geändert', false );
+	const abort = all( tc.main, '#event-cancel' )[0];
+	click( tc, abort );
+	check( 'Abbrechen puts the facts back as they were and drops the guard of the page', all( tc.main, '#event-info' )[0].tagName === 'DIV' && tc.app.state.draft === null && textOf( all( tc.main, 'h1' )[0] ) === 'Aufnahme Tag 1' );
+	const tcVip = await open( '#termin-termin-a', { 'crm-termine/get' : function() { return [ 200, card( { date : Object.assign( termin( { group : 'vip', client_id : 0, client : '', client_title : '' } ), { text : '<ul><li>A</li><li>B</li></ul>', link : '' } ) } ) ] }, 'crm-clients/list' : function() { return [ 200, { clients : [ { id : 1, number : 'K-0001', title : 'Nordlicht', active : true } ] } ] } } );
+	click( tcVip, jitem( tcVip, texts['events.edit'] ) );
+	const vipOptions = all( field( tcVip, 'f-client' ), 'option' ).map( function( o ) { return o.value } ).join();
+	const vipValue = field( tcVip, 'f-client' ).value;
+	type( field( tcVip, 'f-place' ), 'Raum', false );
+	jsubmit( all( tcVip.main, '#event-info' )[0] );
+	await settle();
+	check( 'a date of a group that is no client keeps its group: the select has it as an option of its own, and a save that does not change it does not post it - nor the words of a list the form cannot show', vipOptions === ',vip,k-0001' && vipValue === 'vip'
+		&& JSON.stringify( tcVip.last( 'elements/save' ).data.fields ) === '{"title":"Aufnahme Tag 1","start":"2026-11-12T14:00","end":"2026-11-12T16:00","place":"Raum"}' );
+
+	// Löschen
+	click( tc, jitem( tc, texts['events.delete'] ) );
+	check( 'Löschen asks first, with the title, and posts nothing yet', tc.dialogs.length === 1 && textOf( tc.dialogs[0] ).indexOf( texts['events.delete-text'].replace( '%s', 'Aufnahme Tag 1' ) ) !== -1 && tc.all( 'elements/delete' ).length === 0 );
+	jyes( tc, 0 );
+	await settle();
+	check( '...yes posts the Elements panel\'s own delete for the type events and the name, and leads to the dates of the client; a date of no client leads to the list', JSON.stringify( tc.last( 'elements/delete' ).data ) === '{"type":"events","uri":"termin-a"}' && tc.location.hash === '#kunde-1-termine' && textOf( tc.toast ).indexOf( texts['events.deleted'] ) !== -1 );
+	const tcFree = await open( '#termin-termin-a', { 'crm-termine/get' : function() { return [ 200, card( { date : Object.assign( termin( { group : '', client_id : 0, client : '', client_title : '' } ), { text : '', link : '' } ) } ) ] } } );
+	click( tcFree, jitem( tcFree, texts['events.delete'] ) );
+	jyes( tcFree, 0 );
+	await settle();
+	check( '...', tcFree.location.hash === '#termine' );
+	const tcRefused = await open( '#termin-termin-a', { 'elements/delete' : function() { return [ 409, { error : 'x' } ] } } );
+	click( tcRefused, jitem( tcRefused, texts['events.delete'] ) );
+	jyes( tcRefused, 0 );
+	await settle();
+	check( '...a delete that is refused stays on the card and says so', tcRefused.location.hash === '#termin-termin-a' && textOf( tcRefused.toast ).indexOf( texts['events.error-delete'] ) !== -1 );
+
+	const withElements = { crm : true, pdf : false, elements : true, text : false, files : false, members : true, sign : true };
+	// --- the card of a client
+	const kc = await kopen( '#kunde-1-termine', { 'crm-termine/list' : function( data ) { return [ 200, list( { upcoming : [ termin() ].filter( function() { return data.client === '1' } ), past : [ termin( { id : 'termin-c', title : 'Vorbei' } ) ] } ) ] } }, withElements );
+	check( 'the card of a client asks crm-termine/list for its dates, by its id and for a year; the tab Termine has the count of the dates that are coming, and #kunde-1-termine opens it', JSON.stringify( kc.last( 'crm-termine/list' ).data ) === '{"client":"1","days":365}' && all( kc.main, '.tabs button' ).map( textOf ).join( '|' ) === [ texts['ctab.belege']+ '7', texts['ctab.projekte'], texts['ctab.termine']+ '1', texts['ctab.portal'], texts['ctab.notizen'] ].join( '|' )
+		&& all( kc.main, '.tabs button' )[2].classList.contains( 'on' ) === true );
+	const kRows = all( env.jf( kc, 'client-events-list' ), 'tbody tr' );
+	check( '...the tab lists them with the day, the title as the link and the place - no column of the client -, the dates that are over folded, and Neuer Termin starts one with the client chosen', all( env.jf( kc, 'client-events-list' ), 'thead th' ).length === 3 && kRows.length === 1 && kRows[0].children.map( textOf ).join( '|' ) === 'Do, 12.11.2026 14:00–16:00|Aufnahme Tag 1|Studio 1' && all( kc.main, '#events-past' ).length === 1
+		&& all( kc.main, '#client-event-new' )[0].getAttribute( 'href' ) === '#termine-neu-k1' && textOf( all( kc.main, '#client-event-new' )[0] ) === texts['events.new'] );
+	const kcNone = await kopen( '#kunde-1-termine', { 'crm-termine/list' : function() { return [ 200, list( { upcoming : [], past : [] } ) ] } }, withElements );
+	check( '...a client with no date coming says so; where the dates cannot be read the tab says that and has no count and no button; an account without the permission of the Elements panel has no button', textOf( all( env.jf( kcNone, 'client-events-list' ), 'tbody tr' )[0] ) === texts['events.client-empty']
+		&& all( ( await kopen( '#kunde-1-termine', { 'crm-termine/list' : function() { return [ 200, list( { missing : true, upcoming : [], past : [] } ) ] } } ) ).main, '.tabs button' ).map( textOf )[2] === texts['ctab.termine'] );
+	const kcMissing = await kopen( '#kunde-1-termine', { 'crm-termine/list' : function() { return [ 200, list( { missing : true, upcoming : [], past : [] } ) ] } }, withElements );
+	check( '...', textOf( all( kcMissing.main, '#tab .note' )[0] ) === texts['events.missing'] && all( kcMissing.main, '#client-event-new' ).length === 0 );
+	const kcOff = await kopen( '#kunde-4-termine', { 'crm-termine/list' : function() { return [ 200, list() ] }, 'crm-clients/get' : function() { return [ 200, { client : Object.assign( {}, kclient, { id : 4, number : 'K-0004', active : false } ), accounts : [] } ] } }, withElements );
+	const kcNoPerm = await kopen( '#kunde-1-termine', { 'crm-termine/list' : function() { return [ 200, list() ] } } );
+	check( '...a client that is off has no button, nor has an account without the permission of the Elements panel', all( kcOff.main, '#client-events' ).length === 1 && all( kcOff.main, '#client-event-new' ).length === 0 && all( kcNoPerm.main, '#client-events' ).length === 1 && all( kcNoPerm.main, '#client-event-new' ).length === 0 );
+	const kcFail = await kopen( '#kunde-1', { 'crm-termine/list' : function() { return [ 500, { error : 'x', code : 'crm_documents_database' } ] } } );
+	check( '...dates that cannot be read are no failure of the card: the other tabs are there', all( kcFail.main, '.tabs button' ).length === 5 && textOf( all( kcFail.main, 'h1' )[0] ) === 'Nordlicht Records GmbH' );
+
+	// --- the card of a project: the next date of its client, and the phase
+	const pc = await open( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { events : true, next_event : termin() } ) ] } } );
+	const nextLine = all( pc.main, '#project-next-event' )[0];
+	check( 'the card of a project names the next date of its client under the head: the day and the time as the link to the date, the title - and the way to a new date with the client and the project in the address', nextLine !== undefined && textOf( nextLine ).indexOf( texts['projects.next-event'] ) === 0 && all( nextLine, 'a' )[0].getAttribute( 'href' ) === '#termin-termin-a' && textOf( all( nextLine, 'a' )[0] ) === 'Do, 12.11.2026 14:00–16:00'
+		&& textOf( nextLine ).indexOf( 'Aufnahme Tag 1' ) !== -1 && all( pc.main, '#project-event-new' )[0].getAttribute( 'href' ) === '#termine-neu-k1-p00001' );
+	const pcNone = await open( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { events : true, next_event : null } ) ] } } );
+	const pcOff = await open( '#projekt-00001' );
+	const pcNoPerm = await open( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { events : true, next_event : null } ) ] } }, { crm : true, pdf : false, elements : false, text : false, files : true } );
+	check( '...with none coming it says so; where the dates cannot be read (no key in the answer) there is no line; without the permission of the Elements panel the line has no button', textOf( all( pcNone.main, '#project-next-event' )[0] ).indexOf( texts['projects.next-event-none'] ) !== -1 && all( pcOff.main, '#project-next-event' ).length === 0 && all( pcNoPerm.main, '#project-next-event' ).length === 1 && all( pcNoPerm.main, '#project-event-new' ).length === 0 );
+	const pcMark = await open( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { events : true, next_event : termin( { title : '<b>x</b>' } ) } ) ] } } );
+	check( '...and the title of the date is text there', all( pcMark.main, '#project-next-event b' ).length === 0 && textOf( all( pcMark.main, '#project-next-event' )[0] ).indexOf( '<b>x</b>' ) !== -1 );
+
+	// the phase
+	const phaseSelect = function( w ) { return all( w.main, '#project-phase' )[0] };
+	check( 'the head of the card of a project has the select Phase: no phase and the four phases in the order of the work, at the phase of the project', all( phaseSelect( pc ), 'option' ).map( function( o ) { return o.value+ '='+ textOf( o ) } ).join( '|' ) === '='+ texts['projects.phase-none']+ '|recording='+ texts['phase.recording']+ '|mix='+ texts['phase.mix']+ '|master='+ texts['phase.master']+ '|review='+ texts['phase.review']
+		&& phaseSelect( pc ).value === '' && all( pc.main, 'label.phase span' ).map( textOf ).join() === texts['projects.phase'] );
+	const pm = await open( '#projekt-00001', { 'crm-projekte/get' : function() { return [ 200, jget( { project : jrow( { phase : 'mix' } ) } ) ] } } );
+	check( '...and it stands at the phase the project is in', phaseSelect( pm ).value === 'mix' );
+	pc.app.state.draft = null;
+	phaseSelect( pc ).value = 'master';
+	fire( phaseSelect( pc ), 'change', { target : phaseSelect( pc ) } );
+	await settle();
+	check( 'a change of the select saves at once: crm-projekte/phase with the id and the phase, a toast, and the card is read again', JSON.stringify( pc.last( 'crm-projekte/phase' ).data ) === '{"id":"00001","phase":"master"}' && textOf( pc.toast ).indexOf( texts['projects.phase-saved'] ) !== -1 && pc.all( 'crm-projekte/get' ).length === 2 );
+	phaseSelect( pc ).value = '';
+	fire( phaseSelect( pc ), 'change', { target : phaseSelect( pc ) } );
+	await settle();
+	check( '...no phase is posted as the empty one', JSON.stringify( pc.last( 'crm-projekte/phase' ).data ) === '{"id":"00001","phase":""}' );
+	const pf = await open( '#projekt-00001', { 'crm-projekte/phase' : function() { return [ 400, { error : 'x', code : 'crm_projekte_phase', params : [], field : 'phase' } ] } } );
+	phaseSelect( pf ).value = 'mix';
+	fire( phaseSelect( pf ), 'change', { target : phaseSelect( pf ) } );
+	await settle();
+	check( '...a refusal is said in its sentence and the select goes back to the phase the project is in, ready for another try', phaseSelect( pf ).value === '' && phaseSelect( pf ).disabled === false && textOf( pf.toast ).indexOf( texts['error.crm_projekte_phase'] ) !== -1 && pf.all( 'crm-projekte/get' ).length === 1 );
+
+	// the list
+	const phased = [ jrow( { id : '00005', title : 'Mix-Projekt', phase : 'mix' } ), jrow( { id : '00004', title : 'Ohne Phase', phase : '' } ), jrow( { id : '00003', title : 'Abnahme-Projekt', phase : 'review' } ), jrow( { id : '00002', title : 'Fertig mit Phase', done : true, phase : 'master' } ), jrow( { id : '00001', title : '<b>Aufnahme</b>', phase : 'recording' } ) ];
+	const pl = await open( '#projekte', { 'crm-projekte/list' : function() { return [ 200, { missing : false, native : 'de_DE', files : true, allowed : true, projects : phased } ] } } );
+	check( 'the list of the projects has the column Phase after the state, with the pill of the phase of each project - none for a project in no phase -, the pill is a badge with the phase in its data and the word as text', all( env.jf( pl, 'projects' ), 'thead th' ).map( textOf ).pop() === texts['projects.phase'] && env.jrows( pl ).map( function( tr ) { return tr.children.length+ ':'+ textOf( tr.children[7] ) } ).join() === '8:'+ texts['phase.mix']+ ',8:,8:'+ texts['phase.review']+ ',8:'+ texts['phase.recording']
+		&& all( env.jrows( pl )[0], '.badge[data-phase="mix"]' ).length === 1 && all( env.jrows( pl )[1], '[data-phase]' ).length === 0 );
+	check( '...the done project is among the rows with the switch, and keeps its phase', ( env.jtoggle( env.jf( pl, 'p-all' ), true ), env.jrows( pl ).map( function( tr ) { return textOf( tr.children[7] ) } ).join() === [ texts['phase.mix'], '', texts['phase.review'], texts['phase.master'], texts['phase.recording'] ].join() ) );
+	const sel = env.jf( pl, 'p-phase' );
+	check( 'the head has the filter by phase: all phases first and the four, the label for a reader', sel.tagName === 'SELECT' && sel.getAttribute( 'aria-label' ) === texts['projects.phase'] && all( sel, 'option' ).map( function( o ) { return o.value+ '='+ textOf( o ) } ).join( '|' ) === '='+ texts['projects.phase-all']+ '|recording='+ texts['phase.recording']+ '|mix='+ texts['phase.mix']+ '|master='+ texts['phase.master']+ '|review='+ texts['phase.review'] );
+	sel.value = 'review';
+	fire( sel, 'change', { target : sel } );
+	check( '...a phase shows the projects in it alone, without asking the server again, and the count says so', env.jrows( pl ).map( function( tr ) { return tr.dataset.id } ).join() === '00003' && pl.all( 'crm-projekte/list' ).length === 1 && textOf( all( pl.main, '.sub' )[0] ) === '1 von 5' );
+	env.jf( pl, 'p-phase' ).value = 'master';
+	fire( env.jf( pl, 'p-phase' ), 'change', { target : env.jf( pl, 'p-phase' ) } );
+	check( '...it works with the switch of the done ones: the done project in the phase master is found only with the switch on', env.jrows( pl ).map( function( tr ) { return tr.dataset.id } ).join() === '00002' );
+	env.jf( pl, 'p-phase' ).value = '';
+	fire( env.jf( pl, 'p-phase' ), 'change', { target : env.jf( pl, 'p-phase' ) } );
+	type( env.jf( pl, 'q' ), 'mix', false );
+	check( '...and with the search: the search and the phase both hold, no phase is all', env.jrows( pl ).map( function( tr ) { return tr.dataset.id } ).join() === '00005' && all( pl.main, 'b' ).length === 0 );
+	const plLost = await open( '#projekte', { 'crm-projekte/list' : function() { return [ 200, { missing : true, native : 'de_DE', files : true, allowed : true, projects : [] } ] } } );
+	check( '...where the type is missing there is no filter', all( plLost.main, '#p-phase' ).length === 0 );
+
+	// --- the Übersicht
+	const ov = await open( '#uebersicht' );
+	const tile = all( ov.main, '#tile-event' )[0];
+	check( 'the Übersicht has the tile Nächster Termin beside the others: the day and the time, the title and the client, a link to the date; it asks for the dates of a year once', ov.sent().join() === 'crm/status,crm-documents/overview,crm-termine/list' && JSON.stringify( ov.last( 'crm-termine/list' ).data ) === '{"days":365}' && all( ov.main, '.tiles .tile' ).length === 6 && tile.tagName === 'A' && tile.getAttribute( 'href' ) === '#termin-termin-a'
+		&& textOf( all( tile, '.l' )[0] ) === texts['tile.event'] && textOf( all( tile, '.v' )[0] ) === 'Do 12.11., 14:00' && textOf( all( tile, '.h' )[0] ) === 'Aufnahme Tag 1 · Nordlicht Records GmbH' );
+	const ovDay = await open( '#uebersicht', { 'crm-termine/list' : function() { return [ 200, list( { upcoming : [ termin( { id : 'termin-b', start : '2026-11-20T00:00', end : '', all_day : true, client_id : 0, client_title : '', title : '<b>Tag</b>' } ) ] } ) ] } } );
+	check( '...a date for everyone has its title alone, a whole day has no time, and markup in the title is text', textOf( all( all( ovDay.main, '#tile-event' )[0], '.v' )[0] ) === 'Fr 20.11.' && textOf( all( all( ovDay.main, '#tile-event' )[0], '.h' )[0] ) === '<b>Tag</b>' && all( ovDay.main, '#tile-event b' ).length === 0 );
+	const ovNone = await open( '#uebersicht', { 'crm-termine/list' : function() { return [ 200, list( { upcoming : [], past : [] } ) ] } } );
+	check( '...with no date coming the tile says so and leads to the dates; where the dates cannot be read, or the call fails, there is no tile and the Übersicht is drawn all the same', all( ovNone.main, '#tile-event' )[0].getAttribute( 'href' ) === '#termine' && textOf( all( all( ovNone.main, '#tile-event' )[0], '.h' )[0] ) === texts['tile.event-none']
+		&& all( ( await open( '#uebersicht', { 'crm-termine/list' : function() { return [ 200, list( { missing : true, upcoming : [], past : [] } ) ] } } ) ).main, '#tile-event' ).length === 0 && all( ( await open( '#uebersicht', { 'crm-termine/list' : function() { return [ 500, { error : 'x', code : 'crm_documents_database' } ] } } ) ).main, '.tiles .tile' ).length === 5 );
+
+	// --- the phone: the dates are cards, the phase a cell of the project card
+	const css = source( OWN+ 'assets/crm.css' );
+	const cardsMedia = css.slice( css.indexOf( '@media (max-width: 759px)' ) );
+	const tc1 = await open( '#termine' );
+	const termTable = env.jf( tc1, 'events' );
+	const termRow = all( termTable, 'tbody tr' )[0];
+	check( 'the table of the dates is a list of cards on the phone like the others: the class and the name of the layout, each cell named - the day, the title, the client, the place - with the word of its column, and the table keeps its roles', termTable.className.split( ' ' ).indexOf( 'cards' ) !== -1 && termTable.dataset.cards === 'termine' && Array.from( termRow.children ).map( function( td ) { return td.dataset.col } ).join() === 'date,id,who,sub'
+		&& Array.from( termRow.children ).map( function( td ) { return td.dataset.label } ).join( '|' ) === [ texts['events.column-when'], texts['events.column-title'], texts['column.client'], texts['events.column-place'] ].join( '|' ) && termTable.getAttribute( 'role' ) === 'table' );
+	const clientDates = await kopen( '#kunde-1-termine', { 'crm-termine/list' : function() { return [ 200, list() ] } } );
+	check( '...the dates on the card of a client are cards without the client, and the dates that are over are cards too', env.jf( clientDates, 'client-events-list' ).dataset.cards === 'ctermine' && Array.from( all( env.jf( clientDates, 'client-events-list' ), 'tbody tr' )[0].children ).map( function( td ) { return td.dataset.col } ).join() === 'date,id,sub' && all( tc1.main, '#events-past table' )[0].dataset.cards === 'termine' );
+	check( '...the stylesheet lays them out: the title and the day in a row of their own, the client and the place under them - and the project card has the phase beside the client, which is a column of its own', /data-cards="termine"\] tbody tr \{[^}]*"id id" "date date" "who sub"/.test( cardsMedia ) && /data-cards="ctermine"\] tbody tr \{[^}]*"id id" "date sub"/.test( cardsMedia )
+		&& /data-cards="projekte"\] tbody tr \{[^}]*"id state" "who phase"/.test( cardsMedia ) && /td\[data-col="phase"\] \{ grid-area: phase/.test( cardsMedia ) );
+
+	// --- the script
+	const keys = Array.from( new Set( [ ...script.matchAll( /\bt\( '((?:events|phase|tile\.event|projects\.phase|projects\.next|projects\.error-phase|ctab\.termine|nav\.events)[a-z.-]*)'/g ) ].map( function( found ) { return found[1] } ).filter( function( key ) { return key.slice( -1 ) !== '.' } ) ) );
+	const mine = Object.keys( texts ).filter( function( key ) { return /^(events|phase)\./.test( key ) } );
+	check( 'the script keeps to its rules for the dates and the phases: every key it asks for is a word of the page, the phases have theirs, no word is empty and the German is Du', keys.length > 40 && keys.filter( function( key ) { return typeof texts[key] !== 'string' || texts[key].trim() === '' } ).length === 0
+		&& [ 'recording', 'mix', 'master', 'review' ].every( function( phase ) { return typeof texts['phase.'+ phase] === 'string' && texts['phase.'+ phase] !== '' } ) && mine.every( function( key ) { return script.indexOf( "'"+ key+ "'" ) !== -1 || /^phase\./.test( key ) } ) && /\b(Sie|Ihre|Ihnen|Ihr)\b/.test( mine.map( function( key ) { return texts[key] } ).join( ' ' ) ) === false );
+	check( '...it builds no markup for them: no innerHTML, no insertAdjacentHTML', /\.innerHTML|insertAdjacentHTML/.test( script.slice( script.indexOf( '// --- Termine ---' ), script.indexOf( '// --- Uploads ---' ) ) ) === false );
+}

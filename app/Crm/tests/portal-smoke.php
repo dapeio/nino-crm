@@ -857,7 +857,7 @@ foreach( glob( $root. '/app/Crm/Portal/templates/*.tpl' ) ?: [] as $file )
 		$used = array_merge( $used, $found[1] );
 
 check( 'the words of the list are the same keys in German and English, none empty, German with Du, none a key of a text of the project', array_keys( $wordsDe ) === array_keys( $wordsEn ) && array_filter( $wordsDe + $wordsEn, static fn( string $text ): bool => trim( $text ) === '' ) === []
-	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 291 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
+	&& preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', implode( ' ', $wordsDe ) ) !== 1 && count( $wordsDe ) === 296 && array_filter( array_keys( $wordsDe ), static fn( string $key ): bool => preg_match( '~^\[\[/project/crm-(documents/(category|state|list)|portal/[a-z]+(/[a-z]+)?(/[a-z_]+)?)/?[a-z-]*\]\]$~D', $key ) !== 1 ) === [] );
 check( '...every word the templates ask for is there, and the kinds and the states are all there is', array_diff( array_map( static fn( string $key ): string => '[['. $key. ']]', $used ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $category ): string => '[[/project/crm-documents/category/'. $category. ']]', Documents::CATEGORIES ), array_keys( $wordsDe ) ) === []
 	&& array_diff( array_map( static fn( string $state ): string => '[[/project/crm-documents/state/'. $state. ']]', [ 'open', 'overdue', 'paid', 'cancelled', 'accepted', 'declined', 'signed', 'expired' ] ), array_keys( $wordsDe ) ) === [] );
@@ -3499,7 +3499,7 @@ portalSignIn( $appData, $accounts['anna'] );
 
 // the state: no row is no download; a project that is not there cannot be switched
 $nothing = \Crm\Projekte::state( $appData, $pL );
-check( 'a project without a row has no download, no day and no account; list() and get() say so', $nothing === [ 'download' => false, 'download_at' => '', 'download_by' => '' ] && \Crm\Projekte::get( $appData, $pL )['download'] === false
+check( 'a project without a row has no download, no day and no account; list() and get() say so', $nothing === [ 'download' => false, 'download_at' => '', 'download_by' => '', 'phase' => '' ] && \Crm\Projekte::get( $appData, $pL )['download'] === false
 	&& array_column( array_filter( \Crm\Projekte::list( $appData ), static fn( array $project ): bool => $project['id'] === $pL ), 'download' ) === [ false ] );
 
 // the page while the download is off
@@ -3556,7 +3556,7 @@ $lExtra = $lMake();
 check( '...and the route serves the download, and the files that are no medium shown in the browser as well', $lServe( $lSong, true ) === 200 && $lServe( $lPdf, true ) === 200 && $lServe( $lPdf, false ) === 200 && $lServe( $lExtra['zip'], true ) === 200 && $lServe( $lExtra['zip'], false ) === 200 && $lServe( $lExtra['txt'], false ) === 200 && $lServe( $lExtra['wav'], true ) === 200 );
 $lDrop( $lExtra );
 $off = \Crm\Projekte::setDownload( $appData, $pL, false, 'owner@example.org' );
-check( 'switched off again the day and the account are empty, and the route is 404 again', is_array( $off ) && $off === [ 'id' => $pL, 'download' => false, 'download_at' => '', 'download_by' => '' ] && $lServe( $lSong, true ) === 404 );
+check( 'switched off again the day and the account are empty, and the route is 404 again', is_array( $off ) && $off === [ 'id' => $pL, 'download' => false, 'download_at' => '', 'download_by' => '', 'phase' => '' ] && $lServe( $lSong, true ) === 404 );
 
 // what a page asks: the state of the project and its waiting offer are read once for the page, not once for each file
 $lCount = static function( string $uri ) use ( &$appData ): array {
@@ -3727,7 +3727,7 @@ catch( \Throwable $e ) {
 	$failed = $e;
 }
 
-check( 'a release that fails inside its transaction is not half done: it throws, the invoice is not released and the project is still locked', $failed instanceof \PDOException && Documents::get( $appData, $invL['id'] )['released'] === false && \Crm\Projekte::state( $appData, $pL ) === [ 'download' => false, 'download_at' => '', 'download_by' => '' ] );
+check( 'a release that fails inside its transaction is not half done: it throws, the invoice is not released and the project is still locked', $failed instanceof \PDOException && Documents::get( $appData, $invL['id'] )['released'] === false && \Crm\Projekte::state( $appData, $pL ) === [ 'download' => false, 'download_at' => '', 'download_by' => '', 'phase' => '' ] );
 Db::exec( $appData, 'DROP TRIGGER zz_break' );
 Db::exec( $appData, 'DROP TABLE zz_child' );
 Db::exec( $appData, 'DROP TABLE zz_parent' );
@@ -3745,7 +3745,7 @@ check( '...the mail has a second sentence about the files of the project with th
 $wasStamp = $stateL['download_at'];
 Db::exec( $appData, 'UPDATE project_states SET download_at = \'2026-01-01T00:00:00Z\', download_by = \'first@example.org\' WHERE project = :project', [ 'project' => $pL ] );
 $again = Documents::release( $appData, $invL['id'], false, true, 'owner@example.org' );
-check( '...a release again with the download on changes nothing of the state: the first day and the first account stay', is_array( $again ) && $again['mailed'] === 0 && \Crm\Projekte::state( $appData, $pL ) === [ 'download' => true, 'download_at' => '2026-01-01T00:00:00Z', 'download_by' => 'first@example.org' ] && $wasStamp !== '' );
+check( '...a release again with the download on changes nothing of the state: the first day and the first account stay', is_array( $again ) && $again['mailed'] === 0 && \Crm\Projekte::state( $appData, $pL ) === [ 'download' => true, 'download_at' => '2026-01-01T00:00:00Z', 'download_by' => 'first@example.org', 'phase' => '' ] && $wasStamp !== '' );
 \Crm\Projekte::setDownload( $appData, $pL, false );
 
 // the mail names the title as text, whatever it holds
@@ -5560,6 +5560,7 @@ portalConsentChecks( $appData, $a, $b, $accounts, $stray, $p1, $today, $wordsDe,
 portalDeclineChecks( $appData, $a, $b, $accounts, $stray, $p1, $today, $wordsDe, $wordsEn, $reset, $asAdmin, $asVisitor, $final, $line, $made, $location, $mkOffer );
 portalPaymentChecks( $appData, $a, $b, $accounts, $stray, $today, $reset, $asAdmin, $asVisitor, $final, $line, $location );
 portalHomeChecks( $appData, $a, $accounts, $stray, (string) $p1, $asVisitor, $asAdmin, $reset );
+portalPhaseChecks( $appData, $a, $accounts, $wordsDe, $wordsEn, $reset, $asAdmin, $made );
 
 // The rest of the suite runs as it did before: Review and Events off
 foreach( [ 'events', 'review' ] as $key )
@@ -6526,6 +6527,79 @@ function portalNotesChecks( array &$appData, array $client, \Closure $fields, \C
 	Db::exec( $appData, 'UPDATE clients SET notes = \'\' WHERE id = :id', [ 'id' => $client['id'] ] );
 	portalServe( $appData, '/.crm/daten', 'POST', $fields( [ 'street' => (string) $client['street'] ] ) );
 	$mails->exchangeArray( $mailsBefore );
+
+}
+
+// --- Die Phase eines Projekts: die Pille in der Liste und in der Übersicht ------------------------------------------------------
+
+/**
+ *	The phase of a project in the portal: a pill in the list of the projects and in the data of the overview, in both languages - and not on the start page, not for a project that is done, not for a value that is none
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$a						The client of the member
+ *	@param		array 		$accounts
+ *	@param		array 		$wordsDe
+ *	@param		array 		$wordsEn
+ *	@param		\Closure	$reset
+ *	@param		\Closure	$asAdmin
+ *	@param		\Closure	$made					Makes a project: title, client number, fields, download
+ *
+ *	@return 	void
+ */
+function portalPhaseChecks( array &$appData, array $a, array $accounts, array $wordsDe, array $wordsEn, \Closure $reset, \Closure $asAdmin, \Closure $made ): void {
+
+	echo "\nThe phase of a project in the portal\n";
+
+	$reset();
+	$asAdmin();
+	$phased = $made( 'Phasen-Album', $a['number'], [], false );
+	$plain = $made( 'Ohne Phase', $a['number'], [], false );
+	$finished = $made( 'Fertig mit Phase', $a['number'], [ 'done' => true ], false );
+	\Crm\Projekte::setPhase( $appData, $phased, 'review' );
+	\Crm\Projekte::setPhase( $appData, $finished, 'master' );
+	portalSignIn( $appData, $accounts['anna'] );
+
+	$overview = portalPage( $appData, '/portal/projekte?projekt='. $phased )[1];
+	$pill = portalFind( $overview, '//div[contains(@class, "crm-overview__fact--phase")]//span[contains(@class, "crm-pill")]' );
+	check( 'the overview of a project in a phase has the fact Phase in the card of the data: the pill with the word of the phase - after the state and before the download', count( $pill ) === 1 && portalFind( $overview, '//div[contains(@class, "crm-overview__fact--phase")]//span[contains(@class, "crm-pill")]/@data-phase' )[0]->nodeValue === 'review' && trim( $pill[0]->textContent ) === $wordsDe['[[/project/crm-portal/projects/phase-review]]']
+		&& portalText( $overview, '//div[contains(@class, "crm-overview__fact--phase")]/dt' ) === $wordsDe['[[/project/crm-portal/projects/overview-phase]]']
+		&& array_map( static fn( \DOMNode $fact ): string => (string) preg_replace( '/^.*crm-overview__fact--/', '', (string) $fact->nodeValue ), portalFind( $overview, '//dl[contains(@class, "crm-overview__facts")]/div/@class' ) ) === [ 'client', 'state', 'phase', 'content' ] );
+	check( '...a project in no phase has no such fact', portalFind( portalPage( $appData, '/portal/projekte?projekt='. $plain )[1], '//*[@data-phase]' ) === [] && portalFind( portalPage( $appData, '/portal/projekte?projekt='. $plain )[1], '//div[contains(@class, "crm-overview__fact--phase")]' ) === [] );
+	check( '...and a project that is done says it is done and has no pill of its phase - the phase is kept', portalFind( portalPage( $appData, '/portal/projekte?projekt='. $finished )[1], '//*[@data-phase]' ) === [] && \Crm\Projekte::get( $appData, $finished )['phase'] === 'master' );
+
+	$list = portalPage( $appData, '/portal/projekte' )[1];
+	check( 'the list of the projects has the pill in the line of facts of the row of a project in a phase, with the word of the phase; the rows of the others have none', count( portalFind( $list, '//li[@data-project="'. $phased. '"]//span[contains(@class, "crm-projects__meta")]/span[contains(@class, "crm-pill")][@data-phase="review"]' ) ) === 1
+		&& portalText( $list, '//li[@data-project="'. $phased. '"]//span[@data-phase]' ) === $wordsDe['[[/project/crm-portal/projects/phase-review]]'] && portalFind( $list, '//li[@data-project="'. $plain. '"]//*[@data-phase]' ) === [] && portalFind( $list, '//li[@data-project="'. $finished. '"]//*[@data-phase]' ) === []
+		&& portalText( $list, '//li[@data-project="'. $phased. '"]//span[contains(@class, "crm-projects__state")]' ) === $wordsDe['[[/project/crm-portal/projects/state-open]]'] );
+	check( '...the start page has no phase', portalFind( portalComponentAt( $appData, '/portal', '[crm-portal-start]' ), '//*[@data-phase]' ) === [] );
+	$asAdmin();
+	$onStart = $made( 'Steht auf der Startseite', $a['number'], [ 'started' => date( 'Y-m-d', strtotime( '+1 year' ) ) ], false );
+	\Crm\Projekte::setPhase( $appData, $onStart, 'master' );
+	portalSignIn( $appData, $accounts['anna'] );
+	$home = portalPage( $appData, '/portal' )[1];
+	$shortRows = portalFind( $home, '//li[@data-project]/@data-project' );
+	check( '...nor has the short list of the projects on the start page, where a project in a phase is a row: the row is there and carries no pill - the full list of the projects has it', count( portalFind( $home, '//li[@data-project="'. $onStart. '"]' ) ) === 1 && $shortRows !== [] && portalFind( $home, '//*[@data-phase]' ) === []
+		&& count( portalFind( portalPage( $appData, '/portal/projekte' )[1], '//li[@data-project="'. $onStart. '"]//*[@data-phase="master"]' ) ) === 1 );
+	\Crm\Projekte::setPhase( $appData, $onStart, '' );
+
+	// English: the words of the phase are the English ones
+	$appData['./nino/locales/current'] = 'en_US';
+	$english = portalPage( $appData, '/portal/projekte?projekt='. $phased )[1];
+	$englishList = portalPage( $appData, '/portal/projekte' )[1];
+	$appData['./nino/locales/current'] = 'de_DE';
+	check( 'in English the pill says the English word in the overview and in the list', portalText( $english, '//div[contains(@class, "crm-overview__fact--phase")]//span[@data-phase]' ) === $wordsEn['[[/project/crm-portal/projects/phase-review]]'] && $wordsEn['[[/project/crm-portal/projects/phase-review]]'] !== $wordsDe['[[/project/crm-portal/projects/phase-review]]']
+		&& portalText( $english, '//div[contains(@class, "crm-overview__fact--phase")]/dt' ) === $wordsEn['[[/project/crm-portal/projects/overview-phase]]'] && portalText( $englishList, '//li[@data-project="'. $phased. '"]//span[@data-phase]' ) === $wordsEn['[[/project/crm-portal/projects/phase-review]]'] );
+
+	$keys = array_map( static fn( string $phase ): string => '[[/project/crm-portal/projects/phase-'. $phase. ']]', \Crm\Projekte::PHASES );
+	check( 'each phase has its word in German and in English, none empty, the German with Du, and the label of the fact too', array_diff( array_merge( $keys, [ '[[/project/crm-portal/projects/overview-phase]]' ] ), array_keys( $wordsDe ), array_keys( $wordsEn ) ) === [] && array_filter( array_merge( array_map( static fn( string $key ): string => $wordsDe[$key], $keys ), array_map( static fn( string $key ): string => $wordsEn[$key], $keys ) ), static fn( string $word ): bool => trim( $word ) === '' ) === [] );
+
+	// A value of the column that is none of the four is no phase, and is not written into the page
+	\Crm\Db::exec( $appData, 'UPDATE project_states SET phase = :phase WHERE project = :project', [ 'phase' => '"><script>x</script>', 'project' => $phased ] );
+	\Crm\Projekte::forget( $appData );
+	$stray = portalPage( $appData, '/portal/projekte?projekt='. $phased )[1];
+	$strayList = portalPage( $appData, '/portal/projekte' )[1];
+	check( 'a value of the column that is none of the four is not a phase: no pill, nothing of it in the overview or the list', portalFind( $stray, '//*[@data-phase]' ) === [] && portalFind( $strayList, '//*[@data-phase]' ) === [] && str_contains( $stray, '<script>x' ) === false && str_contains( $strayList, '<script>x' ) === false );
+	\Crm\Projekte::setPhase( $appData, $phased, '' );
 }
 
 /**
