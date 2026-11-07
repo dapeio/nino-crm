@@ -21,8 +21,8 @@ return [
 				'de_DE' => 'Feld und Knopf des ersten Schritts in einer Zeile (nino-form--inline des Kernels); die Beschriftung lesen dann nur noch Screenreader (nino-sr-only). Der zweite Schritt steht nie in einer Zeile.',
 			],
 			'[members-logout]' => [
-				'en_US' => 'A link that signs the member out. Shows nothing to a visitor, so a frame can carry it for everybody.',
-				'de_DE' => 'Ein Link, der das Mitglied abmeldet. Zeigt einem Besucher nichts, ein Seitengerüst kann ihn also für alle tragen.',
+				'en_US' => 'A button, in a form with the csrf token, that signs the member out. Shows nothing to a visitor, so a frame can carry it for everybody.',
+				'de_DE' => 'Ein Knopf in einem Formular mit dem csrf-Token, der das Mitglied abmeldet. Zeigt einem Besucher nichts, ein Seitengerüst kann ihn also für alle tragen.',
 			],
 			'[members-name]' => [
 				'en_US' => 'The name of the signed-in member, or their email address where the account has no name. Shows nothing to a visitor.',
@@ -57,16 +57,16 @@ return [
 				'de_DE' => 'Der Code der Mail: code und return, mit [csrf]. Ohne eine Anforderung in der Sitzung oder nach ihrer Zeit ist die Antwort die Umleitung (303) auf die Seite des Formulars mit ?members=gone; ein Post ohne den csrf-Token ist ?members=expired und verbraucht nichts. Sonst wird ein Versuch gezählt und der Code – sechs Ziffern, Leerzeichen bleiben außen vor – gesucht und verbraucht. Ein guter meldet das Mitglied an und leitet (303) auf die Seite weiter, die die Anmeldung verlangt hat, sonst auf die Startseite; mit angekreuztem Kästchen „Auf diesem Gerät angemeldet bleiben“ setzt er auch das Cookie nino_remember (HttpOnly, SameSite=Lax, Secure bei https, für die Einstellung rememberDays) mit einem Token aus 32 Zufallsbytes, von dem das Konto nur den sha256 behält. Ein falscher – oder einer, der keine sechs Ziffern hat – ist ?members=wrong, und der fünfte ist ?members=gone: Die Anforderung ist zu Ende, ein neuer Code muss angefordert werden.',
 			],
 			'/.members/login?t=<token>' => [
-				'en_US' => 'The link of an invitation, and of the login link the owner sends from the panel. It changes nothing: for a valid token it answers (200) a page that names the account and holds one button, for an unknown, expired or spent token the login page in place, with the status 400 and the message that the link is not valid. A mail scanner or a prefetch that opens the link uses nobody\'s link up.',
-				'de_DE' => 'Der Link einer Einladung und des Anmeldelinks, den der Inhaber im Panel schickt. Er ändert nichts: Für einen gültigen Token antwortet er (200) mit einer Seite, die das Konto nennt und einen Button hat, für einen unbekannten, abgelaufenen oder verbrauchten Token mit der Anmeldeseite an Ort und Stelle, mit dem Status 400 und der Meldung, dass der Link nicht gültig ist. Ein Mail-Scanner oder ein Vorabruf, der den Link öffnet, verbraucht niemandes Link.',
+				'en_US' => 'The link of an invitation, of the login link the owner sends from the panel and of the link the owner sends to an account that is a member already (kind send: the days of an invitation, a mail of its own). It changes nothing: for a valid token it answers (200) a page that names the account and holds one button, for an unknown, expired or spent token the login page in place, with the status 400 and the message that the link is not valid; where the server still keeps the record of an expired link (30 days after its end), the page that asks for the code leads to the page the link led to. A mail scanner or a prefetch that opens the link uses nobody\'s link up.',
+				'de_DE' => 'Der Link einer Einladung, des Anmeldelinks, den der Inhaber im Panel schickt, und des Links, den der Inhaber an ein Konto schickt, das schon Mitglied ist (Art send: die Tage einer Einladung, eine eigene Mail). Er ändert nichts: Für einen gültigen Token antwortet er (200) mit einer Seite, die das Konto nennt und einen Button hat, für einen unbekannten, abgelaufenen oder verbrauchten Token mit der Anmeldeseite an Ort und Stelle, mit dem Status 400 und der Meldung, dass der Link nicht gültig ist; hält der Server den Eintrag eines abgelaufenen Links noch (30 Tage nach seinem Ende), führt der Code, den die Seite anfordert, auf die Seite, zu der der Link führte. Ein Mail-Scanner oder ein Vorabruf, der den Link öffnet, verbraucht niemandes Link.',
 			],
 			'POST /.members/confirm' => [
 				'en_US' => 'The button of that page: the token and [csrf]. The token is spent on the spot, the member is signed in and sent on (303) to the page that asked for the login, else to the start page - where to is kept with the token on the server and never in the form. A post without the csrf token answers the page again with the message that the session has run out and uses nothing up; a token that is spent, has run out or belongs to an account that is gone answers the login page in place, with the status 400.',
 				'de_DE' => 'Der Button dieser Seite: der Token und [csrf]. Der Token wird sofort verbraucht, das Mitglied ist angemeldet und wird (303) auf die Seite weitergeleitet, die die Anmeldung verlangt hat, sonst auf die Startseite – wohin, steht beim Token auf dem Server und nie im Formular. Ein Post ohne den csrf-Token beantwortet die Seite noch einmal mit der Meldung, dass die Sitzung abgelaufen ist, und verbraucht nichts; ein Token, der verbraucht oder abgelaufen ist oder zu einem Konto gehört, das es nicht mehr gibt, beantwortet die Anmeldeseite an Ort und Stelle mit dem Status 400.',
 			],
 			'/.members/logout' => [
-				'en_US' => 'Signs the member out and goes (303) to the start page with ?members=out. A plain GET link, which is what [members-logout] writes. The token of this device is taken out of the account and the cookie nino_remember deleted. Members::forgetAll( $id ) signs an account out of every device at once: it empties the list of its devices and gives the account an epoch of its own, which ends every session of it but the one that asks.',
-				'de_DE' => 'Meldet das Mitglied ab und geht (303) zur Startseite mit ?members=out. Ein einfacher GET-Link, wie ihn [members-logout] schreibt. Das Token dieses Geräts wird aus dem Konto genommen und das Cookie nino_remember gelöscht. Members::forgetAll( $id ) meldet ein Konto auf einmal von jedem Gerät ab: Es leert die Liste seiner Geräte und gibt dem Konto eine eigene Epoche, die jede Sitzung von ihm beendet, außer der, die fragt.',
+				'en_US' => 'POST: signs the member out and goes (303) to the start page with ?members=out. The post carries the csrf token, which [members-logout] and [members-login] write as a form with a button; a post without it is the 403 and signs nobody out. A GET is answered with 405 and a page that links to the start page. The token of this device is taken out of the account and the cookie nino_remember deleted. Members::forgetAll( $id ) signs an account out of every device at once: it empties the list of its devices and gives the account an epoch of its own, which ends every session of it but the one that asks.',
+				'de_DE' => 'POST: Meldet das Mitglied ab und geht (303) zur Startseite mit ?members=out. Der Post trägt den csrf-Token, den [members-logout] und [members-login] als Formular mit einem Knopf schreiben; ein Post ohne ihn ist die 403 und meldet niemanden ab. Ein GET beantwortet 405 mit einer Seite, die auf die Startseite verlinkt. Das Token dieses Geräts wird aus dem Konto genommen und das Cookie nino_remember gelöscht. Members::forgetAll( $id ) meldet ein Konto auf einmal von jedem Gerät ab: Es leert die Liste seiner Geräte und gibt dem Konto eine eigene Epoche, die jede Sitzung von ihm beendet, außer der, die fragt.',
 			],
 		],
 		'panel' => [
@@ -111,16 +111,16 @@ return [
 		],
 		'install' => [
 			'templates/page-members-login.tpl' => [
-				'en_US' => 'The login page: the site\'s frames, a title, a short text and [members-login]. The gate renders it in place of a protected page and a link renders it for a token that is not valid; a project that wants an address of its own for it gives it a route in the Routes panel.',
-				'de_DE' => 'Die Anmeldeseite: die Rahmen der Website, ein Titel, ein kurzer Text und [members-login]. Das Tor rendert sie an Stelle einer geschützten Seite, und ein Link rendert sie für einen Token, der nicht gültig ist; ein Projekt, das eine eigene Adresse dafür will, gibt ihr im Panel Routen eine Route.',
+				'en_US' => 'The login page: the site\'s frames, a title, a short text and [members-login]. The gate renders it in place of a protected page and a link renders it for a token that is not valid; a project that wants an address of its own for it gives it a route in the Routes panel. A site that has the page already keeps its copy - the unit only adds what is missing -: put the template in again in the Builder to get the wording of the code sign-in.',
+				'de_DE' => 'Die Anmeldeseite: die Rahmen der Website, ein Titel, ein kurzer Text und [members-login]. Das Tor rendert sie an Stelle einer geschützten Seite, und ein Link rendert sie für einen Token, der nicht gültig ist; ein Projekt, das eine eigene Adresse dafür will, gibt ihr im Panel Routen eine Route. Hat die Site die Seite schon, behält sie ihre Kopie – die Einheit ergänzt nur, was fehlt –: Spiele die Vorlage im Builder neu ein, um die Worte des Code-Logins zu bekommen.',
 			],
 			'templates/page-members-confirm.tpl' => [
 				'en_US' => 'The page a link of the mail opens: the site\'s frames, a title, a short text and [members-confirm], the button that signs the member in. Nothing is used up until the button is pressed, which is what keeps a mail scanner from using a link up. The link renders it; a project that wants an address of its own for it gives it a route in the Routes panel.',
 				'de_DE' => 'Die Seite, die ein Link der Mail öffnet: die Rahmen der Website, ein Titel, ein kurzer Text und [members-confirm], der Button, der das Mitglied anmeldet. Verbraucht wird erst, wenn der Button gedrückt ist – so verbraucht kein Mail-Scanner einen Link. Der Link rendert sie; ein Projekt, das eine eigene Adresse dafür will, gibt ihr im Panel Routen eine Route.',
 			],
 			'text/<locale>.php' => [
-				'en_US' => 'Its words, into the Text panel - those of the two pages, the forms, their messages and the five mails: the code, the login link, the invitation, the code for a new sign-in address and the notice to the old one that it was changed.',
-				'de_DE' => 'Seine Worte, ins Panel Texte – die der beiden Seiten, der Formulare, ihrer Meldungen und der fünf Mails: der Code, der Anmeldelink, die Einladung, der Code für eine neue Anmeldeadresse und der Hinweis an die alte, dass sie geändert wurde.',
+				'en_US' => 'Its words, into the Text panel - those of the two pages, the forms, their messages and the six mails: the code, the login link, the invitation, the link of the owner, the code for a new sign-in address and the notice to the old one that it was changed.',
+				'de_DE' => 'Seine Worte, ins Panel Texte – die der beiden Seiten, der Formulare, ihrer Meldungen und der sechs Mails: der Code, der Anmeldelink, die Einladung, der Link des Inhabers, der Code für eine neue Anmeldeadresse und der Hinweis an die alte, dass sie geändert wurde.',
 			],
 			'elements/privacy.php' => [
 				'en_US' => 'Its section of the privacy policy, added to the Legal module\'s type - never replacing a section. Where there is no such module, nothing happens. A starting point, no legal advice. It names fifteen minutes, five tries, seven days and ninety days, the defaults of the settings linkMinutes, inviteDays and rememberDays and of the tries of a code, and the cookie nino_remember: whoever changes a setting changes the section in the Elements panel too.',
@@ -243,7 +243,7 @@ return [
 			'source'		=> 'none',
 			'loop'			=> false,
 			'preview'		=> 'button',
-			'draws'			=> 'a .members-logout',
+			'draws'			=> 'form .members-logout-form',
 			'in'				=> [ 'section', 'card', 'hero' ],
 			'icon'			=> [
 				[ 'path', [ 'd' => 'm16 17 5-5-5-5' ] ],

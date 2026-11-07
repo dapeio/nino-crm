@@ -416,7 +416,7 @@ $stateKeys = ( new ReflectionClassConstant( \Nino\Modules\Members::class, 'STATE
 foreach( ( new ReflectionClassConstant( \Nino\Modules\Members::class, 'STATES' ) )->getValue() as $state )
 	$read[] = '[[/feature/members/state/'. ( $stateKeys[$state] ?? $state ). ']]';
 
-foreach( [ 'login', 'invite', 'code', 'change', 'changed' ] as $kind )
+foreach( [ 'login', 'invite', 'send', 'code', 'change', 'changed' ] as $kind )
 	$read[] = '[[/feature/members/mail/'. $kind. '-subject]]';
 
 $read = array_values( array_unique( array_filter( $read, static fn( string $key ): bool => str_contains( $key, 'state/[[' ) === false && str_contains( $key, '/state/name' ) === false ) ) );
@@ -463,7 +463,7 @@ $schemas = array_intersect_key( $registry, array_flip( [ 'members-login', 'membe
 
 check( 'the registry knows the four as this feature\'s own, each with what it draws, where it may stand and a picture of its own - the confirmation in a section alone, the others in a section, a card and a hero',
 	array_keys( $schemas ) === [ 'members-login', 'members-logout', 'members-name', 'members-confirm' ] && array_unique( array_column( $schemas, 'by' ) ) === [ 'members' ]
-	&& array_values( array_column( $schemas, 'draws' ) ) === [ 'form .members-login', 'a .members-logout', 'span .members-name', 'form .members-confirm' ]
+	&& array_values( array_column( $schemas, 'draws' ) ) === [ 'form .members-login', 'form .members-logout-form', 'span .members-name', 'form .members-confirm' ]
 	&& array_values( array_column( $schemas, 'preview' ) ) === [ 'block', 'button', 'text', 'block' ]
 	&& array_values( array_map( 'json_encode', array_column( $schemas, 'in' ) ) ) === [ '["section","card","hero"]', '["section","card","hero"]', '["section","card","hero"]', '["section"]' ]
 	&& array_filter( $schemas, static fn( array $schema ): bool => $schema['source'] !== 'none' || $schema['loop'] !== false || count( $schema['icon'] ) < 2 ) === [] );
@@ -1501,12 +1501,13 @@ check( '...and that page is a whole one: a title, the form, and the message that
 membersSignIn( $appData, $ada );
 $member = \Nino\Html::renderHtml( $appData, '[members-login class="quiet"]' );
 $signed = membersFind( $member, '//div[contains(@class, "members-signed")]' );
-check( 'for a member [members-login] is their name and a link to sign out - no form, no field - with the class of the call', count( $signed ) === 1 && membersClasses( $signed[0] ) === [ 'members-signed', 'quiet' ] && count( membersFind( $member, '//form' ) ) === 0 && count( membersFind( $member, '//input' ) ) === 0
+check( 'for a member [members-login] is their name and the form to sign out - a post to the endpoint with the csrf token and one button, no field for an address - with the class of the call', count( $signed ) === 1 && membersClasses( $signed[0] ) === [ 'members-signed', 'quiet' ] && count( membersFind( $member, '//form' ) ) === 1 && count( membersFind( $member, '//input[@type="email"]' ) ) === 0
 	&& trim( membersFind( $member, '//strong[contains(@class, "members-signed__name")]' )[0]->textContent ) === 'Ada Lovelace'
-	&& membersFind( $member, '//a[contains(@class, "members-logout")]' )[0]->getAttribute( 'href' ) === '/.members/logout' );
-$logout = membersFind( \Nino\Html::renderHtml( $appData, '[members-logout class="quiet"]' ), '//a' );
+	&& membersFind( $member, '//form' )[0]->getAttribute( 'action' ) === '/.members/logout' && strtolower( membersFind( $member, '//form' )[0]->getAttribute( 'method' ) ) === 'post'
+	&& count( membersFind( $member, '//form/input[@type="hidden"][@name="_csrf"]' ) ) === 1 && count( membersFind( $member, '//form/button[@type="submit"][contains(@class, "members-logout")]' ) ) === 1 && count( membersFind( $member, '//a[contains(@class, "members-logout")]' ) ) === 0 );
+$logout = membersFind( \Nino\Html::renderHtml( $appData, '[members-logout class="quiet"]' ), '//form' );
 $name = membersFind( \Nino\Html::renderHtml( $appData, '[members-name class="quiet"]' ), '//span' );
-check( '[members-logout] is that link and [members-name] the name, each with the class of the call', count( $logout ) === 1 && $logout[0]->getAttribute( 'href' ) === '/.members/logout' && membersClasses( $logout[0] ) === [ 'members-logout', 'quiet' ]
+check( '[members-logout] is that form and [members-name] the name, each with the class of the call', count( $logout ) === 1 && $logout[0]->getAttribute( 'action' ) === '/.members/logout' && membersClasses( $logout[0] ) === [ 'members-logout-form', 'quiet' ]
 	&& count( $name ) === 1 && $name[0]->textContent === 'Ada Lovelace' && membersClasses( $name[0] ) === [ 'members-name', 'quiet' ] );
 
 $hostile = [ '<img src=x onerror=alert(1)>' => 'img', '"><script>alert(1)</script>' => 'script', '[[/project/company/general/name]]' => '', '[members-logout]' => '' ];
@@ -1516,7 +1517,7 @@ foreach( $hostile as $name => $element ) {
 	\Nino\Modules\Members::change( $appData, $ada['id'], [ 'name' => $name ] );
 	$html = \Nino\Html::renderHtml( $appData, '[members-name][members-login]' );
 	$asked = \Nino\Html::renderHtml( $appData, (string) membersAnswer( membersServe( $appData, '/.members/login?t='. membersLink( $appData, $ada ) ) )[3] );
-	$escaped[$name] = ( $element === '' || count( membersFind( $html, '//'. $element ) ) === 0 ) && str_contains( $html, '[[/project' ) === false && count( membersFind( $html, '//a[contains(@class, "members-logout")]' ) ) === 1
+	$escaped[$name] = ( $element === '' || count( membersFind( $html, '//'. $element ) ) === 0 ) && str_contains( $html, '[[/project' ) === false && count( membersFind( $html, '//form/button[contains(@class, "members-logout")]' ) ) === 1
 		&& membersFind( $html, '//span[contains(@class, "members-name")]' )[0]->textContent === $name
 		&& ( $element === '' || count( membersFind( $asked, '//'. $element ) ) === 0 ) && str_contains( $asked, '[[/project' ) === false && membersText( $asked, '//p[contains(@class, "members-confirm__name")]' ) === $name;
 }
@@ -1570,24 +1571,29 @@ $old = membersLink( $appData, $ada );
 $stale = membersLink( $appData, $ada );
 $file = membersFile( $appData, 'tokens' );
 $file[ hash( 'sha256', $old ) ]['expires'] = time() - 1;
-$file[ hash( 'sha256', $stale ) ]['expires'] = time() - 3600;
+$kept = ( new ReflectionClassConstant( \Nino\Modules\Members::class, 'LINK_KEEP' ) )->getValue();
+$file[ hash( 'sha256', $stale ) ]['expires'] = time() - $kept - 3600;
 \Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
 $fresh = membersLink( $appData, $ada );
 $afterIssue = membersFile( $appData, 'tokens' );
 $expired = membersAnswer( membersServe( $appData, '/.members/login?t='. $old ) );
 $expiredPressed = membersAnswer( membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $old ] ) );
 check( 'a token that has run out is refused - the same page, 400, on the page and on the button', $expired === [ 400, '', 'no-store', '[template /templates/page-members-login]' ] && $expiredPressed === $expired && \Nino\Modules\Members::current( $appData ) === null );
-check( '...and the entries that have run out go in the write that makes the next token, and the one that spends one', array_keys( $afterIssue ) === [ hash( 'sha256', $fresh ) ] && count( membersFile( $appData, 'tokens' ) ) === 1 );
+$keys = array_keys( $afterIssue );
+sort( $keys );
+$both = [ hash( 'sha256', $old ), hash( 'sha256', $fresh ) ];
+sort( $both );
+check( '...and the record of a link that ran out is kept for a while, for the page that says it no longer works to lead to where the link led; one that is older than that goes in the write that makes the next token', $keys === $both && count( membersFile( $appData, 'tokens' ) ) === 2 );
 
 $file = membersFile( $appData, 'tokens' );
-$file[ hash( 'sha256', $old ) ] = [ 'account' => $ada['id'], 'kind' => 'login', 'expires' => time() - 5, 'target' => '' ];
+$file[ hash( 'sha256', $old ) ] = [ 'account' => $ada['id'], 'kind' => 'login', 'expires' => time() - $kept - 5, 'target' => '' ];
 \Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
 
 // What cannot be a token is not looked up, so it writes nothing either - the dead entry is still there when it has been pressed
 membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => 'abc' ] );
 $untouched = membersFile( $appData, 'tokens' ) === $file;
 membersConfirm( $appData, $fresh );
-check( '...a link that is followed takes the dead entries with it - and a text that cannot be a token leaves the file as it is', $untouched === true && membersFile( $appData, 'tokens' ) === [] );
+check( '...a link that is followed takes the entries that are dead for good with it - and a text that cannot be a token leaves the file as it is', $untouched === true && membersFile( $appData, 'tokens' ) === [] );
 
 // An invitation signs in in the same two steps
 membersVisitor();
@@ -1649,7 +1655,7 @@ check( '...the prefix itself is shut as well, and so is a path below it that no 
 
 membersVisitor();
 $outside = [ membersAnswer( membersServe( $appData, '/clubhouse' ) ), membersAnswer( membersServe( $appData, '/news' ) ) ];
-$own = [ membersAnswer( membersServe( $appData, '/.members/login' ) )[0], membersAnswer( membersServe( $appData, '/.members/logout' ) )[0], membersAnswer( membersServe( $appData, '/_admin' ) )[0] ];
+$own = [ membersAnswer( membersServe( $appData, '/.members/login' ) )[0], membersAnswer( membersServe( $appData, '/.members/logout', 'POST' ) )[0], membersAnswer( membersServe( $appData, '/_admin' ) )[0] ];
 check( 'a path outside the protected ones, the endpoints of the feature and the workbench are not gated: the page is the page, and the session keeps no path', $outside[0][0] === 200 && $outside[0][3] === 'FOR EVERYBODY' && $outside[1][3] === 'FOR EVERYBODY'
 	&& $own === [ 400, 303, 404 ] && \Nino\Runtime::getSessionValue( $appData, './members/target' ) === null );
 
@@ -1835,18 +1841,18 @@ echo "Modules\\Members - signing out, for one member and for everybody\n";
 
 membersSignIn( $appData, $ada );
 $told = [];
-$out = membersServe( $appData, '/.members/logout' );
-check( 'the logout link signs the member out and goes (303) to the start page with ?members=out, stored by no one; the features that build on it are told, with the account', membersAnswer( $out ) === [ 303, '/?members=out', 'no-store', '' ]
+$out = membersServe( $appData, '/.members/logout', 'POST' );
+check( 'the logout form posts to the endpoint: it signs the member out and goes (303) to the start page with ?members=out, stored by no one; the features that build on it are told, with the account', membersAnswer( $out ) === [ 303, '/?members=out', 'no-store', '' ]
 	&& \Nino\Modules\Members::current( $appData ) === null && \Nino\Runtime::getSessionValue( $appData, './members/account' ) === null && count( $told ) === 1 && $told[0][0] === 'logout' && $told[0][1]['id'] === $ada['id'] );
 $told = [];
-$again = membersServe( $appData, '/.members/logout' );
+$again = membersServe( $appData, '/.members/logout', 'POST' );
 check( '...and it is the same for somebody who is not signed in - and nobody is told of that', membersAnswer( $again ) === membersAnswer( $out ) && $told === [] );
 ninoVisit( $appData, '/?members=out' );
 $page = membersFind( \Nino\Html::renderHtml( $appData, '[members-login]' ), '//form/p' );
 check( '...and the page it goes to says so: the state out, in the form', count( $page ) === 1 && $page[0]->textContent === $states['out'][0]->textContent );
 
 \Nino\Features::saveSettings( $appData, 'members', [ 'start' => '/club' ] );
-check( '...the start page of the setting is where it goes', membersAnswer( membersServe( $appData, '/.members/logout' ) )[1] === '/club?members=out' );
+check( '...the start page of the setting is where it goes', membersAnswer( membersServe( $appData, '/.members/logout', 'POST' ) )[1] === '/club?members=out' );
 \Nino\Features::saveSettings( $appData, 'members', [ 'start' => '/' ] );
 
 // Everybody out at once: two members in two browsers, a new epoch, and both are out
@@ -1897,7 +1903,7 @@ $asked = membersServe( $appData, '/.members/login?t='. $token );
 $request = membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $token ] );
 check( 'the sign-in is a value of the session - the answers that ask for it and bring it set no cookie of their own, nor does the one that ends it', array_key_exists( 'Set-Cookie', $asked['/nino/http/response']['header'] ) === false
 	&& array_key_exists( 'Set-Cookie', $request['/nino/http/response']['header'] ) === false && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $ada['id']
-	&& array_key_exists( 'Set-Cookie', membersServe( $appData, '/.members/logout' )['/nino/http/response']['header'] ) === false );
+	&& array_key_exists( 'Set-Cookie', membersServe( $appData, '/.members/logout', 'POST' )['/nino/http/response']['header'] ) === false );
 
 echo "\n";
 
@@ -2782,7 +2788,7 @@ function membersDeviceChecks( array &$appData, array &$told ): void {
 	unset( $appData['./members/cookies'] );
 	$_COOKIE['nino_remember'] = $two;
 	$told = [];
-	membersServe( $appData, '/.members/logout' );
+	membersServe( $appData, '/.members/logout', 'POST' );
 	unset( $_COOKIE['nino_remember'] );
 	$left = membersDevices( $appData, $eveId );
 	$out = membersCookies( $appData );
@@ -2792,7 +2798,7 @@ function membersDeviceChecks( array &$appData, array &$told ): void {
 	membersVisitor();
 	unset( $appData['./members/cookies'] );
 	$_COOKIE['nino_remember'] = 'garbage';
-	membersServe( $appData, '/.members/logout' );
+	membersServe( $appData, '/.members/logout', 'POST' );
 	unset( $_COOKIE['nino_remember'] );
 	check( '...a sign-out with a cookie that is garbage deletes it too and changes nothing', count( membersCookies( $appData ) ) === 1 && count( membersDevices( $appData, $eveId ) ) === 1 );
 
@@ -2931,7 +2937,7 @@ function membersDeviceChecks( array &$appData, array &$told ): void {
 	membersVisitor();
 	unset( $appData['./members/cookies'] );
 	$_COOKIE['nino_remember'] = $first;
-	membersServe( $appData, '/.members/logout' );
+	membersServe( $appData, '/.members/logout', 'POST' );
 	unset( $_COOKIE['nino_remember'] );
 	membersCookies( $appData );
 	check( 'signing out with the token that was just replaced takes the device out of the account all the same: the list is one shorter, and the new token signs nobody in',
@@ -2984,4 +2990,205 @@ else {
 }
 
 echo "\n";
+membersFixRoundChecks( $appData );
+membersRememberFixChecks( $appData );
+
+echo "\n";
 ninoDone( $appData );
+
+/**
+ *	The checks of the first round of errors: the link of the owner with its kind, its days and its mail; where a link that ran out led; the place on the page behind the
+ *	return of the form; and the sign-out as a post with the token
+ *
+ *	@param		array 		&$appData
+ *
+ *	@return 	void
+ */
+function membersFixRoundChecks( array &$appData ): void {
+
+	global $mails, $told;
+
+	echo "Modules\\Members - the first round of errors\n";
+
+	\Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [ '/club' ], 'start' => '/' ] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members.php', [] );
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', [] );
+	$member = \Nino\Modules\Members::add( $appData, 'fix@example.org', 'Fix', '' );
+	$days = (int) \Nino\Features::setting( $appData, 'members', 'inviteDays', 7 ) * 86400;
+	$minutes = (int) \Nino\Features::setting( $appData, 'members', 'linkMinutes', 15 ) * 60;
+	$target = '/club/news#beleg-7';
+
+	// The kind send: the link the owner sends to an account that is a member already
+	membersFresh( $appData );
+	$count = count( $mails );
+	$sent = \Nino\Modules\Members::link( $appData, $member, 'send', $target, true );
+	$token = $sent === true && count( $mails ) === $count + 1 ? membersTokenOf( $mails[$count] ) : '';
+	$entry = (array) ( membersFile( $appData, 'tokens' )[ hash( 'sha256', $token ) ] ?? [] );
+	membersFresh( $appData );
+	$login = membersLink( $appData, $member, 'login' );
+	$loginEntry = (array) ( membersFile( $appData, 'tokens' )[ hash( 'sha256', $login ) ] ?? [] );
+	check( 'a link of the kind send is kept for the days of an invitation, a link to sign in for the minutes of the setting, and the record carries the target', ( $entry['kind'] ?? '' ) === 'send' && abs( ( $entry['expires'] ?? 0 ) - time() - $days ) <= 5 && ( $entry['target'] ?? '' ) === $target
+		&& ( $loginEntry['kind'] ?? '' ) === 'login' && abs( ( $loginEntry['expires'] ?? 0 ) - time() - $minutes ) <= 5 && $days > $minutes );
+	check( '...its mail is the one of its kind: the subject is the word of send-subject and not the one of the login link, and the link is in it', trim( (string) $mails[$count]['subject'] ) === trim( \Nino\Html::renderHtml( $appData, '[[/feature/members/mail/send-subject]]' ) ) && $mails[$count]['subject'] !== \Nino\Html::renderHtml( $appData, '[[/feature/members/mail/login-subject]]' )
+		&& str_contains( (string) $mails[$count]['body'], '[[' ) === false && str_contains( (string) $mails[$count]['body'], '/.members/login?t='. $token ) === true );
+	check( '...and its body is the text of the kind: the intro and the validity of send, and not the intro of the login link', str_contains( (string) $mails[$count]['body'], trim( \Nino\Html::renderHtml( $appData, '[[/feature/members/mail/send-intro]]' ) ) ) === true && str_contains( (string) $mails[$count]['body'], trim( \Nino\Html::renderHtml( $appData, '[[/feature/members/mail/send-valid]]' ) ) ) === true
+		&& str_contains( (string) $mails[$count]['body'], trim( \Nino\Html::renderHtml( $appData, '[[/feature/members/mail/login-intro]]' ) ) ) === false );
+	check( '...a kind that is none is no link', \Nino\Modules\Members::link( $appData, $member, 'code', '', true ) === false && \Nino\Modules\Members::link( $appData, $member, 'bogus', '', true ) === false );
+
+	// What the page of a link that ran out leads on to: the target the server stored, for the code of the next sign-in, and nothing the address says
+	$file = membersFile( $appData, 'tokens' );
+	$file[ hash( 'sha256', $token ) ]['expires'] = time() - 60;
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
+	membersVisitor();
+	$ended = membersAnswer( membersServe( $appData, '/.members/login?t='. $token. '&return=%2Fclub%2Fother' ) );
+	check( 'the link that ran out answers the login page in place, 400, and the session holds the target the record has - not one of the address', $ended[0] === 400 && $ended[3] === '[template /templates/page-members-login]' && \Nino\Runtime::getSessionValue( $appData, './members/target' ) === $target );
+	$code = membersAskCode( $appData, 'fix@example.org', '/' );
+	$signed = membersCodeServe( $appData, $code, '/' );
+	check( '...and the code the form of that page asks for leads to that page, place and all', $signed[0] === 303 && $signed[1] === $target && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $member['id'] );
+
+	$none = [];
+	$forged = static fn(): string => rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
+	$put = static function( string $text, int $expires, string $kind = 'send' ) use ( &$appData, $member, $forged ): string {
+		$token = $forged();
+		$file = membersFile( $appData, 'tokens' );
+		$file[ hash( 'sha256', $token ) ] = [ 'account' => $member['id'], 'kind' => $kind, 'expires' => $expires, 'target' => $text ];
+		\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
+
+		return $token;
+	};
+	$kept = ( new ReflectionClassConstant( \Nino\Modules\Members::class, 'LINK_KEEP' ) )->getValue();
+
+	foreach( [ 'a token the file does not know' => $forged(), 'a target that is no path' => $put( '//evil.example', time() - 60 ), 'a target that is an endpoint' => $put( '/.members/logout', time() - 60 ), 'a record older than it is kept' => $put( $target, time() - $kept - 60 ),
+		'a record of a code' => $put( $target, time() - 60, 'code' ), 'a text that is no token' => 'abc' ] as $label => $text ) {
+		membersVisitor();
+		membersServe( $appData, '/.members/login?t='. $text );
+		membersServe( $appData, '/.members/confirm', 'POST', [ 'token' => $text ] );
+		$none[$label] = \Nino\Runtime::getSessionValue( $appData, './members/target' ) === null;
+	}
+
+	$live = $put( $target, time() + 600 );
+	membersVisitor();
+	$page = membersAnswer( membersServe( $appData, '/.members/login?t='. $live ) );
+	$none['a link that is still good'] = $page[0] === 200 && \Nino\Runtime::getSessionValue( $appData, './members/target' ) === null;
+	membersConfirm( $appData, $live );
+	membersVisitor();
+	membersServe( $appData, '/.members/login?t='. $live );
+	$none['a link that was spent'] = \Nino\Runtime::getSessionValue( $appData, './members/target' ) === null;
+	check( 'no target is kept for a token the file does not know, for a target that is no path or an endpoint, a record older than the server keeps it, a code, a text that is no token, a link that is still good and a link that was spent', array_filter( $none, static fn( bool $same ): bool => $same === false ) === [] && count( $none ) === 8 );
+
+	// Codes that ran out go with the next write, links that ran out stay for the time they are kept; a switched-off account with a link that is good has no target to lead to
+	$file = membersFile( $appData, 'tokens' );
+	$dead = [ 'code' => [ 'a1', [] ], 'change' => [ 'a2', [ 'email' => 'neu@example.org' ] ] ];
+
+	foreach( $dead as $kind => [ $label, $extra ] )
+		$file[ hash( 'sha256', 'dead-'. $kind ) ] = [ 'account' => $member['id'], 'kind' => $kind, 'expires' => time() - 60, 'target' => '/club/x' ] + $extra;
+
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
+	$linkKept = $put( $target, time() - 60 );
+	membersLink( $appData, $member, 'login' );
+	$after = membersFile( $appData, 'tokens' );
+	check( 'an entry of a code or of a change that ran out goes with the next write that makes a token, and the record of a link that ran out stays', isset( $after[ hash( 'sha256', 'dead-code' ) ] ) === false && isset( $after[ hash( 'sha256', 'dead-change' ) ] ) === false && isset( $after[ hash( 'sha256', $linkKept ) ] ) === true );
+	$off = \Nino\Modules\Members::add( $appData, 'off@example.org', 'Off', '' );
+	\Nino\Modules\Members::change( $appData, $off['id'], [ 'active' => false ] );
+	$offToken = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
+	$file = membersFile( $appData, 'tokens' );
+	$file[ hash( 'sha256', $offToken ) ] = [ 'account' => $off['id'], 'kind' => 'send', 'expires' => time() + 600, 'target' => $target ];
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
+	membersVisitor();
+	$offPage = membersAnswer( membersServe( $appData, '/.members/login?t='. $offToken ) );
+	check( 'a switched-off account with a link that is good is refused (400) and the session keeps no target for it', $offPage[0] === 400 && \Nino\Runtime::getSessionValue( $appData, './members/target' ) === null );
+
+	// The place on the page behind the return of the form: kept for the page the gate kept the path of, as letters, digits, hyphens and underscores
+	$cases = [
+		'a place'                 => [ '/club/news#a-1', '/club/news?x=1#a-1' ],
+		'capitals and underscore' => [ '/club/news#Beleg_7', '/club/news?x=1#Beleg_7' ],
+		'no place'                => [ '/club/news', '/club/news?x=1' ],
+		'a second hash'           => [ '/club/news#a#b', '/club/news?x=1' ],
+		'markup'                  => [ '/club/news#<img', '/club/news?x=1' ],
+		'an encoded hash'         => [ '/club/news#a%23b', '/club/news?x=1' ],
+		'an empty place'          => [ '/club/news#', '/club/news?x=1' ],
+		'a blank'                 => [ '/club/news#a b', '/club/news?x=1' ],
+		'65 characters'           => [ '/club/news#'. str_repeat( 'a', 65 ), '/club/news?x=1' ],
+		'another page'            => [ '/club/other#a-1', '/club/news?x=1' ],
+		'a query of the return'   => [ '/club/news?y=2#a-1', '/club/news?x=1#a-1' ],
+	];
+	$led = [];
+
+	foreach( $cases as $label => [ $return, $expected ] ) {
+		membersVisitor();
+		membersServe( $appData, '/club/news?x=1' );
+		$code = membersAskCode( $appData, 'fix@example.org', $return );
+		$led[$label] = membersCodeServe( $appData, $code, $return )[1] === $expected;
+	}
+
+	check( 'the gate keeps the page asked for and the form of the login brings the place of the address behind its return: the sign-in leads to the page with the place - and to the page alone where the place is no letters, digits, hyphens and underscores, is longer than 64, or the return names another page - the query of the return does not matter', array_filter( $led, static fn( bool $same ): bool => $same === false ) === [] && count( $led ) === 11 );
+	membersVisitor();
+	$redirect = membersAnswer( membersServe( $appData, '/.members/login', 'POST', [ 'email' => 'fix@example.org', 'return' => '/club/news#a-1' ] ) );
+	check( '...and the return that carries it still goes back to the path of the page alone: the redirect of the form has no place and no query of the return', $redirect[1] === '/club/news?members=sent' );
+	membersVisitor();
+	membersServe( $appData, '/club/news?x=1' );
+	$asked = membersAskCode( $appData, 'fix@example.org', '/club/news#a-1' );
+	$again = membersCodeServe( $appData, $asked, '/club/news#zzz-9' );
+	check( '...and what the code step posts as its return is not where it leads: the record of the code does', $again[1] === '/club/news?x=1#a-1' );
+
+	// The sign-out is a post with the token of the session
+	membersSignIn( $appData, $member );
+	$told = [];
+	$get = membersServe( $appData, '/.members/logout' );
+	check( 'a GET of /.members/logout is 405 with the header Allow and a page that links to the start page - nobody is signed out, nobody is told', $get['/nino/http/response']['statusCode'] === 405 && ( $get['/nino/http/response']['header']['Allow'] ?? '' ) === 'POST' && ( $get['/nino/http/response']['header']['Cache-Control'] ?? '' ) === 'no-store'
+		&& membersFind( (string) $get['/nino/http/response']['body'], '//a/@href' )[0]->nodeValue === '/' && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $member['id'] && $told === [] );
+	$blocked = membersServe( $appData, '/.members/logout', 'POST', [], false );
+	$wrong = membersServe( $appData, '/.members/logout', 'POST', [ '_csrf' => 'not-the-token' ], false );
+	check( '...a post without the token and one with a token that is wrong are 403 and sign nobody out', $blocked['/nino/http/response']['statusCode'] === 403 && $wrong['/nino/http/response']['statusCode'] === 403 && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $member['id'] && $told === [] );
+	$out = membersServe( $appData, '/.members/logout', 'POST' );
+	check( '...a post with the token signs the member out, tells the features once and goes to the start page with ?members=out', membersAnswer( $out )[0] === 303 && membersAnswer( $out )[1] === '/?members=out' && \Nino\Modules\Members::current( $appData ) === null && count( $told ) === 1 && $told[0][0] === 'logout' );
+	check( '...the routes of the endpoint are the GET that answers 405 and the POST that signs out', ( $appData['/nino/http/routes']['POST://.members/logout']['uri'] ?? '' ) === '/.members/logout' && ( $appData['/nino/http/routes']['GET://.members/logout']['uri'] ?? '' ) === '/.members/logout' );
+}
+
+/**
+ *	The checks of the last round: a GET of the sign-out leaves the device as it is, and a link that ran out is no reason for a device that stays signed in to ask for a code
+ *
+ *	@param		array 		&$appData
+ *
+ *	@return 	void
+ */
+function membersRememberFixChecks( array &$appData ): void {
+
+	global $mails;
+
+	echo "Modules\\Members - the sign-out by GET and a link that ran out, on a device that stays signed in\n";
+
+	\Nino\Features::saveSettings( $appData, 'members', [ 'paths' => [ '/club' ], 'start' => '/' ] );
+	$dev = \Nino\Modules\Members::add( $appData, 'dev-fix@example.org', 'Dev', '' );
+	membersFresh( $appData );
+	$cookie = membersCookieValue( membersDevice( $appData, 'dev-fix@example.org' )[0] ?? '' );
+	$before = membersDevices( $appData, $dev['id'] );
+
+	$get = membersVisitWith( $appData, $cookie, '/.members/logout' );
+	check( 'a GET of /.members/logout is 405 and leaves the token of the device in the account and the cookie alone: no line of Set-Cookie, and the same cookie still signs in', $get[0]['/nino/http/response']['statusCode'] === 405 && $get[1] === []
+		&& membersDevices( $appData, $dev['id'] ) === $before && ( membersVisitWith( $appData, $cookie )[2]['id'] ?? '' ) === $dev['id'] );
+
+	// The cookie was replaced by that last visit: a device of its own
+	membersFresh( $appData );
+	$cookie = membersCookieValue( membersDevice( $appData, 'dev-fix@example.org' )[0] ?? '' );
+	$target = '/club/news#beleg-3';
+	membersFresh( $appData );
+	$count = count( $mails );
+	\Nino\Modules\Members::link( $appData, $dev, 'send', $target, true );
+	$token = membersTokenOf( $mails[$count] );
+	$file = membersFile( $appData, 'tokens' );
+	$file[ hash( 'sha256', $token ) ]['expires'] = time() - 60;
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
+	$count = count( $mails );
+
+	$with = membersVisitWith( $appData, $cookie, '/.members/login?t='. $token );
+	$answer = membersAnswer( $with[0] );
+	check( 'a link that ran out, opened on a device with a good cookie: 303 to the page the link led to, the member is signed in and no mail goes out - no page that says the link does not work, no form', $answer[0] === 303 && $answer[1] === $target && ( $with[2]['id'] ?? '' ) === $dev['id'] && count( $mails ) === $count );
+
+	$without = membersVisitWith( $appData, 'garbage', '/.members/login?t='. $token );
+	membersVisitor();
+	unset( $_COOKIE['nino_remember'] );
+	$plain = membersAnswer( membersServe( $appData, '/.members/login?t='. $token ) );
+	check( '...and with no cookie, or one that is no good, it is the page that says so (400) with the target kept for the code, as it is', $plain[0] === 400 && $plain[3] === '[template /templates/page-members-login]' && \Nino\Runtime::getSessionValue( $appData, './members/target' ) === $target
+		&& membersAnswer( $without[0] )[0] === 400 && $without[2] === null );
+}

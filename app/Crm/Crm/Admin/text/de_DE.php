@@ -19,6 +19,7 @@ return [
 	'[[/_admin/crm/setup/notify]]' => 'Review schreibt Dir jetzt eine Mail, wenn ein Kunde eine Datei kommentiert; ändern kannst Du das in den Einstellungen des Features Review.',
 	'[[/_admin/crm/setup/privacy]]' => 'Die Datenschutzerklärung ist eingetragen; lies sie in den Einstellungen durch und passe sie an Deine Angaben an.',
 	'[[/_admin/crm/setup/privacy-there]]' => 'Die Datenschutzerklärung war schon da und bleibt.',
+	'[[/_admin/crm/setup/units]]' => 'Nachgetragen aus den Features: Worte %s, Vorlagen %s.',
 	'[[/_admin/crm/setup/home-new]]' => 'Die Startseite ist jetzt das Tor des Portals.',
 	'[[/_admin/crm/setup/home-starter]]' => 'Die Startseite ist jetzt das Tor des Portals; die Seite /home des Assistenten ist nicht mehr verlinkt.',
 	'[[/_admin/crm/setup/home-own]]' => 'Deine Startseite bleibt; das Tor des Portals liegt unter /portal.',
@@ -34,6 +35,7 @@ return [
 	'[[/_admin/crm/status/lacks-start]]' => 'die Startseite des Features Mitglieder',
 	'[[/_admin/crm/status/pdf-templates-none]]' => 'Die PDF-Vorlagen fehlen noch. Das Einrichten legt sie an.',
 	'[[/_admin/crm/status/pdf-templates-partial]]' => 'Es fehlen PDF-Vorlagen: %s. Das Einrichten legt sie an, Deine eigenen bleiben.',
+	'[[/_admin/crm/status/features-units-partial]]' => 'Die Worte und Vorlagen der Features sind nicht vollständig, es fehlen: %s. Das Einrichten trägt sie nach; was Du geändert hast, bleibt.',
 	'[[/_admin/crm/status/mail-cap-ok]]' => '%s Aufrufe je Stunde (0 heißt: kein Deckel).',
 	'[[/_admin/crm/status/mail-cap-default]]' => 'Es gilt der Kernel-Standard von %s Aufrufen je Stunde, das ist für ein Portal zu knapp. Das Einrichten setzt ihn auf 100.',
 	'[[/_admin/crm/status/notify-ok]]' => 'Die Benachrichtigung des Betreibers in Review ist eingestellt.',
@@ -65,4 +67,5 @@ return [
 
 	'[[/_admin/error/crm_setup_feature]]' => 'Das Feature %s konnte nicht eingeschaltet werden. Das Panel Features nennt den Grund.',
 	'[[/_admin/error/crm_setup_pdf]]' => 'Die PDF-Vorlagen konnten nicht angelegt werden: %s.',
+	'[[/_admin/error/crm_setup_unit]]' => 'Die Worte und Vorlagen des Features %s konnten nicht eingetragen werden.',
 ];

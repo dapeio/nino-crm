@@ -64,6 +64,13 @@ return [
 	'[[/feature/members/mail/invite-valid]]'	=> 'Die Einladung funktioniert einmal und ist gültig für',
 	'[[/feature/members/mail/invite-days]]'		=> 'Tage.',
 	'[[/feature/members/mail/invite-notice]]'	=> 'Wenn Du diese Einladung nicht erwartet hast, ignoriere diese E-Mail.',
+	'[[/feature/members/mail/send-subject]]'	=> 'Ein Link für Dich',
+	'[[/feature/members/mail/send-title]]'	=> 'Ein Link für Dich von',
+	'[[/feature/members/mail/send-intro]]'	=> 'Wir schicken Dir einen Link zu Deinem Konto. Der Button öffnet eine Seite, auf der Du die Anmeldung mit einem weiteren Klick bestätigst – ein Passwort brauchst Du nicht. Danach siehst Du, worum es geht.',
+	'[[/feature/members/mail/send-button]]'	=> 'Link öffnen',
+	'[[/feature/members/mail/send-valid]]'	=> 'Der Link funktioniert einmal und ist gültig für',
+	'[[/feature/members/mail/send-days]]'		=> 'Tage.',
+	'[[/feature/members/mail/send-notice]]'	=> 'Wenn Du diesen Link nicht erwartet hast, ignoriere diese E-Mail.',
 
 	// Die Mail mit dem Code für eine neue Anmeldeadresse (an die neue Adresse) und der Hinweis an die alte Adresse, dass sie geändert wurde
 	'[[/feature/members/mail/change-subject]]'	=> 'Dein Code für die neue Anmeldeadresse',

@@ -11,7 +11,7 @@
 		<div class="members-signed" id="members-signed">
 			<span class="members-signed__label">[[short]]</span>
 			<strong class="members-signed__name" id="members-name">[[short]]</strong>
-			<a href="#members-signed" class="members-logout" id="members-logout">[[short]]</a>
+			<span class="members-logout-form"><button type="button" class="members-logout" id="members-logout">[[short]]</button></span>
 		</div>
 	</div>
 </div>

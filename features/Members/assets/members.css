@@ -150,12 +150,24 @@
 	font-weight: 600;
 }
 
-.members-signed .members-logout {
+.members-logout-form {
+	display: inline;
+	margin: 0;
+}
+
+.members-signed .members-logout-form {
 	margin-left: auto;
 }
 
 .members-logout {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
 	text-decoration: underline;
+	cursor: pointer;
 }
 
 .members-name {

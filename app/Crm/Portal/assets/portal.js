@@ -5,7 +5,7 @@
  *							it: the tab of a project page is written into the address when it is switched (?tab=angebot, dateien, belege, uebersicht), so that a reload and
  *							the back button keep it (the tabs are links to the sections, and once the kernel's script has made them tabs a click on one does not
  *							leave the page); the open tab is scrolled into the row of tabs where the row is wider than the window; a message the address carries (?state=..., ?sign-state=...) is taken out of the address once the page has shown it,
- *							so that a reload does not say it again; the card or the row an anchor names (#angebot-<id>, #beleg-<id>), or the row of the document
+ *							so that a reload does not say it again; the place on the page an address names survives the sign-in (the field return of the login form carries it); the card or the row an anchor names (#angebot-<id>, #beleg-<id>), or the row of the document
  *							Sign has just brought back (data-sign-state), is unfolded and brought into view, also when it stands in a tab the kernel's script has
  *							hidden; the field of Meine Daten the server refused gets the focus; the drop zone of the upload says that a file hangs over it; and the select of the versions over a player sends its form when the choice changes - at once for the mouse and touch, on Enter or on leaving for the keyboard - and gets the focus back after the page is loaded (the button that does it without the script is taken away). The player does not need the page to load again: a click on *Anhören* (or on the name of a file that is played) and the choice of another version ask the route /.crm/player, whose address the column of the player carries (data-crm-player), for the player of that file, and put the answer - the markup the server draws, parsed and taken over as nodes, only where it comes from this origin, from the path of that route and holds a player - in the column; the list marks the row that plays from a template of the page, the address follows (replaceState), and Review binds the new player (Nino.review.init). A version takes over the position of the player it replaces and plays on where that played; the focus stays in the select. Where the answer is anything else, or the network fails, the link is followed and the form is sent the plain way. The pills over the list of documents are shown and filter its rows (a row that does not fit is hidden, the number over the list says how many are shown; the pill the server pressed is the one that applies at first, and a row that is hidden is not unfolded by an anchor); a message of the owner is put away by posting the form on its card, and the card goes from the page once the server has answered (it stays where the post fails). The card that tells how to put the portal on the home screen (data-crm-home, drawn hidden by the server) is shown where the page is no app yet (not display-mode standalone), the window is under 1024px wide and the device has not put it away; the button that puts it away does so for good by writing crm-homescreen to the localStorage of the device (the one thing the script stores, and nothing is sent to the server); where the browser offers the install itself (beforeinstallprompt) the button to install is shown in place of the sentence for Android and asks the browser for it. No markup is made here, nothing is sent but those two forms (a plain GET, a post to the same site) and the request for a player (a GET of the route the column names).
  */
@@ -500,7 +500,21 @@
 		showInstall();
 	}
 
+	// The place on the page an address names (#angebot-15) is kept through the sign-in: the form of the login and of the code step post it behind the page they stand on, as the
+	// field 'return' has it, and the server leads the sign-in to the page with that place. A page that is no page of the portal - the gate puts the login page in place of one - has
+	// the form as well, so this runs before the portal is looked for
+	function keepAnchor() {
+		if( /^#[A-Za-z0-9_-]{1,64}$/.test( location.hash ) === false )
+			return;
+		dc.querySelectorAll( 'form.members-login, form.members-code' ).forEach( function( form ) {
+			const field = form.querySelector( 'input[name="return"]' );
+			if( field !== null && field.value.indexOf( '#' ) === -1 )
+				field.value += location.hash;
+		} );
+	}
+
 	function init() {
+		keepAnchor();
 		if( dc.querySelector( '.crm-portal' ) === null )
 			return;
 		watchHome();

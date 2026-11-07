@@ -3498,9 +3498,19 @@ a.crm-account[aria-current="page"] {
 	line-height: 1.25;
 }
 
-/*	Abmelden: an icon button of the touch size, its word for a screen reader	*/
-a.crm-account__logout {
+/*	Abmelden: a form with an icon button of the touch size, its word for a screen reader	*/
+.crm-account__out {
+	display: flex;
+	flex: 0 0 auto;
+	margin: 0;
+}
+
+button.crm-account__logout {
 	display: inline-flex;
+	padding: 0;
+	border: 0;
+	background: none;
+	cursor: pointer;
 	flex: 0 0 auto;
 	align-items: center;
 	justify-content: center;
@@ -3511,12 +3521,12 @@ a.crm-account__logout {
 	transition: background-color .15s, color .15s;
 }
 
-a.crm-account__logout:hover {
+button.crm-account__logout:hover {
 	background-color: color-mix(in srgb, var(--crm-ink) 6%, transparent);
 	color: var(--crm-ink);
 }
 
-a.crm-account__logout .crm-icon {
+button.crm-account__logout .crm-icon {
 	width: 20px;
 	height: 20px;
 }

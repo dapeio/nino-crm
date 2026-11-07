@@ -226,6 +226,7 @@ class Crm {
 		// the portal, and is given no file (see Portal::callbackPending(), Portal::callbackFileAllowed()); nor is a file of a project to be downloaded that the owner has not
 		// switched on, or a file of a project while an offer of it waits for the order
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response', [ Portal::class, 'callbackPending' ] );
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response', [ Portal::class, 'callbackPrivacyWords' ], 2 );
 		\Nino\Callbacks::registerCallback( $appData, '/files/allowed', [ Portal::class, 'callbackFileAllowed' ] );
 
 		// A document follows the request for its signature: signed or declined by the member in Sign

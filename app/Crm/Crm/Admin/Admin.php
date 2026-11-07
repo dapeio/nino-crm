@@ -89,7 +89,9 @@ class Admin {
 	 *	stops the ones after it (what was done stays, a second press goes on from there):
 	 *	  1. the six features are switched on (Features::activate(), each answer checked; the one that fails names itself),
 	 *	  2. Members' settings: /portal among the protected paths and as the start page, each where the project has none of its own,
-	 *	  3. the install unit: the portal pages (routes, templates, words), the element type, the blacklist - what the project has stays,
+	 *	  3. the install units: the unit of each of the six features (its words, templates, pages and element sections, as Features::activate() applies it) and then the unit of the module
+	 *	     (the portal pages: routes, templates, words, the element type, the blacklist) - all of them add-only through Features::applyUnit(): what the project has stays, so that the
+	 *	     words a feature brought after the project took it in (the login of Members, the mails) arrive and a second press adds nothing,
 	 *	  4. the PDF: the templates, the text blocks and the header and footer of the layout, through Pdf::install() - what the owner has stays,
 	 *	  4a. the Datenschutzerklärung: the setting privacy_text of the CRM is written from install/privacy.php (the particulars of the company filled in) where it is empty - through Settings::set(),
 	 *	     so that privacy_changed has its day - and a text that is there stays,
@@ -106,8 +108,15 @@ class Admin {
 		if( \Nino\Admin\Admin::guardPerm( $appData, $request, \Crm\Crm::MANAGE_PERM ) === false )
 			return;
 
-		$added = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ];
-		$existed = [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ];
+		// What the units of the features bring that the site misses, read before the first step: a feature the first step switches on is given its unit by
+		// Features::activate(), and what that added is still what the press brought
+		$missed = [];
+
+		foreach( self::FEATURES as $key )
+			$missed[$key] = self::unitLacks( $appData, $key );
+
+		$added = [ 'features' => [], 'features_units' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ];
+		$existed = [ 'features' => [], 'features_units' => [], 'routes' => [], 'templates' => [], 'types' => [], 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ];
 
 		// 1. The features. One is on when it is active at its version and nothing is wrong with it; what is on before the first step is "there
 		// already", even where a feature that was switched on before it - Sign takes PDF with it - did the work
@@ -173,7 +182,37 @@ class Admin {
 		$hadTypes = array_values( array_filter( $types, static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/elements/'. $file ) ) );
 		$textsBefore = count( (array) \Nino\Filesystem::getFileContent( $appData, '/text/'. $native. '.php', [] ) );
 
-		$applied = \Nino\Features::applyUnit( $appData, $unit, \Nino\Locales::getAvailableLocales( $appData ), $routes, $blacklist, $config, false );
+		$locales = \Nino\Locales::getAvailableLocales( $appData );
+
+		// The units of the features first: the same call Features::activate() makes, add-only (the last argument), over the routes and the blacklist of this step. A
+		// feature without a unit (Pdf brings its templates through step 4) has nothing to apply. Applying a unit again adds nothing: a text, a template, a page or
+		// a section of the privacy policy that is there is not touched, and the sections a project deleted stay deleted (\Nino\Elements::seed())
+		foreach( self::FEATURES as $key ) {
+
+			$dir = self::unitOf( $appData, $key );
+
+			if( $dir === null )
+				continue;
+
+			$applied = \Nino\Features::applyUnit( $appData, $dir, $locales, $routes, $blacklist, $config, false );
+
+			if( $applied !== true ) {
+				\Nino\Http::fail( $request, 500, 'the unit of the feature "'. $key. '" could not be applied: '. $applied, 'crm_setup_unit', [ self::label( $appData, $key ) ] );
+				return;
+			}
+
+			if( $missed[$key] === null )
+				continue;
+
+			if( $missed[$key]['words'] + count( $missed[$key]['templates'] ) > 0 )
+				$added['features_units'][$key] = [ 'words' => $missed[$key]['words'], 'templates' => $missed[$key]['templates'] ];
+			else
+				$existed['features_units'][] = $key;
+		}
+
+		// The words of the portal are counted without the ones of the features
+		$textsBefore = count( (array) \Nino\Filesystem::getFileContent( $appData, '/text/'. $native. '.php', [] ) );
+		$applied = \Nino\Features::applyUnit( $appData, $unit, $locales, $routes, $blacklist, $config, false );
 
 		if( $applied !== true ) {
 			\Nino\Http::fail( $request, 500, 'the portal unit could not be applied: '. $applied );
@@ -335,6 +374,7 @@ class Admin {
 	 *	  module   ok, off (the class is not in /nino/modules)
 	 *	  data     ok, unwritable (the data directory)
 	 *	  members, files, review, sign, pdf, events     ok, off (installed, not active), missing (not installed), problem
+	 *	  features-units   ok (the words and the page templates of the install units of the features are all there), partial - and lacks lists the features that miss some, each with the number of its words and templates that are missing, count the number in all
 	 *	  portal   ok (routes, templates, words, the element types, the protected path and the start page are there), partial, none - and what it lacks: lacks lists routes, templates, texts, type-<name> (one for each element type that is missing), paths and start
 	 *	  pdf-templates   ok (every template of the seed is there), partial, none - and lacks lists the keys that are not
 	 *	  home     ok (the start page of the site is the door of the portal), own (a page the owner made: left as it is, and no lack), other (none, or the wizard's own)
@@ -398,6 +438,23 @@ class Admin {
 
 		$items[] = [ 'key' => 'portal', 'state' => $present === $total ? 'ok' : ( $present === 0 ? 'none' : 'partial' ), 'lacks' => $lacks ];
 
+		// The words and the page templates the units of the features bring: what the site misses of them, in numbers. The words a feature brought after the project took it
+		// in are the ones that go missing, and the screens of the feature show the key in their place
+		$lacking = [];
+		$count = 0;
+
+		foreach( self::FEATURES as $key ) {
+
+			$lack = self::unitLacks( $appData, $key );
+
+			if( $lack !== null && $lack['words'] + count( $lack['templates'] ) > 0 ) {
+				$lacking[] = self::label( $appData, $key ). ' ('. ( $lack['words'] + count( $lack['templates'] ) ). ')';
+				$count += $lack['words'] + count( $lack['templates'] );
+			}
+		}
+
+		$items[] = [ 'key' => 'features-units', 'state' => $lacking === [] ? 'ok' : 'partial', 'lacks' => $lacking, 'count' => $count ];
+
 		$seeded = self::seed()['templates'];
 		$keys = array_keys( $seeded );
 		$missing = array_values( array_filter( $keys, static fn( string $key ): bool => \Nino\Filesystem::fileExists( $appData, self::PDF_TEMPLATES. '/'. $key. '.php' ) === false ) );
@@ -416,6 +473,64 @@ class Admin {
 		$whole = array_filter( $items, static fn( array $item ): bool => in_array( $item['state'], [ 'ok', 'own' ], true ) === false ) === [];
 
 		\Nino\Http::ok( $request, [ 'items' => $items, 'whole' => $whole, 'first_run' => $whole === false && \Crm\Settings::setupDone( $appData ) === '' ] );
+	}
+
+	/**
+	 *	The install unit of a feature: its directory install/, where the feature is installed and has one
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$key						The key of the feature
+	 *
+	 *	@return 	string|null								Null for a feature that is not installed or has no unit (Pdf)
+	 */
+	private static function unitOf( array &$appData, string $key ): ?string {
+
+		$feature = \Nino\Features::get( $appData, $key );
+
+		return $feature !== null && is_dir( $feature['dir']. '/install' ) === true ? $feature['dir']. '/install' : null;
+	}
+
+	/**
+	 *	What the unit of a feature has that the site has not: the words (the keys of the unit's fragment of the native language - the one of en_US, else the first there
+	 *	is, as the kernel fills a language the unit has no words of - and of its global one that are not in the site's text files) and the page templates the manifest lists
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$key						The key of the feature
+	 *
+	 *	@return 	array|null								words (a number) and templates (the file names), null for a feature without a unit
+	 */
+	private static function unitLacks( array &$appData, string $key ): ?array {
+
+		$dir = self::unitOf( $appData, $key );
+
+		if( $dir === null )
+			return null;
+
+		$native = (string) $appData['/nino/locales/native'];
+		$fragments = [ '/text/global.php' => $dir. '/text/global.php' ];
+
+		foreach( [ $native, 'en_US' ] as $locale )
+			if( is_file( $dir. '/text/'. $locale. '.php' ) === true ) {
+				$fragments['/text/'. $locale. '.php'] = $dir. '/text/'. $locale. '.php';
+				break;
+			}
+
+		$words = 0;
+
+		foreach( $fragments as $path => $file ) {
+
+			if( is_file( $file ) === false )
+				continue;
+
+			// The site's file of the native language holds the words of the fallback fragment too, as empty ones
+			$had = \Nino\Filesystem::getFileContent( $appData, str_ends_with( $path, '/global.php' ) === true ? $path : '/text/'. $native. '.php', [] );
+			$words += count( array_diff_key( (array) include $file, is_array( $had ) === true ? $had : [] ) );
+		}
+
+		$manifest = \Nino\Features::readUnitManifest( $dir ) ?? [];
+		$templates = array_values( array_filter( array_map( 'strval', array_values( (array) ( $manifest['templates'] ?? [] ) ) ), static fn( string $file ): bool => \Nino\Filesystem::fileExists( $appData, '/templates/'. $file ) === false ) );
+
+		return [ 'words' => $words, 'templates' => $templates ];
 	}
 
 	/**

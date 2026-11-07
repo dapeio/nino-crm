@@ -306,6 +306,7 @@ async function suite() {
 
 	await playerSuite();
 	await homeSuite();
+	anchorSuite();
 
 	done();
 }
@@ -1016,6 +1017,39 @@ function unmarked( row ) {
 		check( '...no string of it holds the address of the route: the column names it, as the server wrote it from the directory the project is served from', /['"`][^'"`\n]*\/\.crm\/player/.test( text ) === false && text.indexOf('data-crm-player') !== -1 );
 		check( '...no promise is left unhandled by a play that is refused', unhandled === 0 );
 	}
+}
+
+
+/**
+ *	The place on the page an address names (#angebot-15) is put behind the return of the login form and of the code form, so that the sign-in leads to it: on a page that is no page of
+ *	the portal - the gate puts the login page in place of one - as well; nothing is put there for an address that names no place or one that is none
+ *
+ *	@return		{void}
+ */
+function anchorSuite() {
+
+	console.log( '\nThe place on the page through the sign-in' );
+
+	const login = function( hash ) {
+		const mount = element( 'div' );
+		const forms = [ 'members-login', 'members-code', 'other-form' ].map( function( name ) {
+			const form = make( 'form', name, { method : 'post' } );
+			const field = make( 'input', '', { type : 'hidden', name : 'return' } );
+			field.value = '/portal/projekte';
+			form.appendChild( field );
+			mount.appendChild( form );
+			return field;
+		} );
+		const calls = run( { mount : mount, rows : [] }, { hash : hash } );
+		return { values : forms.map( function( field ) { return field.value } ), calls : calls };
+	};
+
+	let result = login( '#angebot-15' );
+	check( 'the hash of the address is appended to the return of the login form and of the code form - and to no other form', result.values.join( '|' ) === '/portal/projekte#angebot-15|/portal/projekte#angebot-15|/portal/projekte' );
+	check( '...on a page that is no page of the portal as well: nothing else is wired there', result.calls.fetches.length === 0 );
+	check( '...and letters, digits, hyphens and underscores are all of a place it keeps', login( '#Beleg_7-a' ).values[0] === '/portal/projekte#Beleg_7-a' );
+	const dropped = [ '', '#', '#a#b', '#<img', '#a%23b', '#a b', '#'+ 'a'.repeat( 65 ) ].filter( function( hash ) { return login( hash ).values[0] !== '/portal/projekte' } );
+	check( '...an address with no place or one that is none - a second hash, markup, an encoded hash, a blank, 65 characters - leaves the return as it is', dropped.length === 0 );
 }
 
 suite().catch( function( error ) { console.error( error ); process.exit( 1 ); } );

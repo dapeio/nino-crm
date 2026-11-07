@@ -1,1 +1,4 @@
-<a href="[[/nino/dir]]/.members/logout" class="members-logout[[classes]]">[[/feature/members/logout/label]]</a>
+<form class="members-logout-form[[classes]]" method="post" action="[[/nino/dir]]/.members/logout">
+	[csrf]
+	<button type="submit" class="members-logout">[[/feature/members/logout/label]]</button>
+</form>

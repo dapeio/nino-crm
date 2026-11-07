@@ -470,7 +470,7 @@ $stateOf = static function( array $body, string $key ): string {
 };
 
 [ $status, $body ] = ninoCall( $appData, $workbench, [], 'crm/status' );
-check( 'status names the module, the data directory, the six features, the portal, the PDF templates, the start page, the cap of mails and the notification of the owner', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap', 'notify', 'privacy' ] );
+check( 'status names the module, the data directory, the six features, the portal, the PDF templates, the start page, the cap of mails and the notification of the owner', $status === 200 && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'features-units', 'pdf-templates', 'home', 'mail-cap', 'notify', 'privacy' ] );
 check( 'the module and the features are ok, the portal is not set up yet', $stateOf( $body, 'module' ) === 'ok' && $stateOf( $body, 'data' ) === 'ok' && $stateOf( $body, 'members' ) === 'ok' && $stateOf( $body, 'sign' ) === 'ok' && $stateOf( $body, 'portal' ) === 'none' );
 
 $modulesNow = $appData['/nino/modules'];
@@ -736,7 +736,7 @@ check( 'no page of the portal shows a key of its details', array_filter( [ '/por
 check( 'every page of the portal is served to the member', array_unique( array_map( static fn( string $path ): int => crmServe( $appData, $path )[0], [ '/portal/meine-daten', '/portal/projekte', '/portal/upload', '/portal/belege', '/portal/termine' ] ) ) === [ 200 ] );
 $pages = array_map( static fn( string $area ): string => crmPage( $appData, '/portal/'. $area ), [ 'meine-daten', 'projekte', 'upload', 'belege', 'termine' ] );
 check( 'every page of the areas has the navigation of the portal once, drawn by the head, and no component of the module is left unrendered in it', array_filter( $pages, static fn( string $page ): bool => substr_count( $page, '<nav class="crm-nav"' ) !== 1 || str_contains( $page, '[crm-' ) === true ) === [] );
-check( 'Meine Daten draws the name and the sign-out link in the bar and the form of the data; Projekte the list; Belege the list of Documents, which says there are none while nothing is released', str_contains( $pages[0], 'class="crm-account__logout" href="/.members/logout"' ) === true && str_contains( $pages[0], 'class="crm-bar"' ) === true && str_contains( $pages[0], '<form class="crm-data__form' ) === true
+check( 'Meine Daten draws the name and the sign-out link in the bar and the form of the data; Projekte the list; Belege the list of Documents, which says there are none while nothing is released', str_contains( $pages[0], '<form class="crm-account__out" method="post" action="/.members/logout">' ) === true && str_contains( $pages[0], '<button type="submit" class="crm-account__logout">' ) === true && str_contains( $pages[0], 'name="_csrf"' ) === true && str_contains( $pages[0], 'class="crm-bar"' ) === true && str_contains( $pages[0], '<form class="crm-data__form' ) === true
 	&& str_contains( $pages[1], 'class="crm-projects crm-projects--empty"' ) === true && str_contains( $pages[3], 'class="crm-documents crm-documents--empty"' ) === true && str_contains( $pages[3], 'class="crm-empty crm-documents__empty"' ) === true );
 check( '/portal is the navigation, the head and the components: the navigation once, before the head, and no component left unrendered', substr_count( $html, '<nav class="crm-nav"' ) === 1 && substr_count( $html, 'class="crm-head"' ) === 1 && strpos( $html, '<nav class="crm-nav"' ) < strpos( $html, 'class="crm-head"' ) && str_contains( $html, '[crm-' ) === false );
 // The templates of the unit: the head draws the navigation, so none holds it or a row of buttons
@@ -746,7 +746,7 @@ $startTpl = (string) file_get_contents( $root. '/app/Crm/Crm/install/templates/p
 check( 'the start page is the head, the start cards and the open projects: no [members-name] and no [crm-client] of its own', strpos( $startTpl, '[crm-portal-head]' ) !== false && strpos( $startTpl, '[crm-portal-start]' ) > strpos( $startTpl, '[crm-portal-head]' )
 	&& strpos( $startTpl, '[crm-projects open="1" short="1"]' ) > strpos( $startTpl, '[crm-portal-start]' ) && str_contains( $startTpl, '[members-name]' ) === false && str_contains( $startTpl, '[crm-client]' ) === false );
 $unitFiles = array_map( static fn( string $locale ): string => (string) file_get_contents( $root. '/app/Crm/Crm/install/text/'. $locale. '.php' ), [ 'de_DE', 'en_US' ] );
-check( 'the unit has no words for the buttons of the start page and no intro of a portal page (the page details carry them), and has name, title and description of the start page in both languages', array_filter( $unitFiles, static fn( string $file ): bool => str_contains( $file, 'page-portal/link-' ) === true || str_contains( $file, '[[/template/page-portal' ) === true
+check( 'the unit has no words for the buttons of the start page and no intro of a portal page (the page details carry them), and has name, title and description of the start page in both languages', array_filter( $unitFiles, static fn( string $file ): bool => str_contains( $file, 'page-portal/link-' ) === true || preg_match( '~\[\[/template/page-portal(?!-privacy/head/)~', $file ) === 1
 	|| array_filter( [ 'name', 'title', 'description' ], static fn( string $key ): bool => str_contains( $file, "'[[/_nino/webpage/portal/". $key. "]]'" ) === false ) !== [] ) === [] );
 check( '...the description of the start page in German is a sentence in the Du form', preg_match( '/\[\[\/_nino\/webpage\/portal\/description\]\]\' => \'([^\']+)\'/', $unitFiles[0], $startWords ) === 1 && preg_match( '/\b(Sie|Ihre|Ihnen|Ihr)\b/', $startWords[1] ) !== 1 && preg_match( '/\bDe(in|ine|inen|iner|inem|ich)\b/', $startWords[1] ) === 1 );
 check( 'the module puts the style sheet of the list into the bundle of the site, once', count( array_keys( $appData['/nino/html/assets']['/.cache/style.css'] ?? [], \Crm\Portal::STYLE, true ) ) === 1 && is_file( $root. \Crm\Portal::STYLE ) === true );
@@ -951,7 +951,12 @@ crmConfirm( $appData, $neuToken );
 check( 'the account signs in with the invitation', ( $memberOf( (string) $neu['id'] )['login'] ?? null ) !== null );
 $resetCap();
 [ $status, $body ] = $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'] ] );
-check( 'one that did gets a link to sign in: kind login, to the portal', $status === 200 && $body === [ 'sent' => true, 'kind' => 'login' ] && count( $mails ) === 2 && ( $lastToken()['kind'] ?? '' ) === 'login' && ( $lastToken()['target'] ?? '' ) === '' );
+check( 'one that did gets a link of the owner: the answer says login, the token is of the kind send, to the portal', $status === 200 && $body === [ 'sent' => true, 'kind' => 'login' ] && count( $mails ) === 2 && ( $lastToken()['kind'] ?? '' ) === 'send' && ( $lastToken()['target'] ?? '' ) === '' );
+$inviteSeconds = (int) \Nino\Features::setting( $appData, 'members', 'inviteDays', 7 ) * 86400;
+$linkSeconds = (int) \Nino\Features::setting( $appData, 'members', 'linkMinutes', 15 ) * 60;
+check( '...which is good for the days of an invitation and not for the minutes of a login link - and its mail is the one of its own kind, with the subject of the words of that kind', abs( ( $lastToken()['expires'] ?? 0 ) - time() - $inviteSeconds ) <= 5 && $inviteSeconds > $linkSeconds
+	&& crmMail( $mails, 1 )['subject'] === \Nino\Html::renderHtml( $appData, '[[/feature/members/mail/send-subject]]' ) && crmMail( $mails, 1 )['subject'] !== \Nino\Html::renderHtml( $appData, '[[/feature/members/mail/login-subject]]' )
+	&& str_contains( crmMail( $mails, 1 )['body'], 'href="https://example.org/club/.members/login?t=' ) === true );
 check( '...and the card of the client has it as signed in', ( \Crm\Clients::accountOf( $appData, (int) $kg['id'], (string) $neu['id'] )['state'] ?? '' ) === 'signed' );
 
 // ...without the mail: the link is the answer, once
@@ -963,7 +968,7 @@ $quietLogin = preg_match( '~^https://example\.org/club/\.members/login\?t=([A-Za
 $quietLog = \Crm\Clients\Admin::log( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'], 'notify' => false ] );
 $quietEntry = (array) ( \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] )[ hash( 'sha256', $quietLogin ) ] ?? [] );
 check( 'with notify false the link to sign in is made and nobody is mailed: the answer has the link, sent false and the kind, and the token is kept for the account - kind login, to the portal - as its hash',
-	$status === 200 && $body['sent'] === false && $body['kind'] === 'login' && $quietLogin !== '' && count( $mails ) === 0 && ( $quietEntry['kind'] ?? '' ) === 'login' && ( $quietEntry['target'] ?? '' ) === ''
+	$status === 200 && $body['sent'] === false && $body['kind'] === 'login' && $quietLogin !== '' && count( $mails ) === 0 && ( $quietEntry['kind'] ?? '' ) === 'send' && abs( ( $quietEntry['expires'] ?? 0 ) - time() - $inviteSeconds ) <= 5 && ( $quietEntry['target'] ?? '' ) === ''
 	&& ( $quietEntry['account'] ?? '' ) === $neu['id'] && count( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) ) === $tokensBefore + 1 );
 crmConfirm( $appData, $quietLogin );
 check( '...the link is as good as a mailed one: the page signs the account in with it and the token is spent', array_key_exists( hash( 'sha256', $quietLogin ), (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) ) === false );
@@ -1014,15 +1019,15 @@ check( '...also the link that is shown and not mailed', $status === 200 && $body
 $tokenCount = count( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) );
 $refusedTargets = [];
 
-foreach( [ 'another host' => '//evil.example/x', 'a scheme' => 'https://evil.example/portal', 'javascript' => 'javascript:alert(1)', 'the surface' => '/crm', 'an endpoint' => '/.members/logout', 'a line break' => "/portal\nSet-Cookie: a=b", 'a null byte' => "/portal\0", 'a dot segment' => '/portal/../crm', 'an encoded dot segment' => '/portal/%2e%2e/crm', 'markup in the query' => '/portal?x=<b>', 'a blank in the place' => '/portal#a b', 'an empty place' => '/portal#', 'a place with a capital' => '/portal#Beleg', 'nothing' => '', 'a page that only begins like the portal' => '/portalx', 'no slash' => 'portal', 'a number' => 5, 'an array' => [ '/portal' ], 'null' => null, 'more than 300 characters' => '/portal/projekte?projekt='. str_repeat( 'a', 300 ) ] as $label => $page ) {
+foreach( [ 'another host' => '//evil.example/x', 'a scheme' => 'https://evil.example/portal', 'javascript' => 'javascript:alert(1)', 'the surface' => '/crm', 'an endpoint' => '/.members/logout', 'a line break' => "/portal\nSet-Cookie: a=b", 'a null byte' => "/portal\0", 'a dot segment' => '/portal/../crm', 'an encoded dot segment' => '/portal/%2e%2e/crm', 'markup in the query' => '/portal?x=<b>', 'a blank in the place' => '/portal#a b', 'an empty place' => '/portal#', 'a place with a second hash' => '/portal#a#b', 'a place with markup' => '/portal#<img', 'a place with an encoded hash' => '/portal#a%23b', 'nothing' => '', 'a page that only begins like the portal' => '/portalx', 'no slash' => 'portal', 'a number' => 5, 'an array' => [ '/portal' ], 'null' => null, 'more than 300 characters' => '/portal/projekte?projekt='. str_repeat( 'a', 300 ) ] as $label => $page ) {
 	$resetCap();
 	$mails->exchangeArray( [] );
 	[ $status, $body ] = $call( 'crm-clients/account-resend', [ 'id' => (string) $kg['id'], 'account' => (string) $neu['id'], 'target' => $page ] );
 	$refusedTargets[$label] = $status === 400 && $body['code'] === 'crm_clients_target' && $body['field'] === 'target' && count( $mails ) === 0;
 }
 
-check( '...a target that is no page of the portal is 400 crm_clients_target at the field target and sends nothing, makes no token: another host, a scheme, javascript, the surface, an endpoint, a line break, a null byte, a dot segment, markup, a blank, an empty place, a capital, nothing, a page that only begins like the portal, no slash, a number, an array, null, too long',
-	array_keys( array_filter( $refusedTargets, static fn( bool $same ): bool => $same === false ) ) === [] && count( $refusedTargets ) === 20 && count( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) ) === $tokenCount );
+check( '...a target that is no page of the portal is 400 crm_clients_target at the field target and sends nothing, makes no token: another host, a scheme, javascript, the surface, an endpoint, a line break, a null byte, a dot segment, markup, a blank, an empty place, a second hash, markup, an encoded hash, nothing, a page that only begins like the portal, no slash, a number, an array, null, too long',
+	array_keys( array_filter( $refusedTargets, static fn( bool $same ): bool => $same === false ) ) === [] && count( $refusedTargets ) === 22 && count( (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] ) ) === $tokenCount );
 check( '...the sentence of the code is in both languages', array_filter( [ 'de_DE', 'en_US' ], static fn( string $locale ): bool => trim( (string) ( require $root. '/app/Crm/Clients/Admin/text/'. $locale. '.php' )['[[/_admin/error/crm_clients_target]]'] ) === '' ) === [] );
 
 $resetCap();
@@ -1441,7 +1446,7 @@ check( '...the footer of a new install carries the particulars of the owner as o
 
 [ $status, $body ] = $run( 'crm/status' );
 check( 'after the run the product is whole, and the run is written down: first_run false, the day in the setting setup_done - which is no setting of the screen Einstellungen', $status === 200 && $body['whole'] === true && $body['first_run'] === false && preg_match( '/^\d{4}-\d{2}-\d{2}$/D', \Crm\Settings::setupDone( $fresh ) ) === 1 && isset( \Crm\Settings::all( $fresh )[\Crm\Settings::SETUP_KEY] ) === false );
-check( 'after the run the product is whole: every item ok, whole true', $status === 200 && $body['whole'] === true && array_unique( array_values( $itemsOf( $body ) ) ) === [ 'ok' ] && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'pdf-templates', 'home', 'mail-cap', 'notify', 'privacy' ] );
+check( 'after the run the product is whole: every item ok, whole true', $status === 200 && $body['whole'] === true && array_unique( array_values( $itemsOf( $body ) ) ) === [ 'ok' ] && array_column( $body['items'], 'key' ) === [ 'module', 'data', 'members', 'files', 'review', 'sign', 'pdf', 'events', 'portal', 'features-units', 'pdf-templates', 'home', 'mail-cap', 'notify', 'privacy' ] );
 check( '...and the cap line is ok, with the cap that is in force: 100', $capItem( $body )['state'] === 'ok' && $capItem( $body )['value'] === 100 );
 
 // A second press adds nothing; what the owner changed stays
@@ -1451,8 +1456,8 @@ $own['name'] = 'Meine Rechnung';
 \Nino\Filesystem::putFileContent( $fresh, '/data/pdf/layout.php', array_merge( \Nino\Modules\Pdf::layout( $fresh ), [ 'header' => '<p>Mein Kopf</p>' ] ) );
 $routesBeforeTwice = \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'];
 [ $status, $body ] = $run( 'crm/setup' );
-check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ]
-	&& $body['existed']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['pdf']['templates'] === $keys && $body['existed']['home'] === 'door' && count( $body['existed']['routes'] ) === 7 );
+check( 'a second press adds nothing: no feature, no route, no template, no word, no block, no layout text, not the start page - and says what was there', $status === 200 && $body['added'] === [ 'features' => [], 'features_units' => [], 'routes' => [], 'templates' => [], 'types' => [], 'texts' => 0, 'paths' => false, 'start' => false, 'pdf' => [ 'blocks' => [], 'templates' => [], 'layout' => [] ], 'home' => false, 'cap' => false, 'notify' => false, 'privacy' => false ]
+	&& $body['existed']['features'] === [ 'members', 'files', 'review', 'sign', 'pdf', 'events' ] && $body['existed']['features_units'] === [ 'members', 'files', 'review', 'sign', 'events' ] && $body['existed']['pdf']['templates'] === $keys && $body['existed']['home'] === 'door' && count( $body['existed']['routes'] ) === 7 );
 check( '...the template the owner changed is the owner\'s still, so is the header; the routes are as they were', ( \Nino\Modules\Pdf::template( $fresh, 'rechnung' )['name'] ?? '' ) === 'Meine Rechnung' && \Nino\Modules\Pdf::layout( $fresh )['header'] === '<p>Mein Kopf</p>' && \Nino\Filesystem::getFileContent( $fresh, '/config.php', [] )['/nino/http/routes'] === $routesBeforeTwice );
 check( '...and the status is still whole', $run( 'crm/status' )[1]['whole'] === true );
 check( '...the cap is not set twice: added.cap false, existed.cap 100', $body['added']['cap'] === false && $body['existed']['cap'] === 100 && $storedCap() === 100 );

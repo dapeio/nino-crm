@@ -510,7 +510,7 @@ class Clients {
 	}
 
 	/**
-	 *	Send an account its link again: the invitation where it never signed in, a link to sign in where it did
+	 *	Send an account its link again: the invitation where it never signed in, a link of the owner (kind 'send': the days of an invitation and a mail of its own) where it did
 	 *
 	 *	@param		array 		&$appData
 	 *	@param		array 		$account			As accountsDetailed() has it, and not gone
@@ -521,7 +521,7 @@ class Clients {
 	 */
 	public static function resend( array &$appData, array $account, bool $notify = true, string $target = '' ): bool|string {
 
-		return \Nino\Modules\Members::link( $appData, $account, $account['login'] === null ? 'invite' : 'login', Portal::target( $target ), true, $notify );
+		return \Nino\Modules\Members::link( $appData, $account, $account['login'] === null ? 'invite' : 'send', Portal::target( $target ), true, $notify );
 	}
 
 	/**

@@ -19,6 +19,7 @@ return [
 	'[[/_admin/crm/setup/notify]]' => 'Review now mails you when a client comments on a file; you can change that in the settings of the Review feature.',
 	'[[/_admin/crm/setup/privacy]]' => 'The Datenschutzerklärung is entered; read it through in the settings and adapt it to your details.',
 	'[[/_admin/crm/setup/privacy-there]]' => 'The Datenschutzerklärung was there already and stays.',
+	'[[/_admin/crm/setup/units]]' => 'Added from the features: words %s, templates %s.',
 	'[[/_admin/crm/setup/home-new]]' => 'The start page is now the door of the portal.',
 	'[[/_admin/crm/setup/home-starter]]' => 'The start page is now the door of the portal; the wizard\'s page /home is no longer linked.',
 	'[[/_admin/crm/setup/home-own]]' => 'Your start page stays; the door of the portal is at /portal.',
@@ -34,6 +35,7 @@ return [
 	'[[/_admin/crm/status/lacks-start]]' => 'the start page of the Members feature',
 	'[[/_admin/crm/status/pdf-templates-none]]' => 'The PDF templates are missing. Setting up creates them.',
 	'[[/_admin/crm/status/pdf-templates-partial]]' => 'PDF templates are missing: %s. Setting up creates them, yours stay.',
+	'[[/_admin/crm/status/features-units-partial]]' => 'The words and templates of the features are incomplete, missing: %s. Setting up adds them; what you changed stays.',
 	'[[/_admin/crm/status/mail-cap-ok]]' => '%s calls an hour (0 means no cap).',
 	'[[/_admin/crm/status/mail-cap-default]]' => 'The kernel default of %s calls an hour stands, which is too tight for a portal. The setup sets it to 100.',
 	'[[/_admin/crm/status/notify-ok]]' => 'The notification of the owner in Review is set.',
@@ -65,4 +67,5 @@ return [
 
 	'[[/_admin/error/crm_setup_feature]]' => 'The feature %s could not be switched on. The Features panel names the reason.',
 	'[[/_admin/error/crm_setup_pdf]]' => 'The PDF templates could not be created: %s.',
+	'[[/_admin/error/crm_setup_unit]]' => 'The words and templates of the feature %s could not be entered.',
 ];

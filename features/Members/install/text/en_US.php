@@ -63,6 +63,13 @@ return [
 	'[[/feature/members/mail/invite-valid]]'	=> 'The invitation works once and is valid for',
 	'[[/feature/members/mail/invite-days]]'		=> 'days.',
 	'[[/feature/members/mail/invite-notice]]'	=> 'If you did not expect this invitation, ignore this email.',
+	'[[/feature/members/mail/send-subject]]'	=> 'A link for you',
+	'[[/feature/members/mail/send-title]]'	=> 'A link for you from',
+	'[[/feature/members/mail/send-intro]]'	=> 'We are sending you a link to your account. The button opens a page where you confirm the sign-in with one more click - you need no password. After that you see what it is about.',
+	'[[/feature/members/mail/send-button]]'	=> 'Open the link',
+	'[[/feature/members/mail/send-valid]]'	=> 'The link works once and is valid for',
+	'[[/feature/members/mail/send-days]]'		=> 'days.',
+	'[[/feature/members/mail/send-notice]]'	=> 'If you did not expect this link, ignore this email.',
 
 	// The mail with a code for a new sign-in address (to the new address) and the notice to the old address that it was changed
 	'[[/feature/members/mail/change-subject]]'	=> 'Your code for the new sign-in address',

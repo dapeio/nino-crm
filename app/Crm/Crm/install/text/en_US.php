@@ -25,8 +25,11 @@ return [
 	'[[/_nino/webpage/portal/termine/title]]' => 'Your dates',
 	'[[/_nino/webpage/portal/termine/description]]' => 'The dates coming up for you – with the subscription for your calendar.',
 	'[[/_nino/webpage/portal/datenschutz/name]]' => 'Privacy policy',
+	'[[/template/page-portal-privacy/head/name]]' => 'Privacy policy',
 	'[[/_nino/webpage/portal/datenschutz/title]]' => 'Privacy policy',
+	'[[/template/page-portal-privacy/head/title]]' => 'Privacy policy',
 	'[[/_nino/webpage/portal/datenschutz/description]]' => 'The privacy policy of the customer portal. We record when you took note of it; if the text changes, we ask again.',
+	'[[/template/page-portal-privacy/head/description]]' => 'The privacy policy of the customer portal. We record when you took note of it; if the text changes, we ask again.',
 
 	// The details of the start page, the door (its Element-URI is '/', as the wizard writes it for a start page): the head reads them
 	'[[/_nino/webpage//name]]' => 'Customer portal',

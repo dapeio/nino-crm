@@ -757,7 +757,7 @@ check( '...a request that is none of this client\'s marks no row, and the state 
 $ignored = ninoWarnings();
 $hostile = [
 	'sign-state=unknown', 'sign-state=SIGNED', 'sign-state=', 'sign-state[]=signed', 'sign-state[a]=signed', 'sign-state=signed%00', 'sign-state=%3Cb%3Esigned%3C%2Fb%3E', 'sign-state=%5Bmembers-name%5D', 'sign-state=signed%20', 'sign-state=signed&sign=%3Cb%3Ex%3C%2Fb%3E', 'sign-state=signed&sign=%5Bmembers-name%5D', 'sign-state=signed&sign[]=x',
-	'sign-state=signed&sign='. $signed['sign_id']. '%00', 'sign-state=signed&sign='. strtoupper( $signed['sign_id'] ), 'sign-state=signed&sign='. $signed['sign_id']. 'a', 'sign-state=signed&sign=..%2F..%2Fx',
+	'sign-state=signed&sign='. $signed['sign_id']. '%00', 'sign-state=signed&sign='. ( strtoupper( $signed['sign_id'] ) !== $signed['sign_id'] ? strtoupper( $signed['sign_id'] ) : 'A'. substr( $signed['sign_id'], 1 ) ), 'sign-state=signed&sign='. $signed['sign_id']. 'a', 'sign-state=signed&sign=..%2F..%2Fx',
 ];
 $leaks = array_filter( $hostile, static function( string $query ) use ( &$appData, $stateNote, $markedRows ): bool {
 
@@ -1087,13 +1087,14 @@ check( '...a path below an area marks the area too, whatever the page is', array
 check( '...a class of the shortcode is added to the nav', count( portalFind( \Nino\Html::renderHtml( $appData, '[crm-portal-nav class="wide"]' ), '//nav[@class="crm-nav wide"]' ) ) === 1 );
 $bar = portalHeadAt( $appData, '/portal' );
 $barNode = '//header[@class="crm-bar"]/div[@class="crm-bar__inner"]';
-check( 'the head draws the bar of the application first, a header before the navigation: the name of the site as a link to the start page with the h1 of the page in it, the account as a chip that links to Meine Daten (the initials of the name - Anna Nord is AN - and the name), and Abmelden as an icon link to /.members/logout', count( portalFind( $bar, '//header[@class="crm-bar"]' ) ) === 1 && strpos( $bar, 'class="crm-bar"' ) < strpos( $bar, 'class="crm-nav' ) && strpos( $bar, 'class="crm-nav' ) < strpos( $bar, 'class="crm-head"' )
+check( 'the head draws the bar of the application first, a header before the navigation: the name of the site as a link to the start page with the h1 of the page in it, the account as a chip that links to Meine Daten (the initials of the name - Anna Nord is AN - and the name), and Abmelden as an icon button in a form that posts to /.members/logout', count( portalFind( $bar, '//header[@class="crm-bar"]' ) ) === 1 && strpos( $bar, 'class="crm-bar"' ) < strpos( $bar, 'class="crm-nav' ) && strpos( $bar, 'class="crm-nav' ) < strpos( $bar, 'class="crm-head"' )
 	&& count( portalFind( $bar, $barNode. '/a[@class="crm-bar__brand"][@href="/"]/h1[contains(@class, "nino-sr-only")]' ) ) === 1 && count( portalFind( $bar, '//h1' ) ) === 1 && count( portalFind( $bar, $barNode. '/a[contains(@class, "crm-account")][@href="/portal/meine-daten"]' ) ) === 1
 	&& portalText( $bar, $barNode. '/a[contains(@class, "crm-account")]/span[@class="crm-account__avatar"][@aria-hidden="true"]' ) === 'AN' && portalText( $bar, $barNode. '/a[contains(@class, "crm-account")]//span[@class="crm-account__name"]' ) === 'Anna Nord'
 	&& count( portalFind( $bar, $barNode. '/a[@class="crm-account"]/*' ) ) === 2 && portalFind( $bar, '//*[contains(@class, "crm-account__company") or contains(@class, "crm-account__text")]' ) === []
-	&& count( portalFind( $bar, $barNode. '/a[@class="crm-account__logout"][@href="/.members/logout"]/svg[@aria-hidden="true"]' ) ) === 1 && portalText( $bar, $barNode. '/a[@class="crm-account__logout"]/span[contains(@class, "nino-sr-only")]' ) !== '' );
-check( '...the navigation and the head of the page hold no chip and no Abmelden - the account is the bar\'s on every width', portalFind( $bar, '//nav[contains(@class, "crm-nav")]//a[contains(@class, "crm-account")] | //nav[contains(@class, "crm-nav")]//a[contains(@href, "logout")] | //div[@class="crm-head"]//a[contains(@class, "crm-account")] | //div[@class="crm-head"]//a[contains(@href, "logout")]' ) === []
-	&& count( portalFind( $bar, '//a[contains(@href, "logout")]' ) ) === 1 && count( portalFind( $bar, '//a[@href="/portal/meine-daten"]' ) ) === 2 );
+	&& count( portalFind( $bar, $barNode. '/form[@class="crm-account__out"][@method="post"][@action="/.members/logout"]/button[@type="submit"][@class="crm-account__logout"]/svg[@aria-hidden="true"]' ) ) === 1 && portalText( $bar, $barNode. '/form/button[@class="crm-account__logout"]/span[contains(@class, "nino-sr-only")]' ) !== ''
+	&& count( portalFind( $bar, $barNode. '/form/input[@type="hidden"][@name="_csrf"]' ) ) === 1 && portalFind( $bar, '//a[contains(@href, "logout")]' ) === [] );
+check( '...the navigation and the head of the page hold no chip and no Abmelden - the account is the bar\'s on every width', portalFind( $bar, '//nav[contains(@class, "crm-nav")]//a[contains(@class, "crm-account")] | //nav[contains(@class, "crm-nav")]//form[contains(@action, "logout")] | //div[@class="crm-head"]//a[contains(@class, "crm-account")] | //div[@class="crm-head"]//form[contains(@action, "logout")]' ) === []
+	&& count( portalFind( $bar, '//form[contains(@action, "logout")]' ) ) === 1 && count( portalFind( $bar, '//a[@href="/portal/meine-daten"]' ) ) === 2 );
 check( '...the bar is no one of the navigation: a visitor gets none, a template that sets the navigation itself ([crm-portal-head nav="0"]) gets none, the door has none', portalFind( portalHeadAt( $appData, '/portal', ' nav="0"' ), '//header | //nav' ) === [] && count( portalFind( portalHeadAt( $appData, '/portal', ' nav="0"' ), '//div[@class="crm-head"]' ) ) === 1
 	&& str_contains( \Nino\Html::renderHtml( $appData, '[crm-portal-door]' ), 'crm-bar' ) === false && portalFind( \Nino\Html::renderHtml( $appData, '[crm-portal-nav]' ), '//header' ) === [] );
 check( '...there is no Datenschutz in it while nothing is asked, and no dot', in_array( '/portal/datenschutz', $navHrefsOf( portalNavAt( $appData, '/portal' ) ), true ) === false && portalFind( portalNavAt( $appData, '/portal' ), '//span[contains(@class, "crm-nav__dot")]' ) === [] );
@@ -1357,7 +1358,7 @@ check( '...the bar is 64px (--crm-bar), as wide as the window, fixed at the top 
 	&& preg_match( '/\.crm-bar__inner \{[^}]*max-width:\s*calc\( var\(--crm-page-max\) \+ 2 \* var\(--grid-gutter\) \);[^}]*margin:\s*0 auto;[^}]*padding:\s*0 var\(--grid-gutter\);/', $shell ) === 1
 	&& preg_match( '/\.crm-page\.nino-section:has\(\.crm-bar\) \{\s*padding-top:\s*calc\( var\(--crm-bar\) \+ var\(--crm-5\) \);/', $shell ) === 1 && preg_match( '/\.crm-nav \{[^}]*position:\s*fixed;[^}]*z-index:\s*90;/', $shell ) === 1 );
 check( '...the account of the bar: the initials 32px on the accent at 16%, the name, the current page marked; Abmelden an icon button of the touch size; below 768px the name is for a screen reader alone (clipped, not display: none) and the chip is a touch-sized circle; the pill of Meine Daten is not in the pills, the chip is that link', preg_match( '/\.crm-account__avatar \{[^}]*width:\s*32px;\s*height:\s*32px;[^}]*color-mix\(in srgb, var\(--crm-info\) 16%, var\(--crm-surface\)\)/', $shell ) === 1
-	&& preg_match( '/a\.crm-account\[aria-current="page"\] \{/', $shell ) === 1 && preg_match( '/a\.crm-account__logout \{[^}]*width:\s*var\(--crm-touch\);\s*height:\s*var\(--crm-touch\);/', $shell ) === 1
+	&& preg_match( '/a\.crm-account\[aria-current="page"\] \{/', $shell ) === 1 && preg_match( '/button\.crm-account__logout \{[^}]*width:\s*var\(--crm-touch\);\s*height:\s*var\(--crm-touch\);/', $shell ) === 1
 	&& preg_match( '/@media screen and \(max-width: 767\.98px\) \{.*?\.crm-bar a\.crm-account \{[^}]*min-width:\s*var\(--crm-touch\);[^}]*border-radius:\s*var\(--crm-pill\);.*?\.crm-bar \.crm-account__name \{\s*position:\s*absolute;[^}]*clip:\s*rect\(0, 0, 0, 0\);/s', $shell ) === 1 && preg_match( '/\.crm-nav__item--meine-daten \{\s*display:\s*none;/', $shell ) === 1 && preg_match( '/@media screen and \(min-width: 1024px\) \{.*?\.crm-nav__item--meine-daten \{\s*display:\s*list-item;/s', $shell ) === 1
 	&& preg_match( '/a\.crm-bar__brand:has\(img\) \.crm-bar__name \{\s*display:\s*none;/', $shell ) === 1 && preg_match( '/a\.crm-bar__brand img \{[^}]*height:\s*32px;/', $shell ) === 1 );
 check( '...the one reach into the frame of the site is a few rules of the Shell, all under body:has(.crm-bar): the head of the site (a header child of the body) is not drawn, main keeps no room for it, and main and the footer do not begin after the rail of a header preset that stands beside the page (the one place the footer is named); the flex columns that carry the side bar to the foot name main; nothing else of the frame, its menu or its logo is named, and the door, the Datenschutz and the Impressum, which have no bar, are not matched (the portal\'s wrap alone is no condition)', preg_match_all( '/(?<![\w-])(?:header|footer|main)(?![\w-])|\.nino-nav|\.nino-frame|\.nino-logo/', (string) preg_replace( '/header\.crm-bar \{/', '{', $shellRules ) ) === 5
@@ -2062,7 +2063,7 @@ $asVisitor();
 check( 'a visitor gets nothing of the component', trim( \Nino\Html::renderHtml( $appData, '[crm-privacy]' ) ) === '' );
 portalSignIn( $appData, $stray );
 $strayPage = portalPage( $appData, '/portal/datenschutz' )[1];
-check( 'a member of no client reads the sentence: no text, no form, and no link in the nav', portalFind( $strayPage, '//div[contains(@class, "crm-privacy--empty")]/div[contains(@class, "crm-privacy__empty")]/p[contains(@class, "crm-empty__text")]' ) !== [] && portalFind( $strayPage, '//form' ) === [] && count( $navHrefs( '/portal' ) ) === 6 );
+check( 'a member of no client reads the sentence: no text, no form, and no link in the nav', portalFind( $strayPage, '//div[contains(@class, "crm-privacy--empty")]/div[contains(@class, "crm-privacy__empty")]/p[contains(@class, "crm-empty__text")]' ) !== [] && portalFind( $strayPage, '//form[not(@class="crm-account__out")]' ) === [] && count( $navHrefs( '/portal' ) ) === 6 );
 portalSignIn( $appData, $accounts['anna'] );
 [ $status, $page ] = portalPage( $appData, '/portal/datenschutz' );
 check( 'a client that has not agreed reads the text with its line breaks as <br>, every character escaped (markup and a shortcode in it are text), and the sentence that it has not agreed', $status === 200 && str_contains( $page, 'Wir speichern Deine Daten &lt;b&gt;nur&lt;/b&gt; für das Projekt.<br>Kontakt: &#91;members-name] &amp; Co<br><br>Stand 2026' ) === true
@@ -2744,14 +2745,14 @@ foreach( $pagesOf as $uri => $name ) {
 		&& portalText( $one, '//span[@class="crm-head__name"]' ) === $unitDe['[[/_nino/webpage/portal'. ( $name === 'portal' ? '' : '/'. $name ). '/title]]'] && count( portalFind( $one, '//p[@class="crm-head__lead"]' ) ) === 1
 		&& portalFind( $one, '//div[@class="crm-head"]//p[@class="crm-head__meta"]' ) === [] && count( portalFind( $one, '//nav[contains(@class, "crm-nav")]/following-sibling::div[@class="crm-head"]' ) ) === 1
 		&& portalText( $one, '//header[@class="crm-bar"]/div/a[contains(@class, "crm-account")][@href="/portal/meine-daten"]/span[@class="crm-account__avatar"][@aria-hidden="true"]' ) === 'AN' && portalText( $one, '//header[@class="crm-bar"]/div/a[@href="/portal/meine-daten"]//span[@class="crm-account__name"]' ) === 'Anna Nord'
-		&& portalFind( $one, '//header[@class="crm-bar"]/div/a[contains(@class, "crm-account__logout")][@href="/.members/logout"]/svg[@aria-hidden="true"]' ) !== [] && count( portalFind( $one, '//header[@class="crm-bar"]/following-sibling::nav[contains(@class, "crm-nav")]' ) ) === 1 && count( portalFind( $one, '//header[@class="crm-bar"]//h1' ) ) === 1 && portalFind( $one, '//div[@class="crm-head"]//a[contains(@class, "crm-account")]' ) === []
+		&& portalFind( $one, '//header[@class="crm-bar"]/div/form[@action="/.members/logout"]/button[@class="crm-account__logout"]/svg[@aria-hidden="true"]' ) !== [] && count( portalFind( $one, '//header[@class="crm-bar"]/following-sibling::nav[contains(@class, "crm-nav")]' ) ) === 1 && count( portalFind( $one, '//header[@class="crm-bar"]//h1' ) ) === 1 && portalFind( $one, '//div[@class="crm-head"]//a[contains(@class, "crm-account")]' ) === []
 		&& portalFind( $one, '//div[@class="crm-head"]//header' ) === [] && strpos( $one, 'crm-head__title' ) < strpos( $one, 'class="crm-' . ( [ 'portal' => 'start', 'meine-daten' => 'data', 'projekte' => 'projects', 'upload' => 'upload', 'belege' => 'documents', 'termine' => 'dates', 'datenschutz' => 'privacy' ][$name] ). '' );
 
 	if( $headOk === false )
 		$headIssues[] = $uri;
 }
 
-check( 'every page of the portal opens with the bar of the application (the name of the site with the h1, the account of the member - the initials as a link to Meine Daten - and Abmelden as an icon link), the navigation and then the page head: a div (never a header), the page title as the h2 and the lead - and it is the first thing in the page, before the content', $headIssues === [] );
+check( 'every page of the portal opens with the bar of the application (the name of the site with the h1, the account of the member - the initials as a link to Meine Daten - and Abmelden as an icon button in a form), the navigation and then the page head: a div (never a header), the page title as the h2 and the lead - and it is the first thing in the page, before the content', $headIssues === [] );
 check( '...the calendar is in the head of Termine only, the breadcrumb in the head of a project only', array_filter( array_keys( $pagesOf ), static fn( string $uri ): bool => ( portalFind( portalPage( $appData, $uri )[1], '//div[@class="crm-head"]//a[contains(@class, "events-feed")]' ) !== [] ) !== ( $uri === '/portal/termine' ) ) === []
 	&& array_filter( array_keys( $pagesOf ), static fn( string $uri ): bool => portalFind( portalPage( $appData, $uri )[1], '//div[contains(@class, "crm-head")]//nav[contains(@class, "crm-crumbs")]' ) !== [] ) === [] && portalFind( $projectDocs, '//div[contains(@class, "crm-head--path")]/nav[contains(@class, "crm-crumbs")]' ) !== [] );
 
@@ -3051,7 +3052,7 @@ $onData = portalServe( $appData, '/portal/meine-daten?weiter=%2Fportal%2Fbelege'
 check( '...the page of the Datenschutz answers itself; Meine Daten comes to the Datenschutz first, with itself in weiter - and where it was going on to with it', $onDatenschutz['statusCode'] === 200 && $onData['statusCode'] === 303 && $locationOf( $onData ) === $wanted( 'datenschutz', '/portal/meine-daten?weiter=%2Fportal%2Fbelege' )
 	&& $locationOf( portalServe( $appData, '/portal/meine-daten' ) ) === $wanted( 'datenschutz', '/portal/meine-daten' ) );
 check( '...a query that is no flat text is left out of weiter - the page it was is what it gets -, and a weiter of its own is kept on the way to the same place', $locationOf( portalServe( $appData, '/portal/belege?a[]=1&b=2&weiter=%2Fportal' ) ) === $wanted( 'datenschutz', '/portal/belege?b=2&weiter=%2Fportal' ) );
-$logout = portalServe( $appData, '/.members/logout' );
+$logout = portalServe( $appData, '/.members/logout', 'POST' );
 check( '...the sign-out is no page of the portal: it signs the member out and goes where it goes, not to the Datenschutz', $logout['statusCode'] === 303 && str_contains( $locationOf( $logout ), 'datenschutz' ) === false && \Nino\Modules\Members::current( $appData ) === null );
 portalSignIn( $appData, $g['account'] );
 
@@ -4269,6 +4270,8 @@ portalPlayerChecks( $appData, $a, $b, $accounts, $stray, $owner, $store, $today,
 
 $resume();
 
+portalFixRoundChecks( $appData, $a, $accounts, $owner, $store, $today, $post, $asAdmin, $asVisitor, $put, $made, $final, $line, $ago );
+
 // --- The finishing touches of the portal ---------------------------------------------------------------------------------------------
 
 /**
@@ -5090,7 +5093,7 @@ function portalPlayerChecks( array &$appData, array $a, array $b, array $account
 		'no file'                    => $ask( '' ), 'a PDF'                         => $ask( $pdf['id'] ), 'a file the member may not see' => $ask( $hidden['id'] ), 'a file of another client' => $ask( $ofB['id'] ),
 		'a file of a folder of no project' => $ask( $loose['id'] ), 'an id nobody has' => $ask( '0123456789ab' ), 'a path' => $ask( '..%2F..%2Fdata%2Fconfig' ), 'a path with dots' => $ask( '../'. $two['id'] ),
 		'a null byte'                => $ask( $two['id']. '%00' ), 'a null byte inside' => $ask( substr( $two['id'], 0, 6 ). '%00'. substr( $two['id'], 6 ) ), 'a list' => portalPlayerAsk( $appData, '?file[]='. $two['id'] ), 'a keyed list' => portalPlayerAsk( $appData, '?file[a]='. $two['id'] ),
-		'a long id'                  => $ask( $two['id']. 'a' ), 'upper case' => $ask( strtoupper( $two['id'] ) ), 'a blank' => $ask( '%20'. $two['id'] ), 'a new line behind' => $ask( $two['id']. '%0A' ), 'the query of the page' => portalPlayerAsk( $appData, '?review='. $two['id'] ),
+		'a long id'                  => $ask( $two['id']. 'a' ), 'upper case' => $ask( strtoupper( $two['id'] ) !== $two['id'] ? strtoupper( $two['id'] ) : 'A'. substr( $two['id'], 1 ) ), 'a blank' => $ask( '%20'. $two['id'] ), 'a new line behind' => $ask( $two['id']. '%0A' ), 'the query of the page' => portalPlayerAsk( $appData, '?review='. $two['id'] ),
 		'no query'                   => portalServe( $appData, '/.crm/player' ), 'a post' => portalServe( $appData, '/.crm/player?file='. $two['id'], 'POST' ),
 	];
 	check( 'a post to the route is no route', $refused['a post']['statusCode'] === 404 );
@@ -5530,4 +5533,270 @@ function portalHomeChecks( array &$appData, array $a, array $accounts, array $st
 
 	\Nino\Html::addFills( $appData, [ '[[/project/company/general/name]]' => $nameWas ], '*' );
 	unset( $appData['./members/cookies'] );
+}
+
+/**
+ *	The checks of the first round of errors: the words of the features after the setup, the locks of a project for every member of the group, the links of the owner
+ *	with their kind, their days and where they lead after they ran out, the place on the page through the sign-in and the gate, and the sign-out as a post
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$a							Studio Nord, a client whose gate is open
+ *	@param		array 		$accounts				The accounts of the clients
+ *	@param		array 		$owner					The author of a file the owner put there
+ *	@param		string		$store					The class of the file store
+ *	@param		string		$today
+ *	@param		\Closure	$post						Posts an action of the panel
+ *	@param		\Closure	$asAdmin
+ *	@param		\Closure	$asVisitor
+ *	@param		\Closure	$put
+ *	@param		\Closure	$made
+ *	@param		\Closure	$final
+ *	@param		\Closure	$line
+ *	@param		\Closure	$ago
+ *
+ *	@return 	void
+ */
+function portalFixRoundChecks( array &$appData, array $a, array $accounts, array $owner, string $store, string $today, \Closure $post, \Closure $asAdmin, \Closure $asVisitor, \Closure $put, \Closure $made, \Closure $final, \Closure $line, \Closure $ago ): void {
+
+	global $mails;
+
+	echo "\nThe first round of errors\n";
+
+	$location = static fn( array $response ): string => (string) ( $response['header']['Location'] ?? '' );
+	$state = static function() use ( &$appData ): void {
+		$_SESSION = [];
+		unset( $appData['./nino/auth/current'] );
+		\Nino\Filesystem::putFileContent( $appData, '/data/members-tries.php', [] );
+		\Nino\Filesystem::putFileContent( $appData, '/data/ratelimit.php', [] );
+	};
+
+	// A sign-in with a code, the way a visitor does it: the page of the first request, the form with its return, the code of the mail
+	$codeFlow = static function( array $account, string $from, string $return ) use ( &$appData, $state, $location ): string {
+
+		global $mails;
+
+		$state();
+		$count = count( $mails );
+
+		if( $from !== '' )
+			portalServe( $appData, $from );
+
+		portalServe( $appData, '/.members/login', 'POST', [ 'email' => $account['email'], 'return' => $return ] );
+
+		if( count( $mails ) !== $count + 1 || preg_match( '~>\s*([0-9]{3}) ([0-9]{3})\s*</p>~', (string) portalMail( $count )['body'], $found ) !== 1 )
+			return '';
+
+		return $location( portalServe( $appData, '/.members/code', 'POST', [ 'code' => $found[1]. $found[2], 'return' => '/' ] ) );
+	};
+	$tokenOf = static fn( string $link ): string => preg_match( '~t=([A-Za-z0-9_-]{43})$~D', $link, $found ) === 1 ? $found[1] : '';
+	$tokens = static fn(): array => (array) \Nino\Filesystem::getFileContent( $appData, '/data/members-tokens.php', [] );
+	$pattern = '~\[\[/(feature/(members|files|review)|template/page-members)~';
+
+	// --- The words of the features after the press (error 1) ---------------------------------------------------------------------
+
+	foreach( \Nino\Locales::getAvailableLocales( $appData ) as $locale )
+		foreach( [ 'members', 'files', 'review' ] as $key ) {
+
+			$file = \Nino\Features::get( $appData, $key )['dir']. '/install/text/'. $locale. '.php';
+			$unit = is_file( $file ) === true ? array_keys( (array) include $file ) : [];
+			\Nino\Filesystem::mutate( $appData, '/text/'. $locale. '.php', static fn( array $texts ): array => array_diff_key( $texts, array_flip( $unit ) ) );
+		}
+
+	$asVisitor();
+	$state();
+	$gateBefore = portalPage( $appData, '/portal/projekte' )[1];
+	portalServe( $appData, '/.members/login', 'POST', [ 'email' => $accounts['anna']['email'], 'return' => '/portal' ] );
+	$stepBefore = portalPage( $appData, '/portal?members=sent' )[1];
+	$countBefore = count( $mails );
+	$state();
+	\Nino\Modules\Members::link( $appData, $accounts['anna'], 'invite', '', true, true );
+	$mailBefore = portalMail( $countBefore )['subject']. ( portalMail( $countBefore )['body'] ?? '' );
+	check( 'on a site whose text files miss the words of the features the login page, the page of the code and the invitation show the keys: the fixture is what the first error looked like', preg_match( $pattern, $gateBefore ) === 1 && preg_match( $pattern, $mailBefore. $stepBefore ) === 1 );
+
+	$asAdmin();
+	[ $status, $body ] = $post( 'crm/setup' );
+
+	// The press enters the Datenschutzerklärung; this suite sets its own text where it needs one
+	\Crm\Db::exec( $appData, 'DELETE FROM settings WHERE key IN ( \'privacy_text\', \'privacy_changed\' )' );
+	check( 'the press brings the words back: features_units names Members, Files and Review with the number of words', $status === 200 && array_keys( $body['added']['features_units'] ) === [ 'members', 'files', 'review' ] && $body['added']['features_units']['members']['words'] > 20 );
+
+	$asVisitor();
+	$state();
+	$afterPress = count( $mails );
+	$gate = portalPage( $appData, '/portal/projekte' )[1];
+	portalServe( $appData, '/.members/login', 'POST', [ 'email' => $accounts['anna']['email'], 'return' => '/portal' ] );
+	$step = portalPage( $appData, '/portal?members=sent' )[1];
+	$count = count( $mails );
+	$state();
+	\Nino\Modules\Members::link( $appData, $accounts['anna'], 'invite', '', true, true );
+	$invite = portalMail( $count );
+	check( 'after the press the login page, the page of the code, the mail of the code and the invitation hold no key: the button of the gate, the intro of the code, the subject and the intro of the invitation are words', preg_match( $pattern, $gate ) !== 1 && preg_match( $pattern, $step ) !== 1 && preg_match( $pattern, (string) $invite['subject']. (string) $invite['body'] ) !== 1
+		&& portalFind( $gate, '//form[contains(@class, "members-login")]//button[@type="submit"]' ) !== [] && trim( portalFind( $gate, '//form[contains(@class, "members-login")]//button[@type="submit"]' )[0]->textContent ) !== '' && portalFind( $step, '//form[contains(@class, "members-code")]' ) !== []
+		&& array_filter( portalMailsFrom( $afterPress ), static fn( array $mail ): bool => preg_match( $pattern, (string) ( $mail['subject'] ?? '' ). (string) ( $mail['body'] ?? '' ) ) === 1 ) === [] );
+
+	// The page of the Datenschutz is named by the words of the page: the unit's own keys for name, title and description, whatever the old ones say
+	$unitDe = (array) include dirname( __DIR__, 3 ). '/app/Crm/Crm/install/text/de_DE.php';
+	$native = (string) $appData['/nino/locales/native'];
+	\Nino\Filesystem::mutate( $appData, '/text/'. $native. '.php', static function( array $texts ): array {
+		$texts['[[/_nino/webpage/portal/datenschutz/title]]'] = 'Datenschutz-Zustimmung';
+		$texts['[[/_nino/webpage/portal/datenschutz/name]]'] = 'Datenschutz-Zustimmung';
+		return $texts;
+	} );
+	portalSignIn( $appData, $accounts['anna'] );
+	$fillsKept = $appData['./nino/html/fills'] ?? [];
+	unset( $appData['./nino/html/fills'] );
+	$privacy = portalPage( $appData, '/portal/datenschutz' )[1];
+	$appData['./nino/html/fills'] = $fillsKept;
+	$nav = portalNavAt( $appData, '/portal' );
+	check( 'the page Datenschutz shows the words of its own keys - the title in the head and in the document, the name in the navigation - and not the ones a site brought from before', str_contains( $privacy, $unitDe['[[/template/page-portal-privacy/head/title]]'] ) === true && str_contains( $privacy, 'Datenschutz-Zustimmung' ) === false && str_contains( $nav, 'Datenschutz-Zustimmung' ) === false );
+	$headTitle = portalFind( $privacy, '//title' );
+	check( '...on a request of its own, with no fill of an earlier page in the data: the title, the description, the tags of the networks and the h1 of the bar - all read before a component is drawn - carry the words of the page too', $headTitle !== [] && str_contains( $headTitle[0]->textContent, $unitDe['[[/template/page-portal-privacy/head/title]]'] ) === true
+		&& portalFind( $privacy, '//meta[@name="description"]/@content' )[0]->nodeValue === $unitDe['[[/template/page-portal-privacy/head/description]]'] && str_contains( portalFind( $privacy, '//meta[@property="og:title"]/@content' )[0]->nodeValue, $unitDe['[[/template/page-portal-privacy/head/title]]'] ) === true
+		&& str_contains( portalText( $privacy, '//header[@class="crm-bar"]//h1' ), $unitDe['[[/template/page-portal-privacy/head/title]]'] ) === true && str_contains( $privacy, 'Datenschutz-Zustimmung' ) === false );
+
+	// --- The locks of a project for every member of the group (error 2) --------------------------------------------------------
+
+	$asAdmin();
+	$folder = $store::addFolder( $appData, $a['group'], 'Sperre-Gruppe' );
+	$song = $put( $folder, 'Sperre.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 500 ) );
+	$plan = $put( $folder, 'Sperre.pdf', 'pdf', 'application/pdf', true, $owner, $ago( 400 ) );
+	$unlinked = \Nino\Modules\Members::add( $appData, 'unlinked@example.org', 'Unlinked', $a['group'] );
+	$mine = $put( $folder, 'Sperre-eigen.mp3', 'mp3', 'audio/mpeg', false, [ 'kind' => 'member', 'id' => $unlinked['id'] ], $ago( 300 ) );
+	$project = $made( 'Sperre-Gruppe', $a['number'], [ 'folder' => $folder['id'] ], false );
+	$matrix = static function() use ( &$appData, $song, $plan, $mine ): array {
+
+		$answers = [];
+
+		foreach( [ 'song inline' => '/.files/'. $song['id'], 'song download' => '/.files/'. $song['id']. '?download=1', 'pdf download' => '/.files/'. $plan['id']. '?download=1', 'own download' => '/.files/'. $mine['id']. '?download=1' ] as $label => $uri )
+			$answers[$label] = portalServe( $appData, $uri )['statusCode'];
+
+		return $answers;
+	};
+
+	portalSignIn( $appData, $unlinked );
+	$held = $matrix();
+	check( 'a member in the group of a client with no link to it is held to the project like the client: the download of a medium is 404 until the owner switches it on, the file inline, a file that is no medium and the member\'s own upload are given', \Crm\Clients::ofMember( $appData, $unlinked['id'] ) === null
+		&& $held === [ 'song inline' => 200, 'song download' => 404, 'pdf download' => 200, 'own download' => 200 ] );
+	portalSignIn( $appData, $accounts['anna'] );
+	$clientHeld = $matrix();
+	check( '...which is what the client itself gets', $clientHeld['song download'] === 404 && $clientHeld['song inline'] === 200 && $clientHeld['pdf download'] === 200 );
+
+	$asAdmin();
+	\Crm\Projekte::setDownload( $appData, $project, true, 'owner@example.org' );
+	portalSignIn( $appData, $unlinked );
+	check( '...and the download is given when the owner has switched it on', $matrix()['song download'] === 200 );
+
+	$asAdmin();
+	$offer = $final( 'offer', $a['id'], [ 'date' => $today, 'valid_until' => '2099-12-31', 'project' => $project, 'template_key' => 'angebot', 'lines' => [ $line( 'Sperre' ) ] ] );
+	\Crm\Documents::release( $appData, $offer['id'], false );
+	portalSignIn( $appData, $unlinked );
+	$waiting = $matrix();
+	$asAdmin();
+	$ownerOpens = [ portalServe( $appData, '/.files/'. $song['id'] )['statusCode'], portalServe( $appData, '/.files/'. $song['id']. '?download=1' )['statusCode'] ];
+	portalSignIn( $appData, $unlinked );
+	check( 'while an offer of the project waits for the order everything is 404 for that member - inline, as a download, a file that is no medium, the member\'s own - and the player answers 404 too; the owner opens it by the permission of the panel',
+		array_values( array_unique( $waiting ) ) === [ 404 ] && portalPlayerAsk( $appData, '?file='. $song['id'] )['statusCode'] === 404 && $ownerOpens === [ 200, 200 ] );
+	\Crm\Db::exec( $appData, 'UPDATE documents SET state = \'declined\' WHERE id = :id', [ 'id' => $offer['id'] ] );
+	\Crm\Projekte::forget( $appData );
+	$asAdmin();
+	$loose = $put( $store::addFolder( $appData, $a['group'], 'Ohne Projekt Gruppe' ), 'Lose.mp3', 'mp3', 'audio/mpeg', true, $owner, $ago( 200 ) );
+	portalSignIn( $appData, $unlinked );
+	check( '...and a file of no project stays as Files has it', portalServe( $appData, '/.files/'. $loose['id']. '?download=1' )['statusCode'] === 200 );
+
+	// --- The links of the owner (error 3) ----------------------------------------------------------------------------------------
+
+	$target = '/portal/belege#beleg-7';
+	$state();
+	$link = \Nino\Modules\Members::link( $appData, $accounts['anna'], 'send', $target, true, false );
+	$token = $tokenOf( (string) $link );
+	$entry = (array) ( $tokens()[ hash( 'sha256', $token ) ] ?? [] );
+	$days = (int) \Nino\Features::setting( $appData, 'members', 'inviteDays', 7 ) * 86400;
+	check( 'a link of the owner to an account that has signed in is of the kind send: the days of an invitation, the target in the record of the server', ( $entry['kind'] ?? '' ) === 'send' && abs( ( $entry['expires'] ?? 0 ) - time() - $days ) <= 5 && ( $entry['target'] ?? '' ) === $target );
+
+	$file = $tokens();
+	$file[ hash( 'sha256', $token ) ]['expires'] = time() - 60;
+	\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
+	$state();
+	$ended = portalServe( $appData, '/.members/login?t='. $token. '&weiter=%2Fportal%2Fupload' );
+	check( 'the page of a link that ran out says so (400) and keeps the target the server stored with it for the code - the address names none', $ended['statusCode'] === 400 && \Nino\Runtime::getSessionValue( $appData, './members/target' ) === $target );
+	check( '...and the code of the sign-in leads to that page, place on the page and all', $codeFlow( $accounts['anna'], '/.members/login?t='. $token. '&weiter=%2Fportal%2Fupload', '/' ) === $target );
+
+	$unknown = [];
+
+	foreach( [ 'a token that is none' => strrev( $token ), 'the token of a spent link' => $token ] as $label => $text ) {
+		$file = $tokens();
+		unset( $file[ hash( 'sha256', $token ) ] );
+		\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
+		$state();
+		portalServe( $appData, '/.members/login?t='. $text );
+		$unknown[$label] = \Nino\Runtime::getSessionValue( $appData, './members/target' ) === null;
+	}
+
+	foreach( [ 'a target that is no path' => [ '//evil.example', time() - 60 ], 'a record that is older than it is kept' => [ $target, time() - 40 * 86400 ] ] as $label => [ $text, $expires ] ) {
+		$forged = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
+		$file = $tokens();
+		$file[ hash( 'sha256', $forged ) ] = [ 'account' => $accounts['anna']['id'], 'kind' => 'send', 'expires' => $expires, 'target' => $text ];
+		\Nino\Filesystem::putFileContent( $appData, '/data/members-tokens.php', $file );
+		$state();
+		portalServe( $appData, '/.members/login?t='. $forged );
+		$unknown[$label] = \Nino\Runtime::getSessionValue( $appData, './members/target' ) === null;
+	}
+
+	check( 'no target comes of a token the server does not know, of a link that was spent, of a stored target that is no path or of a record older than the server keeps', array_filter( $unknown, static fn( bool $none ): bool => $none === false ) === [] && count( $unknown ) === 4 );
+
+	// --- The place on the page through the sign-in and the gate (error 9) ----------------------------------------------------------
+
+	$asked = '/portal/projekte?projekt=00001&tab=angebot';
+	$anchored = $codeFlow( $accounts['anna'], $asked, '/portal/projekte#angebot-3' );
+	check( 'a visitor who asked for a page of the portal and posts the login form with the place of the address behind its return lands on the page with that place', $anchored === $asked. '#angebot-3' );
+	$refused = [];
+
+	foreach( [ 'a second hash' => '/portal/projekte#a#b', 'markup' => '/portal/projekte#<img', 'an encoded hash' => '/portal/projekte#a%23b', 'nothing behind it' => '/portal/projekte#', 'too long' => '/portal/projekte#'. str_repeat( 'a', 65 ), 'another page' => '/portal/belege#x' ] as $label => $return )
+		$refused[$label] = $codeFlow( $accounts['anna'], $asked, $return ) === $asked;
+
+	check( '...and a place that is none, or that belongs to another page than the one asked for, is dropped: the page alone', array_filter( $refused, static fn( bool $same ): bool => $same === false ) === [] );
+	check( 'onward() takes a place of letters, digits, hyphens and underscores behind the query and nothing else - weiter and a link name pages alike', \Crm\Portal::onward( '/portal/projekte?projekt=00001&tab=angebot#Angebot_3-a' ) === '/portal/projekte?projekt=00001&tab=angebot#Angebot_3-a' && \Crm\Portal::target( '/portal#beleg-1' ) === '/portal#beleg-1'
+		&& array_filter( [ '/portal#a#b', '/portal#<img', '/portal#a%23b', '/portal#', '/portal# x', '/portal?x=1#a b', '/crm#a', '//evil.example#a' ], static fn( string $bad ): bool => \Crm\Portal::onward( $bad ) !== '' || \Crm\Portal::target( $bad ) !== '' ) === [] );
+
+	// A client at the gate: the page asked for, with its place, goes through the Datenschutz and the data
+	$privacyWas = \Crm\Settings::get( $appData, 'privacy_text' );
+	\Crm\Settings::set( $appData, 'privacy_text', 'Der Text des Tors' );
+	$asAdmin();
+	$state();
+	$fresh = \Crm\Clients::add( $appData, [], [ 'email' => 'tor-anker@example.org', 'name' => '', 'notify' => false ] );
+	$freshAccount = (array) ( $fresh['first']['account'] ?? [] );
+	$wanted = '/portal/projekte?projekt=00001&tab=angebot#angebot-12';
+	$freshToken = $tokenOf( (string) \Nino\Modules\Members::link( $appData, $freshAccount, 'invite', $wanted, true, false ) );
+	$state();
+	portalServe( $appData, '/.members/login?t='. $freshToken );
+	$entered = portalServe( $appData, '/.members/confirm', 'POST', [ 'token' => $freshToken ] );
+	$toPrivacy = $location( $entered );
+	check( 'a first-time client who follows a link with a place on a page is led to the Datenschutz with the page and its place as weiter - in one answer, from the sign-in', $toPrivacy === '/portal/datenschutz?weiter='. rawurlencode( $wanted ) );
+	$page = portalPage( $appData, $toPrivacy )[1];
+	check( '...the form of the Datenschutz carries it in its field weiter, place and all', portalFind( $page, '//form[contains(@class, "crm-privacy__form")]//input[@name="weiter"]/@value' )[0]->nodeValue === $wanted );
+	$agreed = portalServe( $appData, '/.crm/datenschutz', 'POST', [ 'agree' => '1', 'weiter' => $wanted ] );
+	check( '...the Datenschutz goes on to the data with the same weiter...', $location( $agreed ) === '/portal/meine-daten?weiter='. rawurlencode( $wanted ) );
+	$saved = portalServe( $appData, '/.crm/daten', 'POST', [ 'name' => 'Tor Anker', 'street' => 'Weg 1', 'zip' => '20095', 'city' => 'Hamburg', 'country' => 'DE', 'weiter' => $wanted ] );
+	check( '...and the data to the page with its place', $location( $saved ) === $wanted );
+	$bad = [];
+
+	foreach( [ 'a second hash' => '/portal/belege#a#b', 'markup' => '/portal/belege#<img', 'an encoded hash' => '/portal/belege#a%23b' ] as $label => $weiter ) {
+		$answer = portalServe( $appData, '/.crm/daten', 'POST', [ 'name' => 'Tor Anker', 'street' => 'Weg 1', 'zip' => '20095', 'city' => 'Hamburg', 'country' => 'DE', 'weiter' => $weiter ] );
+		$bad[$label] = str_contains( $location( $answer ), '#' ) === false && str_contains( $location( $answer ), 'weiter' ) === false;
+	}
+
+	check( '...a weiter with a place that is none is carried no further: no weiter, no place in the Location', array_filter( $bad, static fn( bool $clean ): bool => $clean === false ) === [] );
+	\Crm\Settings::set( $appData, 'privacy_text', $privacyWas );
+
+	// --- The sign-out is a post with the token (error 10) ------------------------------------------------------------------------
+
+	portalSignIn( $appData, $accounts['anna'] );
+	$barPage = portalPage( $appData, '/portal' )[1];
+	$csrf = portalFind( $barPage, '//header[@class="crm-bar"]//form[@action="/.members/logout"]/input[@name="_csrf"]/@value' );
+	check( 'the bar draws the sign-out as a form with the token of the session and one button', count( $csrf ) === 1 && $csrf[0]->nodeValue === \Nino\Csrf::getToken( $appData ) && count( portalFind( $barPage, '//header[@class="crm-bar"]//form[@action="/.members/logout"]/button[@type="submit"]' ) ) === 1 );
+	$get = portalServe( $appData, '/.members/logout' );
+	$blocked = portalServe( $appData, '/.members/logout', 'POST', [ '_csrf' => 'wrong' ] );
+	check( 'a GET of the endpoint is 405 and signs nobody out, a post with a token that is wrong is 403 and signs nobody out', $get['statusCode'] === 405 && ( $get['header']['Allow'] ?? '' ) === 'POST' && $blocked['statusCode'] === 403 && ( \Nino\Modules\Members::current( $appData )['id'] ?? '' ) === $accounts['anna']['id'] );
+	$out = portalServe( $appData, '/.members/logout', 'POST' );
+	check( '...and the post with the token signs out and leads to the start page', $out['statusCode'] === 303 && \Nino\Modules\Members::current( $appData ) === null );
 }

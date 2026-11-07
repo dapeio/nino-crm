@@ -166,6 +166,30 @@ class Projekte {
 	}
 
 	/**
+	 *	The project whose folder in the feature Files is the one given, whoever its client is: a member of the group of the client is held to the project's rules
+	 *	whether or not an account of the portal is linked to the client
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string		$folder				The id of a folder
+	 *
+	 *	@return 	array|null								As get() has it; null for a folder no project has
+	 */
+	public static function ofAnyFolder( array &$appData, string $folder ): ?array {
+
+		if( $folder === '' )
+			return null;
+
+		return self::remember( $appData, 'folder|*|'. $folder, static function() use ( &$appData, $folder ): ?array {
+
+			foreach( self::read( $appData ) as $project )
+				if( $project['folder'] === $folder )
+					return $project + [ 'download' => self::state( $appData, $project['id'] )['download'] ];
+
+			return null;
+		} );
+	}
+
+	/**
 	 *	Forget what ofFolder() and waiting() kept for this request
 	 *
 	 *	@param		array 		&$appData

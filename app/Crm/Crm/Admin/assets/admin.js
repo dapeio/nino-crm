@@ -73,7 +73,7 @@
 
 					// A portal that is only partly there names what it lacks; the PDF templates that are not there are named by their keys
 					const text = item.state === 'partial' && Array.isArray( item.lacks ) === true
-						? crm._text( key, item.lacks.map( function( kind ) { return item.key === 'pdf-templates' ? kind : Nino.content.getText( '/_admin/crm/status/lacks-'+ kind ) } ).join(', ') )
+						? crm._text( key, item.lacks.map( function( kind ) { return item.key === 'pdf-templates' || item.key === 'features-units' ? kind : Nino.content.getText( '/_admin/crm/status/lacks-'+ kind ) } ).join(', ') )
 						: Nino.content.getText( key );
 
 					list.appendChild( Nino.adminUi.el( 'li', '', text ) );
@@ -137,10 +137,14 @@
 			const there = existed.features.length+ existed.routes.length+ existed.templates.length+ existed.types.length+ existed.pdf.templates.length;
 			const sentence = crm._text( '/_admin/crm/setup/done', added.features.length, added.routes.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
 
+			// What the units of the features brought in, said with the number of their words and templates
+			const units = Object.values( added.features_units || {} );
+			const brought = units.length === 0 ? sentence : sentence+ ' '+ crm._text( '/_admin/crm/setup/units', units.reduce( function( sum, one ) { return sum+ one.words }, 0 ), units.reduce( function( sum, one ) { return sum+ one.templates.length }, 0 ) );
+
 			// What became of the start page, said in the answer
 			const home = typeof added.home === 'string' ? added.home : ( existed.home === 'own' ? 'own' : '' );
 
-			return home !== '' ? sentence+ ' '+ Nino.content.getText( '/_admin/crm/setup/home-'+ home ) : sentence;
+			return home !== '' ? brought+ ' '+ Nino.content.getText( '/_admin/crm/setup/home-'+ home ) : brought;
 		},
 	} );
 

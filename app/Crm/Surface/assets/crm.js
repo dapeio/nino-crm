@@ -6961,7 +6961,7 @@
 
 		// What a portal lacks is a kind with a word; what the PDF templates lack are their keys
 		if( item.state === 'partial' && Array.isArray( item.lacks ) === true )
-			return t( key, item.lacks.map( function( kind ) { return item.key === 'pdf-templates' ? kind : t( 'status.lacks-'+ kind ) } ).join( ', ' ) );
+			return t( key, item.lacks.map( function( kind ) { return item.key === 'pdf-templates' || item.key === 'features-units' ? kind : t( 'status.lacks-'+ kind ) } ).join( ', ' ) );
 
 		// The mail cap is said with the number in force
 		return item.key === 'mail-cap' ? t( key, item.value ) : t( key );
@@ -6980,7 +6980,9 @@
 		const added = Object.assign( {}, none, answer.added );
 		const existed = Object.assign( {}, none, answer.existed );
 		const there = existed.features.length+ existed.routes.length+ existed.templates.length+ existed.types.length+ existed.pdf.templates.length;
-		const done = t( 'setup.done', added.features.length, added.routes.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
+		const units = Object.values( added.features_units || {} );
+		const brought = t( 'setup.done', added.features.length, added.routes.length, added.templates.length, added.types.length, added.texts, added.pdf.templates.length, there );
+		const done = units.length === 0 ? brought : brought+ ' '+ t( 'setup.units', units.reduce( function( sum, one ) { return sum+ one.words }, 0 ), units.reduce( function( sum, one ) { return sum+ one.templates.length }, 0 ) );
 		const capped = typeof added.cap === 'number' ? done+ ' '+ t( 'setup.cap', added.cap ) : done;
 		const notified = added.notify === true ? capped+ ' '+ t( 'setup.notify' ) : capped;
 		const sentence = added.privacy === true ? notified+ ' '+ t( 'setup.privacy' ) : ( existed.privacy === true ? notified+ ' '+ t( 'setup.privacy-there' ) : notified );

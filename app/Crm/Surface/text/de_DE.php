@@ -1182,6 +1182,7 @@ return [
 	'einrichtung.row-events' => 'Termine',
 	'einrichtung.row-portal' => 'Portalseiten',
 	'einrichtung.row-pdf-templates' => 'PDF-Vorlagen',
+	'einrichtung.row-features-units' => 'Worte der Features',
 	'einrichtung.row-home' => 'Startseite',
 	'einrichtung.row-mail-cap' => 'Mail-Deckel',
 	'einrichtung.row-notify' => 'Benachrichtigungen',

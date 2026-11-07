@@ -45,12 +45,13 @@ class Portal {
 	public const string STYLE = '/app/Crm/Portal/assets/portal.css';
 	public const string SCRIPT = '/app/Crm/Portal/assets/portal.js';
 	private const string NAME = '/^[a-z]{1,20}$/D';
+	private const array PRIVACY_FIELDS = [ 'name', 'title', 'description' ];
 
 	// The longest page to go on to a request may name: a path under /portal and a short query
 	private const int ONWARD_MAX = 300;
 
 	// The part of an address that names a place on the page: lower case words and hyphens
-	private const string FRAGMENT = '/^[a-z0-9]+(?:-[a-z0-9]+)*$/D';
+	private const string FRAGMENT = '/^[A-Za-z0-9_-]{1,64}$/D';
 
 	// The entries of the navigation, in its order: the last part of the address below /portal ('' is the start page), which is also the key of the page's name, and the icon of the entry
 	public const array NAV = [ '' => 'house', 'projekte' => 'folder', 'belege' => 'file-text', 'termine' => 'calendar', 'upload' => 'upload', 'meine-daten' => 'user' ];
@@ -119,36 +120,16 @@ class Portal {
 	}
 
 	/**
-	 *	The page to go on to, as a request names it (?weiter= or the field weiter of a form): a path under /portal and nothing else. A host, a scheme, a second
-	 *	slash, a backslash, a dot segment, an encoded character in the path, a control character or a null byte make it none, and so does a path that is not
-	 *	lower case words between slashes. The query is the characters a query is written with
+	 *	The page to go on to, as a request names it (?weiter= or the field weiter of a form): a path under /portal and nothing else - with its query and, after it, the place on
+	 *	the page (#angebot-15). A host, a scheme, a second slash, a backslash, a dot segment, an encoded character in the path, a control character or a null byte make it
+	 *	none, and so does a path that is not lower case words between slashes. The query is the characters a query is written with; the place is letters, digits, hyphens
+	 *	and underscores - one # only, and nothing else behind it
 	 *
 	 *	@param		mixed			$posted
 	 *
-	 *	@return 	string										The path with its query; '' for none
+	 *	@return 	string										The path with its query and place; '' for none
 	 */
 	public static function onward( mixed $posted ): string {
-
-		if( is_string( $posted ) === false || $posted === '' || strlen( $posted ) > self::ONWARD_MAX )
-			return '';
-
-		[ $path, $query ] = array_pad( explode( '?', $posted, 2 ), 2, '' );
-
-		if( preg_match( '#^/portal(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$#D', $path ) !== 1 || ( $query !== '' && preg_match( '/^[A-Za-z0-9_.~%=&+-]+$/D', $query ) !== 1 ) )
-			return '';
-
-		return $posted;
-	}
-
-	/**
-	 *	A page of the portal a link may lead to, as a mail or an invitation names it: what onward() accepts - a path under /portal and a short query - and, after it, the place on the page
-	 *	(#beleg-12). Anything else is none
-	 *
-	 *	@param		mixed			$posted
-	 *
-	 *	@return 	string										The address as it was given; '' for none
-	 */
-	public static function target( mixed $posted ): string {
 
 		if( is_string( $posted ) === false || $posted === '' || strlen( $posted ) > self::ONWARD_MAX )
 			return '';
@@ -158,7 +139,25 @@ class Portal {
 		if( $place !== null && preg_match( self::FRAGMENT, $place ) !== 1 )
 			return '';
 
-		return self::onward( $page ) === '' ? '' : $posted;
+		[ $path, $query ] = array_pad( explode( '?', $page, 2 ), 2, '' );
+
+		if( preg_match( '#^/portal(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$#D', $path ) !== 1 || ( $query !== '' && preg_match( '/^[A-Za-z0-9_.~%=&+-]+$/D', $query ) !== 1 ) )
+			return '';
+
+		return $posted;
+	}
+
+	/**
+	 *	A page of the portal a link may lead to, as a mail or an invitation names it: what onward() accepts - a path under /portal, a short query and the place on the page
+	 *	(#beleg-12). Anything else is none
+	 *
+	 *	@param		mixed			$posted
+	 *
+	 *	@return 	string										The address as it was given; '' for none
+	 */
+	public static function target( mixed $posted ): string {
+
+		return self::onward( $posted );
 	}
 
 	/**
@@ -215,11 +214,24 @@ class Portal {
 		// The start page of the portal is no page the client asked for: a bookmark of it, which the gate of Members keeps as the target, is as good as none
 		$target = (string) ( $args['target'] ?? '' );
 
-		if( ( $target !== '' && $target !== '/portal' ) || is_string( $args['account']['id'] ?? null ) === false || Crm::featureOn( $appData, 'members' ) === false )
+		if( is_string( $args['account']['id'] ?? null ) === false || Crm::featureOn( $appData, 'members' ) === false )
 			return;
 
 		try {
 			$client = Clients::ofMember( $appData, $args['account']['id'] );
+
+			// A page the sign-in was asked for stays the page; while the gate has a step pending for the client the step comes first, with the page - and the place on it - as its weiter,
+			// where the gate would lead the request there in a second answer and lose the place
+			if( $target !== '' && $target !== '/portal' ) {
+
+				$pending = $client === null ? '' : self::pending( $appData, $client );
+
+				if( $pending !== '' && self::onward( $target ) !== '' && preg_split( '/[?#]/', $target, 2 )[0] !== self::stepAddress( $pending ) )
+					$args['to'] = self::stepAddress( $pending, self::onward( $target ) );
+
+				return;
+			}
+
 			$to = $client === null ? '' : self::landing( $appData, $client );
 		}
 		catch( \PDOException $e ) {
@@ -260,7 +272,7 @@ class Portal {
 			return $onward;
 
 		// A page to go on to that is the pending step itself is not wrapped in it again
-		return explode( '?', $onward, 2 )[0] === self::stepAddress( $pending ) ? $onward : self::stepAddress( $pending, $onward );
+		return preg_split( '/[?#]/', $onward, 2 )[0] === self::stepAddress( $pending ) ? $onward : self::stepAddress( $pending, $onward );
 	}
 
 	/**
@@ -277,7 +289,7 @@ class Portal {
 		if( $onward === '' )
 			return '';
 
-		[ $path, $query ] = array_pad( explode( '?', $onward, 2 ), 2, '' );
+		[ $path, $query ] = array_pad( explode( '?', explode( '#', $onward, 2 )[0], 2 ), 2, '' );
 		$area = substr( $path, strlen( '/portal/' ) );
 
 		if( $path !== '/portal' && isset( self::NAV[$area] ) === false && $area !== self::PRIVACY )
@@ -387,7 +399,7 @@ class Portal {
 	 *	folder of a project is not for its client while an offer of the project waits for the order (Projekte::waiting()), inline or as a download. Where no offer waits, only
 	 *	what the player plays (medium(): audio and video) is held back, and only its download, until the owner switched the download of the project on (Projekte::state()): a medium is
 	 *	given to be played, any other file - a PDF, a text, an archive - is given inline and as a download whatever the switch says. The files the member put there are the
-	 *	member's own and are given whatever the switch says. The hook only takes away: the member of no client and a file of no project of the client are left as Files has them,
+	 *	member's own and are given whatever the switch says. A member of no client - an account in the group of a client that is linked to no client - is held to the rules of the project whose folder the file lies in, as the client is. The hook only takes away: a file of no project is left as Files has it,
 	 *	and an answer of false is never turned into true
 	 *
 	 *	@param		array 		&$appData
@@ -402,22 +414,21 @@ class Portal {
 
 		$client = self::client( $appData );
 
-		if( $client === null )
-			return;
-
-		if( self::pending( $appData, $client ) !== '' ) {
+		if( $client !== null && self::pending( $appData, $client ) !== '' ) {
 			$args['allowed'] = false;
 			return;
 		}
 
-		$project = Projekte::ofFolder( $appData, $client['number'], (string) ( $args['file']['folder'] ?? '' ) );
+		// A member of the group of a client with no link to it is held to the rules of the project like the client's own: the folder names the project, and the project its client
+		$project = $client !== null ? Projekte::ofFolder( $appData, $client['number'], (string) ( $args['file']['folder'] ?? '' ) ) : Projekte::ofAnyFolder( $appData, (string) ( $args['file']['folder'] ?? '' ) );
+		$owner = $client ?? ( $project === null ? null : Clients::byNumber( $appData, $project['client'] ) );
 
-		if( $project === null )
+		if( $project === null || $owner === null )
 			return;
 
 		$own = ( $args['file']['by']['kind'] ?? '' ) === 'member' && ( $args['file']['by']['id'] ?? '' ) === ( $args['member']['id'] ?? null );
 
-		if( Projekte::waiting( $appData, $project['id'], (int) $client['id'] ) !== null ) {
+		if( Projekte::waiting( $appData, $project['id'], (int) $owner['id'] ) !== null ) {
 			$args['allowed'] = false;
 			return;
 		}
@@ -1357,6 +1368,50 @@ class Portal {
 
 		foreach( glob( __DIR__. '/text/*.php' ) ?: [] as $file )
 			\Nino\Html::addFills( $appData, (array) include $file, basename( $file, '.php' ) );
+
+		self::privacyWords( $appData );
+	}
+
+	/**
+	 *	The details of the page Datenschutz are the words of the page itself (/template/page-portal-privacy/head/...), which the unit adds where they are missing: the address of
+	 *	a page names the keys the head of the site, the bar, the navigation and the note of the gate read, /_nino/webpage/portal/datenschutz/..., and these three take the words of
+	 *	the page for every language - the keys of the page win, whatever the old ones say. Called by words() and, before the page is drawn, by callbackPrivacyWords()
+	 *
+	 *	@param		array 		&$appData
+	 *
+	 *	@return 	void
+	 */
+	public static function privacyWords( array &$appData ): void {
+
+		foreach( \Nino\Locales::getAvailableLocales( $appData ) as $locale ) {
+
+			$site = \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] );
+			$site = is_array( $site ) === true ? $site : [];
+			$fills = [];
+
+			foreach( self::PRIVACY_FIELDS as $field )
+				if( is_string( $site['[[/template/page-portal-privacy/head/'. $field. ']]'] ?? null ) === true && $site['[[/template/page-portal-privacy/head/'. $field. ']]'] !== '' )
+					$fills['[[/_nino/webpage/portal/datenschutz/'. $field. ']]'] = $site['[[/template/page-portal-privacy/head/'. $field. ']]'];
+
+			if( $fills !== [] )
+				\Nino\Html::addFills( $appData, $fills, $locale );
+		}
+	}
+
+	/**
+	 *	'/nino/http/response': the words of the page Datenschutz are in place before the head of any page of the portal is drawn - its title, description and social tags
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		array 		&$request
+	 *
+	 *	@return 	void
+	 */
+	public static function callbackPrivacyWords( array &$appData, array &$request ): void {
+
+		$route = (string) ( $request['/nino/http/response']['uri'] ?? '' );
+
+		if( $route === '/portal' || str_starts_with( $route, '/portal/' ) === true )
+			self::privacyWords( $appData );
 	}
 
 	/**

@@ -2637,6 +2637,75 @@ Db::close();
 // --- Einwilligungen: the sentences of the boxes in the settings -----------------------------------------------------------------------------
 
 /**
+ *	The checks of the units of the features the Einrichtung applies: the words and the page templates they miss are entered add-only, the status counts them
+ *	before, and a second press adds nothing
+ *
+ *	@param		array 		&$appData			A site the setup has been pressed on
+ *	@param		\Closure	$post					Posts an action of the panel
+ *	@param		string		$root
+ *
+ *	@return 	void
+ */
+function documentsFeatureUnitChecks( array &$appData, \Closure $post, string $root ): void {
+
+	[ $status, $body ] = $post( 'crm/setup' );
+	check( 'a press on a site that has the units of the features whole adds nothing from them: features_units is empty and says which ones were there - Pdf has no unit', $status === 200 && $body['added']['features_units'] === [] && $body['existed']['features_units'] === [ 'members', 'files', 'review', 'sign', 'events' ] );
+
+	$locales = \Nino\Locales::getAvailableLocales( $appData );
+	$native = (string) $appData['/nino/locales/native'];
+	$gone = [];
+
+	// A site that was set up before the words came: the keys of Members, Files and Review are not in its text files, a word of the owner is, and so is a template that is missing
+	foreach( [ 'members', 'files', 'review' ] as $key )
+		foreach( $locales as $locale ) {
+
+			$file = \Nino\Features::get( $appData, $key )['dir']. '/install/text/'. $locale. '.php';
+			$unit = is_file( $file ) === true ? array_keys( (array) include $file ) : [];
+
+			if( $locale === $native )
+				$gone[$key] = $unit;
+
+			\Nino\Filesystem::mutate( $appData, '/text/'. $locale. '.php', static fn( array $texts ): array => array_diff_key( $texts, array_flip( $unit ) ) );
+		}
+
+	$own = '[[/feature/members/login/label]]';
+	\Nino\Filesystem::mutate( $appData, '/text/'. $native. '.php', static function( array $texts ) use ( $own ): array {
+		$texts[$own] = 'Meine Beschriftung';
+		return $texts;
+	} );
+	@unlink( \Nino\Filesystem::path( $appData, '/templates/page-members-confirm.tpl' ) );
+
+	// The word of the owner is there, the template is not: one word less, one template more
+	$lacking = array_sum( array_map( 'count', $gone ) );
+	[ $status, $body ] = $post( 'crm/status' );
+	$item = array_values( array_filter( $body['items'], static fn( array $one ): bool => $one['key'] === 'features-units' ) )[0] ?? [];
+	check( 'the status counts what the units of the features miss before the press: partial, the number of words and templates, and a line for each feature that misses some', $status === 200 && ( $item['state'] ?? '' ) === 'partial' && ( $item['count'] ?? 0 ) === $lacking && count( $item['lacks'] ?? [] ) === 3 && $body['whole'] === false );
+
+	[ $status, $body ] = $post( 'crm/setup' );
+	$added = $body['added']['features_units'] ?? [];
+	check( 'the press enters them: the words of each feature by number, the template by its file - and the answer says which features were there already', $status === 200 && array_keys( $added ) === [ 'members', 'files', 'review' ] && $added['members']['words'] === count( $gone['members'] ) - 1 && $added['files']['words'] === count( $gone['files'] ) && $added['review']['words'] === count( $gone['review'] )
+		&& $added['members']['templates'] === [ 'page-members-confirm.tpl' ] && $added['files']['templates'] === [] && $body['existed']['features_units'] === [ 'sign', 'events' ] );
+
+	$missing = [];
+
+	foreach( $locales as $locale ) {
+
+		$texts = (array) \Nino\Filesystem::getFileContent( $appData, '/text/'. $locale. '.php', [] );
+
+		foreach( $gone as $keys )
+			foreach( $keys as $key )
+				if( array_key_exists( $key, $texts ) === false )
+					$missing[] = $locale. ' '. $key;
+	}
+
+	$texts = (array) \Nino\Filesystem::getFileContent( $appData, '/text/'. $native. '.php', [] );
+	check( 'every key of the three units is in the text file of every language again, and the word the owner had is his own still; the template is there', $missing === [] && ( $texts[$own] ?? '' ) === 'Meine Beschriftung' && is_file( \Nino\Filesystem::path( $appData, '/templates/page-members-confirm.tpl' ) ) === true );
+
+	[ $status, $body ] = $post( 'crm/setup' );
+	check( 'a second press adds nothing from the units and the status is whole again', $status === 200 && $body['added']['features_units'] === [] && $body['existed']['features_units'] === [ 'members', 'files', 'review', 'sign', 'events' ] && $post( 'crm/status' )[1]['whole'] === true );
+}
+
+/**
  *	The checks of the settings of the consents
  */
 function documentsConsentChecks( array &$appData, \Closure $post, string $root ): void {
@@ -2670,5 +2739,6 @@ function documentsConsentChecks( array &$appData, \Closure $post, string $root )
 }
 
 documentsConsentChecks( $appData, $post, $root );
+documentsFeatureUnitChecks( $appData, $post, $root );
 
 ninoDone( $appData );

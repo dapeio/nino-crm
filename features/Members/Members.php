@@ -156,8 +156,12 @@ namespace Nino\Modules {
 		// may be: the entry of a code is made by a request for one and never by link()
 		private const array STATES = [ 'sent', 'limit', 'invalid', 'out', 'expired', 'wrong', 'gone' ];
 		private const array STATE_KEYS = [ 'sent' => 'code' ];
-		private const array KINDS = [ 'login', 'invite', 'code', 'change' ];
-		private const array LINKS = [ 'login', 'invite' ];
+		private const array KINDS = [ 'login', 'invite', 'send', 'code', 'change' ];
+		private const array LINKS = [ 'login', 'invite', 'send' ];
+
+		// How long the record of a link that has run out is kept: what the link led to is all it is kept for, so that the page that says the link no longer works can lead the
+		// code of the sign-in to the same page
+		private const int LINK_KEEP = 2592000;
 
 		/**
 		 *	Register the five routes this feature owns with their handlers,
@@ -174,6 +178,7 @@ namespace Nino\Modules {
 			$appData['/nino/http/routes']['POST://.members/code']		= [ 'uri' => '/.members/code' ];
 			$appData['/nino/http/routes']['GET://.members/login']		= [ 'uri' => '/.members/login' ];
 			$appData['/nino/http/routes']['GET://.members/logout']	= [ 'uri' => '/.members/logout' ];
+			$appData['/nino/http/routes']['POST://.members/logout']	= [ 'uri' => '/.members/logout' ];
 			$appData['/nino/http/routes']['POST://.members/confirm']	= [ 'uri' => '/.members/confirm' ];
 
 			// Priority 1: before Modules\Cache's own callback (9) decides whether
@@ -185,7 +190,8 @@ namespace Nino\Modules {
 			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.members/code', [ self::class, 'callbackCode' ] );
 			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.members/login', [ self::class, 'callbackLoginLink' ] );
 			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.members/confirm', [ self::class, 'callbackConfirm' ] );
-			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.members/logout', [ self::class, 'callbackLogout' ] );
+			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://.members/logout', [ self::class, 'callbackLogout' ] );
+			\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://.members/logout', [ self::class, 'callbackLogoutGet' ] );
 
 			// The literal string, not Seo::EXCLUDE: this feature does not require
 			// Seo, and a constant of a class that is not there is a fatal error
@@ -601,8 +607,9 @@ namespace Nino\Modules {
 
 		/**
 		 *	Send an account a link and keep its token: a link to sign in ('login',
-		 *	valid for the setting linkMinutes) or the one of an invitation ('invite',
-		 *	valid for inviteDays). The mail is absolute (the website's address is
+		 *	valid for the setting linkMinutes), the one of an invitation ('invite',
+		 *	valid for inviteDays) or one the owner sends to an account that is a member
+		 *	already ('send', valid for inviteDays, with a mail of its own). The mail is absolute (the website's address is
 		 *	needed) and goes out in the language of the request, or - for the panel,
 		 *	which writes to somebody who is not in the room - in the site's native one.
 		 *	A token the mail never carried is good for nobody: it is not found.
@@ -613,7 +620,7 @@ namespace Nino\Modules {
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		array 		$account			As account() has it
-		 *	@param		string		$kind					'login' or 'invite'
+		 *	@param		string		$kind					'login', 'invite' or 'send'
 		 *	@param		string		$target				The path the member asked for, '' for none - where the link leads after the sign-in
 		 *	@param		bool			$native				Write in the site's native language
 		 *	@param		bool			$notify				Whether the account is mailed the link
@@ -643,7 +650,7 @@ namespace Nino\Modules {
 				}
 			}
 
-			$seconds = $kind === 'invite' ? self::_days( $appData ) * 86400 : self::_minutes( $appData ) * 60;
+			$seconds = $kind === 'login' ? self::_minutes( $appData ) * 60 : self::_days( $appData ) * 86400;
 			$token = self::_issue( $appData, $account['id'], $kind, $seconds, $target );
 
 			if( $token === null ) {
@@ -917,6 +924,7 @@ namespace Nino\Modules {
 
 					$target = \Nino\Runtime::getSessionValue( $appData, self::SESSION_TARGET );
 					$target = is_string( $target ) === true && self::_isPath( $target ) === true ? $target : '';
+					$target = self::_anchored( $target, self::_posted( 'return' ) );
 
 					if( self::_sendCode( $appData, $account, $nonce, $until, $target ) === true )
 						\Nino\Runtime::unsetSessionValue( $appData, self::SESSION_TARGET );
@@ -924,6 +932,27 @@ namespace Nino\Modules {
 			}
 
 			self::_redirect( $appData, $request, $return, 'sent' );
+		}
+
+		/**
+		 *	The place on the page a sign-in leads to: the target the gate kept - the page a visitor asked for, path and query, which no browser sends a fragment with - with the
+		 *	anchor the form carries behind its 'return' (a script of the page appends the fragment of the address, #angebot-15). The anchor is kept only when the target is
+		 *	the page the form stood on, and only as letters, digits, hyphens and underscores, 64 of them at most; anything else - a second #, a character that is
+		 *	none of those, a form that names another page - leaves the target as it is
+		 *
+		 *	@param		string		$target				What the session kept, '' for none
+		 *	@param		string		$posted				The field 'return' of the form
+		 *
+		 *	@return 	string
+		 */
+		private static function _anchored( string $target, string $posted ): string {
+
+			$at = strpos( $posted, '#' );
+
+			if( $target === '' || $at === false || preg_match( '/^[A-Za-z0-9_-]{1,64}$/D', substr( $posted, $at + 1 ) ) !== 1 || substr( $posted, 0, strcspn( $posted, '?#' ) ) !== substr( $target, 0, strcspn( $target, '?#' ) ) )
+				return $target;
+
+			return strlen( $target. substr( $posted, $at ) ) <= self::TARGET_MAX ? $target. substr( $posted, $at ) : $target;
 		}
 
 		/**
@@ -1027,7 +1056,7 @@ namespace Nino\Modules {
 			$account = $found === null ? null : self::account( $appData, $found['account'] );
 
 			if( $account === null || $account['active'] === false ) {
-				self::_refuse( $appData, $request, 400 );
+				self::_refuseLink( $appData, $request, $token );
 				return;
 			}
 
@@ -1063,7 +1092,7 @@ namespace Nino\Modules {
 				$account = $found === null ? null : self::account( $appData, $found['account'] );
 
 				if( $account === null || $account['active'] === false )
-					self::_refuse( $appData, $request, 400 );
+					self::_refuseLink( $appData, $request, $token );
 				else
 					self::_confirmPage( $appData, $request, $token, $account, 'expired', 403 );
 
@@ -1074,7 +1103,7 @@ namespace Nino\Modules {
 			$account = $spent === null ? null : self::account( $appData, $spent['account'] );
 
 			if( $account === null || $account['active'] === false ) {
-				self::_refuse( $appData, $request, 400 );
+				self::_refuseLink( $appData, $request, $token );
 				return;
 			}
 
@@ -1089,10 +1118,10 @@ namespace Nino\Modules {
 		}
 
 		/**
-		 *	GET /.members/logout: sign the member out and go to the start page with
-		 *	?members=out. A plain link rather than a form on purpose - it discloses
-		 *	nothing a visitor could not already tell from being on the page, so it
-		 *	needs no csrf token to be safe, as ProtectedArea's logout has none. The token
+		 *	POST /.members/logout: sign the member out and go to the start page with
+		 *	?members=out. A form with the csrf token, as every write of this feature is: a
+		 *	link would let any other page sign a member out. A post the csrf guard refused
+		 *	leaves the 403 and an empty body, and the member stays signed in. The token
 		 *	of this device goes with the session, and the cookie that carried it
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
@@ -1101,6 +1130,9 @@ namespace Nino\Modules {
 		 *	@return 	void
 		 */
 		public static function callbackLogout( array &$appData, array &$request ): void {
+
+			if( \Nino\Form::blocked( $request ) === true )
+				return;
 
 			$account = self::current( $appData );
 
@@ -1113,6 +1145,24 @@ namespace Nino\Modules {
 				\Nino\Callbacks::doCallbacks( $appData, '/members/logout', $account );
 
 			self::_redirect( $appData, $request, self::_start( $appData ), 'out' );
+		}
+
+		/**
+		 *	GET /.members/logout: nothing is signed out by a request that is no post. The answer is 405 with the header Allow and a short page that links to the start page,
+		 *	not stored by anyone
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		&$request			(reference) Current server request
+		 *
+		 *	@return 	void
+		 */
+		public static function callbackLogoutGet( array &$appData, array &$request ): void {
+
+			$request['/nino/http/response']['statusCode']							= 405;
+			$request['/nino/http/response']['header']['Allow']					= 'POST';
+			$request['/nino/http/response']['header']['Cache-Control']	= 'no-store';
+			$request['/nino/http/response']['header']['Content-Type']	= 'text/html; charset=utf-8';
+			$request['/nino/http/response']['body']										= '<!doctype html><html lang="'. \Nino\Modules\Components::escape( substr( \Nino\Locales::getCurrentLocale( $appData ), 0, 2 ) ). '"><meta charset="utf-8"><title>405</title><p><a href="'. ( $home = \Nino\Modules\Components::escape( \Nino\Filesystem::getDir( $appData ). self::_start( $appData ) ) ). '">'. $home. '</a></p>';
 		}
 
 		/**
@@ -1596,14 +1646,14 @@ namespace Nino\Modules {
 		 *
 		 *	@return 	void
 		 */
-		private static function _resume( array &$appData, array &$request ): void {
+		private static function _resume( array &$appData, array &$request, bool $link = false ): void {
 
 			if( is_string( $_COOKIE[self::REMEMBER] ?? null ) === false || $_COOKIE[self::REMEMBER] === '' )
 				return;
 
 			$uri = (string) ( $request['/nino/http/request']['uri'] ?? '' );
 
-			if( ( $request['/nino/http/request']['method'] ?? '' ) !== 'GET' || str_starts_with( $uri, '/.members' ) === true || str_starts_with( $uri, '/_' ) === true
+			if( ( $request['/nino/http/request']['method'] ?? '' ) !== 'GET' || ( $link === false && str_starts_with( $uri, '/.members' ) === true ) || str_starts_with( $uri, '/_' ) === true
 				|| \Nino\Http::answersHtml( (array) ( $request['/nino/http/response'] ?? [] ) ) === false || self::current( $appData ) !== null )
 				return;
 
@@ -1722,7 +1772,7 @@ namespace Nino\Modules {
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$id						The account
-		 *	@param		string		$kind					'login' or 'invite'
+		 *	@param		string		$kind					One of LINKS
 		 *	@param		int				$seconds			How long it is good for
 		 *	@param		string		$target				The path the member asked for, '' for none
 		 *
@@ -1917,7 +1967,10 @@ namespace Nino\Modules {
 			if( preg_match( '/^[A-Za-z0-9_-]{43}$/D', $token ) !== 1 )
 				return null;
 
-			return self::_liveTokens( \Nino\Filesystem::getFileContent( $appData, self::TOKENS, [] ), time() )[ hash( 'sha256', $token ) ] ?? null;
+			$now = time();
+			$entry = self::_liveTokens( \Nino\Filesystem::getFileContent( $appData, self::TOKENS, [] ), $now )[ hash( 'sha256', $token ) ] ?? null;
+
+			return $entry !== null && $entry['expires'] > $now ? $entry : null;
 		}
 
 		/**
@@ -1960,7 +2013,7 @@ namespace Nino\Modules {
 				$live = self::_liveTokens( $state, $now );
 				$entry = $live[$hash] ?? null;
 
-				if( $entry !== null && ( $kind === '' || $entry['kind'] === $kind ) ) {
+				if( $entry !== null && $entry['expires'] > $now && ( $kind === '' || $entry['kind'] === $kind ) ) {
 					$found = $entry;
 					unset( $live[$hash] );
 				}
@@ -1972,9 +2025,11 @@ namespace Nino\Modules {
 		}
 
 		/**
-		 *	The tokens that are good: an entry that is well formed - an account, a
-		 *	kind of KINDS, a target that is a string, and for a change the new address - and
-		 *	has not run out
+		 *	The tokens that are kept: an entry that is well formed - an account, a
+		 *	kind of KINDS, a target that is a string, and for a change the new address -
+		 *	and has not run out; the record of a link that ran out stays for LINK_KEEP
+		 *	seconds, for _expiredTarget() alone: what asks for a token that is good looks at
+		 *	'expires' itself (_find(), _spendHash())
 		 *
 		 *	@param		mixed			$state				As the file holds it
 		 *	@param		int				$now
@@ -1987,11 +2042,32 @@ namespace Nino\Modules {
 
 			foreach( is_array( $state ) === true ? $state : [] as $hash => $entry )
 				if( is_array( $entry ) === true && is_string( $entry['account'] ?? null ) === true && in_array( $entry['kind'] ?? null, self::KINDS, true ) === true
-					&& is_int( $entry['expires'] ?? null ) === true && $entry['expires'] > $now && is_string( $entry['target'] ?? null ) === true
+					&& is_int( $entry['expires'] ?? null ) === true && $entry['expires'] > $now - ( in_array( $entry['kind'], self::LINKS, true ) === true ? self::LINK_KEEP : 0 ) && is_string( $entry['target'] ?? null ) === true
 					&& ( $entry['kind'] !== 'change' || is_string( $entry['email'] ?? null ) === true ) )
 					$live[(string) $hash] = [ 'account' => $entry['account'], 'kind' => $entry['kind'], 'expires' => $entry['expires'], 'target' => $entry['target'] ] + ( $entry['kind'] === 'change' ? [ 'email' => $entry['email'] ] : [] );
 
 			return $live;
+		}
+
+		/**
+		 *	Where a link led that has run out: the path its record carries, and nothing for a token that is not well formed, one the file does not know - a
+		 *	record is kept for LINK_KEEP seconds after its end - or one that is still good. Only what the server stored with the token is answered, never
+		 *	a value of the request
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		string		$token
+		 *
+		 *	@return 	string										A path _isPath() accepts, '' for none
+		 */
+		private static function _expiredTarget( array &$appData, string $token ): string {
+
+			if( preg_match( '/^[A-Za-z0-9_-]{43}$/D', $token ) !== 1 )
+				return '';
+
+			$now = time();
+			$entry = self::_liveTokens( \Nino\Filesystem::getFileContent( $appData, self::TOKENS, [] ), $now )[ hash( 'sha256', $token ) ] ?? null;
+
+			return $entry !== null && in_array( $entry['kind'], self::LINKS, true ) === true && $entry['expires'] <= $now && strlen( $entry['target'] ) <= self::TARGET_MAX && self::_isPath( $entry['target'] ) === true ? $entry['target'] : '';
 		}
 
 		/**
@@ -2004,7 +2080,7 @@ namespace Nino\Modules {
 		 *
 		 *	@param		array 		&$appData			(reference) Array with current app data
 		 *	@param		string		$to
-		 *	@param		string		$kind					'login', 'invite', 'code', 'change' (a code, to the new address) or 'changed' (the notice to the old address that it was changed, which names neither the new one nor a code)
+		 *	@param		string		$kind					'login', 'invite', 'send', 'code', 'change' (a code, to the new address) or 'changed' (the notice to the old address that it was changed, which names neither the new one nor a code)
 		 *	@param		string		$token				The token of a link, the six digits of a code - nothing for a notice
 		 *	@param		bool			$native				Write in the site's native language
 		 *
@@ -2295,6 +2371,40 @@ namespace Nino\Modules {
 		private static function _redirect( array &$appData, array &$request, string $path, string $state ): void {
 
 			\Nino\Http::redirect( $appData, $request, $path. '?members='. $state, 303 );
+		}
+
+		/**
+		 *	Answer a link that does not lead in (see _refuse(), 400): where the link led, if its record is still kept (_expiredTarget()), is put in the session as the page the
+		 *	next sign-in asked for - the form of the page asks for a code and the code leads there, the way the gate does it. The record is the server's: the address of the
+		 *	request names the token and nothing else
+		 *
+		 *	@param		array 		&$appData			(reference) Array with current app data
+		 *	@param		array 		&$request			(reference) Current server request
+		 *	@param		string		$token				What the request named
+		 *
+		 *	@return 	void
+		 */
+		private static function _refuseLink( array &$appData, array &$request, string $token ): void {
+
+			$target = self::_expiredTarget( $appData, $token );
+
+			// A device that is signed in by a good cookie has no use for the page that says the link does not work: it goes where the link led, with no form and no mail
+			if( $target !== '' && ( $request['/nino/http/request']['method'] ?? '' ) === 'GET' && self::current( $appData ) === null ) {
+
+				self::_resume( $appData, $request, true );
+
+				$member = self::current( $appData );
+
+				if( $member !== null ) {
+					\Nino\Http::redirect( $appData, $request, self::_arrival( $appData, $member, $target ), 303 );
+					return;
+				}
+			}
+
+			if( $target !== '' )
+				\Nino\Runtime::setSessionValue( $appData, self::SESSION_TARGET, $target );
+
+			self::_refuse( $appData, $request, 400 );
 		}
 
 		/**
