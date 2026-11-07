@@ -23,6 +23,9 @@ declare(strict_types=1);
  *								GET  /crm/preview/<id>		the PDF of a draft as its template makes it now, inline, nothing stored
  *								GET  /crm/uploads.zip?ids=<id>,<id>	the files of the upload folders of the clients as one ZIP, as an attachment: for a session with the CRM's permission and the Files panel's,
  *																					with ZipArchive (see Surface\Uploads); the ZIP lies in /data for the length of the request
+ *								GET  /crm/export/belege.csv?jahr=<year>, /crm/export/belege-<year>.zip, /crm/export/belege.zip?ids=<id>,<id>
+ *																					the documents of a year as a CSV for the accountant, their PDFs as a ZIP, and the PDFs of a choice as a ZIP: attachments for a session with the CRM's permission
+ *																					(see Surface\Export); the ZIP lies in /data for the length of the request
  *								GET  /crm/pdf-preview/template/<key>, /crm/pdf-preview/layout
  *																					the PDF of a saved template with the feature's sample data, and of the layout and design with the sample page, as the
  *																					panel of the feature makes them: inline, nothing stored, for a session with the CRM's permission and the Pdf panel's
@@ -72,6 +75,7 @@ class Surface {
 		$appData['/nino/http/routes']['GET://crm/preview/*'] = [ 'uri' => '/crm/preview/*' ];
 		$appData['/nino/http/routes']['GET://crm/pdf-preview/*'] = [ 'uri' => '/crm/pdf-preview/*' ];
 		$appData['/nino/http/routes']['GET://crm/uploads.zip'] = [ 'uri' => '/crm/uploads.zip' ];
+		$appData['/nino/http/routes']['GET://crm/export/*'] = [ 'uri' => '/crm/export/*' ];
 
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://crm', [ self::class, 'callbackPage' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/POST://crm/api', [ self::class, 'callbackApi' ] );
@@ -79,6 +83,7 @@ class Surface {
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://crm/preview/*', [ self::class, 'callbackPreview' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://crm/pdf-preview/*', [ self::class, 'callbackPdfPreview' ] );
 		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://crm/uploads.zip', [ Surface\Uploads::class, 'callbackZip' ] );
+		\Nino\Callbacks::registerCallback( $appData, '/nino/http/response/GET://crm/export/*', [ Surface\Export::class, 'callback' ] );
 	}
 
 	/**
@@ -91,7 +96,7 @@ class Surface {
 	 */
 	public static function actions(): array {
 
-		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), \Crm\Projekte\Admin::actions(), \Crm\Termine\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions(), Surface\Texts::actions(), Surface\Files::actions(), Surface\Review::actions(), Surface\Uploads::actions() );
+		return array_merge( \Crm\Clients\Admin::actions(), \Crm\Documents\Admin::actions(), \Crm\Crm\Admin::actions(), \Crm\Projekte\Admin::actions(), \Crm\Termine\Admin::actions(), Surface\Pdf::actions(), Surface\Elements::actions(), Surface\Texts::actions(), Surface\Files::actions(), Surface\Review::actions(), Surface\Uploads::actions(), Surface\Activity::actions() );
 	}
 
 	/**

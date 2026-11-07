@@ -78,7 +78,7 @@
 			clients : [], items : [], offers : [], years : [], docs : [], summary : null, people : [], owed : {},
 			filter : { chip : 'all', q : '', sort : 'date', dir : -1, year : 0, page : 1 },
 			cfilter : { q : '', sort : 'number', dir : 1, page : 1 },
-			ufilter : { q : '', sort : 'age', dir : -1, page : 1 }, ubody : null, picked : new Set(),
+			ufilter : { q : '', sort : 'age', dir : -1, page : 1 }, ubody : null, picked : new Set(), picks : new Set(), exportInfo : { zip : false, limit : 500, files : 0 }, row : null, chord : false,
 			pfilter : { q : '', sort : 'name', dir : 1 }, ifilter : { q : '', sort : 'sort', dir : 1, page : 1 }, pbody : null, jclients : [], jfilter : { q : '', all : false, client : '', phase : '', page : 1 }, jbody : null, tfilter : { q : '' }, tbody : null, busy : null, pdf : { site : [] }, saver : {}, company : null,
 			unsent : {}, follow : null, view : 0, entered : false, seen : null, tab : '', draft : null, saving : false, queued : false, pending : null, privacy : null, timer : null, main : null, toast : null, dialogs : null, count : null, clientCount : null,
 		} );
@@ -1750,6 +1750,152 @@
 		return box;
 	};
 
+	/**
+	 *	The link to the thing an event of the portal was about
+	 *
+	 *	@param		{Object}	row							A row of crm-portal/activity
+	 *
+	 *	@return		{Object}									The link; the client's tab Portal where the event names no document, project or file
+	 */
+	const activityTarget = function( row ) {
+
+		const object = row.object;
+
+		if( object.type === 'document' )
+			return link( '#beleg-'+ object.id, object.label !== '' ? object.label : t( 'record.document' ) );
+
+		if( object.type === 'project' )
+			return link( '#projekt-'+ object.id, object.label );
+
+		if( object.type === 'file' )
+			return link( object.project !== '' ? '#projekt-'+ object.project+ '-dateien' : '#kunde-'+ row.client_id, object.project !== '' ? t( 'activity.object-file-project', object.label, object.project_title !== '' ? object.project_title : object.project ) : t( 'activity.object-file', object.label ) );
+
+		return link( '#kunde-'+ row.client_id+ '-portal', t( 'portal.title' ) );
+	};
+
+	/**
+	 *	The word of an event: the one the kind has - a kind the page has no word for is written as it is
+	 *
+	 *	@param		{string}	kind
+	 *
+	 *	@return		{string}
+	 */
+	const activityKind = function( kind ) {
+		return typeof state.texts['activity.kind-'+ kind] === 'string' ? t( 'activity.kind-'+ kind ) : kind;
+	};
+
+	/**
+	 *	The card Aus dem Portal: the latest events, each with its time, client, account, kind and a link to what it was about
+	 *
+	 *	@param		{Object}	card						The card, whose list is filled
+	 *	@param		{number}	mine						The view that draws it
+	 *
+	 *	@return		{void}
+	 */
+	const drawActivity = function( card, mine ) {
+
+		api( 'crm-portal/activity' ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			const list = card.querySelector( 'ul' );
+
+			clear( list );
+
+			if( answer.ok !== true ) {
+				list.appendChild( el( 'li', { class: 'muted', text: t( 'activity.error' ) } ) );
+				return;
+			}
+
+			if( answer.body.rows.length === 0 )
+				list.appendChild( el( 'li', { class: 'muted', text: t( 'activity.none' ) } ) );
+
+			answer.body.rows.forEach( function( row ) {
+				list.appendChild( el( 'li', { dataset: { kind: row.kind } },
+					el( 'span', {}, el( 'b', { class: 'kind', text: activityKind( row.kind ) } ), ' · ', link( '#kunde-'+ row.client_id, row.client_title ), row.account !== '' ? el( 'span', { class: 'muted', text: ' · '+ row.account } ) : null, ' · ', activityTarget( row ) ),
+					el( 'span', { class: 'r', text: stamp( row.at ) } ) ) );
+			} );
+		} );
+	};
+
+	/**
+	 *	@param		{string}	month						Y-m
+	 *
+	 *	@return		{string}									November 2026
+	 */
+	const monthName = function( month ) {
+		return new Date( Number( month.slice( 0, 4 ) ), Number( month.slice( 5, 7 ) ) - 1, 1 ).toLocaleDateString( 'de-DE', { month: 'long', year: 'numeric' } );
+	};
+
+	/**
+	 *	A table of the block Zahlen: a caption, the heads, the rows and - where it is given - a foot
+	 *
+	 *	@param		{string}	id
+	 *	@param		{string}	caption
+	 *	@param		{Array}		heads						[ [ text, right ] ]
+	 *	@param		{Array}		rows						Each a list of cells: a text or a node
+	 *	@param		{Array}		[foot]
+	 *
+	 *	@return		{Object}									The card with the table in it
+	 */
+	const figureTable = function( id, caption, heads, rows, foot ) {
+
+		const body = function( list ) {
+			return list.map( function( cells ) {
+				return el( 'tr', {}, cells.map( function( one, at ) {
+					return el( 'td', { class: at === 0 ? null : 'r num' }, one );
+				} ) );
+			} );
+		};
+
+		return el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl static figs', id: id },
+			el( 'caption', { text: caption } ),
+			el( 'thead', {}, el( 'tr', {}, heads.map( function( head, at ) { return el( 'th', { scope: 'col', class: at === 0 ? null : 'r', text: head } ) } ) ) ),
+			el( 'tbody', {}, body( rows ) ),
+			foot === undefined ? null : el( 'tfoot', {}, body( [ foot ] ) ) ) );
+	};
+
+	/**
+	 *	The block Zahlen: the last twelve months, the five clients that were billed most this year, the offers of the year. Tables, no chart
+	 *
+	 *	@param		{Object}	holder					The section, whose waiting line is taken out
+	 *	@param		{number}	mine						The view that draws it
+	 *
+	 *	@return		{void}
+	 */
+	const drawFigures = function( holder, mine ) {
+
+		api( 'crm-documents/figures' ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			holder.querySelector( 'p' ).remove();
+
+			if( answer.ok !== true ) {
+				holder.appendChild( el( 'p', { class: 'state-note', text: t( 'figures.error' ) } ) );
+				return;
+			}
+
+			adopt( answer.body );
+
+			const body = answer.body;
+			const total = function( key ) { return body.months.reduce( function( sum, one ) { return sum+ one[key] }, 0 ) };
+			const offers = [ [ 'accepted', t( 'state.accepted' ) ], [ 'declined', t( 'state.declined' ) ], [ 'expired', t( 'state.expired' ) ], [ 'open', t( 'figures.offer-open' ) ] ];
+
+			holder.appendChild( figureTable( 'figures-months', t( 'figures.months' ), [ t( 'figures.month' ), t( 'figures.billed' ), t( 'figures.paid' ), t( 'figures.open' ) ],
+				body.months.map( function( one ) { return [ monthName( one.month ), cash( one.billed ), cash( one.paid ), cash( one.open ) ] } ),
+				[ t( 'figures.sum' ), cash( total( 'billed' ) ), cash( total( 'paid' ) ), cash( total( 'open' ) ) ] ) );
+			holder.appendChild( el( 'p', { class: 'state-note', text: t( 'figures.months-note' ) } ) );
+			holder.appendChild( el( 'div', { class: 'cols' },
+				figureTable( 'figures-clients', t( 'figures.clients', body.year ), [ t( 'figures.client' ), t( 'figures.billed' ) ],
+					body.clients.length === 0 ? [ [ t( 'figures.clients-none' ), '' ] ] : body.clients.map( function( one ) { return [ link( '#kunde-'+ one.client_id, one.client_title ), cash( one.billed ) ] } ) ),
+				figureTable( 'figures-offers', t( 'figures.offers', body.year ), [ t( 'figures.offer-state' ), t( 'figures.offer-count' ), t( 'figures.offer-sum' ) ],
+					offers.map( function( one ) { return [ one[1], String( body.offers[one[0]].count ), cash( body.offers[one[0]].gross ) ] } ) ) ) );
+		} );
+	};
+
 	const uebersicht = function( where, mine ) {
 
 		loading();
@@ -1819,6 +1965,15 @@
 						: answer.body.recent.map( function( doc ) {
 							return el( 'li', {}, el( 'span', {}, link( hashOf( doc ), docName( doc ) ), ' ', el( 'span', { class: 'muted', text: t( 'category.'+ doc.category )+ ' · '+ doc.client_title } ) ), el( 'span', { class: 'r', text: dmy( doc.date ) } ) );
 						} ) ) ) ) );
+
+			// Below them: what the customers did in the portal, then the figures - each asks for itself, so that the first screen does not wait for them
+			const portal = el( 'div', { class: 'card pad', id: 'portal-activity' }, el( 'h3', { text: t( 'activity.title' ) } ), el( 'ul', { class: 'list-mini', id: 'activity-list' }, el( 'li', { class: 'muted', text: t( 'loading' ) } ) ) );
+			const figures = el( 'section', { class: 'figures', id: 'figures', 'aria-labelledby': 'figures-title' }, el( 'h2', { id: 'figures-title', text: t( 'figures.title' ) } ), el( 'p', { class: 'state-note', role: 'status', text: t( 'loading' ) } ) );
+
+			state.main.appendChild( portal );
+			state.main.appendChild( figures );
+			drawActivity( portal, mine );
+			drawFigures( figures, mine );
 		} );
 	};
 
@@ -2059,8 +2214,220 @@
 
 			adopt( answer.body );
 			state.docs = answer.body.documents;
+			state.exportInfo = answer.body.export ?? state.exportInfo;
+			state.picks = new Set();
 			drawBelege();
 		} );
+	};
+
+	/**
+	 *	Whether a document can be chosen in the list: an offer, an invoice or a credit note that is finalised - the documents with a number and an amount
+	 *
+	 *	@param		{Object}	doc
+	 *
+	 *	@return		{boolean}
+	 */
+	const selectable = function( doc ) {
+		return [ 'offer', 'invoice', 'credit' ].includes( doc.category ) === true && doc.state !== 'draft';
+	};
+
+	/**
+	 *	Whether the choice can mark a document as paid: an invoice that was sent, as the single step allows it
+	 *
+	 *	@param		{Object}	doc
+	 *
+	 *	@return		{boolean}
+	 */
+	const payable = function( doc ) {
+		return doc.category === 'invoice' && doc.state === 'sent';
+	};
+
+	/**
+	 *	Whether the choice reminds a document: an invoice past its due date
+	 *
+	 *	@param		{Object}	doc
+	 *
+	 *	@return		{boolean}
+	 */
+	const chaseable = function( doc ) {
+		return doc.overdue === true;
+	};
+
+	/**
+	 *	Run one of the single steps on each document of a choice, one after the other, and say how far it is in the toast. A session that ended or a token that went stale
+	 *	stops the run (the page says so itself); a document the server refuses is named with the sentence of its refusal and the run goes on
+	 *
+	 *	@param		{Array}		docs
+	 *	@param		{string}	action					crm-documents/state or crm-documents/remind
+	 *	@param		{Object}	data						The fields beside the id
+	 *	@param		{string}	fallback				The word for what failed
+	 *
+	 *	@return		{Promise}									The documents that went through (done), the refusals as [ name, sentence ] (refused), the names of those that were not tried because the run stopped (skipped) and the mails that were delivered (mails)
+	 */
+	const runChosen = function( docs, action, data, fallback ) {
+
+		const result = { done : [], refused : [], skipped : [], mails : 0 };
+		let halted = false;
+
+		return docs.reduce( function( chain, doc, at ) {
+			return chain.then( function() {
+
+				if( halted === true ) {
+					result.skipped.push( docName( doc ) );
+					return null;
+				}
+
+				toast( t( 'select.progress', at + 1, docs.length ) );
+
+				return api( action, Object.assign( { id : String( doc.id ) }, data ) ).then( function( answer ) {
+
+					if( answer.ok === true ) {
+						result.done.push( doc );
+						result.mails += typeof answer.body.mailed === 'number' ? answer.body.mailed : 0;
+					}
+					else
+						result.refused.push( [ docName( doc ), errorText( answer, fallback ) ] );
+
+					if( answer.handled === true )
+						halted = true;
+				} );
+			} );
+		}, Promise.resolve() ).then( function() { return result } );
+	};
+
+	/**
+	 *	The sentence for the documents a run was refused for: the first three by name and sentence, then how many more
+	 *
+	 *	@param		{Array}		refused					[ name, sentence ]
+	 *
+	 *	@return		{string}									'' where none was refused
+	 */
+	const refusedText = function( refused ) {
+
+		if( refused.length === 0 )
+			return '';
+
+		const named = refused.slice( 0, 3 ).map( function( one ) { return t( 'select.failed-line', one[0], one[1] ) } ).join( ', ' );
+
+		return t( 'select.failed', refused.length > 3 ? t( 'select.failed-more', named, refused.length - 3 ) : named );
+	};
+
+	/**
+	 *	The list of the documents read again after a run: the choice keeps the documents that were refused, the others are done with
+	 *
+	 *	@param		{Object}	result					As runChosen() has it
+	 *	@param		{number}	mine						The view
+	 *	@param		{string}	said						The sentence for the toast
+	 *
+	 *	@return		{Promise}
+	 */
+	const afterChosen = function( result, mine, said ) {
+
+		result.done.forEach( function( doc ) { state.picks.delete( doc.id ) } );
+		const skipped = result.skipped.length === 0 ? '' : t( 'select.skipped', result.skipped.length > 3 ? t( 'select.failed-more', result.skipped.slice( 0, 3 ).join( ', ' ), result.skipped.length - 3 ) : result.skipped.join( ', ' ) );
+
+		toast( ( said+ ' '+ refusedText( result.refused )+ ' '+ skipped ).replace( /\s+/g, ' ' ).trim(), result.refused.length > 0 || result.skipped.length > 0 );
+
+		// More than the toast names: the whole list, in a dialog of its own
+		if( result.refused.length > 3 )
+			dialog( { title : t( 'select.failed-title' ), text : t( 'select.failed-text' ), facts : result.refused, close : true } );
+
+		refresh();
+
+		return api( 'crm-documents/list', { year : String( state.filter.year ) } ).then( function( answer ) {
+
+			if( state.view !== mine )
+				return;
+
+			if( answer.ok === true ) {
+				adopt( answer.body );
+				state.docs = answer.body.documents;
+				drawBelege();
+			}
+			else
+				failed( answer, 'error.load' );
+		} );
+	};
+
+	/**
+	 *	The bar over the list while documents are chosen: how many and what they come to, and the three things that can be done with them - each runs the single steps of the
+	 *	documents it fits one after the other (the choice makes no new call but the ZIP) - and the way to let go of the choice
+	 *
+	 *	@param		{Function}	chosen					The documents that are chosen
+	 *	@param		{number}	mine						The view
+	 *
+	 *	@return		{Object}									The bar, sync(), which brings its words and its buttons up to the choice, and the button that lets go of the choice
+	 */
+	const selectionBar = function( chosen, mine ) {
+
+		const status = el( 'span', { class: 'state-note', id: 'selection-status', role: 'status' } );
+
+		const paid = el( 'button', { type: 'button', class: 'btn sm', id: 'selection-paid', on: { click: function() {
+
+			const list = chosen().filter( payable );
+
+			const left = chosen().length - list.length;
+
+			dialog( { title : t( 'select.paid-title' ), text : ( list.length === 1 ? t( 'select.paid-text-one' ) : t( 'select.paid-text', list.length ) )+ ( left > 0 ? ' '+ t( 'select.paid-skipped', left ) : '' ), yes : t( 'select.paid-yes' ),
+				fields : [ { name : 'date', label : t( 'select.paid-date' ), type : 'date', value : today() } ] } ).then( function( values ) {
+
+				if( values === null || state.view !== mine )
+					return null;
+
+				return runChosen( list, 'crm-documents/state', Object.assign( { state : 'paid' }, values.date === '' ? {} : { date : values.date } ), 'error.state' ).then( function( result ) {
+					return afterChosen( result, mine, t( 'select.paid-done', result.done.length, list.length ) );
+				} );
+			} );
+		} } } );
+
+		const remind = el( 'button', { type: 'button', class: 'btn sm', id: 'selection-remind', on: { click: function() {
+
+			const list = chosen().filter( chaseable );
+
+			dialog( { title : t( 'remind.title' ), text : list.length === 1 ? t( 'select.remind-text-one' ) : t( 'select.remind-text', list.length ), yes : t( 'remind.yes' ),
+				fields : [ { name : 'notify', label : t( 'remind.notify' ), type : 'checkbox', value : true } ] } ).then( function( values ) {
+
+				if( values === null || state.view !== mine )
+					return null;
+
+				return runChosen( list, 'crm-documents/remind', { notify : values.notify }, 'error.remind' ).then( function( result ) {
+					return afterChosen( result, mine, values.notify === true ? t( 'select.remind-done', result.done.length, list.length, result.mails ) : t( 'select.remind-noted', result.done.length, list.length ) );
+				} );
+			} );
+		} } } );
+
+		const pdfs = el( 'button', { type: 'button', class: 'btn sm', id: 'selection-pdfs', on: { click: function() {
+
+			const list = chosen();
+
+			if( list.length > state.exportInfo.limit ) {
+				toast( t( 'export.zip-many', state.exportInfo.limit ), true );
+				return;
+			}
+
+			saveFrom( state.base+ '/crm/export/belege.zip?ids='+ list.map( function( doc ) { return doc.id } ).join( ',' ) );
+		} } } );
+
+		const release = el( 'button', { type: 'button', class: 'btn sm quiet', id: 'selection-clear', text: t( 'select.clear' ) } );
+		const bar = el( 'div', { class: 'actions selection', id: 'selection', hidden: true }, status, paid, remind, pdfs, release );
+
+		const sync = function() {
+
+			const list = chosen();
+			const toPay = list.filter( payable ).length;
+			const toChase = list.filter( chaseable ).length;
+
+			bar.hidden = list.length === 0;
+			status.textContent = t( 'select.status', list.length, cash( list.reduce( function( sum, doc ) { return sum+ doc.gross }, 0 ) ) );
+			paid.textContent = t( 'select.paid', toPay );
+			paid.disabled = toPay === 0;
+			remind.textContent = t( 'select.remind', toChase );
+			remind.disabled = toChase === 0;
+			pdfs.textContent = t( 'select.pdfs', list.length );
+			pdfs.disabled = state.exportInfo.zip !== true;
+		};
+
+		return { bar : bar, sync : sync, release : release };
 	};
 
 	const drawBelege = function() {
@@ -2082,17 +2449,70 @@
 
 		const heading = function( key, label, right ) { return sortHead( filter, key, label, right, redraw, key === 'date' ? -1 : 1 ) };
 
+		// What can be chosen is a document with a number and an amount; the choice is held over the search, the chips and the pages, and counts for the documents it names
+		const known = new Map( state.docs.map( function( doc ) { return [ doc.id, doc ] } ) );
+
+		Array.from( state.picks ).forEach( function( id ) {
+			if( known.has( id ) === false || selectable( known.get( id ) ) === false )
+				state.picks.delete( id );
+		} );
+
+		const chosen = function() { return Array.from( state.picks ).map( function( id ) { return known.get( id ) } ); };
+		const takeable = rows.filter( selectable );
+		const selection = selectionBar( chosen, state.view );
+		const boxes = [];
+		const stop = function( event ) { event.stopPropagation() };
+
+		const setAll = function( on ) {
+
+			takeable.forEach( function( doc ) {
+				if( on === true )
+					state.picks.add( doc.id );
+				else
+					state.picks.delete( doc.id );
+			} );
+
+			boxes.forEach( function( box ) { box.checked = state.picks.has( Number( box.dataset.pick ) ) } );
+			all.checked = takeable.length > 0 && takeable.every( function( one ) { return state.picks.has( one.id ) } );
+			selection.sync();
+		};
+
+		const all = el( 'input', { type: 'checkbox', id: 'pick-all', 'aria-label': t( 'select.pick-all' ), on: { change: function( event ) { setAll( event.target.checked === true ) } } } );
+
+		selection.release.addEventListener( 'click', function() {
+			state.picks = new Set();
+			redraw();
+		} );
+
 		const body = el( 'tbody', {}, shown.length === 0
-			? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '9', class: 'muted', text: state.docs.length === 0 ? t( 'list.empty' ) : t( 'list.none' ) } ) )
+			? el( 'tr', { class: 'plain' }, el( 'td', { colspan: '10', class: 'muted', text: state.docs.length === 0 ? t( 'list.empty' ) : t( 'list.none' ) } ) )
 			: shown.map( function( doc ) {
 
 				const pdf = doc.state === 'draft' ? state.base+ '/crm/preview/'+ doc.id : pdfUrl( doc );
+				let box = null;
+
+				if( selectable( doc ) === true ) {
+
+					box = el( 'input', { type: 'checkbox', checked: state.picks.has( doc.id ), 'aria-label': t( 'select.pick', docName( doc ) ), dataset: { pick: doc.id }, on: { change: function( event ) {
+
+						if( event.target.checked === true )
+							state.picks.add( doc.id );
+						else
+							state.picks.delete( doc.id );
+
+						all.checked = takeable.length > 0 && takeable.every( function( one ) { return state.picks.has( one.id ) } );
+						selection.sync();
+					} } } );
+
+					boxes.push( box );
+				}
 
 				return el( 'tr', { dataset: { id: doc.id }, on: { click: function() { wn.location.hash = hashOf( doc ) } } },
-					el( 'td', { class: 'num' }, link( hashOf( doc ), docName( doc ) ) ),
+					el( 'td', { class: 'pick', on: { click: stop } }, box === null ? null : el( 'label', { class: 'hit' }, box ) ),
+					el( 'td', { class: 'num', title: docName( doc ) }, link( hashOf( doc ), docName( doc ) ) ),
 					el( 'td', { text: t( 'category.'+ doc.category ) } ),
-					el( 'td', { text: doc.client_title } ),
-					el( 'td', {}, doc.project === '' ? el( 'span', { class: 'muted', text: '–' } ) : link( '#projekt-'+ doc.project, doc.project_title !== '' ? doc.project_title : doc.project, { on: { click: function( event ) { event.stopPropagation() } } } ) ),
+					el( 'td', { title: doc.client_title, text: doc.client_title } ),
+					el( 'td', { title: doc.project_title !== '' ? doc.project_title : doc.project }, doc.project === '' ? el( 'span', { class: 'muted', text: '–' } ) : link( '#projekt-'+ doc.project, doc.project_title !== '' ? doc.project_title : doc.project, { on: { click: function( event ) { event.stopPropagation() } } } ) ),
 					el( 'td', { text: dmy( doc.date ) } ),
 					el( 'td', { class: doc.overdue === true ? 'bad' : 'muted', dataset: { label: t( doc.due_date ? 'field.due' : 'field.valid' ) }, text: dmy( doc.due_date || doc.valid_until ) } ),
 					el( 'td', { class: 'r num' }, isPlain( doc ) ? el( 'span', { class: 'muted', text: '–' } ) : cash( doc.gross ) ),
@@ -2101,9 +2521,9 @@
 			} ) );
 
 		const table = el( 'div', { class: 'card wrap-x' }, el( 'table', { class: 'tbl' },
-			el( 'thead', {}, el( 'tr', {}, heading( 'number', t( 'column.number' ) ), el( 'th', { scope: 'col', text: t( 'column.category' ) } ), heading( 'client', t( 'column.client' ) ), heading( 'project', t( 'column.project' ) ), heading( 'date', t( 'column.date' ) ), heading( 'due', t( 'column.due' ) ), heading( 'gross', t( 'column.gross' ), true ), el( 'th', { scope: 'col', text: t( 'column.state' ) } ), el( 'th', { scope: 'col' } ) ) ),
+			el( 'thead', {}, el( 'tr', {}, el( 'th', { scope: 'col', class: 'pick' }, el( 'label', { class: 'hit' }, all, el( 'span', { class: 'pick-word', 'aria-hidden': 'true', text: t( 'select.all' ) } ) ) ), heading( 'number', t( 'column.number' ) ), el( 'th', { scope: 'col', text: t( 'column.category' ) } ), heading( 'client', t( 'column.client' ) ), heading( 'project', t( 'column.project' ) ), heading( 'date', t( 'column.date' ) ), heading( 'due', t( 'column.due' ) ), heading( 'gross', t( 'column.gross' ), true ), el( 'th', { scope: 'col', text: t( 'column.state' ) } ), el( 'th', { scope: 'col' } ) ) ),
 			body,
-			el( 'tfoot', {}, el( 'tr', {}, el( 'td', { colspan: '6', text: t( 'list.sum' ) } ), el( 'td', { class: 'r num', id: 'sum', text: cash( sum ) } ), el( 'td', { colspan: '2' } ) ) ) ) );
+			el( 'tfoot', {}, el( 'tr', {}, el( 'td', { colspan: '7', text: t( 'list.sum' ) } ), el( 'td', { class: 'r num', id: 'sum', text: cash( sum ) } ), el( 'td', { colspan: '2' } ) ) ) ) );
 
 		const pager = pagerOf( filter, pages, redraw );
 
@@ -2124,6 +2544,13 @@
 			route();
 		} } }, years.map( function( one ) { return el( 'option', { value: String( one ), text: String( one ) } ) } ) );
 
+		// The year as the accountant takes it: the documents as a CSV, the PDFs as a ZIP - without the extension of PHP the ZIP says why it is not there
+		const handed = [
+			el( 'a', { class: 'btn sm', id: 'export-csv', href: state.base+ '/crm/export/belege.csv?jahr='+ filter.year, download: '', text: t( 'export.csv' ) } ),
+			state.exportInfo.zip !== true ? el( 'span', { class: 'state-note', id: 'export-zip-off', text: t( 'export.zip-off' ) } )
+				: ( state.exportInfo.files > 0 ? el( 'a', { class: 'btn sm', id: 'export-zip', href: state.base+ '/crm/export/belege-'+ filter.year+ '.zip', download: '', text: t( 'export.zip' ) } ) : el( 'span', { class: 'state-note', id: 'export-zip-empty', text: t( 'export.zip-empty' ) } ) ),
+		];
+
 		reveal();
 
 		state.main.appendChild( head( t( 'list.title' ), el( 'span', { class: 'sub', text: t( 'list.count', rows.length, state.docs.length ) } ), el( 'span', { class: 'grow' } ),
@@ -2132,14 +2559,17 @@
 				filter.page = 1;
 				redraw( true );
 			} } ), newMenu( t( 'new.label' ) ) ) );
-		state.main.appendChild( el( 'div', { class: 'toolbar' }, tabs, year ) );
+		state.main.appendChild( el( 'div', { class: 'toolbar' }, tabs, year, handed ) );
+		state.main.appendChild( selection.bar );
 		// The tab a link of Braucht Dich chose may lie right of the visible part of the row: it is brought into view
-		const chosen = tabs.querySelector( 'button.on' );
+		const onTab = tabs.querySelector( 'button.on' );
 
-		if( chosen !== null && typeof chosen.scrollIntoView === 'function' )
-			chosen.scrollIntoView( { block: 'nearest', inline: 'nearest' } );
-		append( state.main, [ cardList( table, 'belege', [ 'id', 'kind', 'who', 'proj', 'date', 'due:l', 'sum', 'state', 'acts' ], filter, redraw ), pager ] );
+		if( onTab !== null && typeof onTab.scrollIntoView === 'function' )
+			onTab.scrollIntoView( { block: 'nearest', inline: 'nearest' } );
+		append( state.main, [ cardList( table, 'belege', [ 'pick', 'id', 'kind', 'who', 'proj', 'date', 'due:l', 'sum', 'state', 'acts' ], filter, redraw ), pager ] );
 		showChosen( tabs );
+		all.checked = takeable.length > 0 && takeable.every( function( one ) { return state.picks.has( one.id ) } );
+		selection.sync();
 	};
 
 	/**
@@ -10929,6 +11359,205 @@
 			row.scrollLeft -= box.left - spot.left;
 	};
 
+	// --- the keys ----------------------------------------------------------------------------------------------------
+
+	// The screens g and a letter lead to
+	const GO = { b : '#belege', k : '#kunden', p : '#projekte', u : '#uebersicht' };
+
+	/**
+	 *	The shortcuts the page has, as the dialog lists them: the keys and what they do
+	 *
+	 *	@return		{Array}										[ [ keys, words ] ]
+	 */
+	const shortcuts = function() {
+		return [ [ 'n', t( 'keys.n' ) ], [ 'g b', t( 'keys.gb' ) ], [ 'g k', t( 'keys.gk' ) ], [ 'g p', t( 'keys.gp' ) ], [ 'g u', t( 'keys.gu' ) ], [ '↑ ↓', t( 'keys.updown' ) ], [ 'Enter', t( 'keys.enter' ) ],
+			[ '/', t( 'keys.slash' ) ], [ 'Strg+S', t( 'keys.save' ) ], [ '?', t( 'keys.help' ) ], [ 'Esc', t( 'keys.esc' ) ] ];
+	};
+
+	/**
+	 *	The list of the shortcuts in a dialog
+	 *
+	 *	@return		{void}
+	 */
+	const showKeys = function() {
+		dialog( { title : t( 'keys.title' ), text : t( 'keys.text' ), facts : shortcuts(), close : true } );
+	};
+
+	/**
+	 *	Go to a screen by a key: a draft that holds what was not stored asks first, as a link away from it does
+	 *
+	 *	@param		{string}	hash
+	 *
+	 *	@return		{void}
+	 */
+	const goTo = function( hash ) {
+
+		if( state.draft !== null && state.draft.dirty === true ) {
+			ask( { title : t( 'leave.title' ), text : t( state.draft.form === true ? 'leave.text-form' : 'leave.text' ), yes : t( 'leave.yes' ), danger : true } ).then( function( yes ) {
+				if( yes === true && state.draft !== null ) {
+					state.draft.dirty = false;
+					wn.location.hash = hash;
+				}
+			} );
+			return;
+		}
+
+		wn.location.hash = hash;
+	};
+
+	/**
+	 *	Whether a node takes what is typed: a field, a select, a text area or an element that is edited - not a box, a radio, a button
+	 *
+	 *	@param		{Object|null}	node
+	 *
+	 *	@return		{boolean}
+	 */
+	const typing = function( node ) {
+
+		if( node === null || node === undefined )
+			return false;
+
+		// A box, a choice of a group and a button take no text: the keys are the page's while one of them has the focus
+		if( String( node.tagName ) === 'INPUT' && [ 'checkbox', 'radio', 'button', 'submit', 'reset' ].includes( String( node.type ).toLowerCase() ) === true )
+			return false;
+
+		return [ 'INPUT', 'TEXTAREA', 'SELECT' ].includes( String( node.tagName ) ) === true || node.isContentEditable === true;
+	};
+
+	/**
+	 *	The rows of the list on screen that open something: the rows of the first list table (a table that became cards on the phone) with a link to a screen of the page
+	 *
+	 *	@return		{Array}
+	 */
+	const listRows = function() {
+
+		const table = Array.from( state.main.querySelectorAll( 'table' ) ).find( function( one ) { return String( one.className ).split( ' ' ).includes( 'cards' ) === true } );
+
+		if( table === undefined )
+			return [];
+
+		return Array.from( table.querySelectorAll( 'tr' ) ).filter( function( row ) { return row.parentNode.tagName === 'TBODY' && openingLink( row ) !== null } );
+	};
+
+	/**
+	 *	@param		{Object}	row
+	 *
+	 *	@return		{string|null}							The hash the first link of the row goes to; null for a row with none
+	 */
+	const openingLink = function( row ) {
+
+		const anchor = Array.from( row.querySelectorAll( 'a' ) ).find( function( one ) { return String( one.getAttribute( 'href' ) ).charAt( 0 ) === '#' } );
+
+		return anchor === undefined ? null : anchor.getAttribute( 'href' );
+	};
+
+	/**
+	 *	Mark a row of the list as the one the arrows are on: it takes the focus, the others leave the tab order
+	 *
+	 *	@param		{Array}		rows
+	 *	@param		{Object|null}	row
+	 *
+	 *	@return		{void}
+	 */
+	const markRow = function( rows, row ) {
+
+		rows.forEach( function( one ) {
+			one.setAttribute( 'tabindex', one === row ? '0' : '-1' );
+			one.setAttribute( 'aria-selected', one === row ? 'true' : 'false' );
+		} );
+
+		state.row = row;
+
+		if( row !== null ) {
+			row.focus();
+
+			if( typeof row.scrollIntoView === 'function' )
+				row.scrollIntoView( { block : 'nearest' } );
+		}
+	};
+
+	/**
+	 *	A key that is not typed into a field: n opens the menu Neu, g and b, k, p or u go to Belege, Kunden, Projekte or the Übersicht, ? lists the keys, the arrows move through
+	 *	the rows of a list and Enter opens the row that is marked. Nothing here works with Strg, Cmd or Alt, in a field, or while a dialog is open
+	 *
+	 *	@param		{Object}	event
+	 *
+	 *	@return		{void}
+	 */
+	const keys = function( event ) {
+
+		const key = String( event.key );
+
+		if( event.ctrlKey === true || event.metaKey === true || event.altKey === true || event.isComposing === true || typing( event.target ) === true || typing( dc.activeElement ) === true || state.dialogs.children.length > 0 )
+			return;
+
+		if( state.chord === true ) {
+			state.chord = false;
+
+			if( GO[key] !== undefined ) {
+				event.preventDefault();
+				goTo( GO[key] );
+				return;
+			}
+		}
+
+		if( key === 'g' && event.shiftKey !== true ) {
+			state.chord = true;
+			wn.setTimeout( function() { state.chord = false }, 1500 );
+			return;
+		}
+
+		if( key === '?' ) {
+			event.preventDefault();
+			showKeys();
+			return;
+		}
+
+		if( key === 'n' && event.shiftKey !== true ) {
+
+			const menu = Array.from( state.main.querySelectorAll( '.menu' ) ).find( function( one ) { return String( one.querySelector( 'button' )?.className ).split( ' ' ).includes( 'primary' ) } );
+
+			if( menu !== undefined ) {
+				event.preventDefault();
+				closeMenus();
+				menu.querySelector( 'button' ).click();
+				menu.querySelectorAll( 'button' )[1]?.focus();
+			}
+
+			return;
+		}
+
+		if( state.main.querySelector( '.menu.open' ) !== null )
+			return;
+
+		if( key === 'ArrowDown' || key === 'ArrowUp' ) {
+
+			const rows = listRows();
+
+			if( rows.length === 0 )
+				return;
+
+			event.preventDefault();
+
+			const at = rows.indexOf( state.row );
+
+			markRow( rows, rows[key === 'ArrowDown' ? Math.min( rows.length - 1, at + 1 ) : ( at === -1 ? rows.length - 1 : Math.max( 0, at - 1 ) )] );
+			return;
+		}
+
+		if( key === 'Enter' && state.row !== null && state.row.isConnected !== false ) {
+
+			const active = dc.activeElement;
+			const hash = openingLink( state.row );
+
+			// The focus is on the row (or on nothing): a button or a link in the row has its own Enter
+			if( hash !== null && ( active === null || active === undefined || active === state.row || String( active.tagName ) === 'BODY' ) ) {
+				event.preventDefault();
+				goTo( hash );
+			}
+		}
+	};
+
 	const route = function() {
 
 		const where = parse( wn.location.hash );
@@ -10936,6 +11565,7 @@
 		state.view++;
 		state.draft = null;
 		state.saver = {};
+		state.row = null;
 		closeMenus();
 
 		// An item is being saved: the screen that was asked for is drawn once the posts are through, so that it holds what they made
@@ -11088,6 +11718,7 @@
 			}
 
 			if( event.key === 'Escape' ) {
+				state.chord = false;
 				closeMenus();
 				return;
 			}
@@ -11101,8 +11732,18 @@
 					event.preventDefault();
 					field.focus();
 				}
+
+				return;
 			}
+
+			keys( event );
 		} );
+
+		// The list of the keys is a button in the foot of the rail, too
+		const listing = dc.getElementById( 'keys-open' );
+
+		if( listing !== null && listing !== undefined )
+			listing.addEventListener( 'click', showKeys );
 
 		route();
 
@@ -11118,7 +11759,7 @@
 		state : state,
 		el : el,
 		t : t,
-		model : { cardList : cardList, eventWhen : eventWhen, eventTextOf : eventTextOf, eventHtmlOf : eventHtmlOf, eventMoments : eventMoments, eventUri : eventUri, docName : docName, visible : visible, visibleClients : visibleClients, clientTitle : clientTitle, ratesText : ratesText, chips : chips, draftOf : draftOf, draftNew : draftNew, payloadOf : payloadOf, totalsOf : totalsOf, ready : ready, lineOf : lineOf, primaryOf : primaryOf, tabsOf : tabsOf, errorText : errorText,
+		model : { cardList : cardList, selectable : selectable, payable : payable, chaseable : chaseable, activityKind : activityKind, shortcuts : shortcuts, eventWhen : eventWhen, eventTextOf : eventTextOf, eventHtmlOf : eventHtmlOf, eventMoments : eventMoments, eventUri : eventUri, docName : docName, visible : visible, visibleClients : visibleClients, clientTitle : clientTitle, ratesText : ratesText, chips : chips, draftOf : draftOf, draftNew : draftNew, payloadOf : payloadOf, totalsOf : totalsOf, ready : ready, lineOf : lineOf, primaryOf : primaryOf, tabsOf : tabsOf, errorText : errorText,
 			firstItem : firstItem, owedOf : owedOf, mailtoOf : mailtoOf, telOf : telOf, hitsOf : hitsOf, remindedDay : remindedDay, templateKey : templateKey, positionKey : positionKey, positionDraftOf : positionDraftOf, positionPosts : positionPosts, blockDraft : blockDraft, blockPayload : blockPayload, millimetres : millimetres, tokenGroups : tokenGroups, insertAt : insertAt },
 	};
 

@@ -336,8 +336,8 @@ class Uploads {
 
 		$gone = 0;
 
-		// ...and the temporary files libzip leaves beside a ZIP it could not finish: uploads-<hex>.zip.<suffix>
-		foreach( array_merge( glob( \Nino\Filesystem::path( $appData, self::DIRECTORY ). '/uploads-*.zip' ) ?: [], glob( \Nino\Filesystem::path( $appData, self::DIRECTORY ). '/uploads-*.zip.*' ) ?: [] ) as $zip )
+		// Every ZIP of the directory is one of a request (the uploads, the documents of Export): <name>-<hex>.zip, and the temporary files libzip leaves beside a ZIP it could not finish: <name>-<hex>.zip.<suffix>
+		foreach( array_merge( glob( \Nino\Filesystem::path( $appData, self::DIRECTORY ). '/*.zip' ) ?: [], glob( \Nino\Filesystem::path( $appData, self::DIRECTORY ). '/*.zip.*' ) ?: [] ) as $zip )
 			if( is_file( $zip ) === true && (int) @filemtime( $zip ) < time() - self::STALE && @unlink( $zip ) === true )
 				$gone++;
 
@@ -369,7 +369,7 @@ class Uploads {
 	 *
 	 *	@return 	void
 	 */
-	private static function remember( string $path ): void {
+	public static function remember( string $path ): void {
 
 		self::$_pending[] = $path;
 

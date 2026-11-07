@@ -104,6 +104,7 @@ class Admin {
 			'crm-documents/positionen'    => [ self::class, 'apiPositionen' ],
 			'crm-documents/status'        => [ self::class, 'apiStatus' ],
 			'crm-documents/overview'      => [ self::class, 'apiOverview' ],
+			'crm-documents/figures'       => [ self::class, 'apiFigures' ],
 			'crm-documents/copy'          => [ self::class, 'apiCopy' ],
 			'crm-documents/remind'        => [ self::class, 'apiRemind' ],
 			'crm-documents/sign-remind'   => [ self::class, 'apiSignRemind' ],
@@ -144,7 +145,7 @@ class Admin {
 	}
 
 	/**
-	 *	The documents by the filters, the clients and years to filter by, the settings the screen draws with and the active items of the catalogue (the elements of the type Positionen) a line is filled from
+	 *	The documents by the filters, the clients and years to filter by, the settings the screen draws with, the active items of the catalogue (the elements of the type Positionen) a line is filled from and what the export of the list can do (export: whether the ZIP can be made, for how many documents, and how many documents of the year of the filter have a PDF file)
 	 */
 	public static function apiList( array &$appData, array &$request ): void {
 
@@ -189,6 +190,7 @@ class Admin {
 				'settings'  => self::_settings( $appData ),
 				'items'     => self::_catalogue( $appData ),
 				'offers'    => self::_offers( $appData ),
+				'export'    => [ 'zip' => \Crm\Surface\Uploads::zipAvailable(), 'limit' => \Crm\Surface\Export::MAX_FILES, 'files' => isset( $filter['year'] ) === true ? Documents::exportable( $appData, $filter['year'] ) : 0 ],
 			] );
 		} );
 	}
@@ -211,6 +213,19 @@ class Admin {
 				'recent'   => Documents::recent( $appData, 8 ),
 				'settings' => self::_settings( $appData ),
 			] );
+		} );
+	}
+
+	/**
+	 *	The figures of the block Zahlen on the first screen: the last twelve months, the five clients that were billed most this year and the offers of the year (see Documents::figures()), with the settings the amounts are written by
+	 */
+	public static function apiFigures( array &$appData, array &$request ): void {
+
+		if( \Nino\Admin\Admin::guardPerm( $appData, $request, self::MANAGE_PERM ) === false )
+			return;
+
+		\Crm\Admin\Api::run( $request, 'crm_documents_database', static function() use ( &$appData, &$request ): void {
+			\Nino\Http::ok( $request, Documents::figures( $appData ) + [ 'settings' => self::_settings( $appData ) ] );
 		} );
 	}
 

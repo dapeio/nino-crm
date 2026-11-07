@@ -795,8 +795,8 @@ foreach( [ 'not json', '[]', '{"action":["crm-documents/list"]}', '{"action":1}'
 	check( 'a body that is no action ('. $broken. ') is 404 action as well', $answer['statusCode'] === 404 && $answer['body']['code'] === 'action' );
 }
 
-check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects, the switch of their download and their phase, the two reads of the dates, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the eight of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - the three of the Review panel that read, answer and settle the comments on them, the list of the uploads and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get', 'crm-projekte/download', 'crm-projekte/phase' ], [ 'crm-termine/list', 'crm-termine/get' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/notify', 'files/delete', 'files/remove' ], [ 'review/comments', 'review/answer', 'review/done' ], [ 'crm-uploads/list' ] )
-	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte|termine)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|notify|delete|remove)|review/(comments|answer|done)|crm-uploads/list)$~D', $action ) !== 1 ) === []
+check( 'the table is the API of the clients and of the documents by their names, the two actions of the panel CRM, the actions of the Pdf panel, the context of the screens PDF-Vorlagen the two reads of the projects, the switch of their download and their phase, the two reads of the dates, the four actions of the Elements panel that edit the Positionen and the Projekte, the two of the Text panel that edit the company\'s texts and the eight of the Files panel that keep the files of a project - not its delete of a folder and not its upload mark - the three of the Review panel that read, answer and settle the comments on them, the list of the uploads and the events of the portal and none else', array_keys( Surface::actions() ) === array_merge( array_keys( \Crm\Clients\Admin::actions() ), array_keys( \Crm\Documents\Admin::actions() ), [ 'crm/status', 'crm/setup' ], [ 'crm-projekte/list', 'crm-projekte/get', 'crm-projekte/download', 'crm-projekte/phase' ], [ 'crm-termine/list', 'crm-termine/get' ], array_keys( \Nino\Modules\Pdf\Admin::actions() ), [ 'crm-pdf/context' ], [ 'elements/list', 'elements/get', 'elements/save', 'elements/delete' ], [ 'text/keys', 'text/savebatch' ], [ 'files/list', 'files/folder/add', 'files/folder/save', 'files/upload', 'files/save', 'files/notify', 'files/delete', 'files/remove' ], [ 'review/comments', 'review/answer', 'review/done' ], [ 'crm-uploads/list', 'crm-portal/activity' ] )
+	&& array_filter( array_keys( Surface::actions() ), static fn( string $action ): bool => preg_match( '~^(crm-(clients|documents|projekte|termine)/[a-z-]+|crm/(status|setup)|pdf/[a-z/]+|crm-pdf/context|elements/(list|get|save|delete)|text/(keys|savebatch)|files/(list|folder/add|folder/save|upload|save|notify|delete|remove)|review/(comments|answer|done)|crm-uploads/list|crm-portal/activity)$~D', $action ) !== 1 ) === []
 	&& in_array( 'crm-clients/setup', array_keys( Surface::actions() ), true ) === false && in_array( 'crm-clients/status', array_keys( Surface::actions() ), true ) === false );
 
 [ $status, $direct ] = ninoCall( $appData, [ \Crm\Documents\Admin::class, 'apiList' ], [ 'year' => (string) date( 'Y' ) ], 'crm-documents/list' );
@@ -2753,6 +2753,9 @@ surfaceConsentChecks( $appData, $a, $b, $project, $asCrm, $asItems );
 surfaceNoticeChecks( $appData, $a, $b, $asCrm, $final, $line, $day );
 surfaceLinkChecks( $appData, $a, $accounts, $asLinker, $asCrm, $reset );
 surfaceEverydayChecks( $appData, $a, $c, $final, $line, $day, $reset, $asCrm );
+surfaceFiguresChecks( $appData, $final, $line, $day, $asVisitor, $asCrm, $asUser );
+surfaceExportChecks( $appData, $final, $line, $asVisitor, $asCrm, $asUser );
+surfaceActivityChecks( $appData, $a, $song1, $byMember, $asCrm );
 
 // --- /crm im Alltag: what the first screen and the lists name, the sentence to the customer, the setting of the mail for new files ---------------------------------
 
@@ -2959,6 +2962,493 @@ function surfaceEverydayChecks( array &$appData, array $a, array $c, \Closure $f
 }
 
 surfaceReplyChecks( $appData, $a, $accounts, $audio, $asReview, $asCrm, $asUser, $asVisitor, $reset );
+
+// --- Zahlen, Export, Aus dem Portal ----------------------------------------------------------------------------------
+
+/**
+ *	The figures of the first screen: the months, the clients of the year, the offers of the year - their sums as the books have them, a credit note taken off, a draft not counted
+ *
+ *	@param		array 		&$appData
+ *	@param		\Closure	$final				Makes a finalised document
+ *	@param		\Closure	$line
+ *	@param		\Closure	$day
+ *	@param		\Closure	$asVisitor
+ *	@param		\Closure	$asCrm
+ *	@param		\Closure	$asUser
+ *
+ *	@return 	void
+ */
+function surfaceFiguresChecks( array &$appData, \Closure $final, \Closure $line, \Closure $day, \Closure $asVisitor, \Closure $asCrm, \Closure $asUser ): void {
+
+	echo "\nZahlen\n";
+
+	$asVisitor();
+	$visitor = surfaceApi( $appData, 'crm-documents/figures' )[0];
+	$asUser( 'plain@example.com', 'plain password' );
+	$plain = surfaceApi( $appData, 'crm-documents/figures' )[0];
+	$asCrm();
+	[ $status, $before ] = surfaceApi( $appData, 'crm-documents/figures' );
+
+	check( 'the figures are for the permission of the CRM: 401 for nobody, 403 for an account without it, 200 with it - the year, the months, the clients, the offers and the settings of the amounts', $visitor === 401 && $plain === 403 && $status === 200 && array_keys( $before ) === [ 'year', 'months', 'clients', 'offers', 'settings' ] && $before['year'] === (int) date( 'Y' ) );
+
+	$months = array_column( $before['months'], 'month' );
+	$expected = array_map( static fn( int $back ): string => ( new \DateTimeImmutable( date( 'Y-m-01' ) ) )->modify( '-'. $back. ' months' )->format( 'Y-m' ), range( 0, 11 ) );
+
+	check( '...twelve months, the month now first and the eleven before it in a row, each with billed, paid and open - a month with nothing is a row of zeros', $months === $expected && array_filter( $before['months'], static fn( array $one ): bool => array_keys( $one ) !== [ 'month', 'billed', 'paid', 'open' ] ) === [] );
+
+	$client = \Crm\Clients::add( $appData, [ 'company' => 'Zahlen KG', 'name' => 'Zoe Zahl', 'street' => 'Summenweg 1', 'zip' => '20095', 'city' => 'Hamburg', 'email' => 'zoe@zahlen.example' ] );
+	$inv = static fn( string $title, string $price, string $date ): array => $final( 'invoice', $client['id'], [ 'date' => $date, 'due_date' => $date, 'lines' => [ $line( $title, $price ) ], 'template_key' => 'rechnung' ] );
+	$today = date( 'Y-m-d' );
+	$paid = $inv( 'Bezahlt', '10000', $today );
+	Documents::setState( $appData, $paid['id'], 'sent' );
+	Documents::setState( $appData, $paid['id'], 'paid' );
+	$cancelled = $inv( 'Storniert', '5000', $today );
+	$credit = Documents::creditOf( $appData, $cancelled['id'] );
+	$creditDone = is_array( $credit ) && is_array( Documents::change( $appData, $credit['id'], [ 'template_key' => 'rechnung' ] ) ) ? Documents::finalise( $appData, $credit['id'] ) : $credit;
+	$open = $inv( 'Offen', '500', $today );
+	$draft = Documents::add( $appData, 'invoice', $client['id'], [ 'date' => $today, 'lines' => [ $line( 'Entwurf', '99999' ) ], 'template_key' => 'rechnung' ] );
+	$old = $inv( 'Zu alt', '777', $day( -430 ) );
+	[ , $after ] = surfaceApi( $appData, 'crm-documents/figures' );
+	$delta = static fn( string $key ): int => $after['months'][0][$key] - $before['months'][0][$key];
+
+	check( 'the month of today counts the invoices at their gross, the credit note off: 20000,00 and 10000,00 and 1000,00 less 10000,00 are 21000,00 billed, of which 20000,00 is paid and 1000,00 is open', is_array( $creditDone ) && $creditDone['gross'] === -1000000 && $delta( 'billed' ) === 2100000 && $delta( 'paid' ) === 2000000 && $delta( 'open' ) === 100000 );
+	check( '...a draft counts for nothing and an invoice of more than a year ago is in no row', $draft['state'] === 'draft' && $old['state'] === 'open' && array_sum( array_column( $after['months'], 'billed' ) ) - array_sum( array_column( $before['months'], 'billed' ) ) === 2100000 );
+
+	$top = $after['clients'][0] ?? [];
+
+	check( 'the clients of the year are at most five, by what they were billed, the live name - the client with the most is first, with the sum', count( $after['clients'] ) <= 5 && ( $top['client_id'] ?? 0 ) === $client['id'] && $top['client_title'] === 'Zahlen KG' && $top['billed'] === 2100000 && $after['clients'] === array_values( $after['clients'] )
+		&& array_column( $after['clients'], 'billed' ) === ( static function( array $sums ): array { rsort( $sums ); return $sums; } )( array_column( $after['clients'], 'billed' ) ) );
+
+	// a credit note in a later month than the invoice: the money came, the credit note stands in its own month
+	$back = static fn( int $months ): string => ( new \DateTimeImmutable( date( 'Y-m-01' ) ) )->modify( '-'. $months. ' months' )->format( 'Y-m-' ). '05';
+	$counted = static fn( array $figures, int $months ): array => array_column( $figures['months'], null, 'month' )[substr( $back( $months ), 0, 7 )];
+	[ , $beforeCredits ] = surfaceApi( $appData, 'crm-documents/figures' );
+	$late = \Crm\Clients::add( $appData, [ 'company' => 'Später Storno AG', 'name' => 'Sven Spät', 'street' => 'Folgeweg 2', 'zip' => '20095', 'city' => 'Hamburg', 'email' => 'sven@zahlen.example' ] );
+	$stored = static function( string $price, string $date, string $paidAt, string $creditDate ) use ( &$appData, $final, $line, $late ): array {
+		$invoice = $final( 'invoice', $late['id'], [ 'date' => $date, 'due_date' => $date, 'lines' => [ $line( 'Storno später', $price ) ], 'template_key' => 'rechnung' ] );
+		Documents::setState( $appData, $invoice['id'], 'sent', $date );
+
+		if( $paidAt !== '' )
+			Documents::setState( $appData, $invoice['id'], 'paid', $paidAt );
+
+		$credit = Documents::creditOf( $appData, $invoice['id'] );
+		Documents::change( $appData, $credit['id'], [ 'template_key' => 'rechnung', 'date' => $creditDate ] );
+		$done = Documents::finalise( $appData, $credit['id'] );
+
+		return [ $invoice, $done ];
+	};
+	[ $paidInvoice, $paidCredit ] = $stored( '1000', $back( 3 ), $back( 2 ), $back( 1 ) );
+	[ $sentInvoice, $sentCredit ] = $stored( '500', $back( 3 ), '', $back( 2 ) );
+	[ , $afterCredits ] = surfaceApi( $appData, 'crm-documents/figures' );
+	$moved = static fn( int $months ): array => array_map( static fn( string $key ): int => $counted( $afterCredits, $months )[$key] - $counted( $beforeCredits, $months )[$key], [ 'billed', 'paid', 'open' ] );
+
+	check( 'a credit note in a later month than its invoice: the invoice month is billed 3000,00 and holds nothing open - both invoices are cancelled by their credit notes - the month of the payment has the 2000,00 that came, and each credit note stands negative in its own month', $paidInvoice['gross'] === 200000 && $sentInvoice['gross'] === 100000 && $paidCredit['gross'] === -200000 && $sentCredit['gross'] === -100000
+		&& $moved( 3 ) === [ 300000, 0, 0 ] && $moved( 2 ) === [ -100000, 200000, 0 ] && $moved( 1 ) === [ -200000, 0, 0 ] );
+
+	$sentOpen = $stored( '10', $back( 4 ), '', $back( 4 ) );
+	$openOnly = $final( 'invoice', $late['id'], [ 'date' => $back( 4 ), 'due_date' => $back( 4 ), 'lines' => [ $line( 'Offen geblieben', '700' ) ], 'template_key' => 'rechnung' ] );
+	Documents::setState( $appData, $openOnly['id'], 'sent', $back( 4 ) );
+	[ , $afterOpen ] = surfaceApi( $appData, 'crm-documents/figures' );
+
+	check( '...an invoice that is open or sent is what stays open in the month of its document - 1400,00 - whatever the credit notes of the other invoices did', $counted( $afterOpen, 4 )['open'] - $counted( $afterCredits, 4 )['open'] === 140000 );
+
+	// six clients: five are named
+	$sixth = [];
+
+	foreach( [ 1, 2, 3, 4, 5, 6 ] as $n ) {
+		$six = \Crm\Clients::add( $appData, [ 'company' => 'Sechs '. $n. ' GmbH', 'name' => 'Kontakt '. $n, 'street' => 'Weg '. $n, 'zip' => '20095', 'city' => 'Hamburg', 'email' => 'sechs'. $n. '@zahlen.example' ] );
+		$sixth[$n] = $final( 'invoice', $six['id'], [ 'date' => date( 'Y-m-d' ), 'due_date' => date( 'Y-m-d' ), 'lines' => [ $line( 'Sechs', (string) ( 100000 * $n ) ) ], 'template_key' => 'rechnung' ] );
+	}
+
+	[ , $six ] = surfaceApi( $appData, 'crm-documents/figures' );
+
+	check( 'of six clients the five that were billed most are named, the smallest is not - and the order is by the sum', count( $six['clients'] ) === 5 && in_array( 'Sechs 1 GmbH', array_column( $six['clients'], 'client_title' ), true ) === false && in_array( 'Sechs 2 GmbH', array_column( $six['clients'], 'client_title' ), true ) === true && $six['clients'][0]['client_title'] === 'Sechs 6 GmbH' );
+
+	$offer = static fn( string $valid ): array => $final( 'offer', $client['id'], [ 'date' => $today, 'valid_until' => $valid, 'lines' => [ $line( 'Angebot', '100' ) ], 'template_key' => 'angebot' ] );
+	$accepted = $offer( $day( 20 ) );
+	Documents::setState( $appData, $accepted['id'], 'accepted' );
+	$declined = $offer( $day( 20 ) );
+	Documents::setState( $appData, $declined['id'], 'declined' );
+	$expired = $offer( $day( -3 ) );
+	$waiting = $offer( $day( 20 ) );
+	$validToday = $offer( date( 'Y-m-d' ) );
+	[ , $offers ] = surfaceApi( $appData, 'crm-documents/figures' );
+	$more = static fn( string $kind ): array => [ $offers['offers'][$kind]['count'] - $before['offers'][$kind]['count'], $offers['offers'][$kind]['gross'] - $before['offers'][$kind]['gross'] ];
+
+	check( 'the offers of the year are told by what became of them - accepted, declined, expired (open or sent past the day they hold until) and open - each with its number and its gross', array_keys( $offers['offers'] ) === [ 'accepted', 'declined', 'expired', 'open' ] && $more( 'accepted' ) === [ 1, 20000 ] && $more( 'declined' ) === [ 1, 20000 ] && $more( 'expired' ) === [ 1, 20000 ] && $more( 'open' ) === [ 2, 40000 ] && $waiting['id'] > 0 && $validToday['id'] > 0 );
+	check( '...an offer that is valid until today is open, and one that was valid until yesterday is expired: today is the last day', $more( 'expired' ) === [ 1, 20000 ] && $more( 'open' )[0] === 2 );
+
+	$source = (string) file_get_contents( dirname( __DIR__ ). '/Documents/Documents.php' );
+	$body = substr( $source, (int) strpos( $source, 'public static function figures(' ), (int) strpos( $source, 'public static function ledger(' ) - (int) strpos( $source, 'public static function figures(' ) );
+	$queries = substr_count( $body, 'Db::rows(' );
+
+	check( 'one query for each table: the months, the clients and the offers are three reads', $queries === 3 );
+
+	$texts = Surface::texts();
+	$needed = [ 'figures.title', 'figures.months', 'figures.month', 'figures.billed', 'figures.paid', 'figures.open', 'figures.sum', 'figures.clients', 'figures.offers', 'figures.offer-state', 'figures.offer-count', 'figures.offer-sum', 'figures.offer-open', 'figures.error', 'figures.months-note', 'figures.clients-none' ];
+
+	check( 'the words of the block are there, in the Du form where they speak to the reader', array_filter( $needed, static fn( string $key ): bool => trim( (string) ( $texts[$key] ?? '' ) ) === '' ) === [] );
+}
+
+/**
+ *	The export of the documents: the CSV of a year, the ZIP of a year, the ZIP of a choice
+ *
+ *	@param		array 		&$appData
+ *	@param		\Closure	$final
+ *	@param		\Closure	$line
+ *	@param		\Closure	$asVisitor
+ *	@param		\Closure	$asCrm
+ *	@param		\Closure	$asUser
+ *
+ *	@return 	void
+ */
+function surfaceExportChecks( array &$appData, \Closure $final, \Closure $line, \Closure $asVisitor, \Closure $asCrm, \Closure $asUser ): void {
+
+	echo "\nExport\n";
+
+	$asCrm();
+
+	$names = [ '=HYPERLINK("http://example.org";"x")', '+49 Studio', '-Minus & Söhne', '@home', 'Müller; "Söhne"', 'Zwei Zeilen' ];
+	$clients = [];
+
+	foreach( $names as $at => $name )
+		$clients[] = \Crm\Clients::add( $appData, [ 'company' => $name, 'name' => 'Kontakt '. $at, 'street' => 'Exportweg '. $at, 'zip' => '20095', 'city' => 'Hamburg', 'email' => 'export'. $at. '@example.org' ] );
+
+	$make = static fn( string $category, int $client, string $date, string $price, string $template ): array => $final( $category, $client, [ 'date' => $date, 'due_date' => $category === 'invoice' ? $date : null, 'valid_until' => $category === 'offer' ? '2020-12-31' : null, 'lines' => [ $line( 'Export', $price ) ], 'template_key' => $template ] );
+	$docs = [];
+
+	foreach( $clients as $at => $client )
+		$docs[$at] = $make( 'invoice', $client['id'], '2020-0'. ( $at + 1 ). '-05', (string) ( 600 + $at * 1111 ), 'rechnung' );
+
+	Documents::setState( $appData, $docs[0]['id'], 'sent' );
+	Documents::setState( $appData, $docs[0]['id'], 'paid', '2020-02-17' );
+	$creditDraft = Documents::creditOf( $appData, $docs[1]['id'] );
+	Documents::change( $appData, $creditDraft['id'], [ 'template_key' => 'rechnung', 'date' => '2020-02-20' ] );
+	$credit = Documents::finalise( $appData, $creditDraft['id'] );
+	$offer = $make( 'offer', $clients[0]['id'], '2020-07-01', '100', 'angebot' );
+	$draft = Documents::add( $appData, 'invoice', $clients[0]['id'], [ 'date' => '2020-08-01', 'lines' => [ $line( 'Entwurf' ) ], 'template_key' => 'rechnung' ] );
+	$plain = Documents::finalise( $appData, Documents::add( $appData, 'privacy', $clients[0]['id'], [ 'title' => 'Datenschutz 2020', 'template_key' => 'datenschutz' ] )['id'] );
+	$other = $make( 'invoice', $clients[0]['id'], '2021-01-05', '10', 'rechnung' );
+
+	// an invoice of a business client has its electronic invoice beside the PDF
+	foreach( [ 'seller_name' => 'Studio Beispiel', 'seller_street' => 'Weg 1', 'seller_zip' => '10115', 'seller_city' => 'Berlin', 'seller_country' => 'DE', 'seller_contact' => 'Jan Beispiel', 'seller_phone' => '+49 30 123456', 'seller_email' => 'jan@beispiel.example', 'tax_id' => '12/345/67890', 'vat_id' => 'DE111222333', 'iban' => 'DE89 3704 0044 0532 0130 00', 'bic' => 'COBADEFFXXX' ] as $key => $value )
+		Settings::set( $appData, $key, $value );
+
+	$business = \Crm\Clients::add( $appData, [ 'company' => 'Elektronisch GmbH', 'name' => 'Emil E', 'street' => 'Hauptstr. 5', 'zip' => '50667', 'city' => 'Köln', 'email' => 'e@example.org', 'vat_id' => 'DE987654321', 'buyer_reference' => 'PO-1', 'business' => true ] );
+	$electronic = $final( 'invoice', $business['id'], [ 'date' => '2020-09-05', 'due_date' => '2020-09-19', 'lines' => [ $line( 'Elektronisch', '50' ) + [ 'unit_code' => 'HUR' ] ], 'template_key' => 'rechnung' ] );
+
+	$csvOf = static function( string $query ) use ( &$appData ): array {
+		$response = surfaceServe( $appData, 'GET', '/crm/export/belege.csv'. $query );
+		$rows = [];
+
+		if( $response['statusCode'] === 200 && is_string( $response['body'] ) === true ) {
+			$handle = fopen( 'php://memory', 'r+' );
+			fwrite( $handle, substr( $response['body'], 3 ) );
+			rewind( $handle );
+
+			while( ( $row = fgetcsv( $handle, 0, ';', '"', '' ) ) !== false )
+				$rows[] = $row;
+		}
+
+		return [ $response, $rows ];
+	};
+
+	$linesBefore = count( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ) );
+	[ $response, $rows ] = $csvOf( '?jahr=2020' );
+	$texts = Surface::texts();
+	$headers = $response['header'];
+
+	check( 'the CSV of a year is an attachment that nothing keeps and nothing sniffs: 200, text/csv in UTF-8, attachment named for the year, private and no-store, nosniff', $response['statusCode'] === 200 && str_starts_with( $headers['Content-Type'], 'text/csv' ) && str_contains( $headers['Content-Type'], 'utf-8' ) && $headers['Content-Disposition'] === 'attachment; filename="belege-2020.csv"'
+		&& $headers['Cache-Control'] === 'private, no-store' && $headers['X-Content-Type-Options'] === 'nosniff' );
+	check( '...it starts with the byte order mark, the cells are separated by a semicolon and a line ends in CRLF', str_starts_with( $response['body'], "\xEF\xBB\xBF" ) && str_contains( $response['body'], ';' ) && str_ends_with( $response['body'], "\r\n" ) && substr_count( $response['body'], "\r\n" ) >= count( $rows ) );
+	check( '...the head names the ten columns in the words of the page - Nummer, Art, Datum, Kunde, Netto, USt, Brutto, Status, Bezahlt am, Projekt', $rows[0] === array_map( static fn( string $key ): string => $texts['export.col-'. $key], [ 'number', 'category', 'date', 'client', 'net', 'vat', 'gross', 'state', 'paid', 'project' ] ) );
+
+	$byNumber = array_column( array_slice( $rows, 1 ), null, 0 );
+
+	check( '...a line for each offer, invoice and credit note of the year that is no draft, the oldest first - and none for the draft, the privacy document and the invoice of the next year', count( $rows ) === 1 + 9 && isset( $byNumber[$docs[0]['number']], $byNumber[$credit['number']], $byNumber[$offer['number']] ) && isset( $byNumber[$other['number']] ) === false && is_array( $draft ) && is_array( $plain )
+		&& array_column( array_slice( $rows, 1 ), 2 ) === array_map( static fn( string $day ): string => implode( '.', array_reverse( explode( '-', $day ) ) ), ( static function( array $days ): array { sort( $days ); return $days; } )( array_map( static fn( array $row ): string => implode( '-', array_reverse( explode( '.', $row[2] ) ) ), array_slice( $rows, 1 ) ) ) ) );
+	check( '...the amounts are the German books\': a comma, no thousands mark, no currency, a minus for the credit note - 1200,00 net and gross of a first invoice, -3422,00 for the credit note of the second', $byNumber[$docs[0]['number']][4] === '1200,00' && $byNumber[$docs[0]['number']][6] === '1200,00' && $byNumber[$docs[0]['number']][5] === '0,00' && $byNumber[$credit['number']][6] === '-3422,00' && $byNumber[$docs[5]['number']][6] === '12310,00' );
+	check( '...the day is d.m.Y, the day it was paid is in its column and empty for what was not paid, the state is the word of the page', $byNumber[$docs[0]['number']][2] === '05.01.2020' && $byNumber[$docs[0]['number']][8] === '17.02.2020' && $byNumber[$docs[1]['number']][8] === '' && $byNumber[$docs[0]['number']][7] === $texts['state.paid'] && $byNumber[$docs[0]['number']][1] === $texts['category.invoice'] );
+
+	$cells = array_column( array_slice( $rows, 1 ), 3 );
+
+	check( 'a cell of text that a spreadsheet would read as a formula - = + - @ - is led by an apostrophe, the others are as they are: the four clients are text, the semicolon and the quote and the line break survive the quoting', in_array( '\'=HYPERLINK("http://example.org";"x")', $cells, true ) && in_array( '\'+49 Studio', $cells, true ) && in_array( '\'-Minus & Söhne', $cells, true ) && in_array( '\'@home', $cells, true ) && in_array( 'Müller; "Söhne"', $cells, true ) && in_array( 'Zwei Zeilen', $cells, true )
+		&& array_filter( $cells, static fn( string $cell ): bool => $cell !== '' && str_contains( "=+-@\t\r", $cell[0] ) ) === [] );
+	$handle = fopen( 'php://memory', 'r+' );
+	fwrite( $handle, substr( \Crm\Surface\Export::csv( [ [ 'id' => 1, 'category' => 'invoice', 'number' => 'R-1', 'date' => '2020-01-02', 'client_title' => "Zwei\nZeilen; \"x\"", 'net' => 100, 'vat' => 0, 'gross' => 100, 'state' => 'open', 'paid_at' => '', 'project' => '', 'project_title' => '' ] ], $texts ), 3 ) );
+	rewind( $handle );
+	fgetcsv( $handle, 0, ';', '"', '' );
+	$broken = fgetcsv( $handle, 0, ';', '"', '' );
+
+	check( 'a cell with a line break, a semicolon and a quote is quoted and comes back whole - a client\'s name cannot hold a line break, the function does not rely on that', is_array( $broken ) && $broken[3] === "Zwei\nZeilen; \"x\"" && count( $broken ) === 10 );
+	check( '...the amounts are no text: a credit note keeps its minus and is no apostrophe', str_starts_with( $byNumber[$credit['number']][6], '-' ) && array_filter( array_column( array_slice( $rows, 1 ), 6 ), static fn( string $cell ): bool => str_starts_with( $cell, '\'' ) ) === [] );
+	check( 'the function that makes a text safe: a leading = + - @, tab or carriage return gets the apostrophe, a null byte goes, plain text and the empty text stay', \Crm\Surface\Export::text( '=1+1' ) === '\'=1+1' && \Crm\Surface\Export::text( "\tx" ) === "'\tx" && \Crm\Surface\Export::text( "\rx" ) === "'\rx" && \Crm\Surface\Export::text( "\0=a" ) === '\'=a' && \Crm\Surface\Export::text( 'a=b' ) === 'a=b' && \Crm\Surface\Export::text( '' ) === ''
+		&& array_map( [ \Crm\Surface\Export::class, 'amount' ], [ 0, 5, -5, 100, -100, 123456, -9999999 ] ) === [ '0,00', '0,05', '-0,05', '1,00', '-1,00', '1234,56', '-99999,99' ] );
+
+	[ , $next ] = $csvOf( '?jahr=2021' );
+	[ , $none ] = $csvOf( '?jahr=2019' );
+
+	check( 'the year filters: 2021 holds its own invoice and not those of 2020, a year with none is the head alone', count( $next ) === 2 && $next[1][0] === $other['number'] && count( $none ) === 1 );
+
+	$bad = [];
+
+	foreach( [ 'none' => '', 'text' => '?jahr=abc', 'five digits' => '?jahr=20200', 'a day' => '?jahr=2020-01', 'a trailing newline' => "?jahr=2020%0A", 'a list' => '?jahr[]=2020', 'the year 1999' => '?jahr=1999', 'a sign' => '?jahr=%2B2020' ] as $why => $query )
+		$bad[$why] = $csvOf( $query )[0]['statusCode'];
+
+	check( 'a year that is not four digits of 2000 to 2999 is 400 - nothing, a word, five digits, a day, a newline, a list, the year 1999, a sign - and no CSV', array_values( array_unique( $bad ) ) === [ 400 ] );
+
+	$asVisitor();
+	$nobody = $csvOf( '?jahr=2020' )[0]['statusCode'];
+	$asUser( 'plain@example.com', 'plain password' );
+	$noCrm = $csvOf( '?jahr=2020' )[0];
+	$asUser( 'pdfonly@example.com', 'pdfonly password' );
+	$pdfOnly = $csvOf( '?jahr=2020' )[0]['statusCode'];
+	$asCrm();
+
+	check( 'the export is for the permission of the CRM: 401 for nobody, 403 for an account without it - the Pdf panel\'s alone is none - and the answer of a refusal has no CSV in it', $nobody === 401 && $noCrm['statusCode'] === 403 && $pdfOnly === 403 && str_contains( (string) $noCrm['body'], ';' ) === false );
+	check( '...an export that is not there is 404, and the log has a line for each export that counts and names no client, no number and no amount', surfaceServe( $appData, 'GET', '/crm/export/anderes.csv' )['statusCode'] === 404 && count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ), static fn( string $entry ): bool => str_contains( $entry, 'Exported the documents of 2020 as a csv' ) ) ) === 1
+		&& count( array_filter( array_slice( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ), 0, count( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ) ) - $linesBefore ), static fn( string $entry ): bool => str_contains( $entry, $docs[0]['number'] ) || str_contains( $entry, 'HYPERLINK' ) || str_contains( $entry, 'Söhne' ) ) ) === 0 );
+
+	// the ZIP
+	echo "\nExport als ZIP\n";
+
+	$zipDir = \Nino\Filesystem::path( $appData, '/data/crm-zip' );
+	$zipFiles = static fn(): array => glob( $zipDir. '/*' ) ?: [];
+	$entries = static function( array $response ): array {
+
+		$zip = new \ZipArchive();
+		$names = [];
+
+		if( isset( $response['file'] ) && $zip->open( (string) $response['file'] ) === true ) {
+			for( $at = 0; $at < $zip->numFiles; $at++ )
+				$names[(string) $zip->getNameIndex( $at )] = (int) ( $zip->statIndex( $at )['size'] ?? 0 );
+
+			$zip->close();
+		}
+
+		ksort( $names );
+
+		return $names;
+	};
+	$zipLines = static fn( string $needle ): int => count( array_filter( \Nino\Modules\Logs\Admin::recentLines( $appData, 400 ), static fn( string $entry ): bool => str_contains( $entry, $needle ) ) );
+
+	$year = surfaceServe( $appData, 'GET', '/crm/export/belege-2020.zip' );
+	$inZip = $entries( $year );
+	$expect = [];
+
+	foreach( [ $docs[0], $docs[1], $docs[2], $docs[3], $docs[4], $docs[5], $credit, $offer, $electronic ] as $one ) {
+		$kept = (array) Documents::get( $appData, $one['id'] );
+		$expect[$one['number']. '.pdf'] = true;
+
+		if( $kept['xml_path'] !== '' )
+			$expect[$one['number']. '.xml'] = true;
+	}
+
+	ksort( $expect );
+
+	check( 'the ZIP of a year is the file the kernel streams: 200, below /data/crm-zip in a file of its own, an attachment of application/zip named for the year, private and no-store, nosniff', $year['statusCode'] === 200 && str_starts_with( basename( (string) ( $year['file'] ?? '' ) ), 'belege-' ) && dirname( (string) ( $year['file'] ?? '' ) ) === $zipDir
+		&& $year['header']['Content-Type'] === 'application/zip' && $year['header']['Content-Disposition'] === 'attachment; filename="belege-2020.zip"' && $year['header']['Cache-Control'] === 'private, no-store' && $year['header']['X-Content-Type-Options'] === 'nosniff' );
+	check( '...in it the PDF of each document of the year that is no draft as <number>.pdf and the electronic invoice of one that has it as <number>.xml - the draft, the privacy document and the invoice of 2021 are not in it', array_keys( $inZip ) === array_keys( $expect ) && in_array( $docs[0]['number']. '.pdf', array_keys( $inZip ), true ) && array_filter( array_keys( $inZip ), static fn( string $name ): bool => preg_match( '~^[A-Za-z0-9._-]+\.(pdf|xml)$~D', $name ) !== 1 ) === [] );
+	check( '...the electronic invoice of the business client is in it beside its PDF: <number>.xml, and it is the file the database has the hash of - and a ZIP in which nothing was left out has no fehlt.txt', ( (array) Documents::get( $appData, $electronic['id'] ) )['xml_path'] !== '' && isset( $inZip[$electronic['number']. '.xml'], $inZip[$electronic['number']. '.pdf'] ) && isset( $inZip['fehlt.txt'] ) === false
+		&& ( static function() use ( &$appData, $electronic, $year ): bool {
+
+			$zip = new \ZipArchive();
+			$zip->open( (string) $year['file'] );
+
+			return hash( 'sha256', (string) $zip->getFromName( $electronic['number']. '.xml' ) ) === ( (array) Documents::get( $appData, $electronic['id'] ) )['xml_sha256'];
+		} )() );
+	check( '...every file is what the database holds the hash of', ( static function() use ( &$appData, $docs, $year ): bool {
+
+		$zip = new \ZipArchive();
+		$zip->open( (string) $year['file'] );
+		$kept = (array) Documents::get( $appData, $docs[0]['id'] );
+
+		return hash( 'sha256', (string) $zip->getFromName( $docs[0]['number']. '.pdf' ) ) === $kept['pdf_sha256'];
+	} )() );
+	check( '...the log has one line that counts, with no number and no client', $zipLines( 'Exported 9 documents of 2020 as a zip' ) === 1 && $zipLines( $docs[0]['number'] ) === 0 );
+
+	$removed = \Crm\Surface\Uploads::cleanup();
+
+	check( 'the ZIP is removed when the request ends: the shutdown function - this method - takes it and the directory is empty', $removed === 1 && $zipFiles() === [] );
+
+	// a file that is gone and one that is not the file of the hash are left out
+	$gone = (string) \Crm\Documents\Render::file( $appData, ( (array) Documents::get( $appData, $docs[2]['id'] ) )['pdf_path'] );
+	$changed = (string) \Crm\Documents\Render::file( $appData, ( (array) Documents::get( $appData, $docs[3]['id'] ) )['pdf_path'] );
+	$goneBytes = (string) file_get_contents( $gone );
+	$changedBytes = (string) file_get_contents( $changed );
+	$linked = (string) \Crm\Documents\Render::file( $appData, ( (array) Documents::get( $appData, $docs[4]['id'] ) )['pdf_path'] );
+	unlink( $gone );
+	file_put_contents( $changed, $changedBytes. 'x' );
+	rename( $linked, $linked. '.orig' );
+	symlink( $linked. '.orig', $linked );
+	$linesBeforeLeft = $zipLines( 'Exported 6 of 9 documents of 2020 as a zip, 3 left out' );
+	$leftResponse = surfaceServe( $appData, 'GET', '/crm/export/belege-2020.zip' );
+	$lacking = $entries( $leftResponse );
+	$leftZip = new \ZipArchive();
+	$leftZip->open( (string) $leftResponse['file'] );
+	$leftText = (string) $leftZip->getFromName( 'fehlt.txt' );
+	$leftZip->close();
+	\Crm\Surface\Uploads::cleanup();
+	file_put_contents( $gone, $goneBytes );
+	file_put_contents( $changed, $changedBytes );
+	unlink( $linked );
+	rename( $linked. '.orig', $linked );
+
+	check( 'only documents with a file are in the ZIP, and with the file the database has the hash of: one whose PDF is gone and one whose PDF is not the same are left out - and are there again once the files are', isset( $lacking[$docs[2]['number']. '.pdf'] ) === false && isset( $lacking[$docs[3]['number']. '.pdf'] ) === false && isset( $lacking[$docs[5]['number']. '.pdf'] ) === true && isset( $lacking[$docs[4]['number']. '.pdf'] ) === false && count( $lacking ) < count( $inZip ) && count( $entries( ( static function() use ( &$appData ): array { $r = surfaceServe( $appData, 'GET', '/crm/export/belege-2020.zip' ); return $r; } )() ) ) === count( $inZip ) );
+	\Crm\Surface\Uploads::cleanup();
+
+	$leftNumbers = array_filter( array_map( 'trim', explode( "\n", $leftText ) ), static fn( string $line ): bool => preg_match( '~^[A-Z]-[0-9]{4}-[0-9]{4}$~D', $line ) === 1 );
+
+	check( 'what was left out is told, not hidden: the ZIP holds fehlt.txt with the numbers of the three documents - the PDF that is gone, the one that is not the same and the one that is a link - and no more, the log counts them as "Exported 6 of 9 documents of 2020 as a zip, 3 left out" without a number', array_values( $leftNumbers ) === [ $docs[2]['number'], $docs[3]['number'], $docs[4]['number'] ] && str_starts_with( $leftText, Surface::texts()['export.left-out'] )
+		&& $zipLines( 'Exported 6 of 9 documents of 2020 as a zip, 3 left out' ) === $linesBeforeLeft + 1 && $zipLines( $docs[2]['number'] ) === 0 );
+	check( '...the list of the documents says how many of the year have a file: that is what the link to the ZIP is shown for - nothing for a year with none', surfaceApi( $appData, 'crm-documents/list', [ 'year' => '2020' ] )[1]['export']['files'] === 9 && surfaceApi( $appData, 'crm-documents/list', [ 'year' => '2018' ] )[1]['export']['files'] === 0 && surfaceApi( $appData, 'crm-documents/list' )[1]['export']['files'] === 0 );
+
+	// a choice
+	$chosen = surfaceServe( $appData, 'GET', '/crm/export/belege.zip?ids='. $docs[0]['id']. ','. $credit['id'] );
+	$pair = $entries( $chosen );
+	\Crm\Surface\Uploads::cleanup();
+	$one = surfaceServe( $appData, 'GET', '/crm/export/belege.zip?ids='. $docs[4]['id']. ','. $docs[4]['id'] );
+	$single = $entries( $one );
+	\Crm\Surface\Uploads::cleanup();
+
+	check( 'the ZIP of a choice is the PDFs of the documents the ids name, as an attachment named for the day - and an id twice is the document once', $chosen['statusCode'] === 200 && array_keys( $pair ) === array_values( array_filter( array_keys( $expect ), static fn( string $name ): bool => str_starts_with( $name, $docs[0]['number']. '.' ) || str_starts_with( $name, $credit['number']. '.' ) ) )
+		&& $chosen['header']['Content-Disposition'] === 'attachment; filename="belege-'. date( 'Y-m-d' ). '.zip"' && isset( $single[$docs[4]['number']. '.pdf'] ) && $zipFiles() === [] );
+
+	$refused = [];
+
+	foreach( [ 'no ids' => '', 'empty' => '?ids=', 'a text' => '?ids=1,a', 'a path' => '?ids=../1', 'zero' => '?ids=0', 'a minus' => '?ids=-1', 'a list' => '?ids[]=1' ] as $why => $query )
+		$refused[$why] = surfaceServe( $appData, 'GET', '/crm/export/belege.zip'. $query )['statusCode'];
+
+	check( 'a choice that is no list of ids - none, empty, a text, a path, zero, a minus, a list - is 400 and makes no ZIP', array_values( array_unique( $refused ) ) === [ 400 ] && $zipFiles() === [] );
+
+	$wrong = [ 'a draft' => $draft['id'], 'a document nobody has' => 999999 ];
+	$wrongStatus = [];
+
+	foreach( $wrong as $why => $id )
+		$wrongStatus[$why] = surfaceServe( $appData, 'GET', '/crm/export/belege.zip?ids='. $docs[0]['id']. ','. $id )['statusCode'];
+
+	$wrongStatus['a privacy document'] = surfaceServe( $appData, 'GET', '/crm/export/belege.zip?ids='. $plain['id'] )['statusCode'];
+
+	check( 'an id that is no offer, invoice or credit note that is finalised - a draft, one nobody has, a privacy document - is 404 for the whole request, the good one beside it makes no ZIP', array_values( array_unique( $wrongStatus ) ) === [ 404 ] && $zipFiles() === [] );
+
+	$many = implode( ',', range( 1, \Crm\Surface\Export::MAX_FILES + 1 ) );
+
+	check( 'a choice of more than the limit is 400 and makes no ZIP', surfaceServe( $appData, 'GET', '/crm/export/belege.zip?ids='. $many )['statusCode'] === 400 && $zipFiles() === [] && \Crm\Surface\Export::MAX_FILES === ( surfaceApi( $appData, 'crm-documents/list' )[1]['export']['limit'] ) );
+
+	// a year of more documents than a ZIP takes
+	$pdo = Db::pdo( $appData );
+	$pdo->exec( 'BEGIN' );
+	$insert = $pdo->prepare( 'INSERT INTO documents ( category, client_id, number, state, date, vat_mode, pdf_path ) VALUES ( \'invoice\', :client, :number, \'open\', \'2019-05-05\', \'small_business\', \'\' )' );
+
+	for( $n = 0; $n <= \Crm\Surface\Export::MAX_FILES; $n++ )
+		$insert->execute( [ 'client' => $clients[0]['id'], 'number' => 'LIM-'. $n ] );
+
+	$pdo->exec( 'COMMIT' );
+	$limit = surfaceServe( $appData, 'GET', '/crm/export/belege-2019.zip' );
+	$pdo->exec( 'DELETE FROM documents WHERE number LIKE \'LIM-%\'' );
+
+	check( 'a year with more documents than a ZIP takes is 413 and makes no ZIP', $limit['statusCode'] === 413 && $zipFiles() === [] && count( ( $csvOf( '?jahr=2019' )[1] ) ) === 1 );
+	check( '...and a year with no file at all is 404 and no ZIP', surfaceServe( $appData, 'GET', '/crm/export/belege-2018.zip' )['statusCode'] === 404 && $zipFiles() === [] );
+
+	$asVisitor();
+	$zipNobody = surfaceServe( $appData, 'GET', '/crm/export/belege-2020.zip' )['statusCode'];
+	$asUser( 'plain@example.com', 'plain password' );
+	$zipPlain = surfaceServe( $appData, 'GET', '/crm/export/belege-2020.zip' )['statusCode'];
+	$choicePlain = surfaceServe( $appData, 'GET', '/crm/export/belege.zip?ids='. $docs[0]['id'] )['statusCode'];
+	$asCrm();
+
+	check( 'the ZIPs are for the permission of the CRM: 401 for nobody, 403 for an account without it, for the year and for a choice - and nothing is made', $zipNobody === 401 && $zipPlain === 403 && $choicePlain === 403 && $zipFiles() === [] );
+
+	// what an interrupted request left
+	@mkdir( $zipDir, 0755, true );
+	file_put_contents( $zipDir. '/belege-stale0000000000.zip', 'x' );
+	file_put_contents( $zipDir. '/belege-recent000000000.zip', 'x' );
+	touch( $zipDir. '/belege-stale0000000000.zip', time() - 7200 );
+	$swept = surfaceServe( $appData, 'GET', '/crm/export/belege-2020.zip' );
+	$left = array_map( 'basename', $zipFiles() );
+	\Crm\Surface\Uploads::cleanup();
+	@unlink( $zipDir. '/belege-recent000000000.zip' );
+
+	check( 'a ZIP of an export that an interrupted request left is removed by the next one when it is older than an hour - one that is younger stays', $swept['statusCode'] === 200 && in_array( 'belege-stale0000000000.zip', $left, true ) === false && in_array( 'belege-recent000000000.zip', $left, true ) === true );
+
+	$keys = [ 'export.csv', 'export.zip', 'export.zip-off', 'export.unknown', 'export.year', 'export.zip-ids', 'export.zip-unknown', 'export.zip-many', 'export.zip-none', 'export.col-number', 'export.col-category', 'export.col-date', 'export.col-client', 'export.col-net', 'export.col-vat', 'export.col-gross', 'export.col-state', 'export.col-paid', 'export.col-project' ];
+
+	check( 'the words of the export are there', array_filter( $keys, static fn( string $key ): bool => trim( (string) ( Surface::texts()[$key] ?? '' ) ) === '' ) === [] );
+}
+
+/**
+ *	The card Aus dem Portal: the latest events of the records and of the comments of members, newest first, at most twenty
+ *
+ *	@param		array 		&$appData
+ *	@param		array 		$a						A client
+ *	@param		array 		$song1				A file in the folder of a client's group that carries comments
+ *	@param		array 		$byMember			The author of the comments
+ *	@param		\Closure	$asCrm
+ *
+ *	@return 	void
+ */
+function surfaceActivityChecks( array &$appData, array $a, array $song1, array $byMember, \Closure $asCrm ): void {
+
+	echo "\nAus dem Portal\n";
+
+	\Nino\Features::activate( $appData, 'review' );
+	$asCrm();
+	$anna = [ 'id' => 'aaaaaaaaaaaa', 'email' => 'anna@example.org', 'name' => 'Anna Nord' ];
+	$texts = Surface::texts();
+
+	check( 'every kind of record there is has its word on the card - a kind that is added to the module without a word is a failure here', array_filter( \Crm\Records::KINDS, static fn( string $kind ): bool => trim( (string) ( $texts['activity.kind-'. $kind] ?? '' ) ) === '' ) === [] && trim( (string) ( $texts['activity.kind-comment'] ?? '' ) ) !== '' );
+
+	// What came before is older than anything here: the card is the latest twenty
+	Db::exec( $appData, 'UPDATE records SET at = \'2001-01-01T00:00:00Z\'' );
+	$privacy = \Crm\Records::add( $appData, [ 'kind' => 'privacy', 'client_id' => $a['id'], 'member' => $anna, 'shown' => 'Datenschutz' ] );
+	$consent = \Crm\Records::add( $appData, [ 'kind' => 'consent', 'client_id' => $a['id'], 'member' => $anna, 'purpose' => 'social', 'shown' => 'Einwilligung' ] );
+	$approval = \Crm\Records::add( $appData, [ 'kind' => 'approval', 'client_id' => $a['id'], 'member' => $anna, 'project' => '00001', 'shown' => '{}' ] );
+	$offer = Documents::finalise( $appData, (int) Documents::add( $appData, 'offer', $a['id'], [ 'date' => date( 'Y-m-d' ), 'valid_until' => date( 'Y-m-d', time() + 20 * 86400 ), 'lines' => [ [ 'title' => 'Aktiv', 'qty' => '1', 'price' => '10', 'unit' => 'Stk', 'vat_rate' => 0 ] ], 'template_key' => 'angebot' ] )['id'] );
+	Documents::release( $appData, $offer['id'], false );
+	$order = Documents::order( $appData, $offer['id'], $a['id'], $anna, 'Ich beauftrage.', [ 'ip' => '203.0.113.9', 'agent' => 'Test' ] );
+	$revocation = \Crm\Records::revoke( $appData, $a['id'], $consent['id'], $anna, [ 'ip' => '203.0.113.9', 'agent' => 'Test' ] );
+
+	\Nino\Modules\Review\Store::insert( $appData, $song1['id'], [ 'by' => $byMember, 'at' => null, 'text' => 'Kommt aus dem Portal', 'done' => false, 'created' => '2099-01-01T00:00:00Z', 'page' => '' ], '' );
+	\Crm\Records::add( $appData, [ 'kind' => 'privacy', 'client_id' => $a['id'], 'member' => [ 'id' => 'bbbbbbbbbbbb', 'email' => 'ohne-namen@example.org', 'name' => '' ], 'shown' => 'Ohne Namen' ] );
+	[ $status, $body ] = surfaceApi( $appData, 'crm-portal/activity' );
+	$rows = $body['rows'] ?? [];
+
+	check( 'the activity is read under the permission of the CRM and answers rows only', $status === 200 && array_keys( $body ) === [ 'rows' ] && is_array( $privacy ) && is_array( $approval ) && is_array( $order ) && is_array( $revocation ) );
+	check( '...each row has the time, the kind, the client, the account and the thing it was about - and nothing of the address or the browser', $rows !== [] && array_filter( $rows, static fn( array $row ): bool => array_keys( $row ) !== [ 'at', 'kind', 'client_id', 'client_title', 'account', 'object' ] ) === [] && str_contains( (string) json_encode( $body ), '203.0.113.9' ) === false );
+	check( '...an account without a name is told by its address', in_array( 'ohne-namen@example.org', array_column( $rows, 'account' ), true ) === true );
+	check( '...the newest first', array_column( $rows, 'at' ) === ( static function( array $times ): array { rsort( $times ); return $times; } )( array_column( $rows, 'at' ) ) );
+
+	$byKind = [];
+
+	foreach ( $rows as $row )
+		$byKind[$row['kind']][] = $row;
+
+	check( '...the kinds of the records as they are kept, the comment of a member beside them - and the account is the name, the client the live title', isset( $byKind['privacy'], $byKind['consent'], $byKind['approval'], $byKind['order'], $byKind['revocation'], $byKind['comment'] ) && $byKind['order'][0]['account'] === 'Anna Nord' && $byKind['order'][0]['client_title'] === 'Studio Nord GmbH' && $byKind['order'][0]['client_id'] === $a['id'] );
+	check( '...an order is about its document, an approval about its project, a privacy statement about the client, a comment about its file with the project whose folder it lies in', ( $byKind['order'][0]['object']['type'] ?? '' ) === 'document' && $byKind['order'][0]['object']['id'] === (string) $offer['id'] && $byKind['order'][0]['object']['label'] === $offer['number']
+		&& ( $byKind['approval'][0]['object']['type'] ?? '' ) === 'project' && $byKind['approval'][0]['object']['id'] === '00001' && $byKind['approval'][0]['object']['label'] === \Crm\Projekte::get( $appData, '00001' )['title']
+		&& ( $byKind['privacy'][0]['object'] ?? [] ) === [ 'type' => 'client', 'id' => (string) $a['id'], 'label' => '' ] && ( $byKind['comment'][0]['object']['type'] ?? '' ) === 'file' && $byKind['comment'][0]['object']['id'] === $song1['id'] && $byKind['comment'][0]['object']['label'] === $song1['name'] );
+
+	$member = \Nino\Modules\Review\Store::insert( $appData, $song1['id'], [ 'by' => $byMember, 'at' => null, 'text' => 'Ganz neu', 'done' => false, 'created' => '2099-02-01T00:00:00Z', 'page' => '' ], '' );
+	$ownerComment = \Nino\Modules\Review\Store::insert( $appData, $song1['id'], [ 'by' => [ 'kind' => 'owner', 'id' => '' ], 'at' => null, 'text' => 'Vom Betreiber', 'done' => false, 'created' => '2099-03-01T00:00:00Z', 'page' => '' ], '' );
+	$after = surfaceApi( $appData, 'crm-portal/activity' )[1]['rows'];
+
+	check( 'a comment of the owner is no event of the portal', is_array( $member ) && is_array( $ownerComment ) && count( array_filter( $after, static fn( array $row ): bool => $row['kind'] === 'comment' ) ) === count( $byKind['comment'] ) + 1 );
+
+	for( $n = 0; $n < 25; $n++ )
+		\Crm\Records::add( $appData, [ 'kind' => 'privacy', 'client_id' => $a['id'], 'member' => $anna, 'shown' => 'Noch einer '. $n ] );
+
+	$many = surfaceApi( $appData, 'crm-portal/activity' )[1]['rows'];
+
+	check( 'there are at most twenty rows, however many events there are', count( $many ) === 20 );
+
+	$source = (string) file_get_contents( dirname( __DIR__ ). '/Surface/Activity/Activity.php' );
+
+	check( 'two reads and no more: one query on the records and one read of the comments', substr_count( $source, 'Db::rows(' ) === 1 && substr_count( $source, 'Store::read(' ) === 1 && str_contains( $source, 'Records::KINDS' ) );
+
+	$words = Surface::texts();
+
+	check( 'the words of the card are there', array_filter( [ 'activity.title', 'activity.none', 'activity.error', 'activity.object-file', 'activity.object-file-project' ], static fn( string $key ): bool => trim( (string) ( $words[$key] ?? '' ) ) === '' ) === [] );
+}
 
 // --- The script of the surface ---------------------------------------------------------------------------------------
 

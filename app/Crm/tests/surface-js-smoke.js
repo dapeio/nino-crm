@@ -574,7 +574,7 @@ function press( w, key, target, mods ) {
 	const recentLines = lists[1].children;
 	check( '"Zuletzt" lists the latest documents: a draft opens in the editor, the others as a document, each with its kind, client and day', recentLines.length === 3 && all( recentLines[0], 'a' )[0].getAttribute( 'href' ) === '#beleg-11' && all( recentLines[1], 'a' )[0].getAttribute( 'href' ) === '#entwurf-16'
 		&& textOf( recentLines[1] ).indexOf( 'Entwurf' ) === 0 && textOf( recentLines[1] ).indexOf( 'Rechnung · Podcast Süd' ) !== -1 && textOf( recentLines[1] ).indexOf( '03.11.2026' ) !== -1 && textOf( recentLines[2] ).indexOf( 'Vertrag Album 2027' ) === 0 );
-	check( '...everything came from three calls: the status of the first run, the overview and the dates', overview.sent().join() === 'crm/status,crm-documents/overview,crm-termine/list' );
+	check( '...everything came from five calls: the status of the first run, the overview and the dates, then the events of the portal and the figures, which the screen asks for on its own', overview.sent().join() === 'crm/status,crm-documents/overview,crm-termine/list,crm-portal/activity,crm-documents/figures' );
 	check( 'the head has the search and the menu of the new documents', all( overview.main, '#q' ).length === 1 && all( all( overview.main, '.menu' )[0], 'button' ).length === 6 && all( all( overview.main, '.menu' )[0], 'button' ).slice( 1 ).map( textOf ).join( '|' ) === 'Rechnung|Angebot|Vertrag (aus Angebot)|Datenschutz|Information' );
 
 	const empty = world( { hash : '#uebersicht', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : Object.assign( {}, summary, { count : 0, overdue_count : 0, overdue_gross : 0, overdue_oldest : '', drafts_count : 0, drafts_last : '' } ), needs : [], recent : [], settings : settings } ] } } } );
@@ -613,20 +613,20 @@ function press( w, key, target, mods ) {
 	const tabs = function() { return all( listing.main, '[role="tab"]' ) };
 	const cells = function( r ) { return r.children.map( textOf ) };
 	const rows = function() { return all( listing.main, 'tbody' )[0].children };
-	const numbers = function() { return rows().map( function( r ) { return textOf( r.children[0] ) } ) };
+	const numbers = function() { return rows().map( function( r ) { return textOf( r.children[1] ) } ) };
 
 	check( 'Belege asks for the list of the year, and shows nine tabs with the counts of the documents each takes', lists2.length === 1 && lists2[0].year === String( new Date().getFullYear() ) && tabs().length === 9
 		&& tabs().map( textOf ).join( '|' ) === 'Alle8|Offen3|Überfällig1|Entwürfe1|Angebote2|Angenommen1|Rechnungen5|Verträge & Dokumente1|Bezahlt1' );
-	check( '...the table has the columns, the number in the first, and the foot has the sum of what is shown: the credit note is taken off', all( listing.main, 'thead th' ).map( textOf ).join( '|' ) === 'Nummer|Art|Kunde|Projekt|Datum ↓|Fällig / gültig|Betrag|Status|' && rows().length === 8
+	check( '...the table has the columns, the box of the choice in the first and the number in the second, and the foot has the sum of what is shown: the credit note is taken off', all( listing.main, 'thead th' ).map( textOf ).join( '|' ) === texts['select.all']+ '|Nummer|Art|Kunde|Projekt|Datum ↓|Fällig / gültig|Betrag|Status|' && rows().length === 8
 		&& textOf( all( listing.main, '#sum' )[0] ) === '5.908,40'+ NBSP+ '€' );
 	check( '...a row has the kind, the client, the day, the due or valid day, the gross in the currency and the state', ( function() {
-		const first = rows().find( function( r ) { return textOf( r.children[0] ) === 'R-2026-0007' } );
-		return cells( first ).slice( 1, 7 ).join( '|' ) === 'Rechnung|Nordlicht Records GmbH|–|02.10.2026|16.10.2026|1.190,00'+ NBSP+ '€' && first.children[5].classList.contains( 'bad' ) === true;
+		const first = rows().find( function( r ) { return textOf( r.children[1] ) === 'R-2026-0007' } );
+		return cells( first ).slice( 2, 8 ).join( '|' ) === 'Rechnung|Nordlicht Records GmbH|–|02.10.2026|16.10.2026|1.190,00'+ NBSP+ '€' && first.children[6].classList.contains( 'bad' ) === true;
 	} )() );
 	check( '...an overdue invoice says überfällig, a document in the portal says Portal, a signature that waits says angesehen, an offer says its state, a draft Entwurf and has no number - its kind is the name', ( function() {
 		const by = function( id ) { return rows().find( function( r ) { return r.dataset.id === String( id ) } ) };
-		return textOf( by( 11 ).children[7] ) === 'überfällig Portal' && textOf( by( 18 ).children[7] ) === 'offen Portal angesehen' && textOf( by( 13 ).children[7] ) === 'offen' && textOf( by( 19 ).children[7] ) === 'angenommen' && textOf( by( 16 ).children[7] ) === 'Entwurf' && textOf( by( 16 ).children[0] ) === 'Entwurf'
-			&& textOf( by( 18 ).children[0] ) === 'Dienstleistungsvertrag Album 2027' && textOf( by( 18 ).children[6] ) === '–';
+		return textOf( by( 11 ).children[8] ) === 'überfällig Portal' && textOf( by( 18 ).children[8] ) === 'offen Portal angesehen' && textOf( by( 13 ).children[8] ) === 'offen' && textOf( by( 19 ).children[8] ) === 'angenommen' && textOf( by( 16 ).children[8] ) === 'Entwurf' && textOf( by( 16 ).children[1] ) === 'Entwurf'
+			&& textOf( by( 18 ).children[1] ) === 'Dienstleistungsvertrag Album 2027' && textOf( by( 18 ).children[7] ) === '–';
 	} )() );
 	check( '...the PDF button of a document leads to its file, the one of a draft to the preview', ( function() {
 		const by = function( id ) { return rows().find( function( r ) { return r.dataset.id === String( id ) } ) };
@@ -657,23 +657,23 @@ function press( w, key, target, mods ) {
 
 	// the sort is by the cents, not by the text
 	const heads = function() { return all( listing.main, 'thead th' ) };
-	click( listing, all( heads()[6], 'button' )[0] );
-	check( 'a click on the head of the amount sorts by cents, up: -270,00 before 392,70 before 990,00 before 1.071,00 and so on - not as text', numbers().join() === 'G-2026-0001,Dienstleistungsvertrag Album 2027,A-2026-0010,R-2026-0008,R-2026-0006,Entwurf,R-2026-0007,A-2026-0011' && heads()[6].getAttribute( 'aria-sort' ) === 'ascending' );
-	click( listing, all( heads()[6], 'button' )[0] );
-	check( '...a second click turns it round', numbers()[0] === 'A-2026-0011' && numbers()[7] === 'G-2026-0001' && heads()[6].getAttribute( 'aria-sort' ) === 'descending' );
-	click( listing, all( heads()[2], 'button' )[0] );
-	check( 'by client the names are in the order of the German alphabet, by number the numbers in text', textOf( rows()[0].children[2] ) === 'Alt AG' && ( click( listing, all( heads()[0], 'button' )[0] ), numbers()[0] === 'A-2026-0010' ) );
-	click( listing, all( heads()[4], 'button' )[0] );
-	check( 'by date a first click sorts the newest first, by the due day the days of an offer are among the due days', numbers()[0] === 'Entwurf' && ( click( listing, all( heads()[5], 'button' )[0] ), textOf( rows()[0].children[5] ) === '' ) );
+	click( listing, all( heads()[7], 'button' )[0] );
+	check( 'a click on the head of the amount sorts by cents, up: -270,00 before 392,70 before 990,00 before 1.071,00 and so on - not as text', numbers().join() === 'G-2026-0001,Dienstleistungsvertrag Album 2027,A-2026-0010,R-2026-0008,R-2026-0006,Entwurf,R-2026-0007,A-2026-0011' && heads()[7].getAttribute( 'aria-sort' ) === 'ascending' );
+	click( listing, all( heads()[7], 'button' )[0] );
+	check( '...a second click turns it round', numbers()[0] === 'A-2026-0011' && numbers()[7] === 'G-2026-0001' && heads()[7].getAttribute( 'aria-sort' ) === 'descending' );
+	click( listing, all( heads()[3], 'button' )[0] );
+	check( 'by client the names are in the order of the German alphabet, by number the numbers in text', textOf( rows()[0].children[3] ) === 'Alt AG' && ( click( listing, all( heads()[1], 'button' )[0] ), numbers()[0] === 'A-2026-0010' ) );
+	click( listing, all( heads()[5], 'button' )[0] );
+	check( 'by date a first click sorts the newest first, by the due day the days of an offer are among the due days', numbers()[0] === 'Entwurf' && ( click( listing, all( heads()[6], 'button' )[0] ), textOf( rows()[0].children[6] ) === '' ) );
 
 	// a row opens the document
-	click( listing, all( rows().find( function( r ) { return r.dataset.id === '11' } ), 'td' )[2] );
+	click( listing, all( rows().find( function( r ) { return r.dataset.id === '11' } ), 'td' )[3] );
 	check( 'a click on a row opens the document, a click on a draft the editor, a click on the PDF button only the PDF', listing.location.hash === '#beleg-11' && ( function() {
 		listing.location.hash = '#belege';
 		return true;
 	} )() );
 	await settle();
-	click( listing, all( rows().find( function( r ) { return r.dataset.id === '16' } ), 'td' )[0] );
+	click( listing, all( rows().find( function( r ) { return r.dataset.id === '16' } ), 'td' )[1] );
 	check( '...(the draft)', listing.location.hash === '#entwurf-16' );
 	listing.location.hash = '#belege';
 	await settle();
@@ -805,8 +805,8 @@ function press( w, key, target, mods ) {
 		'crm-documents/list' : function() { return [ 200, { documents : undatedDocs, years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
 	undatedList.boot();
 	await settle();
-	const undatedCells = all( all( undatedList.main, 'tbody' )[0], 'tr' ).map( function( r ) { return r.children } ).sort( function( x, y ) { return textOf( x[0] ) < textOf( y[0] ) ? -1 : 1 } );
-	check( 'the list has an empty cell where a document has neither day, and the day where it has one - the empty cell is not the colour of a late one', undatedCells.length === 3 && undatedCells.slice( 0, 2 ).every( function( c ) { return textOf( c[5] ) === '' && c[5].classList.contains( 'bad' ) === false } ) && textOf( undatedCells[2][5] ) === '10.11.2026' );
+	const undatedCells = all( all( undatedList.main, 'tbody' )[0], 'tr' ).map( function( r ) { return r.children } ).sort( function( x, y ) { return textOf( x[1] ) < textOf( y[1] ) ? -1 : 1 } );
+	check( 'the list has an empty cell where a document has neither day, and the day where it has one - the empty cell is not the colour of a late one', undatedCells.length === 3 && undatedCells.slice( 0, 2 ).every( function( c ) { return textOf( c[6] ) === '' && c[6].classList.contains( 'bad' ) === false } ) && textOf( undatedCells[2][6] ) === '10.11.2026' );
 	check( '...an overdue invoice says since when and offers the reminder', textOf( all( invoice.main, '.note' )[0] ).indexOf( 'Fällig seit 16.10.2026.' ) === 0 && all( invoice.main, '#remind' ).length === 1 );
 	const openLate = await opened( { id : 11, state : 'open', overdue : true, released : true } );
 	const paidLate = await opened( { id : 11, state : 'paid', overdue : true, released : true } );
@@ -3051,7 +3051,7 @@ function press( w, key, target, mods ) {
 	check( 'no sentence of the status names the button by a label of its own - the screen\'s button is Einrichten, the card\'s Portal einrichten -: the sentences speak of das Einrichten', Object.keys( texts ).filter( function( key ) { return /^status\./.test( key ) && /Drück|Portal einrichten/.test( texts[key] ) } ).length === 0 && /^status\.portal-/.test( 'status.portal-none' ) );
 	iwhole = true;
 	const whole = await iopen( '' );
-	check( 'a module that is whole starts on the Übersicht: the status is asked once, then the overview, and the Einrichtung is not shown', whole.sent().join() === 'crm/status,crm-documents/overview,crm-termine/list' && whole.location.hash === '' && all( whole.main, '#einrichtung-rows' ).length === 0 && all( whole.nav, '[data-r]' )[0].classList.contains( 'on' ) === true );
+	check( 'a module that is whole starts on the Übersicht: the status is asked once, then the overview, and the Einrichtung is not shown', whole.sent().join() === 'crm/status,crm-documents/overview,crm-termine/list,crm-portal/activity,crm-documents/figures' && whole.location.hash === '' && all( whole.main, '#einrichtung-rows' ).length === 0 && all( whole.nav, '[data-r]' )[0].classList.contains( 'on' ) === true );
 	const direct = await iopen( '#einrichtung' );
 	check( 'the router sends #einrichtung to the Übersicht when the status is whole', direct.location.hash === '#uebersicht' && direct.all( 'crm-documents/overview' ).length === 1 && all( direct.main, '#einrichtung-rows' ).length === 0 );
 	const unreadable = await iopen( '', { 'crm/status' : function() { return [ 500, { error : 'x', code : 'crm_clients_database' } ] } } );
@@ -5464,13 +5464,13 @@ function press( w, key, target, mods ) {
 
 		const table = tableOf( listed );
 		const first = rowsOf( table )[0];
-		const dueCells = rowsOf( table ).map( function( tr ) { return Array.from( tr.children )[5] } );
+		const dueCells = rowsOf( table ).map( function( tr ) { return Array.from( tr.children )[6] } );
 
 		check( 'the table of the documents is a list of cards on the phone: it names its layout and keeps the roles of a table, a row names each cell for the card and carries the word of its column', table.dataset.cards === 'belege' && table.getAttribute( 'role' ) === 'table'
 			&& rowsOf( table ).every( function( tr ) { return tr.getAttribute( 'role' ) === 'row' && Array.from( tr.children ).every( function( td ) { return td.getAttribute( 'role' ) === 'cell' && td.dataset.label !== undefined } ) } )
-			&& colsOf( first ) === 'id kind who proj date due sum state acts' && first.children[0].dataset.label === texts['column.number'] && first.children[6].dataset.label === texts['column.gross'] );
+			&& colsOf( first ) === 'pick id kind who proj date due sum state acts' && first.children[1].dataset.label === texts['column.number'] && first.children[7].dataset.label === texts['column.gross'] );
 		check( '...the day a document is due is named for what it is: Fällig for an invoice, Gültig bis for an offer', dueCells[0].dataset.label === texts['field.due'] && dueCells[1].dataset.label === texts['field.valid'] );
-		check( '...a cell that holds nothing is marked, one that holds a link or a button never is', first.children[3].dataset.empty === '1' && first.children[0].dataset.empty === undefined && first.children[8].dataset.empty === undefined );
+		check( '...a cell that holds nothing is marked, one that holds a link or a button never is', first.children[4].dataset.empty === '1' && first.children[1].dataset.empty === undefined && first.children[9].dataset.empty === undefined );
 
 		const label = all( listed.main, 'label' ).find( function( one ) { return one.getAttribute( 'for' ) === 'sort-by' } );
 
@@ -5485,7 +5485,7 @@ function press( w, key, target, mods ) {
 		const ascending = idsOf( tableOf( listed ) );
 		choose( listed, 'gross:-1' );
 		check( '...the select does both orders: from the largest amount down as it says, and the list is drawn again with the select that has the focus', ascending === '1,3,2' && idsOf( tableOf( listed ) ) === '2,3,1' && sortSelect( listed ).value === 'gross:-1' && sortSelect( listed ).focused === true );
-		check( '...a word stands before the value only where the column asks for it: the day a document is due, not the day it is dated', first.children[5].dataset.lab === '1' && first.children[4].dataset.lab === undefined );
+		check( '...a word stands before the value only where the column asks for it: the day a document is due, not the day it is dated', first.children[6].dataset.lab === '1' && first.children[5].dataset.lab === undefined );
 
 		const strip = all( listed.main, '.tabs' )[0];
 
@@ -5512,7 +5512,7 @@ function press( w, key, target, mods ) {
 		dashed.boot();
 		await settle();
 
-		check( 'a cell that holds only a dash drops out of the card,: the project of a document that has none is a dash', rowsOf( tableOf( dashed ) )[0].children[3].dataset.empty === '1' && rowsOf( tableOf( listed ) )[0].children[3].dataset.empty === '1' );
+		check( 'a cell that holds only a dash drops out of the card,: the project of a document that has none is a dash', rowsOf( tableOf( dashed ) )[0].children[4].dataset.empty === '1' && rowsOf( tableOf( listed ) )[0].children[4].dataset.empty === '1' );
 
 		const plainTable = listed.page.createElement( 'table' );
 		const plainBody = listed.page.createElement( 'tbody' );
@@ -5701,13 +5701,13 @@ function press( w, key, target, mods ) {
 	jl.boot();
 	await settle();
 	const jlr = function() { return all( jl.main, 'tbody tr' ) };
-	check( 'the Belege list has the column Projekt after Kunde: the title as the link to the card, a dash for a document with none, the id for a project that is gone - and a click on the link does not open the document', all( jl.main, 'thead th' ).map( textOf ).slice( 2, 4 ).join( '|' ) === [ texts['column.client'], texts['column.project'] ].join( '|' ) && textOf( jlr().find( function( tr ) { return tr.dataset.id === '11' } ).children[3] ) === 'Album 2027'
-		&& all( jlr().find( function( tr ) { return tr.dataset.id === '11' } ).children[3], 'a' )[0].getAttribute( 'href' ) === '#projekt-00001' && textOf( jlr().find( function( tr ) { return tr.dataset.id === '14' } ).children[3] ) === '–' && textOf( jlr().find( function( tr ) { return tr.dataset.id === '12' } ).children[3] ) === 'Zebra' && textOf( jlr().find( function( tr ) { return tr.dataset.id === '13' } ).children[3] ) === '00009' );
+	check( 'the Belege list has the column Projekt after Kunde: the title as the link to the card, a dash for a document with none, the id for a project that is gone - and a click on the link does not open the document', all( jl.main, 'thead th' ).map( textOf ).slice( 3, 5 ).join( '|' ) === [ texts['column.client'], texts['column.project'] ].join( '|' ) && textOf( jlr().find( function( tr ) { return tr.dataset.id === '11' } ).children[4] ) === 'Album 2027'
+		&& all( jlr().find( function( tr ) { return tr.dataset.id === '11' } ).children[4], 'a' )[0].getAttribute( 'href' ) === '#projekt-00001' && textOf( jlr().find( function( tr ) { return tr.dataset.id === '14' } ).children[4] ) === '–' && textOf( jlr().find( function( tr ) { return tr.dataset.id === '12' } ).children[4] ) === 'Zebra' && textOf( jlr().find( function( tr ) { return tr.dataset.id === '13' } ).children[4] ) === '00009' );
 	type( all( jl.main, '#q' )[0], 'album', false );
 	check( '...the search finds a document by the title of its project', jlr().map( function( tr ) { return tr.dataset.id } ).join() === '11' );
 	type( all( jl.main, '#q' )[0], '', false );
-	click( jl, all( all( jl.main, 'thead th' )[3], 'button' )[0] );
-	check( '...and the column sorts by it', all( all( jl.main, 'thead th' )[3], 'button' ).length === 1 && jlr().map( function( tr ) { return tr.dataset.id } ).join() === '14,13,11,12' );
+	click( jl, all( all( jl.main, 'thead th' )[4], 'button' )[0] );
+	check( '...and the column sorts by it', all( all( jl.main, 'thead th' )[4], 'button' ).length === 1 && jlr().map( function( tr ) { return tr.dataset.id } ).join() === '14,13,11,12' );
 
 	// --- an answer that arrives after the screen was left draws nothing
 	const lateList = await lateScreen( '#projekte', 'crm-projekte/list', [ 200, jlist() ] );
@@ -6571,6 +6571,9 @@ function press( w, key, target, mods ) {
 		check( 'the list of the documents has the clock with the day beside the state of an invoice that was reminded and is still asked for - and none beside the others', listClocks.length === 1 && listClocks[0].title === fill( 'reminded.title', '06.11.2026' ) && listClocks[0].parentNode.parentNode.dataset.id === '1' );
 	}
 
+	await figuresAndActivityChecks();
+	await selectionChecks();
+	await keyChecks();
 
 	// === Kundenaktionen: a declined offer, a reported payment, the upload folder
 
@@ -6994,7 +6997,7 @@ async function termineAndPhasesSuite( env ) {
 	// --- the Übersicht
 	const ov = await open( '#uebersicht' );
 	const tile = all( ov.main, '#tile-event' )[0];
-	check( 'the Übersicht has the tile Nächster Termin beside the others: the day and the time, the title and the client, a link to the date; it asks for the dates of a year once', ov.sent().join() === 'crm/status,crm-documents/overview,crm-termine/list' && JSON.stringify( ov.last( 'crm-termine/list' ).data ) === '{"days":365}' && all( ov.main, '.tiles .tile' ).length === 6 && tile.tagName === 'A' && tile.getAttribute( 'href' ) === '#termin-termin-a'
+	check( 'the Übersicht has the tile Nächster Termin beside the others: the day and the time, the title and the client, a link to the date; it asks for the dates of a year once', ov.sent().join() === 'crm/status,crm-documents/overview,crm-termine/list,crm-portal/activity,crm-documents/figures' && JSON.stringify( ov.last( 'crm-termine/list' ).data ) === '{"days":365}' && all( ov.main, '.tiles .tile' ).length === 6 && tile.tagName === 'A' && tile.getAttribute( 'href' ) === '#termin-termin-a'
 		&& textOf( all( tile, '.l' )[0] ) === texts['tile.event'] && textOf( all( tile, '.v' )[0] ) === 'Do 12.11., 14:00' && textOf( all( tile, '.h' )[0] ) === 'Aufnahme Tag 1 · Nordlicht Records GmbH' );
 	const ovDay = await open( '#uebersicht', { 'crm-termine/list' : function() { return [ 200, list( { upcoming : [ termin( { id : 'termin-b', start : '2026-11-20T00:00', end : '', all_day : true, client_id : 0, client_title : '', title : '<b>Tag</b>' } ) ] } ) ] } } );
 	check( '...a date for everyone has its title alone, a whole day has no time, and markup in the title is text', textOf( all( all( ovDay.main, '#tile-event' )[0], '.v' )[0] ) === 'Fr 20.11.' && textOf( all( all( ovDay.main, '#tile-event' )[0], '.h' )[0] ) === '<b>Tag</b>' && all( ovDay.main, '#tile-event b' ).length === 0 );
@@ -7021,4 +7024,562 @@ async function termineAndPhasesSuite( env ) {
 	check( 'the script keeps to its rules for the dates and the phases: every key it asks for is a word of the page, the phases have theirs, no word is empty and the German is Du', keys.length > 40 && keys.filter( function( key ) { return typeof texts[key] !== 'string' || texts[key].trim() === '' } ).length === 0
 		&& [ 'recording', 'mix', 'master', 'review' ].every( function( phase ) { return typeof texts['phase.'+ phase] === 'string' && texts['phase.'+ phase] !== '' } ) && mine.every( function( key ) { return script.indexOf( "'"+ key+ "'" ) !== -1 || /^phase\./.test( key ) } ) && /\b(Sie|Ihre|Ihnen|Ihr)\b/.test( mine.map( function( key ) { return texts[key] } ).join( ' ' ) ) === false );
 	check( '...it builds no markup for them: no innerHTML, no insertAdjacentHTML', /\.innerHTML|insertAdjacentHTML/.test( script.slice( script.indexOf( '// --- Termine ---' ), script.indexOf( '// --- Uploads ---' ) ) ) === false );
+}
+
+// --- Zahlen, Aus dem Portal, die Auswahl der Belege, die Tastatur -----------------------------------------------------
+
+/**
+ *	@param		{string}	key
+ *	@param		{...*}		values
+ *
+ *	@return		{string}									The word with its %s filled
+ */
+function say( key, ...values ) {
+	let at = 0;
+	return texts[key].replace( /%s/g, function() { return String( values[at++] ?? '' ) } );
+}
+
+/**
+ *	A box ticked or cleared the way a person does it
+ *
+ *	@param		{Object}	box
+ *	@param		{boolean}	[on]
+ *
+ *	@return		{void}
+ */
+function tick( box, on ) {
+	box.checked = on === undefined ? box.checked !== true : on;
+	fire( box, 'change', { type : 'change', target : box } );
+}
+
+/**
+ *	The block Zahlen and the card Aus dem Portal on the first screen
+ *
+ *	@return		{Promise}
+ */
+async function figuresAndActivityChecks() {
+
+	const months = [];
+
+	for( let n = 0; n < 12; n++ ) {
+		const at = new Date( 2026, 10 - n, 1 );
+		months.push( { month : at.getFullYear()+ '-'+ String( at.getMonth() + 1 ).padStart( 2, '0' ), billed : n === 0 ? 150000 : 0, paid : n === 0 ? 100000 : 0, open : n === 0 ? 50000 : 0 } );
+	}
+
+	const figures = { year : 2026, months : months, clients : [ { client_id : 1, client_title : 'Nordlicht Records GmbH', billed : 150000 }, { client_id : 2, client_title : 'Jonas <i>Richter</i>', billed : 40000 } ],
+		offers : { accepted : { count : 2, gross : 300000 }, declined : { count : 0, gross : 0 }, expired : { count : 1, gross : 50000 }, open : { count : 3, gross : 120000 } }, settings : settings };
+	const activity = [
+		{ at : '2026-11-05T15:43:00Z', kind : 'order', client_id : 1, client_title : 'Nordlicht Records GmbH', account : 'Anna <b>Nord</b>', object : { type : 'document', id : '5', label : 'A-2026-0001' } },
+		{ at : '2026-11-05T15:42:00Z', kind : 'approval', client_id : 1, client_title : 'Nordlicht Records GmbH', account : '', object : { type : 'project', id : '00001', label : 'Album 2027' } },
+		{ at : '2026-11-05T15:41:00Z', kind : 'comment', client_id : 1, client_title : 'Nordlicht Records GmbH', account : 'Anna', object : { type : 'file', id : 'aaaaaaaaaaaa', label : 'Song.wav', project : '00001', project_title : 'Album 2027' } },
+		{ at : '2026-11-05T15:40:00Z', kind : 'comment', client_id : 2, client_title : 'Jonas Richter', account : '', object : { type : 'file', id : 'bbbbbbbbbbbb', label : 'Lose.wav', project : '', project_title : '' } },
+		{ at : '2026-11-05T15:39:00Z', kind : 'privacy', client_id : 2, client_title : 'Jonas Richter', account : 'Jonas', object : { type : 'client', id : '2', label : '' } },
+		{ at : '2026-11-05T15:38:00Z', kind : 'frobnicate', client_id : 2, client_title : 'Jonas Richter', account : 'Jonas', object : { type : 'client', id : '2', label : '' } },
+	];
+	let figureAnswer = [ 200, figures ];
+	let activityAnswer = [ 200, { rows : activity } ];
+
+	const w = world( { hash : '', answers : { 'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+		'crm-documents/figures' : function() { return figureAnswer }, 'crm-portal/activity' : function() { return activityAnswer } } } );
+	w.boot();
+	await settle();
+
+	const kids = Array.from( w.main.children );
+	const ids = kids.map( function( node ) { return node.id || node.className.split( ' ' )[0] } );
+
+	check( 'the first screen asks for the events of the portal and for the figures on its own, after the overview', w.sent().join() === 'crm/status,crm-documents/overview,crm-termine/list,crm-portal/activity,crm-documents/figures' );
+	check( '...the card Aus dem Portal and the block Zahlen stand under the columns Braucht Dich and Zuletzt, in that order', ids.indexOf( 'portal-activity' ) > ids.indexOf( 'cols' ) && ids.indexOf( 'figures' ) > ids.indexOf( 'portal-activity' ) && ids.indexOf( 'figures' ) === ids.length - 1 );
+
+	const monthsTable = all( w.main, '#figures-months' )[0];
+	const rows = all( monthsTable, 'tbody tr' );
+
+	check( 'Zahlen has the last twelve months as a table with a caption: the heads Monat, Rechnungsbetrag, Bezahlt and Offen, a row for each month - the month now first - and the sums in its foot', monthsTable.tagName === 'TABLE' && all( monthsTable, 'caption' ).length === 1 && textOf( all( monthsTable, 'caption' )[0] ) === texts['figures.months']
+		&& all( monthsTable, 'th' ).map( textOf ).join( '|' ) === [ 'figures.month', 'figures.billed', 'figures.paid', 'figures.open' ].map( function( key ) { return texts[key] } ).join( '|' ) && all( monthsTable, 'th' ).every( function( th ) { return th.getAttribute( 'scope' ) === 'col' } ) && rows.length === 12
+		&& textOf( rows[0].children[0] ).indexOf( '2026' ) !== -1 && rows[0].children.slice( 1 ).map( textOf ).join( '|' ) === [ '1.500,00', '1.000,00', '500,00' ].map( function( n ) { return n+ NBSP+ '€' } ).join( '|' ) && rows[1].children.slice( 1 ).map( textOf ).join( '|' ) === [ '0,00', '0,00', '0,00' ].map( function( n ) { return n+ NBSP+ '€' } ).join( '|' )
+		&& all( monthsTable, 'tfoot td' ).map( textOf ).join( '|' ) === [ texts['figures.sum'], '1.500,00'+ NBSP+ '€', '1.000,00'+ NBSP+ '€', '500,00'+ NBSP+ '€' ].join( '|' ) );
+
+	const clientsTable = all( w.main, '#figures-clients' )[0];
+	const offersTable = all( w.main, '#figures-offers' )[0];
+
+	check( '...the five clients of the year with the sum each - the name as a link to the card of the client, and a name is text and no markup', all( clientsTable, 'tbody tr' ).length === 2 && all( all( clientsTable, 'tbody tr' )[0], 'a' )[0].getAttribute( 'href' ) === '#kunde-1' && textOf( all( all( clientsTable, 'tbody tr' )[1], 'a' )[0] ) === 'Jonas <i>Richter</i>' && all( clientsTable, 'i' ).length === 0
+		&& textOf( clientsTable.querySelector( 'caption' ) ) === say( 'figures.clients', 2026 ) );
+	check( '...and the offers of the year: accepted, declined, expired and open with their number and their sum', all( offersTable, 'tbody tr' ).map( function( tr ) { return tr.children.map( textOf ).join( '|' ) } ).join( ';' ) === [ [ texts['state.accepted'], '2', '3.000,00'+ NBSP+ '€' ], [ texts['state.declined'], '0', '0,00'+ NBSP+ '€' ], [ texts['state.expired'], '1', '500,00'+ NBSP+ '€' ], [ texts['figures.offer-open'], '3', '1.200,00'+ NBSP+ '€' ] ].map( function( r ) { return r.join( '|' ) } ).join( ';' ) );
+	check( '...no chart: no canvas, no svg, no image in the block', all( all( w.main, '#figures' )[0], 'canvas' ).length === 0 && all( all( w.main, '#figures' )[0], 'svg' ).length === 0 && all( all( w.main, '#figures' )[0], 'img' ).length === 0 );
+
+	const lines = all( all( w.main, '#portal-activity' )[0], 'li' );
+
+	check( 'the card Aus dem Portal lists the events, each with its kind in the word of the kind, the client as a link to its card, the account and the time', lines.length === 6 && textOf( lines[0] ).indexOf( texts['activity.kind-order']+ ' · Nordlicht Records GmbH · Anna <b>Nord</b> · A-2026-0001' ) === 0 && textOf( lines[0] ).slice( -5 ) === textOf( lines[0].children[1] ).slice( -5 ) && all( lines[0], 'a' )[0].getAttribute( 'href' ) === '#kunde-1' );
+	check( '...an account is text: markup in it is no element', all( lines[0], 'b' ).filter( function( node ) { return node.className !== 'kind' } ).length === 0 );
+	check( '...each event links to what it was about: an order to its document, an approval to its project, a comment to the tab Dateien of its project - or, where the folder is no project\'s, to the client - and a statement to the tab Portal of the client', all( lines[0], 'a' )[1].getAttribute( 'href' ) === '#beleg-5' && all( lines[1], 'a' )[1].getAttribute( 'href' ) === '#projekt-00001' && all( lines[2], 'a' )[1].getAttribute( 'href' ) === '#projekt-00001-dateien'
+		&& textOf( all( lines[2], 'a' )[1] ) === say( 'activity.object-file-project', 'Song.wav', 'Album 2027' ) && all( lines[3], 'a' )[1].getAttribute( 'href' ) === '#kunde-2' && textOf( all( lines[3], 'a' )[1] ) === say( 'activity.object-file', 'Lose.wav' ) && all( lines[4], 'a' )[1].getAttribute( 'href' ) === '#kunde-2-portal' );
+	check( '...a kind the page has no word for is written as the kind it is, and every kind of the words is a key of the dictionary', textOf( lines[5] ).indexOf( 'frobnicate · ' ) === 0 && w.app.model.activityKind( 'order' ) === texts['activity.kind-order'] && w.app.model.activityKind( 'x-y' ) === 'x-y' );
+
+	activityAnswer = [ 200, { rows : [] } ];
+	figureAnswer = [ 200, Object.assign( {}, figures, { clients : [] } ) ];
+	const empty = world( { hash : '', answers : w.answers } );
+	empty.boot();
+	await settle();
+
+	check( 'without an event the card says so, and without a client billed this year the table says so', textOf( all( empty.main, '#portal-activity' )[0] ).indexOf( texts['activity.none'] ) !== -1 && textOf( all( empty.main, '#figures-clients' )[0] ).indexOf( texts['figures.clients-none'] ) !== -1 );
+
+	activityAnswer = [ 500, { error : 'x', code : 'crm_documents_database', params : [] } ];
+	figureAnswer = [ 500, { error : 'x', code : 'crm_documents_database', params : [] } ];
+	const broken = world( { hash : '', answers : w.answers } );
+	broken.boot();
+	await settle();
+
+	check( 'a failure of either read is said in the place of its table and does not take the screen down: the tiles and the lists are there', textOf( all( broken.main, '#portal-activity' )[0] ).indexOf( texts['activity.error'] ) !== -1 && textOf( all( broken.main, '#figures' )[0] ).indexOf( texts['figures.error'] ) !== -1 && all( broken.main, '.tile' ).length === 5 );
+
+	figureAnswer = [ 200, figures ];
+	activityAnswer = [ 200, { rows : activity } ];
+	const left = world( { hash : '', answers : { 'crm-documents/overview' : w.answers['crm-documents/overview'], 'crm-portal/activity' : function() { return new Promise( function( resolve ) { setImmediate( function() { resolve( activityAnswer ) } ) } ) }, 'crm-documents/figures' : w.answers['crm-documents/figures'],
+		'crm-documents/list' : function() { return [ 200, { documents : [], years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers } ] } } } );
+	left.boot();
+	await settle();
+	left.location.hash = '#belege';
+	await settle();
+
+	check( 'an answer that arrives after the screen was left draws nothing on the screen that is there', all( left.main, '#portal-activity' ).length === 0 && all( left.main, '#figures' ).length === 0 );
+}
+
+/**
+ *	The Belege list with a choice: the boxes, the bar, the three actions over the single steps, the export links
+ *
+ *	@return		{Promise}
+ */
+async function selectionChecks() {
+
+	const docs = [
+		row( { id : 1, number : 'R-2026-0001', state : 'sent', gross : 100000 } ),
+		row( { id : 2, number : 'R-2026-0002', state : 'sent', overdue : true, released : true, gross : 20000 } ),
+		row( { id : 3, number : 'R-2026-0003', state : 'sent', overdue : true, released : true, gross : 30000 } ),
+		row( { id : 4, number : 'R-2026-0004', state : 'paid', gross : 40000 } ),
+		row( { id : 5, category : 'offer', number : 'A-2026-0005', state : 'open', gross : 50000, due_date : null, valid_until : '2026-12-01' } ),
+		row( { id : 6, number : '', state : 'draft', gross : 60000 } ),
+		row( { id : 7, category : 'credit', number : 'G-2026-0007', state : 'open', gross : -10000, due_date : null } ),
+		row( { id : 8, category : 'contract', number : '', title : 'Vertrag', state : 'open', gross : 0, due_date : null } ),
+	];
+	const posts = [];
+	let stateAnswer = function() { return [ 200, { document : full( { state : 'paid' } ) } ] };
+	let remindAnswer = function() { return [ 200, { document : full( {} ), mailed : 2, notify : true } ] };
+	let zip = true;
+	let files = 3;
+
+	const open = async function() {
+		posts.length = 0;
+		const w = world( { hash : '#belege', answers : {
+			'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+			'crm-documents/list' : function() { return [ 200, { documents : docs, years : [ 2026, 2025 ], clients : clients, settings : settings, items : items, offers : offers, export : { zip : zip, limit : 500, files : files } } ] },
+			'crm-documents/state' : function( data ) { posts.push( [ 'state', data ] ); return stateAnswer( data ); },
+			'crm-documents/remind' : function( data ) { posts.push( [ 'remind', data ] ); return remindAnswer( data ); },
+		} } );
+		w.boot();
+		await settle();
+		return w;
+	};
+	const boxes = function( w ) { return all( w.main, 'input[data-pick]' ) };
+	const boxOf = function( w, id ) { return boxes( w ).find( function( box ) { return box.dataset.pick === String( id ) } ) };
+	const bar = function( w ) { return all( w.main, '#selection' )[0] };
+	const button = function( w, id ) { return all( w.main, '#selection-'+ id )[0] };
+
+	const w = await open();
+
+	check( 'the list has a box for each document that has a number and an amount - the offers, the invoices, the credit notes that are no drafts - and none for a draft or a contract', boxes( w ).map( function( box ) { return box.dataset.pick } ).join() === '7,5,4,3,2,1' && all( w.main, 'thead th' )[0].className === 'pick' && all( all( w.main, 'thead th' )[0], 'input' ).length === 1 );
+	check( '...each box has a name for a screen reader, and no bar is there until something is chosen', boxes( w ).every( function( box ) { return box.getAttribute( 'aria-label' ) === say( 'select.pick', docOf( box ) ) } ) && bar( w ).hidden === true );
+
+	function docOf( box ) { return docs.find( function( one ) { return String( one.id ) === box.dataset.pick } ).number }
+
+	tick( boxOf( w, 1 ) );
+	tick( boxOf( w, 2 ) );
+	tick( boxOf( w, 7 ) );
+
+	check( 'a box chosen shows the bar: how many are chosen and what they come to - the credit note taken off - and the three actions with the number of documents each takes', bar( w ).hidden === false && textOf( all( w.main, '#selection-status' )[0] ) === say( 'select.status', 3, '1.100,00'+ NBSP+ '€' )
+		&& textOf( button( w, 'paid' ) ) === say( 'select.paid', 2 ) && textOf( button( w, 'remind' ) ) === say( 'select.remind', 1 ) && textOf( button( w, 'pdfs' ) ) === say( 'select.pdfs', 3 ) && button( w, 'paid' ).disabled === false );
+	check( '...a click on a box does not open the document, and neither does one on the cell around it', ( function() { const before = w.location.hash; click( w, boxOf( w, 1 ) ); click( w, boxOf( w, 1 ).parentNode ); return w.location.hash === before; } )() );
+	await settle();
+
+	tick( boxOf( w, 1 ), false );
+	tick( boxOf( w, 2 ), false );
+	tick( boxOf( w, 7 ), false );
+	tick( boxOf( w, 5 ) );
+
+	check( 'an action that fits none of the choice is off: an offer is paid and reminded by nobody, and the ZIP takes it', bar( w ).hidden === false && button( w, 'paid' ).disabled === true && button( w, 'remind' ).disabled === true && button( w, 'pdfs' ).disabled === false && textOf( button( w, 'paid' ) ) === say( 'select.paid', 0 ) );
+
+	tick( boxOf( w, 5 ), false );
+
+	check( 'the last box cleared hides the bar again', bar( w ).hidden === true );
+
+	const everything = all( w.main, '#pick-all' )[0];
+
+	tick( everything, true );
+
+	check( 'the box in the head chooses every document of the list that can be chosen - over the pages', state_picks( w ) === '1,2,3,4,5,7' && boxes( w ).every( function( box ) { return box.checked === true } ) && textOf( all( w.main, '#selection-status' )[0] ).indexOf( say( 'select.status', 6, '' ).trim() ) === 0 );
+
+	function state_picks( world ) { return Array.from( world.app.state.picks ).sort().join(); }
+
+	type( all( w.main, '#q' )[0], 'R-2026-0002', false );
+
+	check( 'the choice is held over the search: what is hidden is still chosen, and the bar counts it', state_picks( w ) === '1,2,3,4,5,7' && boxes( w ).length === 1 && textOf( all( w.main, '#selection-status' )[0] ).indexOf( say( 'select.status', 6, '' ).trim() ) === 0 );
+
+	type( all( w.main, '#q' )[0], '', false );
+	click( w, all( w.main, '#selection-clear' )[0] );
+
+	check( 'Auswahl aufheben lets go of everything', state_picks( w ) === '' && bar( w ).hidden === true && boxes( w ).every( function( box ) { return box.checked === false } ) );
+
+	// paid
+	tick( boxOf( w, 1 ) );
+	tick( boxOf( w, 2 ) );
+	tick( boxOf( w, 5 ) );
+	tick( boxOf( w, 4 ) );
+	click( w, button( w, 'paid' ) );
+
+	const dialogBox = w.dialogs[0];
+
+	check( 'Als bezahlt markieren asks first, in a dialog with the day, today at first - and says how many invoices it takes: the invoices that were sent, not the offer and not the invoice that is paid already', dialogBox !== undefined && all( dialogBox, '#dlg-date' ).length === 1 && all( dialogBox, '#dlg-date' )[0].value === new Date().toLocaleDateString( 'sv-SE' ) && textOf( dialogBox ).indexOf( say( 'select.paid-text', 2 ) ) !== -1 && w.calls.filter( function( call ) { return call.action === 'crm-documents/state' } ).length === 0 );
+
+	click( w, all( dialogBox, 'button' )[0] );
+	await settle();
+
+	check( '...the no posts nothing', posts.length === 0 );
+
+	click( w, button( w, 'paid' ) );
+	all( w.dialogs[1], '#dlg-date' )[0].value = '2026-11-03';
+	const listsBefore = w.all( 'crm-documents/list' ).length;
+	const overviewsBefore = w.all( 'crm-documents/overview' ).length;
+	click( w, all( w.dialogs[1], 'button' ).pop() );
+	await settle();
+
+	check( 'the yes runs the single step on each invoice, one after the other, with the day: crm-documents/state with the id, the state paid and the date - the same call the document makes - and nothing for the others', JSON.stringify( posts ) === JSON.stringify( [ [ 'state', { id : '1', state : 'paid', date : '2026-11-03' } ], [ 'state', { id : '2', state : 'paid', date : '2026-11-03' } ] ] ) );
+	check( '...the toast says how far it went, the list and the books are read again, and the documents that were done are not chosen any more', w.toast.textContent === say( 'select.paid-done', 2, 2 ) && w.toast.classList.contains( 'bad' ) === false && w.all( 'crm-documents/list' ).length === listsBefore + 1 && w.all( 'crm-documents/overview' ).length === overviewsBefore + 1 && state_picks( w ) === '4,5' );
+	check( '...and no call but those of the single steps was made for it', w.sent().filter( function( action ) { return /^crm-documents\/(state|remind|list|overview)$/.test( action ) === false && action.indexOf( 'crm/status' ) !== 0 } ).length === 0 );
+
+	// a refusal is named
+	const refusing = await open();
+	stateAnswer = function( data ) { return data.id === '2' ? [ 409, { error : 'x', code : 'crm_documents_state', params : [] } ] : [ 200, { document : full( { state : 'paid' } ) } ]; };
+	tick( boxOf( refusing, 1 ) );
+	tick( boxOf( refusing, 2 ) );
+	tick( boxOf( refusing, 3 ) );
+	click( refusing, button( refusing, 'paid' ) );
+	click( refusing, all( refusing.dialogs[0], 'button' ).pop() );
+	await settle();
+
+	check( 'a document the server refuses is named in the toast with the sentence of its refusal, the others go through, and the toast stays as a refusal does', posts.length === 3 && refusing.toast.classList.contains( 'bad' ) === true && refusing.toast.textContent.indexOf( say( 'select.paid-done', 2, 3 ) ) === 0 && refusing.toast.textContent.indexOf( say( 'select.failed-line', 'R-2026-0002', texts['error.crm_documents_state'] ) ) !== -1 && state_picks( refusing ) === '2' );
+
+	// a session that ended stops the run
+	stateAnswer = function() { return [ 401, { error : 'x', code : 'session' } ]; };
+	const lost = await open();
+	tick( boxOf( lost, 1 ) );
+	tick( boxOf( lost, 2 ) );
+	tick( boxOf( lost, 3 ) );
+	click( lost, button( lost, 'paid' ) );
+	click( lost, all( lost.dialogs[0], 'button' ).pop() );
+	await settle();
+
+	check( 'a session that ended stops the run at the first document - the page says so itself, and nothing more is posted', posts.length === 1 );
+	check( '...and the toast names the documents that were not tried', lost.toast.classList.contains( 'bad' ) === true && lost.toast.textContent.indexOf( say( 'select.skipped', 'R-2026-0002, R-2026-0003' ) ) !== -1 );
+	stateAnswer = function() { return [ 200, { document : full( { state : 'paid' } ) } ]; };
+
+	// remind
+	const asking = await open();
+	tick( boxOf( asking, 1 ) );
+	tick( boxOf( asking, 2 ) );
+	tick( boxOf( asking, 3 ) );
+	click( asking, button( asking, 'remind' ) );
+
+	check( 'Erinnern asks as the single reminder does - the box that mails, ticked - and takes the overdue invoices alone', all( asking.dialogs[0], '#dlg-notify' )[0].checked === true && textOf( asking.dialogs[0] ).indexOf( say( 'select.remind-text', 2 ) ) !== -1 );
+
+	click( asking, all( asking.dialogs[0], 'button' ).pop() );
+	await settle();
+
+	check( '...each overdue invoice gets its own call of crm-documents/remind with the box - a mail for each - and the toast adds up the mails', JSON.stringify( posts ) === JSON.stringify( [ [ 'remind', { id : '2', notify : true } ], [ 'remind', { id : '3', notify : true } ] ] ) && asking.toast.textContent === say( 'select.remind-done', 2, 2, 4 ) );
+
+	const quiet = await open();
+	remindAnswer = function() { return [ 200, { document : full( {} ), mailed : 0, notify : false } ]; };
+	tick( boxOf( quiet, 2 ) );
+	click( quiet, button( quiet, 'remind' ) );
+	all( quiet.dialogs[0], '#dlg-notify' )[0].checked = false;
+	click( quiet, all( quiet.dialogs[0], 'button' ).pop() );
+	await settle();
+
+	check( '...without the box it is noted, not mailed, and says so', JSON.stringify( posts ) === JSON.stringify( [ [ 'remind', { id : '2', notify : false } ] ] ) && quiet.toast.textContent === say( 'select.remind-noted', 1, 1 ) );
+
+	remindAnswer = function() { return [ 409, { error : 'x', code : 'crm_documents_released', params : [] } ]; };
+	docs.push( row( { id : 9, number : 'R-2026-0009', state : 'sent', overdue : true, gross : 1000 } ), row( { id : 10, number : 'R-2026-0010', state : 'sent', overdue : true, gross : 1000 } ) );
+	const unreleased = await open();
+	for( const id of [ 2, 3, 9, 10 ] )
+		tick( boxOf( unreleased, id ), true );
+	click( unreleased, button( unreleased, 'remind' ) );
+	click( unreleased, all( unreleased.dialogs[0], 'button' ).pop() );
+	await settle();
+	docs.length -= 2;
+
+	check( '...an invoice the portal does not show is refused by the server and named in the toast with its sentence; with more than three refused the toast names three and counts the rest, and a dialog of its own lists every one', unreleased.toast.classList.contains( 'bad' ) === true
+		&& unreleased.toast.textContent.indexOf( say( 'select.failed', say( 'select.failed-more', [ 'R-2026-0002', 'R-2026-0003', 'R-2026-0009' ].map( function( number ) { return say( 'select.failed-line', number, texts['error.crm_documents_released'] ) } ).join( ', ' ), 1 ) ) ) !== -1 && unreleased.dialogs.length === 2
+		&& all( unreleased.dialogs[1], 'dt' ).map( textOf ).sort().join() === [ 'R-2026-0002', 'R-2026-0003', 'R-2026-0009', 'R-2026-0010' ].join() && state_picks( unreleased ) === '10,2,3,9' );
+
+	// what the choice is made of
+	docs.push( row( { id : 12, number : 'R-2026-0012', state : 'open', gross : 5000 } ) );
+	const unsent = await open();
+	tick( boxOf( unsent, 12 ) );
+	const onlyUnsent = button( unsent, 'paid' ).disabled === true && button( unsent, 'remind' ).disabled === true;
+	tick( boxOf( unsent, 1 ) );
+	docs.length -= 1;
+
+	check( 'an invoice that was not sent yet is no invoice to mark as paid - the single step does not take it - and is not overdue: with it alone chosen both actions are off, and with a sent one beside it the number is that of the sent one', onlyUnsent === true && textOf( button( unsent, 'paid' ) ) === say( 'select.paid', 1 ) );
+
+	const kept = await open();
+	tick( boxOf( kept, 1 ) );
+	kept.app.state.picks.add( 6 );
+	kept.app.state.picks.add( 8 );
+	kept.app.state.picks.add( 999 );
+	type( all( kept.main, '#q' )[0], 'R-', false );
+
+	check( 'what cannot be chosen is not kept in the choice: a draft, a contract and a document nobody has fall out when the list is drawn again', state_picks( kept ) === '1' );
+
+	const years = await open();
+	tick( boxOf( years, 1 ) );
+	const yearSelect = all( years.main, '#year' )[0];
+	yearSelect.value = '2025';
+	fire( yearSelect, 'change', { type : 'change', target : yearSelect } );
+	await settle();
+
+	check( 'the choice ends with the year: another year is another list', state_picks( years ) === '' && bar( years ).hidden === true );
+
+	// the sentence about what the day of payment leaves out
+	const leaving = await open();
+	for( const id of [ 1, 2, 4, 5 ] )
+		tick( boxOf( leaving, id ) );
+	click( leaving, button( leaving, 'paid' ) );
+
+	check( 'the dialog of Als bezahlt markieren says how many of the choice it leaves out and why: the offer and the invoice that is paid are no invoices that were sent', textOf( leaving.dialogs[0] ).indexOf( say( 'select.paid-text', 2 )+ ' '+ say( 'select.paid-skipped', 2 ) ) !== -1 );
+	click( leaving, all( leaving.dialogs[0], 'button' )[0] );
+	await settle();
+	tick( boxOf( leaving, 4 ), false );
+	tick( boxOf( leaving, 5 ), false );
+	click( leaving, button( leaving, 'paid' ) );
+
+	check( '...and nothing of it where the choice is all invoices that were sent', textOf( leaving.dialogs[1] ).indexOf( texts['select.paid-skipped'].replace( '%s', '' ).trim().slice( 0, 12 ) ) === -1 );
+
+	// everyone, on the phone and over the pages
+	const pickHead = all( w.main, 'th' )[0];
+
+	check( 'the box that chooses them all has its word where the head of the table is gone, as the Uploads have it: a label around the box and the word, the word out of reach of a screen reader - the stylesheet shows the head of the cards for it on the phone - and the box of a row is a label that answers on its whole cell', all( pickHead, 'label' ).length === 1 && all( pickHead, 'label' )[0].className === 'hit' && all( pickHead, '#pick-all' ).length === 1 && textOf( all( pickHead, '.pick-word' )[0] ) === texts['select.all'] && all( pickHead, '.pick-word' )[0].getAttribute( 'aria-hidden' ) === 'true'
+		&& boxOf( w, 1 ).parentNode.className === 'hit' && boxOf( w, 1 ).parentNode.parentNode.className === 'pick'
+		&& /\.tbl\.cards\[data-cards="belege"\] th\.pick \.pick-word \{ display: inline;/.test( source( OWN+ 'assets/crm.css' ) ) && /\.tbl\.cards\[data-cards="belege"\] th:not\(\.pick\) \{ display: none \}/.test( source( OWN+ 'assets/crm.css' ) ) );
+	tick( all( w.main, '#pick-all' )[0], true );
+
+	check( '...and a click on the box chooses every document that can be chosen', state_picks( w ) === '1,2,3,4,5,7' && boxes( w ).every( function( box ) { return box.checked === true } ) );
+	click( w, all( w.main, '#selection-clear' )[0] );
+
+	for( let n = 0; n < 59; n++ )
+		docs.push( row( { id : 100 + n, number : 'R-2026-'+ String( 100 + n ), state : 'sent', gross : 100 } ) );
+
+	const crowded = await open();
+	tick( all( crowded.main, '#pick-all' )[0], true );
+	const shownBoxes = boxes( crowded ).length;
+	docs.length -= 59;
+
+	check( 'the choice of all is every document of the list, not the page: with sixty-five that can be chosen and fifty on the page the bar counts sixty-five', shownBoxes === 50 && crowded.app.state.picks.size === 65 && textOf( all( crowded.main, '#selection-status' )[0] ).indexOf( say( 'select.status', 65, '' ).trim() ) === 0 );
+
+	// the cells that are cut have their whole text as the title
+	const cut = all( w.main, 'tr' ).find( function( tr ) { return tr.dataset.id === '1' } );
+
+	check( 'the number, the client and the project are cut where they are long, on a desktop: the stylesheet says so, and each cell has the whole text as its title', /data-cards="belege"\] td\[data-col="id"\][^}]*data-col="who"\][^}]*data-col="proj"\] \{ max-width: 11em; overflow: hidden; text-overflow: ellipsis \}/.test( source( OWN+ 'assets/crm.css' ) )
+		&& cut.children[1].title === 'R-2026-0001' && cut.children[3].title === 'Nordlicht Records GmbH' );
+
+	// a year without a PDF has no ZIP to offer
+	files = 0;
+	const bare = await open();
+	files = 3;
+
+	check( 'a year with no documents that have a file has no link to the ZIP, and says so in its place - the CSV stays', all( bare.main, '#export-zip' ).length === 0 && textOf( all( bare.main, '#export-zip-empty' )[0] ) === texts['export.zip-empty'] && all( bare.main, '#export-csv' ).length === 1 );
+
+	// the ZIP of the choice
+	const zipping = await open();
+	tick( boxOf( zipping, 3 ) );
+	tick( boxOf( zipping, 1 ) );
+	click( zipping, button( zipping, 'pdfs' ) );
+
+	check( 'PDFs laden is the ZIP of the choice: a download of /crm/export/belege.zip with the ids in the order they were chosen - the one new call the choice has', zipping.downloads.join() === '/crm/export/belege.zip?ids=3,1' );
+
+	const crowd = await open();
+	crowd.app.state.exportInfo.limit = 2;
+	tick( boxOf( crowd, 1 ) );
+	tick( boxOf( crowd, 2 ) );
+	tick( boxOf( crowd, 3 ) );
+	click( crowd, button( crowd, 'pdfs' ) );
+
+	check( '...more than the ZIP takes is said in the toast and nothing is loaded', crowd.downloads.length === 0 && crowd.toast.classList.contains( 'bad' ) === true && crowd.toast.textContent === say( 'export.zip-many', 2 ) );
+
+	// the export links
+	const links = await open();
+	const csv = all( links.main, '#export-csv' )[0];
+	const year = all( links.main, '#export-zip' )[0];
+	const thisYear = String( new Date().getFullYear() );
+
+	check( 'beside the year the list has Als CSV and Alle PDFs des Jahres als ZIP: links that download, for the year the select stands on', csv.getAttribute( 'href' ) === '/crm/export/belege.csv?jahr='+ thisYear && csv.hasAttribute( 'download' ) === true && year.getAttribute( 'href' ) === '/crm/export/belege-'+ thisYear+ '.zip' && year.hasAttribute( 'download' ) === true && textOf( csv ) === texts['export.csv'] && textOf( year ) === texts['export.zip'] );
+
+	const select = all( links.main, '#year' )[0];
+	select.value = '2025';
+	fire( select, 'change', { type : 'change', target : select } );
+	await settle();
+
+	check( '...the links follow the year', all( links.main, '#export-csv' )[0].getAttribute( 'href' ) === '/crm/export/belege.csv?jahr=2025' && all( links.main, '#export-zip' )[0].getAttribute( 'href' ) === '/crm/export/belege-2025.zip' );
+
+	zip = false;
+	const off = await open();
+
+	check( 'where the server has no ZIP the link is not there, the line says why, the CSV stays and the bar has no ZIP to offer', all( off.main, '#export-zip' ).length === 0 && textOf( all( off.main, '#export-zip-off' )[0] ) === texts['export.zip-off'] && all( off.main, '#export-csv' ).length === 1 && ( tick( boxOf( off, 1 ) ), button( off, 'pdfs' ).disabled === true ) );
+	zip = true;
+
+	check( 'the limit of the ZIP of a choice is the one of the server, which sends it with the list', w.app.state.exportInfo.limit === 500 && /MAX_FILES = 500/.test( require( 'fs' ).readFileSync( path.join( root, OWN+ 'Export/Export.php' ), 'utf8' ) ) );
+}
+
+/**
+ *	The keys: n, g and a letter, ?, the arrows and Enter - and nowhere in a field
+ *
+ *	@return		{Promise}
+ */
+async function keyChecks() {
+
+	const docs = [ row( { id : 1, number : 'R-2026-0001' } ), row( { id : 2, number : 'R-2026-0002' } ), row( { id : 3, number : 'R-2026-0003' } ) ];
+	const open = async function( hash ) {
+		const w = world( { hash : hash, answers : {
+			'crm-documents/overview' : function() { return [ 200, { summary : summary, needs : [], recent : [], settings : settings } ] },
+			'crm-documents/list' : function() { return [ 200, { documents : docs, years : [ 2026 ], clients : clients, settings : settings, items : items, offers : offers, export : { zip : true, limit : 500 } } ] },
+			'crm-clients/list' : function() { return [ 200, { clients : clients } ] },
+		} } );
+		w.boot();
+		await settle();
+		return w;
+	};
+	const menuOpen = function( w ) { return all( w.main, '.menu' ).filter( function( node ) { return node.classList.contains( 'open' ) } ).length };
+	const closeKey = function( world ) { press( world, 'Escape' ); };
+
+	const w = await open( '#belege' );
+
+	check( 'n opens the menu Neu and puts the focus into it, and the key is kept from the browser', press( w, 'n' ) === true && menuOpen( w ) === 1 && all( w.main, '.menu' )[0].querySelectorAll( 'button' )[1].focused === true );
+	press( w, 'Escape' );
+
+	check( '...Escape closes it', menuOpen( w ) === 0 );
+	check( '...not in a field, not with Strg, Cmd or Alt, not in capitals - the key is left to the browser - and not while a dialog is open', press( w, 'n', { tagName : 'INPUT' } ) === false && press( w, 'n', { tagName : 'TEXTAREA' } ) === false && press( w, 'n', { tagName : 'SELECT' } ) === false && press( w, 'n', { tagName : 'DIV', isContentEditable : true } ) === false
+		&& press( w, 'n', null, { ctrlKey : true } ) === false && press( w, 'n', null, { metaKey : true } ) === false && press( w, 'n', null, { altKey : true } ) === false && press( w, 'n', null, { shiftKey : true } ) === false && menuOpen( w ) === 0 );
+
+	check( '...but a box, a radio or a button that has the focus is no field: the keys are the page\'s then - a field of text still keeps them', [ 'checkbox', 'radio', 'button', 'submit', 'reset' ].every( function( type ) { return ( closeKey( w ), press( w, 'n', { tagName : 'INPUT', type : type } ) === true && menuOpen( w ) === 1 ) } ) && press( w, 'n', { tagName : 'INPUT', type : 'text' } ) === false && press( w, 'n', { tagName : 'INPUT', type : 'search' } ) === false );
+	closeKey( w );
+	w.page.activeElement = { tagName : 'INPUT', type : 'checkbox' };
+
+	check( '...also where the focus is told by the document', press( w, 'n' ) === true && menuOpen( w ) === 1 );
+	w.page.activeElement = null;
+	closeKey( w );
+
+	w.dialogRoot.appendChild( element( 'dialog' ) );
+
+	check( '...a dialog open: no key does anything', press( w, 'n' ) === false && press( w, '?' ) === false && menuOpen( w ) === 0 );
+
+	w.dialogRoot.children.length = 0;
+
+	const goes = { b : '#belege', k : '#kunden', p : '#projekte', u : '#uebersicht' };
+
+	for( const letter of Object.keys( goes ) ) {
+		press( w, 'g' );
+		const kept = press( w, letter );
+		check( 'g '+ letter+ ' goes to '+ goes[letter]+ ' and the key is kept from the browser', kept === true && w.location.hash === goes[letter] );
+		await settle();
+	}
+
+	w.location.hash = '#belege';
+	await settle();
+	press( w, 'g' );
+
+	check( '...g and a letter that leads nowhere does nothing - and the letter is its own key again: g, n opens the menu', press( w, 'x' ) === false && w.location.hash === '#belege' && ( press( w, 'g' ), press( w, 'n' ) === true ) && menuOpen( w ) === 1 );
+	press( w, 'Escape' );
+	press( w, 'g' );
+	w.timers[w.timers.length - 1].fn();
+
+	check( '...g that waited too long is forgotten, and Escape forgets it too', press( w, 'k' ) === false && w.location.hash === '#belege' && ( press( w, 'g' ), press( w, 'Escape' ), press( w, 'k' ) === false ) && w.location.hash === '#belege' );
+	check( '...and g in a field is a letter: it starts nothing', ( press( w, 'g', { tagName : 'INPUT' } ), press( w, 'k' ) === false ) && w.location.hash === '#belege' );
+
+	// the list of the keys
+	press( w, '?' );
+
+	const keysBox = w.dialogs[w.dialogs.length - 1];
+
+	check( '? shows the keys in a dialog: every shortcut the page has, with its words, and a button that closes it - and says that they do not work in a field', textOf( keysBox ).indexOf( texts['keys.title'] ) !== -1 && textOf( keysBox ).indexOf( texts['keys.text'] ) !== -1 && w.app.model.shortcuts().length === 11 && w.app.model.shortcuts().every( function( pair ) { return textOf( keysBox ).indexOf( pair[0] ) !== -1 && textOf( keysBox ).indexOf( pair[1] ) !== -1 } )
+		&& all( keysBox, 'button' ).length === 1 );
+	check( '...the list names the keys that were there before - Strg+S and / - as well as the new ones', w.app.model.shortcuts().map( function( pair ) { return pair[0] } ).join( '|' ) === 'n|g b|g k|g p|g u|↑ ↓|Enter|/|Strg+S|?|Esc' );
+
+	click( w, all( keysBox, 'button' )[0] );
+	await settle();
+
+	check( '...and ? in a field is a question mark', press( w, '?', { tagName : 'INPUT' } ) === false && w.dialogRoot.children.length === 0 );
+
+	// the rows
+	check( 'an arrow key with no row marked marks the first row (the last, going up): the row has the focus, tabindex 0 and aria-selected, the others tabindex -1 and not selected - and the key does not scroll the page', ( function() {
+		const rows = all( w.main, 'tbody tr' );
+		const kept = press( w, 'ArrowDown' );
+		return kept === true && rows[0].getAttribute( 'aria-selected' ) === 'true' && rows[0].getAttribute( 'tabindex' ) === '0' && rows[0].focused === true && rows.slice( 1 ).every( function( one ) { return one.getAttribute( 'aria-selected' ) === 'false' && one.getAttribute( 'tabindex' ) === '-1' } );
+	} )() );
+
+	press( w, 'ArrowDown' );
+	press( w, 'ArrowDown' );
+	press( w, 'ArrowDown' );
+
+	check( '...the next row, and the last row stays the last', all( w.main, 'tbody tr' ).map( function( one ) { return one.getAttribute( 'aria-selected' ) } ).join() === 'false,false,true' );
+
+	press( w, 'ArrowUp' );
+
+	check( '...up goes back', all( w.main, 'tbody tr' ).map( function( one ) { return one.getAttribute( 'aria-selected' ) } ).join() === 'false,true,false' && all( w.main, 'tbody tr' )[1].focused === true );
+
+	check( '...an arrow in a field moves nothing, and the page keeps the key', press( w, 'ArrowDown', { tagName : 'INPUT' } ) === false && all( w.main, 'tbody tr' )[1].getAttribute( 'aria-selected' ) === 'true' );
+
+	w.page.activeElement = { tagName : 'A' };
+	check( 'Enter opens the row that is marked - but not while the focus is on a link or a button of its own', press( w, 'Enter' ) === false && w.location.hash === '#belege' );
+	w.page.activeElement = all( w.main, 'tbody tr' )[1];
+
+	check( '...with the focus on the row: the document of the row is opened', press( w, 'Enter' ) === true && w.location.hash === '#beleg-2' );
+	w.page.activeElement = null;
+	await settle();
+
+	check( 'Enter with no row marked does nothing, and a screen drawn again forgets the mark', press( w, 'Enter' ) === false && w.app.state.row === null );
+
+	// the other lists, and a screen that has none
+	const clientsWorld = await open( '#kunden' );
+
+	check( 'the list of the clients is walked the same way: the arrow marks a row and Enter opens its card', ( press( clientsWorld, 'ArrowDown' ), all( clientsWorld.main, 'tbody tr' )[0].getAttribute( 'aria-selected' ) === 'true' ) && ( clientsWorld.page.activeElement = all( clientsWorld.main, 'tbody tr' )[0], press( clientsWorld, 'Enter' ) === true ) && /^#kunde-\d+$/.test( clientsWorld.location.hash ) );
+
+	const plainScreen = await open( '#uebersicht' );
+
+	check( 'a screen with no list leaves the arrows alone, and one with no menu Neu leaves n alone', press( plainScreen, 'ArrowDown' ) === false && ( plainScreen.location.hash = '#einstellungen', await settle(), press( plainScreen, 'n' ) === false ) );
+
+	// an open menu keeps the arrows
+	const menuWorld = await open( '#belege' );
+	press( menuWorld, 'n' );
+
+	check( 'with a menu open the arrows are not the list\'s', press( menuWorld, 'ArrowDown' ) === false && all( menuWorld.main, 'tbody tr' ).every( function( one ) { return one.getAttribute( 'aria-selected' ) === null } ) );
+
+	// the old keys stay
+	const old = await open( '#belege' );
+
+	check( 'the keys that were there stay: / goes to the search, Strg+S is the save of the screen and is kept from the browser where a form took it', press( old, '/' ) === true && all( old.main, '#q' )[0].focused === true && press( old, 's', null, { ctrlKey : true } ) === false );
+
+	// a draft with unsaved input
+	const draft = await open( '#belege' );
+	draft.app.state.draft = { dirty : true, form : false };
+	press( draft, 'g' );
+	press( draft, 'u' );
+
+	check( 'a key that leaves a draft that holds what was not stored asks first, as a link does: the dialog, and the screen stays until the yes', draft.dialogs.length === 1 && draft.location.hash === '#belege' );
+
+	click( draft, all( draft.dialogs[0], 'button' ).pop() );
+	await settle();
+
+	check( '...the yes goes', draft.location.hash === '#uebersicht' );
+
+	const rail = await open( '#belege' );
+	const opener = element( 'button' );
+	opener.id = 'keys-open';
+	rail.dialogRoot.parentNode.appendChild( opener );
+
+	check( 'the keys can be listed from the foot of the rail as well: the button is in the page', /id="keys-open"/.test( source( OWN+ 'templates/page.tpl' ) ) && /\[\[t\.keys\.open\]\]/.test( source( OWN+ 'templates/page.tpl' ) ) );
 }

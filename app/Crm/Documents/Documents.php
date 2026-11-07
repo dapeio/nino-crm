@@ -32,7 +32,7 @@ declare(strict_types=1);
  *											  released, mail          at remind(): the invoice is not released to the portal; at remindSignature(): the member was not mailed
  *											Finalising an invoice or a credit note of a business client also writes its electronic invoice beside the PDF, where XRechnung::lacks() says nothing is
  *											missing; otherwise the document keeps the list of what was missing (xml_lacks) and is finalised without a file. A finalised document never gets one later.
- *											A database failure is a \PDOException the caller answers. Beside the steps there are readings for the surface: overdue(), summary(), needs()
+ *											A database failure is a \PDOException the caller answers. Beside the steps there are readings for the surface: overdue(), summary(), figures() (the block Zahlen), ledger() (what the export hands the accountant), needs()
  *											(what needs the owner), recent(), order() (the customer orders an offer in the portal: the record of Records and the step to accepted in one transaction), decline() (the customer declines it: the record and the step to declined in one transaction), payment() (the customer reports that an invoice is paid: the record alone), and two things made of a document: copy() (a draft of it) and preview() (the PDF of a draft, stored nowhere).
  */
 namespace Crm;
@@ -97,6 +97,10 @@ class Documents {
 
 	// How many orders of the portal the first screen names one by one
 	public const int NEEDS_ORDERS = 10;
+
+	// The months the block Zahlen lists, and the clients it names
+	public const int FIGURE_MONTHS = 12;
+	public const int FIGURE_CLIENTS = 5;
 
 	/**
 	 *	The documents, the newest first
@@ -955,6 +959,136 @@ class Documents {
 			'drafts_count'   => (int) ( $drafts['n'] ?? 0 ),
 			'drafts_last'    => (string) ( $drafts['last'] ?? '' ),
 		];
+	}
+
+	/**
+	 *	The figures of the first screen's block Zahlen, one query for each table. Months: the invoices and credit notes that are no drafts, by the month of their date,
+	 *	for the month now and the eleven before it, the newest first and a month with nothing in it as a row of zeros - billed (the gross of the invoices less the gross of the
+	 *	credit notes, which carry theirs as a negative sum, by the day of the document), paid (the gross of the invoices that were paid, by the day of the payment - the money came, though
+	 *	a credit note may have taken the invoice back since) and open (the gross of the invoices that are open or sent, by the day of the document, as summary() and the list count them). Clients: the five that were billed most in the year now, by the same sum, the live name of the client. Offers: those of the year now that are no drafts, by what
+	 *	became of them - accepted, declined, expired (open or sent past the day they are valid until) and open - with their number and their gross
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		string|null	$today				Y-m-d; today where none is given
+	 *
+	 *	@return 	array											year, months (month Y-m, billed, paid, open), clients (client_id, client_title, billed) and offers (accepted, declined, expired, open, each count and gross)
+	 */
+	public static function figures( array &$appData, ?string $today = null ): array {
+
+		$today ??= date( 'Y-m-d' );
+		$first = new \DateTimeImmutable( substr( $today, 0, 7 ). '-01' );
+		$months = [];
+
+		for( $back = 0; $back < self::FIGURE_MONTHS; $back++ ) {
+			$month = $first->modify( '-'. $back. ' months' )->format( 'Y-m' );
+			$months[$month] = [ 'month' => $month, 'billed' => 0, 'paid' => 0, 'open' => 0 ];
+		}
+
+		$from = $first->modify( '-'. ( self::FIGURE_MONTHS - 1 ). ' months' )->format( 'Y-m-d' );
+		$until = $first->modify( '+1 month' )->format( 'Y-m-d' );
+
+		// One read: what was billed by the month of the document and what is open of it, and - as a second set of rows of the same read - what was paid by the month of the payment
+		foreach( Db::rows( $appData, 'SELECT month, SUM( billed ) AS billed, SUM( paid ) AS paid, SUM( open ) AS open FROM (
+				SELECT SUBSTR( date, 1, 7 ) AS month, gross AS billed, 0 AS paid, CASE WHEN category = \'invoice\' AND state IN ( \'open\', \'sent\' ) THEN gross ELSE 0 END AS open
+					FROM documents WHERE category IN ( \'invoice\', \'credit\' ) AND state != \'draft\' AND date >= :from AND date < :until
+				UNION ALL
+				SELECT SUBSTR( paid_at, 1, 7 ) AS month, 0 AS billed, gross AS paid, 0 AS open
+					FROM documents WHERE category = \'invoice\' AND paid_at IS NOT NULL AND paid_at >= :from AND paid_at < :until
+			) GROUP BY month', [ 'from' => $from, 'until' => $until ] ) as $row ) {
+
+			if( isset( $months[$row['month']] ) === false )
+				continue;
+
+			$months[$row['month']] = [ 'month' => $row['month'], 'billed' => (int) $row['billed'], 'paid' => (int) $row['paid'], 'open' => (int) $row['open'] ];
+		}
+
+		$year = substr( $today, 0, 4 );
+		$clients = array_map( static fn( array $row ): array => [ 'client_id' => (int) $row['client_id'], 'client_title' => Clients::title( [ 'company' => $row['company'], 'name' => $row['name'], 'email' => $row['email'] ] ), 'billed' => (int) $row['billed'] ],
+			Db::rows( $appData, 'SELECT d.client_id, c.company, c.name, c.email, SUM( d.gross ) AS billed FROM documents d JOIN clients c ON c.id = d.client_id
+				WHERE d.category IN ( \'invoice\', \'credit\' ) AND d.state != \'draft\' AND d.date >= :from AND d.date < :until GROUP BY d.client_id ORDER BY billed DESC, d.client_id LIMIT '. self::FIGURE_CLIENTS,
+				[ 'from' => $year. '-01-01', 'until' => sprintf( '%04d', (int) $year + 1 ). '-01-01' ] ) );
+
+		$offers = [ 'accepted' => [ 'count' => 0, 'gross' => 0 ], 'declined' => [ 'count' => 0, 'gross' => 0 ], 'expired' => [ 'count' => 0, 'gross' => 0 ], 'open' => [ 'count' => 0, 'gross' => 0 ] ];
+
+		foreach( Db::rows( $appData, 'SELECT CASE WHEN state = \'accepted\' THEN \'accepted\' WHEN state = \'declined\' THEN \'declined\' WHEN valid_until IS NOT NULL AND valid_until < :today THEN \'expired\' ELSE \'open\' END AS result, COUNT(*) AS n, SUM( gross ) AS gross
+			FROM documents WHERE category = \'offer\' AND state IN ( \'open\', \'sent\', \'accepted\', \'declined\' ) AND date >= :from AND date < :until GROUP BY result',
+			[ 'today' => $today, 'from' => $year. '-01-01', 'until' => sprintf( '%04d', (int) $year + 1 ). '-01-01' ] ) as $row )
+			$offers[$row['result']] = [ 'count' => (int) $row['n'], 'gross' => (int) $row['gross'] ];
+
+		return [ 'year' => (int) $year, 'months' => array_values( $months ), 'clients' => $clients, 'offers' => $offers ];
+	}
+
+	/**
+	 *	How many documents of a year have a PDF file in the books: the offers, invoices and credit notes that are no drafts and name one - what the ZIP of the year can hold at most
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int				$year
+	 *
+	 *	@return 	int
+	 */
+	public static function exportable( array &$appData, int $year ): int {
+
+		return (int) ( Db::row( $appData, 'SELECT COUNT(*) AS n FROM documents WHERE category IN ( \'offer\', \'invoice\', \'credit\' ) AND state != \'draft\' AND pdf_path != \'\' AND date >= :from AND date < :until',
+			[ 'from' => sprintf( '%04d', $year ). '-01-01', 'until' => sprintf( '%04d', $year + 1 ). '-01-01' ] )['n'] ?? 0 );
+	}
+
+	/**
+	 *	The documents of a year that go to the accountant: the offers, invoices and credit notes that are no drafts (a contract, a privacy or an information document has no
+	 *	number and no amount), the oldest first, by the day of their date; or - with ids - those of the ids that are such documents
+	 *
+	 *	@param		array 		&$appData
+	 *	@param		int|null	$year					The year of the date; null with ids
+	 *	@param		array 		$ids					The ids to take; none for the whole year
+	 *
+	 *	@return 	array											Each with id, category, number, date, client_title (as it was frozen into the document), net, vat, gross, state, paid_at (Y-m-d, '' for none), project (the id, '' for none), project_title, pdf_path, pdf_sha256, xml_path and xml_sha256
+	 */
+	public static function ledger( array &$appData, ?int $year, array $ids = [] ): array {
+
+		$where = [ 'category IN ( \'offer\', \'invoice\', \'credit\' )', 'state != \'draft\'' ];
+		$params = [];
+
+		if( $year !== null ) {
+			$where[] = 'date >= :from AND date < :until';
+			$params = [ 'from' => sprintf( '%04d', $year ). '-01-01', 'until' => sprintf( '%04d', $year + 1 ). '-01-01' ];
+		}
+
+		if( $ids !== [] ) {
+
+			$names = [];
+
+			foreach( array_values( $ids ) as $at => $id ) {
+				$names[] = ':id'. $at;
+				$params['id'. $at] = (int) $id;
+			}
+
+			$where[] = 'id IN ( '. implode( ', ', $names ). ' )';
+		}
+
+		$titles = Projekte::missing( $appData ) === true ? [] : Projekte::titles( $appData );
+
+		return array_map( static function( array $row ) use ( $titles ): array {
+
+			$frozen = json_decode( (string) $row['client_json'], true );
+
+			return [
+				'id'           => (int) $row['id'],
+				'category'     => (string) $row['category'],
+				'number'       => (string) ( $row['number'] ?? '' ),
+				'date'         => (string) $row['date'],
+				'client_title' => Clients::title( is_array( $frozen ) === true ? $frozen : [] ),
+				'net'          => (int) $row['net'],
+				'vat'          => (int) $row['vat'],
+				'gross'        => (int) $row['gross'],
+				'state'        => (string) $row['state'],
+				'paid_at'      => substr( (string) ( $row['paid_at'] ?? '' ), 0, 10 ),
+				'project'      => (string) $row['project'],
+				'project_title' => (string) ( $titles[(string) $row['project']] ?? '' ),
+				'pdf_path'     => (string) $row['pdf_path'],
+				'pdf_sha256'   => (string) $row['pdf_sha256'],
+				'xml_path'     => (string) ( $row['xml_path'] ?? '' ),
+				'xml_sha256'   => (string) ( $row['xml_sha256'] ?? '' ),
+			];
+		}, Db::rows( $appData, 'SELECT id, category, number, date, client_json, net, vat, gross, state, paid_at, project, pdf_path, pdf_sha256, xml_path, xml_sha256 FROM documents WHERE '. implode( ' AND ', $where ). ' ORDER BY date, id', $params ) );
 	}
 
 	/**

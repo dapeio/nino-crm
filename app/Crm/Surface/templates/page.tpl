@@ -29,6 +29,7 @@
 			</nav>
 			<div class="foot">
 				<span class="who">[[user]]</span>
+				<button type="button" class="linkish" id="keys-open" aria-keyshortcuts="?">[[t.keys.open]]</button>
 				<a href="[[site]]">[[t.rail.site]]</a>
 				<a href="[[workbench]]">[[t.rail.workbench]]</a>
 			</div>

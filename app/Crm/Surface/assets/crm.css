@@ -457,6 +457,47 @@ dialog.dlg .field > span { color: var(--fg-2) }
 	.drop input[type="file"] { max-width: 100% }
 }
 
+/* The block Zahlen, the card Aus dem Portal, the bar of the choice, the rows the arrows are on */
+.rail .foot .linkish { display: block; border: 0; background: transparent; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-align: left }
+.rail .foot .linkish:hover { text-decoration: underline }
+#portal-activity { margin-top: 12px }
+.list-mini .kind { font-weight: 500 }
+.list-mini li > span:first-child .muted { overflow-wrap: anywhere }
+.figures { margin-top: 20px }
+.figures h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3) }
+.figures .state-note { margin: 6px 0 12px }
+.figures .cols { margin-top: 12px }
+.figs caption { caption-side: top; text-align: left; padding: 10px 10px 2px; font-size: 12px; font-weight: 600; color: var(--fg-2) }
+.figs th { cursor: default }
+.figs td.r { white-space: nowrap }
+.figs tfoot td { font-weight: 600 }
+.selection { align-items: center; margin: 0 0 10px; padding: 6px 10px; background: var(--accent-soft); border: 1px solid var(--line); border-radius: var(--radius) }
+.selection .state-note { margin: 0 auto 0 0; color: var(--fg) }
+.tbl tbody tr[aria-selected="true"] { background: var(--accent-soft) }
+.tbl tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px }
+@media (max-width: 759px) {
+	.selection { gap: 6px }
+	.selection .state-note { flex: 1 1 100% }
+	.figs td, .figs th { padding-inline: 4px }
+	.figs th { white-space: normal; letter-spacing: 0; vertical-align: bottom }
+	.figs td { font-size: 12px; height: 38px }
+	.figs td:first-child { white-space: normal }
+	.figs .num { font-size: 11.5px }
+	.figs caption { padding-inline: 6px }
+}
+
+/* The list of the documents on a desktop: the number, the client and the project are cut where they are long (the cell has the whole text as its title), so that the columns on the right stay in sight */
+@media (min-width: 760px) {
+	.tbl.cards[data-cards="belege"] td[data-col="id"], .tbl.cards[data-cards="belege"] td[data-col="who"], .tbl.cards[data-cards="belege"] td[data-col="proj"] { max-width: 11em; overflow: hidden; text-overflow: ellipsis }
+	.tbl.cards[data-cards="belege"] td, .tbl.cards[data-cards="belege"] th { padding-inline: 6px }
+	.tbl.cards[data-cards="belege"] td[data-col="state"] { max-width: 11em; white-space: normal }
+	.tbl.cards[data-cards="belege"] td[data-col="state"] .badge { margin: 1px 2px 1px 0 }
+}
+@media (max-width: 759px) {
+	.figs .num { font-size: 11px; letter-spacing: -.01em }
+	.figs td, .figs th { padding-inline: 3px }
+}
+
 /* The phone, lists: under 760px a row of a list is a card - the same table, its rows laid out as a grid by the name each cell carries (data-col) */
 .sortbox { display: none }
 .tbl th.pick .pick-word { display: none }
@@ -534,6 +575,14 @@ dialog.dlg .field > span { color: var(--fg-2) }
 	.tbl.cards[data-cards="uploads"] th.pick { display: block; padding: 0; width: auto; border: 0 }
 	.tbl.cards[data-cards="uploads"] th.pick label.hit { justify-content: flex-start; gap: 10px }
 	.tbl.cards[data-cards="uploads"] th.pick .pick-word { display: inline; color: var(--fg-2); font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 12.5px }
+	.tbl.cards[data-cards="belege"] td[data-col="pick"] { order: 0; flex: 0 0 44px; display: flex; margin-left: -12px }
+	.tbl.cards[data-cards="belege"] td[data-col="pick"] label.hit { flex: 1 1 auto }
+	.tbl.cards[data-cards="belege"] thead { display: block }
+	.tbl.cards[data-cards="belege"] thead tr { display: block; padding: 0 12px; border-bottom: 1px solid var(--line) }
+	.tbl.cards[data-cards="belege"] th:not(.pick) { display: none }
+	.tbl.cards[data-cards="belege"] th.pick { display: block; padding: 0; width: auto; border: 0 }
+	.tbl.cards[data-cards="belege"] th.pick label.hit { justify-content: flex-start; gap: 10px }
+	.tbl.cards[data-cards="belege"] th.pick .pick-word { display: inline; color: var(--fg-2); font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 12.5px }
 	.tbl.cards[data-cards="cdocs"] tbody tr { grid-template-columns: minmax(0, 1fr) fit-content(60%); grid-template-areas: "id state" "kind sum" "date sum" }
 	.tbl.cards[data-cards="cprojects"] tbody tr { grid-template-columns: minmax(0, 1fr) fit-content(60%); grid-template-areas: "id state" "date docs" }
 	.tbl.cards[data-cards="pfiles"] tbody tr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "id id" "sum date" "by vis" "com com" "acts acts" }
